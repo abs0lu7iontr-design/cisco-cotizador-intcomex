@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  cisco-automated:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cisco_automated_v21
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      - NODE_ENV=production
+      - VITE_APP_TITLE=Cisco Automated v2.1
+    volumes:
+      - ./gravity_storage:/usr/share/nginx/html/gravity_storage
