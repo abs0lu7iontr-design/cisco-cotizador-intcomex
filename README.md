@@ -8,6 +8,7 @@
 [![ExcelJS](https://img.shields.io/badge/ExcelJS-4.4-217346?logo=microsoft-excel&logoColor=white)](https://github.com/exceljs/exceljs)
 [![IndexedDB](https://img.shields.io/badge/IndexedDB-Native-FFA000?logo=google-chrome&logoColor=white)](https://developer.mozilla.org/es/docs/Web/API/IndexedDB_API)
 [![PyWebView](https://img.shields.io/badge/PyWebView-5.4-3776AB?logo=python&logoColor=white)](https://pywebview.flowrl.com/)
+[![SignPath Foundation](https://img.shields.io/badge/Code%20Signing-SignPath%20Foundation-007ACC?logo=windows&logoColor=white)](https://signpath.org/)
 
 ---
 
@@ -72,6 +73,14 @@ npm run build
 python -m PyInstaller --noconfirm GravityDesktopPortable.spec
 # Genera dist/Cotizador-Cisco-Intcomex-Portable.exe (19.0 MB)
 ```
+
+### 🛡️ Firma de Código (Code Signing)
+
+Las versiones ejecutables para Windows de este proyecto de código abierto son construidas y firmadas automáticamente mediante integración continua (GitHub Actions):
+
+> Free code signing provided by [SignPath.io](https://signpath.io/) on behalf of the [SignPath Foundation](https://signpath.org/).
+
+Los ejecutables oficiales firmados se distribuyen públicamente en la sección de [Releases de GitHub](https://github.com/abs0lu7iontr-design/cisco-cotizador-intcomex/releases).
 
 ---
 

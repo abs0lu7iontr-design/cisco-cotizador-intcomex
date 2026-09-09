@@ -31,3 +31,11 @@ Do not commit real secrets, Firebase credentials, or API keys to the repository.
 npm install
 npm run build
 ```
+
+## Code Signing & Distribution
+
+Windows binaries are built via GitHub Actions CI and digitally signed:
+
+> Free code signing provided by [SignPath.io](https://signpath.io/) on behalf of the [SignPath Foundation](https://signpath.org/).
+
+Downloads are available under [GitHub Releases](https://github.com/abs0lu7iontr-design/cisco-cotizador-intcomex/releases).
