@@ -73,36 +73,6 @@ python -m PyInstaller --noconfirm GravityDesktopPortable.spec
 # Genera dist/Cotizador-Cisco-Intcomex-Portable.exe (19.0 MB)
 ```
 
-### Firma digital para Windows
-
-Para reducir las alertas de SmartScreen, el ejecutable debe firmarse con un certificado de firma de codigo emitido por una autoridad certificadora reconocida. Un certificado autofirmado sirve solo para equipos donde se instale manualmente como entidad de confianza y no elimina las advertencias en otros equipos.
-
-El repositorio incluye scripts reproducibles para compilar y firmar. Requieren ejecutarse en Windows con Python, Node.js, PyInstaller y `signtool.exe` (Windows SDK) instalados:
-
-```powershell
-# No guardes estos valores en el repositorio ni en archivos .ps1
-$env:CODE_SIGNING_CERTIFICATE = "C:\\Secure\\intcomex-code-signing.pfx"
-$env:CODE_SIGNING_PASSWORD = "<password-del-certificado>"
-
-.\\scripts\\build-signed-windows.ps1
-```
-
-El script compila la web, genera el ejecutable portable, firma todos los `.exe` y `.dll` de `dist` con SHA-256 y sello de tiempo, y verifica cada firma con `signtool verify /pa`.
-
-Para una distribución profesional, compra un certificado OV o equivalente para firma de código y conserva la clave privada en un almacén seguro o servicio de firma remota. La firma no sustituye el instalador, el control de versiones ni la publicación desde un canal confiable.
-
-### Firma gratuita con SignPath Foundation
-
-El workflow [`windows-signpath.yml`](.github/workflows/windows-signpath.yml) automatiza el build en `windows-latest` y envía el ejecutable a SignPath para firmarlo. Subir el código a GitHub por sí solo no firma el ejecutable.
-
-Para usar SignPath Foundation debes solicitar aprobación en SignPath y cumplir sus requisitos de proyecto open source. Después configura en GitHub:
-
-- **Environment `signpath`**: crea este environment en `Settings > Environments` y limita su uso según tu política de publicación.
-- **Secret `SIGNPATH_API_TOKEN`**: token de API de SignPath.
-- **Variables `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG`, `SIGNPATH_SIGNING_POLICY_SLUG` y `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG`**: valores entregados por SignPath.
-
-El workflow se ejecuta manualmente o al subir un tag como `v3.3.0`. Publica el `.exe` firmado como artifact de GitHub Actions. La aprobación no es automática: una aplicación comercial privada, sin licencia open source aprobada, puede no ser elegible para la Foundation.
-
 ---
 
 ## 📖 Documentación y Prompt Maestro de Ingeniería
