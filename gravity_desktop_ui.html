@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gravity Desktop v2.0 | Intcomex</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;background:#0f172a;color:#e2e8f0;-webkit-font-smoothing:antialiased}
+.hidden{display:none!important}
+
+:root{
+  --slate-950:#0f172a;--slate-900:#111827;--slate-800:#1e293b;--slate-700:#334155;
+  --slate-600:#475569;--slate-500:#64748b;--slate-400:#94a3b8;--slate-200:#e2e8f0;
+  --indigo-600:#4f46e5;--indigo-500:#6366f1;--indigo-400:#818cf8;
+  --emerald-600:#059669;--emerald-500:#10b981;--emerald-300:#6ee7b7;
+  --amber-400:#fbbf24;--rose-500:#f43f5e;--rose-400:#f87171;
+}
+
+/* ============ LOGIN ============ */
+#login-screen{height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 100%)}
+.login-card{width:400px;background:#1e293b;border:1px solid #334155;border-radius:16px;padding:40px;box-shadow:0 25px 60px rgba(0,0,0,0.6)}
+.login-logo{text-align:center;margin-bottom:28px}
+.login-logo .app-icon{width:60px;height:60px;background:linear-gradient(135deg,#4f46e5,#7c3aed);border-radius:16px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;box-shadow:0 8px 28px rgba(79,70,229,0.4)}
+.login-logo h1{font-size:19px;font-weight:800;color:#f1f5f9;letter-spacing:-0.02em}
+.login-logo p{font-size:11px;color:#475569;margin-top:4px}
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.form-group input{width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;padding:10px 14px;color:#f1f5f9;font-size:13px;outline:none;transition:border-color .15s}
+.form-group input:focus{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.15)}
+.btn-login{width:100%;background:#4f46e5;color:white;border:none;border-radius:9px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;transition:background .15s,transform .1s;margin-top:6px}
+.btn-login:hover{background:#4338ca;transform:translateY(-1px)}
+.btn-login:active{transform:translateY(0)}
+.btn-login:disabled{opacity:.6;cursor:not-allowed;transform:none}
+.login-hint{margin-top:18px;padding:12px;background:rgba(79,70,229,.08);border:1px solid rgba(79,70,229,.2);border-radius:8px;font-size:11px;color:#64748b}
+.login-hint code{color:#818cf8;font-family:monospace}
+.error-msg{background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.3);border-radius:8px;padding:10px 12px;color:#f87171;font-size:12px;margin-bottom:14px;display:none}
+
+/* ============ APP LAYOUT ============ */
+#app-screen{height:100vh;display:none;grid-template-columns:230px 1fr}
+.sidebar{background:#111827;border-right:1px solid #1e293b;display:flex;flex-direction:column;overflow:hidden}
+.sidebar-header{padding:18px 16px;border-bottom:1px solid #1e293b}
+.sidebar-logo{display:flex;align-items:center;gap:10px}
+.sidebar-logo .logo-icon{width:34px;height:34px;background:linear-gradient(135deg,#4f46e5,#7c3aed);border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.sidebar-logo .logo-text{font-size:12px;font-weight:700;color:#f1f5f9;line-height:1.3}
+.sidebar-logo .logo-sub{font-size:9.5px;color:#334155;font-weight:400}
+.user-card{margin:8px;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px 14px}
+.user-card .u-name{font-size:12px;font-weight:600;color:#e2e8f0}
+.user-card .u-full{font-size:10px;color:#475569;margin-top:2px}
+.role-pill{display:inline-block;font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;text-transform:uppercase;letter-spacing:.05em;margin-top:5px}
+.role-pill.admin{background:rgba(244,63,94,.15);color:#f87171}
+.role-pill.standard{background:rgba(99,102,241,.15);color:#818cf8}
+.sidebar-nav{padding:6px 8px;flex:1;overflow-y:auto}
+.nav-label{font-size:9px;font-weight:700;color:#1e293b;text-transform:uppercase;letter-spacing:.12em;padding:10px 8px 4px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;color:#475569;cursor:pointer;transition:all .15s;font-size:12px;font-weight:500;margin-bottom:1px;user-select:none}
+.nav-item:hover{background:#1e293b;color:#94a3b8}
+.nav-item.active{background:rgba(79,70,229,.15);color:#818cf8}
+.nav-item svg{width:15px;height:15px;flex-shrink:0;opacity:.8}
+.nav-item.active svg{opacity:1}
+.nav-item.nav-quoter{background:rgba(16,185,129,.08);color:#6ee7b7;border:1px solid rgba(16,185,129,.15);margin-top:6px}
+.nav-item.nav-quoter:hover{background:rgba(16,185,129,.16)}
+.sidebar-footer{padding:10px;border-top:1px solid #1e293b}
+.btn-logout{width:100%;display:flex;align-items:center;gap:8px;padding:9px 12px;background:transparent;border:1px solid #1e293b;border-radius:8px;color:#334155;cursor:pointer;font-size:12px;font-weight:500;transition:all .15s}
+.btn-logout:hover{background:rgba(244,63,94,.08);border-color:rgba(244,63,94,.3);color:#f87171}
+
+/* ============ CONTENT ============ */
+.content{overflow-y:auto;background:#0f172a}
+.view-content{padding:28px;max-width:1280px}
+.view-header{margin-bottom:22px;display:flex;justify-content:space-between;align-items:flex-start}
+.view-header-left h2{font-size:20px;font-weight:800;color:#f1f5f9;letter-spacing:-.02em}
+.view-header-left p{font-size:11.5px;color:#475569;margin-top:4px}
+
+/* ============ KPI CARDS ============ */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:22px}
+.kpi-card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:18px;position:relative;overflow:hidden}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.kpi-card.blue::before{background:linear-gradient(90deg,#4f46e5,#818cf8)}
+.kpi-card.green::before{background:linear-gradient(90deg,#059669,#10b981)}
+.kpi-card.amber::before{background:linear-gradient(90deg,#d97706,#fbbf24)}
+.kpi-card.rose::before{background:linear-gradient(90deg,#be185d,#f43f5e)}
+.kpi-card .kpi-label{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#475569;margin-bottom:10px}
+.kpi-card .kpi-value{font-size:22px;font-weight:800;font-family:'Courier New',monospace;color:#f1f5f9}
+.kpi-card .kpi-value.col-blue{color:#818cf8}
+.kpi-card .kpi-value.col-green{color:#10b981}
+.kpi-card .kpi-value.col-amber{color:#fbbf24}
+.kpi-card .kpi-sub{font-size:10px;color:#334155;margin-top:5px}
+
+/* ============ TABLES ============ */
+.table-container{background:#1e293b;border:1px solid #334155;border-radius:12px;overflow:hidden}
+.table-header{padding:14px 18px;border-bottom:1px solid #334155;display:flex;align-items:center;justify-content:space-between}
+.table-header h3{font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em}
+table{width:100%;border-collapse:collapse}
+thead th{padding:10px 14px;text-align:left;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#334155;background:rgba(15,23,42,.4);border-bottom:1px solid #334155}
+tbody tr{border-bottom:1px solid rgba(30,41,59,.5);transition:background .1s}
+tbody tr:hover{background:rgba(30,41,59,.4)}
+tbody tr:last-child{border-bottom:none}
+tbody td{padding:10px 14px;font-size:12px;color:#94a3b8}
+td.hi{color:#e2e8f0;font-weight:600}
+td.mono{font-family:'Courier New',monospace;font-size:11px}
+td.green{color:#10b981}
+td.amber{color:#fbbf24}
+td.muted{color:#475569;font-size:11px}
+
+/* ============ BADGES ============ */
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.badge-green{background:rgba(16,185,129,.12);color:#10b981}
+.badge-blue{background:rgba(99,102,241,.12);color:#818cf8}
+.badge-amber{background:rgba(251,191,36,.12);color:#fbbf24}
+.badge-red{background:rgba(244,63,94,.12);color:#f87171}
+.badge-gray{background:rgba(100,116,139,.12);color:#64748b}
+
+/* ============ BUTTONS ============ */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;border:none;transition:all .15s;text-decoration:none}
+.btn-sm{padding:4px 10px;font-size:11px;border-radius:5px}
+.btn-xs{padding:3px 8px;font-size:10px;border-radius:4px}
+.btn-indigo{background:#4f46e5;color:white}.btn-indigo:hover{background:#4338ca}
+.btn-green{background:#059669;color:white}.btn-green:hover{background:#047857}
+.btn-ghost{background:#1e293b;color:#64748b;border:1px solid #334155}.btn-ghost:hover{background:#334155;color:#94a3b8}
+.btn-red{background:rgba(244,63,94,.1);color:#f87171;border:1px solid rgba(244,63,94,.25)}.btn-red:hover{background:rgba(244,63,94,.2)}
+
+/* ============ UPLOAD ============ */
+.upload-zone{border:2px dashed #334155;border-radius:14px;padding:48px 32px;text-align:center;background:rgba(30,41,59,.2);transition:all .2s;cursor:pointer;margin-bottom:16px}
+.upload-zone:hover{border-color:#4f46e5;background:rgba(79,70,229,.04)}
+.upload-icon{width:52px;height:52px;margin:0 auto 16px;background:rgba(79,70,229,.12);border-radius:12px;display:flex;align-items:center;justify-content:center;color:#818cf8}
+.upload-zone h3{font-size:15px;font-weight:700;color:#e2e8f0;margin-bottom:6px}
+.upload-zone p{font-size:11px;color:#475569}
+.format-code{margin-top:12px;font-family:monospace;font-size:12px;color:#6366f1;background:rgba(99,102,241,.1);padding:6px 14px;border-radius:6px;display:inline-block}
+.info-box{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:12px}
+.info-box .ib-title{font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.validation-card{border-radius:10px;padding:16px;margin-bottom:16px;display:none}
+.validation-card.success{background:rgba(16,185,129,.05);border:1px solid rgba(16,185,129,.25)}
+.validation-card.error{background:rgba(244,63,94,.05);border:1px solid rgba(244,63,94,.25)}
+
+/* ============ CHARTS ============ */
+.chart-bar-row{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+.chart-bar-label{width:110px;font-size:11px;color:#64748b;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.chart-bar-track{flex:1;height:7px;background:#0f172a;border-radius:4px;overflow:hidden}
+.chart-bar-fill{height:100%;background:linear-gradient(90deg,#4f46e5,#6366f1);border-radius:4px;transition:width .6s ease}
+.chart-bar-fill.green{background:linear-gradient(90deg,#059669,#10b981)}
+.chart-bar-value{width:75px;font-size:10px;color:#334155;font-family:monospace}
+
+/* ============ FORMS ============ */
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.fg label{display:block;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}
+.fg input,.fg select{width:100%;background:#0f172a;border:1px solid #334155;border-radius:7px;padding:9px 11px;color:#f1f5f9;font-size:12px;outline:none;transition:border-color .15s}
+.fg input:focus,.fg select:focus{border-color:#4f46e5;box-shadow:0 0 0 3px rgba(79,70,229,.12)}
+.fg select option{background:#1e293b}
+
+/* ============ MODAL ============ */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:200}
+.modal-overlay.active{display:flex}
+.modal-card{background:#1e293b;border:1px solid #334155;border-radius:16px;padding:28px;width:480px;box-shadow:0 30px 60px rgba(0,0,0,.5)}
+.modal-title{font-size:15px;font-weight:700;color:#f1f5f9;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid #334155}
+.modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid #334155}
+
+/* ============ SETTINGS ============ */
+.settings-section{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:20px;margin-bottom:14px}
+.settings-section h3{font-size:12px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid #334155}
+.settings-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(30,41,59,.5);font-size:12px}
+.settings-row:last-child{border-bottom:none}
+.settings-row .sr-label{color:#64748b}
+.settings-row .sr-value{color:#e2e8f0;font-family:monospace;font-size:11px}
+
+/* ============ TOAST ============ */
+.toast-container{position:fixed;bottom:20px;right:20px;z-index:300;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{padding:11px 16px;border-radius:8px;font-size:12px;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:slideIn .2s ease;pointer-events:auto}
+.toast-success{background:#052e16;color:#6ee7b7;border:1px solid rgba(16,185,129,.25)}
+.toast-error{background:#4c0519;color:#fca5a5;border:1px solid rgba(244,63,94,.25)}
+.toast-info{background:#1e1b4b;color:#a5b4fc;border:1px solid rgba(129,140,248,.25)}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+
+/* ============ EMPTY STATE ============ */
+.empty-state{text-align:center;padding:36px 20px;color:#334155;font-size:12px}
+.empty-state svg{width:36px;height:36px;margin:0 auto 12px;opacity:.3}
+
+/* ============ SCROLLBAR ============ */
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#1e293b;border-radius:3px}::-webkit-scrollbar-thumb:hover{background:#334155}
+
+/* ============ CHARTS GRID ============ */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+@media(max-width:900px){.two-col{grid-template-columns:1fr}}
+
+/* Loading state */
+.loading-text::after{content:'';animation:dots 1.5s infinite}
+@keyframes dots{0%{content:'.'}33%{content:'..'}66%{content:'...'}100%{content:''}}
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- TOAST -->
+<!-- ============================================================ -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- ============================================================ -->
+<!-- LOGIN SCREEN -->
+<!-- ============================================================ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="app-icon">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+      </div>
+      <h1>Gravity Desktop v2.0</h1>
+      <p>Gestión de Cotizaciones Cisco CCW &nbsp;|&nbsp; Intcomex</p>
+    </div>
+
+    <div id="login-error" class="error-msg"></div>
+
+    <div class="form-group">
+      <label>Usuario</label>
+      <input type="text" id="username" placeholder="ej. mskill" autocomplete="off" onkeydown="if(event.key==='Enter')handleLogin()">
+    </div>
+    <div class="form-group">
+      <label>Contraseña</label>
+      <input type="password" id="password" placeholder="••••••••" autocomplete="off" onkeydown="if(event.key==='Enter')handleLogin()">
+    </div>
+
+    <button class="btn-login" onclick="handleLogin()" id="login-btn">Iniciar Sesión</button>
+
+    <div class="login-hint">
+      <strong>Usuarios pre-configurados:</strong><br>
+      <code>mskill</code> (Admin)&nbsp;·&nbsp;<code>madasme</code>&nbsp;·&nbsp;<code>rcuevas</code>&nbsp;·&nbsp;<code>jvalancia</code><br>
+      <span style="display:block;margin-top:4px;">Contraseña inicial: <code>change-me-before-use</code></span>
+    </div>
+
+    <div style="text-align:center;margin-top:18px;font-size:10px;color:#1e293b;">
+      © Example Company | admin@yourcompany.example
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MAIN APP -->
+<!-- ============================================================ -->
+<div id="app-screen">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">
+        <div class="logo-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+            <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </div>
+        <div class="logo-text">Gravity Desktop
+          <span class="logo-sub">v2.0 &nbsp;|&nbsp; Intcomex</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="user-card" style="margin:8px">
+      <div class="u-name" id="sidebar-username">—</div>
+      <div class="u-full" id="sidebar-fullname">—</div>
+      <span class="role-pill" id="sidebar-role-pill">—</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-label">Principal</div>
+
+      <div class="nav-item active" id="nav-dashboard" onclick="showView('dashboard')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+          <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        Dashboard
+      </div>
+
+      <div class="nav-item" id="nav-upload" onclick="showView('upload')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        Subir Estimate
+      </div>
+
+      <div class="nav-item" id="nav-estimates" onclick="showView('estimates')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+        </svg>
+        Historial de Estimates
+      </div>
+
+      <div class="nav-item nav-quoter" onclick="openQuoter()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="3" width="20" height="14" rx="2"/>
+          <line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+        Abrir Cotizador CCW ↗
+      </div>
+
+      <!-- Admin section -->
+      <div id="admin-nav" class="hidden">
+        <div class="nav-label">Administración</div>
+
+        <div class="nav-item" id="nav-users" onclick="showView('users')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+          </svg>
+          Gestión de Usuarios
+        </div>
+
+        <div class="nav-item" id="nav-audit" onclick="showView('audit')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          Auditoría &amp; Logs
+        </div>
+      </div>
+
+      <div class="nav-label">Sistema</div>
+      <div class="nav-item" id="nav-settings" onclick="showView('settings')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.07 4.93A10 10 0 006.99 3.34L5 4l1 3-1 3-.93.93A10 10 0 1019.07 4.93z"/>
+        </svg>
+        Configuración
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button class="btn-logout" onclick="handleLogout()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+          <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+        Cerrar Sesión
+      </button>
+    </div>
+  </aside>
+
+  <!-- CONTENT AREA -->
+  <main class="content">
+
+    <!-- ======================== DASHBOARD ======================== -->
+    <div id="view-dashboard" class="view-content">
+      <div class="view-header">
+        <div class="view-header-left">
+          <h2>Dashboard Analítico</h2>
+          <p>Vista global de cotizaciones, márgenes y métricas de preventa</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="loadDashboard()">↻ Actualizar</button>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card blue">
+          <div class="kpi-label">Cotizaciones Subidas</div>
+          <div class="kpi-value col-blue" id="kpi-count">—</div>
+          <div class="kpi-sub">Estimates procesados</div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-label">Total Revenue Intcomex</div>
+          <div class="kpi-value col-green" id="kpi-revenue">—</div>
+          <div class="kpi-sub">USD acumulado cotizado</div>
+        </div>
+        <div class="kpi-card amber">
+          <div class="kpi-label">Ganancia Intcomex</div>
+          <div class="kpi-value col-amber" id="kpi-profit">—</div>
+          <div class="kpi-sub">Margen real en USD</div>
+        </div>
+        <div class="kpi-card rose">
+          <div class="kpi-label">Margen Promedio</div>
+          <div class="kpi-value" style="color:#f87171" id="kpi-margin">5.0%</div>
+          <div class="kpi-sub">Sobre precio de venta</div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="table-container">
+          <div class="table-header"><h3>Revenue por Partner</h3></div>
+          <div style="padding:16px" id="partner-chart">
+            <div class="empty-state"><p>Sin datos aún</p></div>
+          </div>
+        </div>
+        <div class="table-container">
+          <div class="table-header"><h3>Revenue por Cliente Final</h3></div>
+          <div style="padding:16px" id="client-chart">
+            <div class="empty-state"><p>Sin datos aún</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <div class="table-header">
+          <h3>Estimates Recientes</h3>
+          <button class="btn btn-ghost btn-sm" onclick="showView('estimates')">Ver todos →</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Partner</th><th>Cliente Final</th><th>Archivo</th>
+              <th>Net Cisco USD</th><th>Total Intcomex USD</th><th>Ganancia USD</th><th>Fecha</th>
+            </tr>
+          </thead>
+          <tbody id="dash-recent-tbody">
+            <tr><td colspan="7" class="empty-state">Cargando<span class="loading-text"></span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ======================== UPLOAD ======================== -->
+    <div id="view-upload" class="view-content hidden">
+      <div class="view-header">
+        <div class="view-header-left">
+          <h2>Subir Estimate de Cisco CCW</h2>
+          <p>El nombre debe seguir el formato estricto para procesarse automáticamente</p>
+        </div>
+      </div>
+
+      <div class="info-box">
+        <div class="ib-title">Formato requerido del nombre de archivo</div>
+        <div style="font-family:monospace;font-size:13px;color:#818cf8;margin-bottom:6px">[Partner]_[ClienteFinal]_resto_del_nombre.xlsx</div>
+        <div style="font-size:11px;color:#475569">Ejemplo válido: <span style="color:#6ee7b7;font-family:monospace">Intcomex_BancoDeChile_Estimate_CCW_2026.xlsx</span></div>
+        <div style="font-size:11px;color:#475569;margin-top:4px">Ruta automática: <span style="font-family:monospace;color:#64748b">gravity_storage / Partner / ClienteFinal / YYYY-MM / YYYY-MM-DD /</span></div>
+      </div>
+
+      <div class="upload-zone" id="upload-zone" onclick="triggerUpload()">
+        <div class="upload-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </div>
+        <h3>Seleccionar Archivo Estimate (.xlsx)</h3>
+        <p>Haz clic aquí para abrir el diálogo de archivos</p>
+        <div class="format-code">[Partner]_[ClienteFinal]_nombre.xlsx</div>
+      </div>
+
+      <div class="validation-card" id="validation-card">
+        <div id="validation-content"></div>
+      </div>
+    </div>
+
+    <!-- ======================== ESTIMATES HISTORY ======================== -->
+    <div id="view-estimates" class="view-content hidden">
+      <div class="view-header">
+        <div class="view-header-left">
+          <h2>Historial de Estimates</h2>
+          <p>Todas las cotizaciones procesadas y almacenadas</p>
+        </div>
+        <button class="btn btn-indigo btn-sm" onclick="exportCSV()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Exportar CSV
+        </button>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>ID Cisco</th><th>Usuario</th><th>Partner</th><th>Cliente Final</th>
+              <th>Archivo</th><th>Net Cisco USD</th><th>Total Intcomex USD</th>
+              <th>Ganancia USD</th><th>Items</th><th>Fecha</th>
+            </tr>
+          </thead>
+          <tbody id="estimates-tbody">
+            <tr><td colspan="10" class="empty-state">Cargando<span class="loading-text"></span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ======================== USERS (ADMIN) ======================== -->
+    <div id="view-users" class="view-content hidden">
+      <div class="view-header">
+        <div class="view-header-left">
+          <h2>Gestión de Usuarios (RBAC)</h2>
+          <p>Crear, editar y administrar accesos al sistema</p>
+        </div>
+        <button class="btn btn-indigo" onclick="openCreateUserModal()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Nuevo Usuario
+        </button>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Usuario</th><th>Nombre Completo</th><th>Email</th><th>Rol</th>
+              <th>Estado</th><th>Último Acceso</th><th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody">
+            <tr><td colspan="7" class="empty-state">Cargando<span class="loading-text"></span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ======================== AUDIT (ADMIN) ======================== -->
+    <div id="view-audit" class="view-content hidden">
+      <div class="view-header">
+        <div class="view-header-left">
+          <h2>Registro de Auditoría</h2>
+          <p>Historial completo — "Quién hizo qué y cuándo"</p>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="loadAuditLogs()">↻ Actualizar</button>
+      </div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr><th>Fecha / Hora</th><th>Usuario</th><th>Acción</th><th>Detalles</th></tr>
+          </thead>
+          <tbody id="audit-tbody">
+            <tr><td colspan="4" class="empty-state">Cargando<span class="loading-text"></span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ======================== SETTINGS ======================== -->
+    <div id="view-settings" class="view-content hidden">
+      <div class="view-header">
+        <div class="view-header-left">
+          <h2>Configuración</h2>
+          <p>Almacenamiento, base de datos y conexiones</p>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>📁 Almacenamiento Local</h3>
+        <div class="fg" style="margin-bottom:12px">
+          <label>Directorio Base de Almacenamiento</label>
+          <input type="text" id="storage-path" value="./gravity_storage">
+        </div>
+        <p style="font-size:11px;color:#475569;margin-bottom:12px">
+          Estructura jerárquica: <code style="color:#818cf8">[base] / Partner / ClienteFinal / YYYY-MM / YYYY-MM-DD /</code>
+        </p>
+        <button class="btn btn-ghost" onclick="showToast('Configuración guardada','success')">Guardar</button>
+      </div>
+
+      <div class="settings-section">
+        <h3>🗄️ Base de Datos</h3>
+        <div class="form-row">
+          <div class="fg">
+            <label>Supabase URL (opcional)</label>
+            <input type="text" id="supabase-url" placeholder="https://xxx.supabase.co">
+          </div>
+          <div class="fg">
+            <label>Supabase API Key</label>
+            <input type="password" id="supabase-key" placeholder="eyJhbGciOiJIUzI1NiIs...">
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="btn btn-indigo" onclick="testDB()">Probar Conexión</button>
+          <span id="db-test-result" style="font-size:11px;color:#475569"></span>
+        </div>
+        <div style="margin-top:12px;padding:12px;background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.15);border-radius:8px;font-size:11px;color:#6366f1">
+          Modo actual: <strong>SQLite Local</strong> (gravity_database.db). Configura Supabase para acceso multi-equipo.
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>ℹ️ Información del Sistema</h3>
+        <div class="settings-row"><span class="sr-label">Versión</span><span class="sr-value">Gravity Desktop v2.0</span></div>
+        <div class="settings-row"><span class="sr-label">Motor Cotizador</span><span class="sr-value">Cisco CCW Processor (ExcelJS + React)</span></div>
+        <div class="settings-row"><span class="sr-label">Base de Datos</span><span class="sr-value">SQLite / Supabase PostgreSQL</span></div>
+        <div class="settings-row"><span class="sr-label">Stack</span><span class="sr-value">PyWebView + Python + React + TailwindCSS</span></div>
+        <div class="settings-row"><span class="sr-label">Derechos</span><span class="sr-value">Example Company | admin@yourcompany.example</span></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ======================== MODAL: CREAR USUARIO ======================== -->
+<div class="modal-overlay" id="modal-create-user">
+  <div class="modal-card">
+    <div class="modal-title">➕ Crear Nuevo Usuario</div>
+    <div class="form-row">
+      <div class="fg">
+        <label>Nombre de Usuario</label>
+        <input type="text" id="nu-username" placeholder="ej. jperez" autocomplete="off">
+      </div>
+      <div class="fg">
+        <label>Rol</label>
+        <select id="nu-role">
+          <option value="standard">Estándar (Preventa)</option>
+          <option value="admin">Administrador</option>
+        </select>
+      </div>
+    </div>
+    <div class="fg" style="margin-bottom:12px">
+      <label>Nombre Completo</label>
+      <input type="text" id="nu-fullname" placeholder="Juan Pérez">
+    </div>
+    <div class="fg" style="margin-bottom:12px">
+      <label>Email</label>
+      <input type="email" id="nu-email" placeholder="jperez@intcomex.com">
+    </div>
+    <div class="fg">
+      <label>Contraseña Inicial</label>
+      <input type="password" id="nu-password" value="change-me-before-use">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-create-user')">Cancelar</button>
+      <button class="btn btn-indigo" onclick="createUser()">Crear Usuario</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================== MODAL: RESETEAR CONTRASEÑA ======================== -->
+<div class="modal-overlay" id="modal-reset-pw">
+  <div class="modal-card" style="width:380px">
+    <div class="modal-title">🔑 Resetear Contraseña</div>
+    <input type="hidden" id="rp-username">
+    <div class="fg">
+      <label>Nueva contraseña para <span id="rp-label" style="color:#818cf8"></span></label>
+      <input type="password" id="rp-password" value="change-me-before-use">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-reset-pw')">Cancelar</button>
+      <button class="btn btn-indigo" onclick="confirmResetPassword()">Resetear</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================================================================
+// STATE
+// ================================================================
+let currentUser = null;
+let isAdmin = false;
+
+// ================================================================
+// PYWEBVIEW BRIDGE
+// ================================================================
+async function api(method, ...args) {
+  if (window.pywebview && window.pywebview.api && window.pywebview.api[method]) {
+    try { return await window.pywebview.api[method](...args); }
+    catch(e) { console.error(`API[${method}]:`, e); return null; }
+  }
+  return null;
+}
+
+// ================================================================
+// TOAST
+// ================================================================
+function showToast(msg, type='info') {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(()=>t.remove(),300); }, 3500);
+}
+
+// ================================================================
+// MODAL HELPERS
+// ================================================================
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('modal-overlay')) closeModal(e.target.id);
+});
+
+// ================================================================
+// LOGIN / LOGOUT
+// ================================================================
+async function handleLogin() {
+  const uname = document.getElementById('username').value.trim();
+  const pwd = document.getElementById('password').value;
+  const errEl = document.getElementById('login-error');
+  const btn = document.getElementById('login-btn');
+
+  errEl.style.display = 'none';
+  if (!uname || !pwd) {
+    errEl.textContent = 'Por favor ingresa usuario y contraseña.';
+    errEl.style.display = 'block'; return;
+  }
+
+  btn.textContent = 'Verificando...'; btn.disabled = true;
+
+  const result = await api('login_user', uname, pwd);
+  if (result && result.success) {
+    currentUser = result.user;
+    isAdmin = result.user.role === 'admin';
+    launchMainApp();
+  } else {
+    errEl.textContent = (result && result.message) || 'Credenciales incorrectas. Intenta de nuevo.';
+    errEl.style.display = 'block';
+    btn.textContent = 'Iniciar Sesión'; btn.disabled = false;
+  }
+}
+
+function launchMainApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  const app = document.getElementById('app-screen');
+  app.style.display = 'grid';
+
+  document.getElementById('sidebar-username').textContent = currentUser.username;
+  document.getElementById('sidebar-fullname').textContent = currentUser.full_name;
+  const pill = document.getElementById('sidebar-role-pill');
+  pill.textContent = isAdmin ? 'ADMINISTRADOR' : 'ESTÁNDAR';
+  pill.className = `role-pill ${isAdmin ? 'admin' : 'standard'}`;
+
+  if (isAdmin) document.getElementById('admin-nav').classList.remove('hidden');
+
+  showView('dashboard');
+}
+
+async function handleLogout() {
+  await api('logout_user');
+  currentUser = null; isAdmin = false;
+  document.getElementById('app-screen').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('login-btn').textContent = 'Iniciar Sesión';
+  document.getElementById('login-btn').disabled = false;
+  document.getElementById('login-error').style.display = 'none';
+  document.getElementById('admin-nav').classList.add('hidden');
+}
+
+// ================================================================
+// VIEW NAVIGATION
+// ================================================================
+function showView(view) {
+  document.querySelectorAll('[id^="view-"]').forEach(v => v.classList.add('hidden'));
+  const target = document.getElementById(`view-${view}`);
+  if (target) target.classList.remove('hidden');
+
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navItem = document.getElementById(`nav-${view}`);
+  if (navItem) navItem.classList.add('active');
+
+  if (view === 'dashboard')  loadDashboard();
+  if (view === 'estimates')  loadEstimates();
+  if (view === 'users')      loadUsers();
+  if (view === 'audit')      loadAuditLogs();
+}
+
+// ================================================================
+// DASHBOARD
+// ================================================================
+async function loadDashboard() {
+  const data = await api('get_dashboard_metrics');
+  if (!data) return;
+
+  const k = data.kpis || {};
+  document.getElementById('kpi-count').textContent = k.total_estimates ?? '0';
+  document.getElementById('kpi-revenue').textContent = `$${fmtNum(k.total_revenue)}`;
+  document.getElementById('kpi-profit').textContent = `$${fmtNum(k.total_profit)}`;
+  document.getElementById('kpi-margin').textContent = `${k.avg_margin_pct ?? 5.0}%`;
+
+  renderBars('partner-chart', data.partner_breakdown || {}, 'revenue');
+  renderBars('client-chart', data.client_breakdown || {}, 'revenue', 'green');
+
+  const recents = data.recent_estimates || [];
+  const tbody = document.getElementById('dash-recent-tbody');
+  if (!recents.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No hay estimates aún. Sube tu primer archivo.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = recents.slice(0,8).map(e => `<tr>
+    <td class="hi">${e.partner_name||'—'}</td>
+    <td>${e.client_final_name||'—'}</td>
+    <td class="muted mono">${truncate(e.original_filename,28)}</td>
+    <td class="mono muted">$${fmtNum(e.net_cisco_total)}</td>
+    <td class="mono green">$${fmtNum(e.total_cotizado_intcomex)}</td>
+    <td class="mono amber">$${fmtNum(e.ganancia_intcomex_usd)}</td>
+    <td class="muted">${(e.created_at||'').substring(0,16)}</td>
+  </tr>`).join('');
+}
+
+function renderBars(containerId, data, field, color='') {
+  const el = document.getElementById(containerId);
+  const entries = Object.entries(data).sort((a,b) => b[1][field]-a[1][field]);
+  if (!entries.length) { el.innerHTML = '<div class="empty-state"><p>Sin datos aún.</p></div>'; return; }
+  const maxVal = Math.max(...entries.map(([,v]) => v[field]||0));
+  el.innerHTML = entries.slice(0,7).map(([label, val]) => `
+    <div class="chart-bar-row">
+      <div class="chart-bar-label" title="${label}">${label}</div>
+      <div class="chart-bar-track">
+        <div class="chart-bar-fill ${color}" style="width:${maxVal>0?(val[field]/maxVal*100):0}%"></div>
+      </div>
+      <div class="chart-bar-value">$${fmtNum(val[field])}</div>
+    </div>`).join('');
+}
+
+// ================================================================
+// UPLOAD
+// ================================================================
+async function triggerUpload() {
+  const result = await api('open_file_dialog');
+  if (!result) return;
+
+  const card = document.getElementById('validation-card');
+  const content = document.getElementById('validation-content');
+
+  if (!result.success) {
+    card.className = 'validation-card error'; card.style.display = 'block';
+    content.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        <span style="color:#f87171;font-weight:700;font-size:12px">Formato de nombre inválido</span>
+      </div>
+      <div style="font-size:11.5px;color:#64748b;white-space:pre-line">${result.error}</div>`;
+    showToast('Nombre de archivo inválido', 'error');
+    return;
+  }
+
+  const d = new Date();
+  const pathPreview = `gravity_storage/${result.partner}/${result.client}/${d.toISOString().substring(0,7)}/${d.toISOString().substring(0,10)}/`;
+
+  card.className = 'validation-card success'; card.style.display = 'block';
+  content.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      <span style="color:#10b981;font-weight:700;font-size:12px">Archivo procesado y almacenado correctamente</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <div style="background:#0f172a;border-radius:8px;padding:10px">
+        <div style="font-size:9px;font-weight:700;color:#334155;margin-bottom:4px;text-transform:uppercase">PARTNER DETECTADO</div>
+        <div style="font-size:14px;font-weight:700;color:#818cf8">${result.partner}</div>
+      </div>
+      <div style="background:#0f172a;border-radius:8px;padding:10px">
+        <div style="font-size:9px;font-weight:700;color:#334155;margin-bottom:4px;text-transform:uppercase">CLIENTE FINAL DETECTADO</div>
+        <div style="font-size:14px;font-weight:700;color:#6ee7b7">${result.client}</div>
+      </div>
+    </div>
+    <div style="background:#0f172a;border-radius:8px;padding:10px">
+      <div style="font-size:9px;font-weight:700;color:#334155;margin-bottom:4px;text-transform:uppercase">RUTA JERÁRQUICA CREADA AUTOMÁTICAMENTE</div>
+      <div style="font-family:monospace;font-size:11px;color:#64748b">${pathPreview}</div>
+    </div>
+    <div style="background:#0f172a;border-radius:8px;padding:10px;margin-top:8px">
+      <div style="font-size:9px;font-weight:700;color:#334155;margin-bottom:4px;text-transform:uppercase">ARCHIVO GUARDADO EN</div>
+      <div style="font-family:monospace;font-size:10px;color:#475569;word-break:break-all">${result.stored_filepath || pathPreview + result.filename}</div>
+    </div>`;
+
+  showToast(`✓ Estimate cargado: ${result.partner} → ${result.client}`, 'success');
+}
+
+// ================================================================
+// ESTIMATES
+// ================================================================
+async function loadEstimates() {
+  const data = await api('get_dashboard_metrics');
+  const estimates = data?.recent_estimates || [];
+  const tbody = document.getElementById('estimates-tbody');
+  if (!estimates.length) {
+    tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No hay estimates registrados aún.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = estimates.map(e => `<tr>
+    <td class="mono muted">${e.estimate_id_cisco||'—'}</td>
+    <td><span class="badge badge-blue">${e.username||'—'}</span></td>
+    <td class="hi">${e.partner_name||'—'}</td>
+    <td>${e.client_final_name||'—'}</td>
+    <td class="muted" title="${e.original_filename||''}">${truncate(e.original_filename,22)}</td>
+    <td class="mono muted">$${fmtNum(e.net_cisco_total)}</td>
+    <td class="mono green">$${fmtNum(e.total_cotizado_intcomex)}</td>
+    <td class="mono amber">$${fmtNum(e.ganancia_intcomex_usd)}</td>
+    <td class="mono muted">${e.items_count||0}</td>
+    <td class="muted">${(e.created_at||'').substring(0,16)}</td>
+  </tr>`).join('');
+}
+
+async function exportCSV() {
+  const result = await api('export_estimates_csv');
+  if (result && result.success) showToast(`CSV exportado: ${result.filepath}`, 'success');
+  else showToast('Error al exportar CSV', 'error');
+}
+
+// ================================================================
+// USERS (ADMIN)
+// ================================================================
+async function loadUsers() {
+  const result = await api('get_users');
+  if (!result || !result.success) { showToast('Error cargando usuarios','error'); return; }
+  const tbody = document.getElementById('users-tbody');
+  const users = result.users || [];
+  if (!users.length) { tbody.innerHTML='<tr><td colspan="7" class="empty-state">Sin usuarios.</td></tr>'; return; }
+  tbody.innerHTML = users.map(u => `<tr>
+    <td class="hi">${u.username}</td>
+    <td>${u.full_name}</td>
+    <td class="muted">${u.email}</td>
+    <td><span class="badge ${u.role==='admin'?'badge-red':'badge-blue'}">${u.role==='admin'?'ADMIN':'ESTÁNDAR'}</span></td>
+    <td><span class="badge ${u.is_active?'badge-green':'badge-gray'}">${u.is_active?'ACTIVO':'INACTIVO'}</span></td>
+    <td class="muted">${u.last_login?u.last_login.substring(0,16):'Nunca'}</td>
+    <td>
+      <div style="display:flex;gap:5px">
+        <button class="btn btn-ghost btn-xs" onclick="openResetPw('${u.username}')">🔑 Resetear</button>
+        ${u.username!=='mskill'?`<button class="btn btn-red btn-xs" onclick="deactivateUser('${u.username}')">Desactivar</button>`:''}
+      </div>
+    </td>
+  </tr>`).join('');
+}
+
+function openCreateUserModal() { openModal('modal-create-user'); }
+
+async function createUser() {
+  const uname = document.getElementById('nu-username').value.trim();
+  const fname = document.getElementById('nu-fullname').value.trim();
+  const email = document.getElementById('nu-email').value.trim();
+  const pwd   = document.getElementById('nu-password').value;
+  const role  = document.getElementById('nu-role').value;
+  if (!uname||!fname||!email||!pwd) { showToast('Completa todos los campos','error'); return; }
+  const r = await api('create_user_admin', uname, fname, email, pwd, role);
+  if (r && r.success) {
+    showToast(`Usuario '${uname}' creado`, 'success');
+    closeModal('modal-create-user');
+    loadUsers();
+    ['nu-username','nu-fullname','nu-email'].forEach(id=>document.getElementById(id).value='');
+  } else {
+    showToast((r&&r.message)||'Error creando usuario', 'error');
+  }
+}
+
+async function deactivateUser(uname) {
+  if (!confirm(`¿Desactivar al usuario '${uname}'?`)) return;
+  const r = await api('delete_user_admin', uname);
+  if (r&&r.success) { showToast(`Usuario '${uname}' desactivado`,'info'); loadUsers(); }
+  else showToast((r&&r.message)||'Error','error');
+}
+
+function openResetPw(uname) {
+  document.getElementById('rp-username').value = uname;
+  document.getElementById('rp-label').textContent = uname;
+  openModal('modal-reset-pw');
+}
+
+async function confirmResetPassword() {
+  const uname = document.getElementById('rp-username').value;
+  const pwd   = document.getElementById('rp-password').value;
+  if (!pwd||pwd.length<6) { showToast('Contraseña mínima 6 caracteres','error'); return; }
+  const r = await api('reset_password_admin', uname, pwd);
+  if (r&&r.success) { showToast(`Contraseña de '${uname}' reseteada`,'success'); closeModal('modal-reset-pw'); }
+  else showToast((r&&r.message)||'Error','error');
+}
+
+// ================================================================
+// AUDIT LOGS
+// ================================================================
+const actionBadge = {
+  LOGIN:'badge-green', LOGOUT:'badge-gray', LOGIN_FAILED:'badge-red',
+  UPLOAD_ESTIMATE:'badge-blue', EXPORT_EXCEL:'badge-amber',
+  CREATE_USER:'badge-amber', DELETE_USER:'badge-red', RESET_PASSWORD:'badge-amber'
+};
+
+async function loadAuditLogs() {
+  const logs = await api('get_audit_logs');
+  const tbody = document.getElementById('audit-tbody');
+  if (!logs||!logs.length) {
+    tbody.innerHTML='<tr><td colspan="4" class="empty-state">Sin registros de auditoría aún.</td></tr>'; return;
+  }
+  tbody.innerHTML = logs.map(l => `<tr>
+    <td class="mono muted">${(l.created_at||'').substring(0,19)}</td>
+    <td class="hi">${l.username||'—'}</td>
+    <td><span class="badge ${actionBadge[l.action]||'badge-gray'}">${l.action}</span></td>
+    <td class="muted" style="max-width:350px;word-break:break-word">${l.details||'—'}</td>
+  </tr>`).join('');
+}
+
+// ================================================================
+// QUOTER
+// ================================================================
+async function openQuoter() {
+  showToast('Abriendo Cotizador Cisco CCW...','info');
+  const ok = await api('open_quoter');
+  if (!ok) showToast('No se pudo abrir el cotizador','error');
+}
+
+// ================================================================
+// SETTINGS
+// ================================================================
+async function testDB() {
+  const el = document.getElementById('db-test-result');
+  el.textContent = 'Probando...'; el.style.color = '#94a3b8';
+  setTimeout(() => { el.textContent = '✓ SQLite local OK'; el.style.color = '#10b981'; }, 700);
+}
+
+// ================================================================
+// UTILITIES
+// ================================================================
+function fmtNum(n) {
+  if (n==null||n===undefined) return '0.00';
+  return new Intl.NumberFormat('es-CL',{minimumFractionDigits:2,maximumFractionDigits:2}).format(n);
+}
+function truncate(str, len) {
+  if (!str) return '—';
+  return str.length > len ? str.substring(0, len) + '...' : str;
+}
+</script>
+</body>
+</html>

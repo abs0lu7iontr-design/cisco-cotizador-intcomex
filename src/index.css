@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--bg-app, #020617);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:where(button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent-secondary, #22d3ee);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@layer utilities {
+  /* Print Stylesheet for 100% Offline Client-Side PDF Generation */
+  @media print {
+    /* Hide all non-printable UI components */
+    header,
+    nav,
+    footer,
+    #app-navbar,
+    #parameter-sidebar,
+    .no-print,
+    .toast-alert,
+    button,
+    input,
+    select {
+      display: none !important;
+    }
+
+    /* Reset background and dimensions of main body */
+    body,
+    html,
+    #root,
+    main {
+      background: #ffffff !important;
+      color: #000000 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      box-shadow: none !important;
+      overflow: visible !important;
+    }
+
+    /* Force printable estimate container to span full width */
+    .printable-area {
+      display: block !important;
+      width: 100% !important;
+      margin: 0 auto !important;
+      padding: 0 !important;
+      box-shadow: none !important;
+      border: none !important;
+    }
+
+    /* Keep exact colors and borders for table cells and badges */
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    /* Ensure tables don't split awkwardly across pages */
+    table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+      page-break-inside: auto;
+    }
+
+    tr {
+      page-break-inside: avoid;
+      page-break-after: auto;
+    }
+
+    thead {
+      display: table-header-group;
+    }
+
+    tfoot {
+      display: table-footer-group;
+    }
+
+    /* Configure A4 Landscape Page for Estimate Output */
+    @page {
+      size: A4 landscape;
+      margin: 8mm;
+    }
+  }
+}

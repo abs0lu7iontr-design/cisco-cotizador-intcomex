@@ -1,0 +1,52 @@
+{
+  "name": "cisco-automated",
+  "private": true,
+  "version": "2.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port=3000 --host=0.0.0.0",
+    "build": "vite build",
+    "build:dev": "vite build --mode development",
+    "build:prod": "vite build --mode production",
+    "preview": "npm run build && wrangler dev",
+    "clean": "rm -rf dist server.js",
+    "lint": "tsc --noEmit",
+    "doctor": "npx react-doctor@latest",
+    "prepare:pages": "npm run build && node -e \"const fs=require('fs'); fs.mkdirSync('dist-pages',{recursive:true}); fs.copyFileSync('dist/index.html','dist-pages/index.html'); if(fs.existsSync('dist/favicon.ico')) fs.copyFileSync('dist/favicon.ico','dist-pages/favicon.ico'); if(fs.existsSync('public/_headers')) fs.copyFileSync('public/_headers','dist-pages/_headers'); else if(fs.existsSync('_headers')) fs.copyFileSync('_headers','dist-pages/_headers');\"",
+    "deploy:preview": "npm run prepare:pages && npx wrangler pages deploy dist-pages --project-name=cisco-automated --branch develop",
+    "deploy:prod": "npm run prepare:pages && npx wrangler pages deploy dist-pages --project-name=cisco-automated --branch main",
+    "deploy:pages": "npm run prepare:pages && npx wrangler pages deploy dist-pages --project-name=cisco-automated",
+    "pages:deploy": "npx wrangler pages deploy dist-pages --project-name=cisco-automated",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "firebase": "^12.18.0",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "vite": "^6.2.3",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.54.2",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.25.0",
+    "react-doctor": "^0.9.12",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.3",
+    "vite-plugin-singlefile": "^2.3.3",
+    "wrangler": "^4.127.1"
+  }
+}

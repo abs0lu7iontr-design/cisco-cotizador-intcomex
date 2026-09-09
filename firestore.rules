@@ -1,0 +1,63 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Verifica si la solicitud proviene de un usuario autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: Verifica si el usuario tiene rol de 'Administrador' (acceso total)
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'admin' ||
+        request.auth.token.role == 'Administrador' ||
+        request.auth.token.admin == true
+      );
+    }
+
+    // Helper: Verifica si el usuario es dueño del documento (Owner validation)
+    function isDocOwner(docData) {
+      return isAuthenticated() && (
+        docData.creator.username == request.auth.token.username ||
+        docData.creator.email == request.auth.token.email ||
+        docData.userId == request.auth.uid
+      );
+    }
+
+    // ------------------------------------------------------------------------
+    // 1. COLECCIÓN ESTIMATES (Cotizaciones CCW)
+    // ------------------------------------------------------------------------
+    match /estimates/{estimateId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.creator != null;
+      allow update, delete: if isAdmin() || isDocOwner(resource.data);
+    }
+
+    // ------------------------------------------------------------------------
+    // 2. COLECCIÓN DSV_RECORDS (Órdenes DSV 48 Horas)
+    // ------------------------------------------------------------------------
+    match /dsv_records/{dsvId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin() || isDocOwner(resource.data);
+    }
+
+    // ------------------------------------------------------------------------
+    // 3. COLECCIÓN USERS (Gestión de Identidades y RBAC)
+    // ------------------------------------------------------------------------
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ------------------------------------------------------------------------
+    // 4. COLECCIÓN SHARED_SKU_RULES (Reglas de Reclasificación de SKUs)
+    // ------------------------------------------------------------------------
+    match /shared_sku_rules/{skuId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}

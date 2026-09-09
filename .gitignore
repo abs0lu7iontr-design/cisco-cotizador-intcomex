@@ -1,0 +1,100 @@
+# ============================================================================
+# GITIGNORE - CISCO AUTOMATED & GRAVITY DESKTOP PORTABLE
+# ============================================================================
+
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Build Outputs & Bundles
+dist/
+dist-pages/
+build/
+out/
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Cloudflare & Wrangler
+.wrangler/
+.dev.vars*
+!.dev.vars.example
+
+# Environment Variables & Secrets (Keep .env.example)
+.env
+.env.*
+!.env.example
+
+# Local Databases & App Storage
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+gravity_database.db
+gravity_storage/
+
+# Executables & Binaries (Allow specs, exclude compiled binaries)
+*.exe
+*.dll
+*.dylib
+*.bin
+*.pfx
+*.p12
+*.cer
+*.pvk
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+firebase-debug.log*
+
+# Test Coverage
+coverage/
+.nyc_output/
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Agent & AI Tooling Local States
+.antigravity/
+.claude/
+.agents/
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Temporary Office / Lock Files
+~$*.xlsx
+~$*.docx
+*.tmp
