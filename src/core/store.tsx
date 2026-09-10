@@ -9,6 +9,7 @@ import {
   EstimateLineItem,
   OverrideRuleType,
   UserSession,
+  DetectedAuditInfo,
 } from './types';
 import { parseEstimateWorkbook } from './excelEngine';
 import {
@@ -88,6 +89,16 @@ interface CiscoAutomatedState {
   applyFastTrackPromos: () => Promise<void>;
   skipFastTrackPromos: () => void;
 
+  // Prior Audit / Recalculation State
+  isRecalculated: boolean;
+  setIsRecalculated: (val: boolean) => void;
+  detectedAudit: DetectedAuditInfo | null;
+  setDetectedAudit: (audit: DetectedAuditInfo | null) => void;
+  isDetectedAuditModalOpen: boolean;
+  setIsDetectedAuditModalOpen: (open: boolean) => void;
+  loadPriorAuditMargins: () => Promise<void>;
+  dismissDetectedAuditModal: () => void;
+
   processFileBuffer: (buffer: ArrayBuffer, fileName: string) => Promise<void>;
   setRowRule: (rowIdx: number, rule: OverrideRuleType, sku?: string) => Promise<void>;
   cycleRowRule: (rowIdx: number) => Promise<void>;
@@ -127,6 +138,11 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
   const [pendingFastTrackAudit, setPendingFastTrackAudit] = useState<FastTrackAuditResult | null>(null);
   const [isFastTrackOpportunityModalOpen, setIsFastTrackOpportunityModalOpen] = useState<boolean>(false);
   const [isFastTrackAdminModalOpen, setIsFastTrackAdminModalOpen] = useState<boolean>(false);
+
+  // Prior Audit / Recalculation State
+  const [isRecalculated, setIsRecalculated] = useState<boolean>(false);
+  const [detectedAudit, setDetectedAudit] = useState<DetectedAuditInfo | null>(null);
+  const [isDetectedAuditModalOpen, setIsDetectedAuditModalOpen] = useState<boolean>(false);
 
   // UI Controls
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -313,6 +329,16 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
 
         // 3. Parse initial structure to match existing persistent SKU overrides
         const { result: rawResult } = await parseEstimateWorkbook(safeBuffer.slice(0), DEFAULT_PARAMS, fileName, {});
+
+        if (rawResult?.detectedAudit?.isRecalculated) {
+          setIsRecalculated(true);
+          setDetectedAudit(rawResult.detectedAudit);
+          setIsDetectedAuditModalOpen(true);
+        } else {
+          setIsRecalculated(false);
+          setDetectedAudit(null);
+          setIsDetectedAuditModalOpen(false);
+        }
 
         const matchedOverrides: Record<number, OverrideRuleType> = {};
         if (rawResult && rawResult.items) {
@@ -700,6 +726,34 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     return await saveEstimateToCloud(cloudPayload);
   }, [processedResult, currentFileName, currentUser, params, customOverrideMap, fastTrackPromoMap]);
 
+  const loadPriorAuditMargins = useCallback(async () => {
+    if (!detectedAudit) return;
+    const priorInt =
+      detectedAudit.previousInternacionPct > 0 && detectedAudit.previousInternacionPct <= 1
+        ? Math.round(detectedAudit.previousInternacionPct * 100)
+        : Math.round(detectedAudit.previousInternacionPct);
+    const priorMarg =
+      detectedAudit.previousMarginPct > 0 && detectedAudit.previousMarginPct <= 1
+        ? Math.round(detectedAudit.previousMarginPct * 100)
+        : Math.round(detectedAudit.previousMarginPct);
+
+    const newParams: QuoteParameters = {
+      ...params,
+      internacionPct: priorInt,
+      margenPct: priorMarg,
+    };
+    setParams(newParams);
+    setIsDetectedAuditModalOpen(false);
+
+    if (rawWorkbookBuffer) {
+      await recompute(rawWorkbookBuffer, newParams, currentFileName, customOverrideMap, fastTrackPromoMap);
+    }
+  }, [detectedAudit, params, rawWorkbookBuffer, currentFileName, customOverrideMap, fastTrackPromoMap, recompute]);
+
+  const dismissDetectedAuditModal = useCallback(() => {
+    setIsDetectedAuditModalOpen(false);
+  }, []);
+
   const clearEstimate = useCallback(() => {
     setRawWorkbookBuffer(null);
     setCurrentFileName('');
@@ -708,6 +762,9 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     setFastTrackPromoMap({});
     setPendingFastTrackAudit(null);
     setIsFastTrackOpportunityModalOpen(false);
+    setIsRecalculated(false);
+    setDetectedAudit(null);
+    setIsDetectedAuditModalOpen(false);
     setErrorMessage(null);
     setParams(DEFAULT_PARAMS);
   }, []);
@@ -745,6 +802,14 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       pendingFastTrackAudit,
       isFastTrackOpportunityModalOpen,
       isFastTrackAdminModalOpen,
+      isRecalculated,
+      setIsRecalculated,
+      detectedAudit,
+      setDetectedAudit,
+      isDetectedAuditModalOpen,
+      setIsDetectedAuditModalOpen,
+      loadPriorAuditMargins,
+      dismissDetectedAuditModal,
       isProcessing,
       errorMessage,
       activeQuoterTab,
@@ -785,6 +850,11 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       pendingFastTrackAudit,
       isFastTrackOpportunityModalOpen,
       isFastTrackAdminModalOpen,
+      isRecalculated,
+      detectedAudit,
+      isDetectedAuditModalOpen,
+      loadPriorAuditMargins,
+      dismissDetectedAuditModal,
       isProcessing,
       errorMessage,
       activeQuoterTab,

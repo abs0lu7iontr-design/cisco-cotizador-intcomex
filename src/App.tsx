@@ -18,6 +18,7 @@ import { ExcelSheetPreview } from './components/ExcelSheetPreview';
 import { QuickCalculator } from './components/QuickCalculator';
 import { RulesExplanationModal } from './components/RulesExplanationModal';
 import { DownloadModal } from './components/DownloadModal';
+import { PriorAuditDetectedModal } from './components/PriorAuditDetectedModal';
 import { DashboardView } from './components/DashboardView';
 import { UploadView } from './components/UploadView';
 import { EstimatesHistoryView } from './components/EstimatesHistoryView';
@@ -80,6 +81,11 @@ function AppContent() {
     loadCloudEstimateIntoStore,
     applyFastTrackPromos,
     skipFastTrackPromos,
+    isRecalculated,
+    detectedAudit,
+    isDetectedAuditModalOpen,
+    loadPriorAuditMargins,
+    dismissDetectedAuditModal,
   } = useCiscoAutomatedStore();
 
   // Initialize theme on application mount
@@ -299,6 +305,14 @@ function AppContent() {
         onStayActive={stayActive}
       />
 
+      {/* ⚠️ Cotización Previamente Procesada Modal Interceptor */}
+      <PriorAuditDetectedModal
+        isOpen={isDetectedAuditModalOpen}
+        detectedAudit={detectedAudit}
+        onLoadPriorMargins={loadPriorAuditMargins}
+        onModifyMargins={dismissDetectedAuditModal}
+      />
+
       {/* Structured Dual Download Modal (Web & Desktop) */}
       {processedResult?.workbookBuffer && (
         <DownloadModal
@@ -314,6 +328,7 @@ function AppContent() {
           promoNetPrices={fastTrackPromoMap}
           headerInfo={processedResult.headerInfo}
           isRecalculated={
+            isRecalculated ||
             params.internacionPct !== 7.0 ||
             params.margenPct !== 5.0 ||
             Object.keys(customOverrideMap).length > 0

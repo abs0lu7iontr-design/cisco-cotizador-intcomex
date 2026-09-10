@@ -63,6 +63,13 @@ export interface EstimateLineItem {
   months?: number;
 }
 
+export interface DetectedAuditInfo {
+  previousMarginPct: number;
+  previousInternacionPct: number;
+  processedAt: string;
+  isRecalculated: boolean;
+}
+
 export interface ProcessedEstimateResult {
   fileName: string;
   headerInfo: EstimateHeaderInfo;
@@ -74,6 +81,7 @@ export interface ProcessedEstimateResult {
   finalTotalPrice: number;
   headerRowIndex: number;
   workbookBuffer?: ArrayBuffer;
+  detectedAudit?: DetectedAuditInfo | null;
 }
 
 export interface UserSession {

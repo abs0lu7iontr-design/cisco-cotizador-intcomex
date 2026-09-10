@@ -236,6 +236,39 @@ export async function parseEstimateWorkbook(
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(bufferCopy);
 
+  let isPreviouslyProcessed = false;
+  let priorMargin = 0;
+  let priorInternacion = 0;
+  let priorTimestamp = '';
+  const shadowSnapshot: Record<string, any> = {};
+
+  const metaSheet = workbook.getWorksheet('sys_metadata');
+  if (metaSheet) {
+    try {
+      const rawCell = metaSheet.getCell('A1').value?.toString() || '';
+      const decoded =
+        typeof atob !== 'undefined'
+          ? decodeURIComponent(escape(atob(rawCell)))
+          : Buffer.from(rawCell, 'base64').toString('utf-8');
+      const parsed = JSON.parse(decoded);
+
+      if (parsed.token === 'cisco-ca-v2' && Array.isArray(parsed.huerto)) {
+        isPreviouslyProcessed = true;
+        priorMargin = parsed.platano ?? 0;
+        priorInternacion = parsed.uva ?? 0.06;
+        priorTimestamp = parsed.kiwi ?? '';
+
+        parsed.huerto.forEach((entry: any) => {
+          if (entry && entry.line) {
+            shadowSnapshot[String(entry.line).trim()] = entry;
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('Metadatos ilegibles o archivo original sin procesar.');
+    }
+  }
+
   const worksheet = workbook.worksheets[0];
   if (!worksheet) {
     throw new Error('El archivo Excel no contiene ninguna hoja de cálculo válida.');
@@ -385,19 +418,28 @@ export async function parseEstimateWorkbook(
     const leadTimeNum = parseNumericValue(rawLeadTime);
     const transformedLeadTime = formatLeadTime(leadTimeNum);
 
-    const unitListPrice = parseNumericValue(worksheet.getCell(r, colMap.colList).value);
+    let unitListPrice = parseNumericValue(worksheet.getCell(r, colMap.colList).value);
     const pricingTerm = getCellString(worksheet.getCell(r, colMap.colTerm)) || '';
     const rawQtyCell = worksheet.getCell(r, colMap.colQty).value;
     const qtyStr = getCellString(worksheet.getCell(r, colMap.colQty));
     let qty = typeof rawQtyCell === 'number' ? Math.round(rawQtyCell) : parseInt(qtyStr, 10);
     if (isNaN(qty) || qty < 0) qty = 1;
-    const rawNetCiscoUnit = parseNumericValue(worksheet.getCell(r, colMap.colNet).value);
+    let rawNetCiscoUnit = parseNumericValue(worksheet.getCell(r, colMap.colNet).value);
     const hasPromo = Boolean(promoNetPrices && promoNetPrices[r] !== undefined);
-    const netCiscoUnit = hasPromo ? promoNetPrices![r] : rawNetCiscoUnit;
+    let netCiscoUnit = hasPromo ? promoNetPrices![r] : rawNetCiscoUnit;
 
-    const discPct = unitListPrice > 0
+    let discPct = unitListPrice > 0
       ? Number((((unitListPrice - netCiscoUnit) / unitListPrice) * 100).toFixed(2))
       : parseNumericValue(worksheet.getCell(r, colMap.colDisc).value);
+
+    // Dentro del bucle de items: Si el archivo fue previamente procesado, restaurar costos de fábrica
+    if (isPreviouslyProcessed && shadowSnapshot[lineNumStr]) {
+      const snap = shadowSnapshot[lineNumStr];
+      netCiscoUnit = snap.pera;        // Costo base original
+      unitListPrice = snap.manzana;    // List price original
+      discPct = snap.cereza;           // Descuento original
+      rawNetCiscoUnit = snap.pera;
+    }
 
     // 2. Excepción de Cálculo Universal SaaS (Look-ahead Failsafe Anti-Contaminación)
     let isMerakiHandled = false;
@@ -497,6 +539,14 @@ export async function parseEstimateWorkbook(
     finalTotalPrice: roundedProductTotal,
     headerRowIndex,
     workbookBuffer: arrayBuffer,
+    detectedAudit: isPreviouslyProcessed
+      ? {
+          previousMarginPct: priorMargin,
+          previousInternacionPct: priorInternacion,
+          processedAt: priorTimestamp,
+          isRecalculated: true,
+        }
+      : null,
   };
 
   return { result };
