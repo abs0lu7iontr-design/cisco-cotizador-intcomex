@@ -312,6 +312,12 @@ function AppContent() {
           params={params}
           customOverrides={customOverrideMap}
           promoNetPrices={fastTrackPromoMap}
+          headerInfo={processedResult.headerInfo}
+          isRecalculated={
+            params.internacionPct !== 7.0 ||
+            params.margenPct !== 5.0 ||
+            Object.keys(customOverrideMap).length > 0
+          }
         />
       )}
 

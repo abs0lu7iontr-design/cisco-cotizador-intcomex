@@ -22,6 +22,7 @@ import {
   safeParseFloat,
 } from './calculations';
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../lib/intcomexLogoBase64';
+import { generateQuotationFileName } from './exportUtils';
 
 function getCellString(cell: ExcelJS.Cell | null | undefined): string {
   if (!cell || cell.value === null || cell.value === undefined) return '';
@@ -1003,13 +1004,62 @@ export async function generateOptimizedWorkbook(
   validityCell.border = undefined;
   validityCell.fill = undefined;
 
+  // Inyección de Snapshot espejo en hoja ultra-oculta (sys_metadata)
+  let metaSheet = workbook.getWorksheet('sys_metadata');
+  if (!metaSheet) {
+    metaSheet = workbook.addWorksheet('sys_metadata', { state: 'veryHidden' });
+  } else {
+    metaSheet.state = 'veryHidden';
+  }
+
+  const shadowLedger = items.map((it) => ({
+    line: it.lineNumber,
+    manzana: it.unitListPrice ?? 0,
+    cereza: it.discPct ?? 0,
+    pera: it.originalUnitCost ?? it.originalNetCiscoUnit ?? it.netCiscoUnit ?? 0,
+    mango: it.months ?? (parseInt(it.serviceDurationMonths, 10) || 0),
+    sandia: Boolean(it.isFastTrackApplied ?? it.isFastTrackPromo),
+  }));
+
+  const payload = {
+    platano: params.targetMargin ?? params.margenPct,
+    uva: params.arancelPct ?? 0.06,
+    kiwi: new Date().toISOString(),
+    huerto: shadowLedger,
+    token: 'cisco-ca-v2',
+  };
+
+  const jsonString = JSON.stringify(payload);
+  const encodedPayload =
+    typeof btoa !== 'undefined'
+      ? btoa(unescape(encodeURIComponent(jsonString)))
+      : Buffer.from(jsonString).toString('base64');
+
+  metaSheet.getCell('A1').value = encodedPayload;
+  await metaSheet.protect('cisco-vault-hash-key', {});
+
   sanitizeWorkbookForExport(workbook);
 
   const buf = await workbook.xlsx.writeBuffer();
   const modifiedBuffer =
     buf instanceof ArrayBuffer ? buf : (new Uint8Array(buf).buffer as ArrayBuffer);
 
-  const outputFileName = suggestFileName(fileName);
+  const isRecalculated = Boolean(
+    (params.internacionPct !== 7.0 || params.margenPct !== 5.0) ||
+    (overrides && Object.keys(overrides).length > 0)
+  );
+
+  const outputFileName = headerInfo?.estimateId
+    ? generateQuotationFileName({
+        partner: headerInfo.companyName || 'Intcomex',
+        customerName: headerInfo.customerName || 'Cliente',
+        dealId: headerInfo.dealId,
+        estimateId: headerInfo.estimateId,
+        internacionPct: params.internacionPct,
+        marginPct: params.margenPct,
+        isRecalculated,
+      })
+    : suggestFileName(fileName, isRecalculated ? 'RECALC' : 'CALC');
 
   const result: ProcessedEstimateResult = {
     fileName: outputFileName,

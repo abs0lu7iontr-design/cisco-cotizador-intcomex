@@ -18,8 +18,9 @@ import {
   Globe,
 } from 'lucide-react';
 import { generateOptimizedWorkbook } from '../core/excelEngine';
-import { QuoteParameters, OverrideRuleType } from '../core/types';
+import { QuoteParameters, OverrideRuleType, EstimateHeaderInfo } from '../core/types';
 import { getCcwTimestamp, suggestFileName } from '../core/calculations';
+import { generateQuotationFileName } from '../core/exportUtils';
 
 interface DownloadModalProps {
   isOpen: boolean;
@@ -32,6 +33,8 @@ interface DownloadModalProps {
   params?: QuoteParameters;
   customOverrides?: Record<number, OverrideRuleType>;
   promoNetPrices?: Record<number, number>;
+  headerInfo?: EstimateHeaderInfo;
+  isRecalculated?: boolean;
 }
 
 export function DownloadModal({
@@ -45,12 +48,35 @@ export function DownloadModal({
   params = { internacionPct: 7.0, arancelPct: 6.0, margenPct: 5.0 },
   customOverrides,
   promoNetPrices,
+  headerInfo,
+  isRecalculated,
 }: DownloadModalProps) {
   const isDesktop = Boolean((window as any).pywebview?.api);
 
-  const [partnerName, setPartnerName] = useState(defaultPartner || 'Intcomex');
-  const [clientName, setClientName] = useState(defaultClient || 'Cliente Final');
-  const [filename, setFilename] = useState(() => defaultFilename || suggestFileName('Cotizacion_Cisco', 'CALC'));
+  const computeCorporateFilename = (pName?: string, cName?: string) => {
+    const isRecalc = Boolean(
+      isRecalculated ||
+      (params && (params.internacionPct !== 7.0 || params.margenPct !== 5.0)) ||
+      (customOverrides && Object.keys(customOverrides).length > 0)
+    );
+
+    if (headerInfo?.estimateId) {
+      return generateQuotationFileName({
+        partner: pName || defaultPartner || headerInfo.companyName || 'Intcomex',
+        customerName: cName || defaultClient || headerInfo.customerName || 'Cliente',
+        dealId: headerInfo.dealId,
+        estimateId: headerInfo.estimateId,
+        internacionPct: params?.internacionPct ?? 7.0,
+        marginPct: params?.margenPct ?? 5.0,
+        isRecalculated: isRecalc,
+      });
+    }
+    return defaultFilename || suggestFileName('Cotizacion_Cisco', isRecalc ? 'RECALC' : 'CALC');
+  };
+
+  const [partnerName, setPartnerName] = useState(defaultPartner || headerInfo?.companyName || 'Intcomex');
+  const [clientName, setClientName] = useState(defaultClient || headerInfo?.customerName || 'Cliente Final');
+  const [filename, setFilename] = useState(() => defaultFilename || computeCorporateFilename(defaultPartner, defaultClient));
 
   // Details form is collapsed by default
   const [showDetails, setShowDetails] = useState(false);
@@ -70,11 +96,23 @@ export function DownloadModal({
       setErrorMessage(null);
       setIsSaving(false);
       setShowDetails(false);
-      setPartnerName(defaultPartner || 'Intcomex');
-      setClientName(defaultClient || 'Cliente Final');
-      setFilename(defaultFilename || suggestFileName('Cotizacion_Cisco', 'CALC'));
+      const initialPartner = defaultPartner || headerInfo?.companyName || 'Intcomex';
+      const initialClient = defaultClient || headerInfo?.customerName || 'Cliente Final';
+      setPartnerName(initialPartner);
+      setClientName(initialClient);
+      setFilename(defaultFilename || computeCorporateFilename(initialPartner, initialClient));
     }
-  }, [isOpen, defaultPartner, defaultClient, defaultFilename]);
+  }, [isOpen, defaultPartner, defaultClient, defaultFilename, headerInfo, params, isRecalculated]);
+
+  const handlePartnerChange = (val: string) => {
+    setPartnerName(val);
+    setFilename(computeCorporateFilename(val, clientName));
+  };
+
+  const handleClientChange = (val: string) => {
+    setClientName(val);
+    setFilename(computeCorporateFilename(partnerName, val));
+  };
 
   if (!isOpen) return null;
 
@@ -302,37 +340,33 @@ export function DownloadModal({
               {/* Collapsible Form Fields */}
               {showDetails && (
                 <div className="space-y-3 animate-in fade-in slide-in-from-top-1 duration-150">
-                  {isDesktop && (
-                    <>
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1">
-                          <Building2 className="w-3 h-3 text-indigo-400" />
-                          Canal / Partner
-                        </label>
-                        <input
-                          type="text"
-                          value={partnerName}
-                          onChange={(e) => setPartnerName(e.target.value)}
-                          placeholder="ej. Intcomex, Logicalis, Sonda"
-                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
-                        />
-                      </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                      <Building2 className="w-3 h-3 text-indigo-400" />
+                      Canal / Partner
+                    </label>
+                    <input
+                      type="text"
+                      value={partnerName}
+                      onChange={(e) => handlePartnerChange(e.target.value)}
+                      placeholder="ej. Intcomex, Logicalis, Sonda"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
 
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1">
-                          <Users2 className="w-3 h-3 text-emerald-400" />
-                          Cliente Final
-                        </label>
-                        <input
-                          type="text"
-                          value={clientName}
-                          onChange={(e) => setClientName(e.target.value)}
-                          placeholder="ej. Banco de Chile, Cencosud"
-                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
-                        />
-                      </div>
-                    </>
-                  )}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                      <Users2 className="w-3 h-3 text-emerald-400" />
+                      Cliente Final
+                    </label>
+                    <input
+                      type="text"
+                      value={clientName}
+                      onChange={(e) => handleClientChange(e.target.value)}
+                      placeholder="ej. Banco de Chile, Cencosud"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
 
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1">

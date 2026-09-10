@@ -10,6 +10,7 @@ export interface QuoteParameters {
   internacionPct: number; // e.g. 7.0 -> 0.07
   arancelPct: number;      // e.g. 6.0 -> 0.06
   margenPct: number;       // e.g. 5.0 -> 0.05
+  targetMargin?: number;
 }
 
 export interface EstimateHeaderInfo {
@@ -54,9 +55,12 @@ export interface EstimateLineItem {
 
   // Fast Track Audit Promo Fields
   isFastTrackPromo?: boolean;
+  isFastTrackApplied?: boolean;
   originalNetCiscoUnit?: number;
+  originalUnitCost?: number;
   fastTrackDiscountPct?: number;
   fastTrackSavings?: number;
+  months?: number;
 }
 
 export interface ProcessedEstimateResult {
