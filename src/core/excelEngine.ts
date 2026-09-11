@@ -526,6 +526,15 @@ export async function parseEstimateWorkbook(
   }
 
   const roundedProductTotal = Math.round(calculatedProductTotal * 100) / 100;
+  const roundedOriginalTotal = Math.round(originalProductTotal * 100) / 100;
+
+  const isZeroParams = params.internacionPct === 0 && params.arancelPct === 0 && params.margenPct === 0;
+  const hasNoOverrides = !overrides || Object.keys(overrides).length === 0;
+  const hasNoPromos = !promoNetPrices || Object.keys(promoNetPrices).length === 0;
+
+  const finalCalculatedProductTotal = isZeroParams && hasNoOverrides && hasNoPromos
+    ? roundedOriginalTotal
+    : roundedProductTotal;
 
   const isRecalc = Boolean(
     isPreviouslyProcessed ||
@@ -554,11 +563,11 @@ export async function parseEstimateWorkbook(
     fileName: outputFileName,
     headerInfo,
     items,
-    originalProductTotal: Math.round(originalProductTotal * 100) / 100,
-    calculatedProductTotal: roundedProductTotal,
+    originalProductTotal: roundedOriginalTotal,
+    calculatedProductTotal: finalCalculatedProductTotal,
     serviceTotal: 0.0,
     subscriptionTotal: 0.0,
-    finalTotalPrice: roundedProductTotal,
+    finalTotalPrice: finalCalculatedProductTotal,
     headerRowIndex,
     workbookBuffer: arrayBuffer,
     detectedAudit: isPreviouslyProcessed

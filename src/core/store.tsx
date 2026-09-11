@@ -12,6 +12,7 @@ import {
   DetectedAuditInfo,
 } from './types';
 import { parseEstimateWorkbook } from './excelEngine';
+import { recalculateEstimateResult } from './calculations';
 import {
   auditEstimateWithFastTrack,
   FastTrackAuditResult,
@@ -214,8 +215,15 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     };
   }, []);
 
-  // Centralized re-calculation routine with in-flight guard
+  // Centralized re-calculation routine with in-flight queue guard
   const isComputingRef = useRef(false);
+  const pendingRecomputeRef = useRef<{
+    buffer: ArrayBuffer;
+    params: QuoteParameters;
+    fileName: string;
+    overrides: Record<number, OverrideRuleType>;
+    promoPrices?: Record<number, number>;
+  } | null>(null);
 
   const recompute = useCallback(
     async (
@@ -225,7 +233,16 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       overrides: Record<number, OverrideRuleType>,
       promoPrices?: Record<number, number>
     ) => {
-      if (isComputingRef.current) return;
+      if (isComputingRef.current) {
+        pendingRecomputeRef.current = {
+          buffer,
+          params: currentParams,
+          fileName,
+          overrides,
+          promoPrices,
+        };
+        return;
+      }
       isComputingRef.current = true;
       try {
         const safeBuffer = buffer.slice(0);
@@ -258,7 +275,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
               recargo_reglas_usd: result.calculatedProductTotal - result.originalProductTotal,
               ganancia_intcomex_usd:
                 result.calculatedProductTotal -
-                result.items.reduce((a, b) => a + b.costoTotalUnitario * b.qty, 0),
+                result.items.reduce((a, b) => a + (b.isInfoRow ? 0 : b.costoTotalUnitario * b.qty), 0),
               items: result.items,
             };
             (window as any).pywebview.api.save_processed_estimate(JSON.stringify(payload));
@@ -283,7 +300,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
             total_cotizado_intcomex: result.calculatedProductTotal,
             ganancia_intcomex_usd:
               result.calculatedProductTotal -
-              result.items.reduce((a, b) => a + b.costoTotalUnitario * b.qty, 0),
+              result.items.reduce((a, b) => a + (b.isInfoRow ? 0 : b.costoTotalUnitario * b.qty), 0),
             items_count: result.items.length,
             created_at: new Date().toISOString(),
             username: currentUser?.username || 'mskill',
@@ -302,17 +319,26 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         );
       } finally {
         isComputingRef.current = false;
+        if (pendingRecomputeRef.current) {
+          const next = pendingRecomputeRef.current;
+          pendingRecomputeRef.current = null;
+          recompute(next.buffer, next.params, next.fileName, next.overrides, next.promoPrices);
+        }
       }
     },
     [currentUser, fastTrackPromoMap]
   );
 
-  // Recalculate when params, override map or fastTrackPromoMap changes
+  // Recalculate instantly in-memory when params, override map or fastTrackPromoMap changes
   useEffect(() => {
-    if (rawWorkbookBuffer && currentFileName) {
+    if (processedResult && processedResult.items && processedResult.items.length > 0) {
+      setProcessedResult((prev) =>
+        prev ? recalculateEstimateResult(prev, params, customOverrideMap, fastTrackPromoMap) : prev
+      );
+    } else if (rawWorkbookBuffer && currentFileName) {
       recompute(rawWorkbookBuffer.slice(0), params, currentFileName, customOverrideMap, fastTrackPromoMap);
     }
-  }, [params, customOverrideMap, fastTrackPromoMap, rawWorkbookBuffer, currentFileName, recompute]);
+  }, [params, customOverrideMap, fastTrackPromoMap]);
 
   // Actions
   const processFileBuffer = useCallback(
