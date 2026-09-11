@@ -60,23 +60,31 @@ export function DownloadModal({
       (customOverrides && Object.keys(customOverrides).length > 0)
     );
 
-    if (headerInfo?.estimateId) {
-      return generateQuotationFileName({
-        partner: pName || defaultPartner || headerInfo.companyName || 'Intcomex',
-        customerName: cName || defaultClient || headerInfo.customerName || 'Cliente',
-        dealId: headerInfo.dealId,
-        estimateId: headerInfo.estimateId,
-        internacionPct: params?.internacionPct ?? 7.0,
-        marginPct: params?.margenPct ?? 5.0,
-        isRecalculated: isRecalc,
-      });
+    let tech = 'Cisco';
+    if (defaultFilename) {
+      const cleanBase = defaultFilename.replace(/\.[^/.]+$/, '');
+      const parts = cleanBase.split(/[_.\s-]+/);
+      if (parts.length >= 3 && !parts[2].startsWith('INT') && !parts[2].startsWith('DEAL') && !parts[2].startsWith('CALC') && !parts[2].startsWith('RECALC')) {
+        tech = parts[2];
+      }
     }
-    return defaultFilename || suggestFileName('Cotizacion_Cisco', isRecalc ? 'RECALC' : 'CALC');
+
+    return generateQuotationFileName({
+      partner: pName || defaultPartner || headerInfo?.companyName || 'Intcomex',
+      customerName: cName || defaultClient || headerInfo?.customerName || 'Cliente',
+      technologyOrFamily: tech,
+      dealId: headerInfo?.dealId,
+      estimateId: headerInfo?.estimateId || 'ESTIMATE',
+      internacionPct: params?.internacionPct ?? 7.0,
+      marginPct: params?.margenPct ?? 5.0,
+      arancelPct: params?.arancelPct ?? 6.0,
+      isRecalculated: isRecalc,
+    });
   };
 
   const [partnerName, setPartnerName] = useState(defaultPartner || headerInfo?.companyName || 'Intcomex');
   const [clientName, setClientName] = useState(defaultClient || headerInfo?.customerName || 'Cliente Final');
-  const [filename, setFilename] = useState(() => defaultFilename || computeCorporateFilename(defaultPartner, defaultClient));
+  const [filename, setFilename] = useState(() => computeCorporateFilename(defaultPartner, defaultClient));
 
   // Details form is collapsed by default
   const [showDetails, setShowDetails] = useState(false);
@@ -100,7 +108,7 @@ export function DownloadModal({
       const initialClient = defaultClient || headerInfo?.customerName || 'Cliente Final';
       setPartnerName(initialPartner);
       setClientName(initialClient);
-      setFilename(defaultFilename || computeCorporateFilename(initialPartner, initialClient));
+      setFilename(computeCorporateFilename(initialPartner, initialClient));
     }
   }, [isOpen, defaultPartner, defaultClient, defaultFilename, headerInfo, params, isRecalculated]);
 

@@ -10,6 +10,7 @@ export interface QuotationFileNameParams {
   estimateId: string;
   internacionPct: number;
   marginPct: number;
+  arancelPct?: number;
   isRecalculated: boolean; // TRUE = RECALC, FALSE = CALC
 }
 
@@ -40,8 +41,14 @@ export function generateQuotationFileName(params: QuotationFileNameParams): stri
     params.marginPct > 0 && params.marginPct <= 1
       ? Math.round(params.marginPct * 100)
       : Math.round(params.marginPct);
+  const arVal =
+    params.arancelPct !== undefined
+      ? params.arancelPct > 0 && params.arancelPct <= 1
+        ? Math.round(params.arancelPct * 100)
+        : Math.round(params.arancelPct)
+      : 0;
 
-  const margenes = `INT${intVal}_MA${maVal}`;
+  const margenes = arVal > 0 ? `INT${intVal}_AR${arVal}_MA${maVal}` : `INT${intVal}_MA${maVal}`;
   const actionTag = params.isRecalculated ? 'RECALC' : 'CALC';
 
   const now = new Date();

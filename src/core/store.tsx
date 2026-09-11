@@ -434,7 +434,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         }
 
         // 6. MÓDULO AUDITOR DE MINERÍA Y SERVICIOS CISCO (Read-Only)
-        const auditReport = executeSafeMiningAudit(rawResult);
+        const auditReport = executeSafeMiningAudit({
+          ...rawResult,
+          fileName: fileName || currentFileName,
+        });
         if (auditReport && auditReport.overallStatus !== 'NO_RULES') {
           setMiningAuditData(auditReport);
         } else {
@@ -677,6 +680,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           items: reconstructedItems,
           originalProductTotal: totalNetCisco,
           calculatedProductTotal: totalVenta,
+          fileName: record.originalFileName || '',
         });
         if (auditReport && auditReport.overallStatus !== 'NO_RULES') {
           setMiningAuditData(auditReport);

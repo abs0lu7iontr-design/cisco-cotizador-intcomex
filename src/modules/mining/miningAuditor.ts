@@ -3,17 +3,17 @@
 // ============================================================================
 
 import { AccountConditionRule, AuditedLineItem, AuditReport } from './types';
-import { matchCustomerAccount } from './customerMatcher';
+import { matchCustomerAccount, CustomerMatchInput } from './customerMatcher';
 import { classifyCiscoLine } from './serviceClassifier';
 
 const TOLERANCE_PCT = 0.5; // Tolerancia de 0.5 puntos porcentuales para redondeo
 
 export function runMiningAudit(
-  rawCustomerName: string,
+  rawCustomerInput: string | CustomerMatchInput,
   items: any[],
   bomTotalUsd: number
 ): AuditReport {
-  const matchResult = matchCustomerAccount(rawCustomerName);
+  const matchResult = matchCustomerAccount(rawCustomerInput);
   const matchedRule = matchResult.matchedRule;
   const auditedLines: AuditedLineItem[] = [];
   const summary: string[] = [];
@@ -133,12 +133,17 @@ export function runMiningAudit(
     ? 'NOT_EVALUABLE' 
     : 'COMPLIANT';
 
+  const resolvedCustomerName =
+    typeof rawCustomerInput === 'string'
+      ? rawCustomerInput
+      : (matchResult.rawTargetFound || rawCustomerInput.companyName || rawCustomerInput.customerName || rawCustomerInput.fileName || 'No Identificado');
+
   return {
     timestamp: new Date().toISOString(),
     bomFingerprint: `${items.length}_${bomTotalUsd}`,
-    customerNameRaw: rawCustomerName,
+    customerNameRaw: resolvedCustomerName,
     matchedAccount: matchedRule,
-    identificationSource: matchResult.confidence !== 'NONE' ? 'HEADER_CUSTOMER' : 'NONE',
+    identificationSource: matchResult.matchedSource,
     lines: auditedLines,
     sntOpportunityCount: sntCount,
     hasUnconfiguredTiers: hasUnconfigured,

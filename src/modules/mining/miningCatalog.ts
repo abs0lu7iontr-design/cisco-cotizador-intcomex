@@ -9,7 +9,7 @@ export const MINING_CONDITIONS_CATALOG: AccountConditionRule[] = [
   {
     groupId: 1,
     groupName: "Codelco",
-    verifiedAliases: ["codelco", "chuquicamata", "el teniente", "radomiro tomic", "andina", "gabriela mistral", "dgm", "ministro hales", "dmh", "salvador", "fundicion ventanas"],
+    verifiedAliases: ["codelco", "coldeco", "chuquicamata", "el teniente", "radomiro tomic", "andina", "gabriela mistral", "dgm", "ministro hales", "dmh", "salvador", "fundicion ventanas"],
     productTiers: [
       { minUsd: parseUsdAmount("0")!, maxUsd: parseUsdAmount("20K")!, discountPct: 56 },
       { minUsd: parseUsdAmount("21K")!, maxUsd: parseUsdAmount("150K")!, discountPct: 58 }

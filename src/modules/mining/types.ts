@@ -55,7 +55,7 @@ export interface AuditReport {
   bomFingerprint: string;
   customerNameRaw: string;
   matchedAccount: AccountConditionRule | null;
-  identificationSource: 'HEADER_CUSTOMER' | 'MANUAL_SELECTION' | 'DEAL_NAME' | 'NONE';
+  identificationSource: 'HEADER_CUSTOMER' | 'HEADER_COMPANY' | 'FILE_NAME' | 'MANUAL_SELECTION' | 'DEAL_NAME' | 'NONE';
   lines: AuditedLineItem[];
   sntOpportunityCount: number;
   hasUnconfiguredTiers: boolean;
