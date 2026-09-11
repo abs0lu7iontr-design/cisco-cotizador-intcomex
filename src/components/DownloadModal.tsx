@@ -16,6 +16,7 @@ import {
   Users2,
   FileText,
   Globe,
+  Layers,
 } from 'lucide-react';
 import { generateOptimizedWorkbook } from '../core/excelEngine';
 import { QuoteParameters, OverrideRuleType, EstimateHeaderInfo } from '../core/types';
@@ -27,6 +28,7 @@ interface DownloadModalProps {
   onClose: () => void;
   defaultPartner?: string;
   defaultClient?: string;
+  defaultModel?: string;
   defaultFilename?: string;
   workbookBuffer: ArrayBuffer;
   rawWorkbookBuffer?: ArrayBuffer | null;
@@ -42,6 +44,7 @@ export function DownloadModal({
   onClose,
   defaultPartner,
   defaultClient,
+  defaultModel = 'Cisco',
   defaultFilename,
   workbookBuffer,
   rawWorkbookBuffer,
@@ -53,7 +56,12 @@ export function DownloadModal({
 }: DownloadModalProps) {
   const isDesktop = Boolean((window as any).pywebview?.api);
 
-  const computeCorporateFilename = (pName?: string, cName?: string, currentParams?: QuoteParameters) => {
+  const computeCorporateFilename = (
+    pName?: string,
+    cName?: string,
+    mName?: string,
+    currentParams?: QuoteParameters
+  ) => {
     const activeParams = currentParams || params;
     const isRecalc = Boolean(
       isRecalculated ||
@@ -61,11 +69,11 @@ export function DownloadModal({
       (customOverrides && Object.keys(customOverrides).length > 0)
     );
 
-    let tech = 'Cisco';
-    if (defaultFilename) {
+    let tech = mName || defaultModel || 'Cisco';
+    if (!mName && !defaultModel && defaultFilename) {
       const cleanBase = defaultFilename.replace(/\.[^/.]+$/, '');
       const parts = cleanBase.split(/[_.\s-]+/);
-      if (parts.length >= 3 && !parts[2].startsWith('INT') && !parts[2].startsWith('DEAL') && !parts[2].startsWith('CALC') && !parts[2].startsWith('RECALC')) {
+      if (parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|\d+)$/i)) {
         tech = parts[2];
       }
     }
@@ -84,7 +92,10 @@ export function DownloadModal({
 
   const [partnerName, setPartnerName] = useState(defaultPartner || headerInfo?.companyName || 'Intcomex');
   const [clientName, setClientName] = useState(defaultClient || headerInfo?.customerName || 'Cliente Final');
-  const [filename, setFilename] = useState(() => computeCorporateFilename(defaultPartner, defaultClient, params));
+  const [modelName, setModelName] = useState(defaultModel || 'Cisco');
+  const [filename, setFilename] = useState(() =>
+    computeCorporateFilename(defaultPartner, defaultClient, defaultModel, params)
+  );
 
   // Details form is collapsed by default
   const [showDetails, setShowDetails] = useState(false);
@@ -101,12 +112,14 @@ export function DownloadModal({
   useEffect(() => {
     const currentPartner = partnerName || defaultPartner || headerInfo?.companyName || 'Intcomex';
     const currentClient = clientName || defaultClient || headerInfo?.customerName || 'Cliente Final';
-    setFilename(computeCorporateFilename(currentPartner, currentClient, params));
+    const currentModel = modelName || defaultModel || 'Cisco';
+    setFilename(computeCorporateFilename(currentPartner, currentClient, currentModel, params));
   }, [
     params?.internacionPct,
     params?.margenPct,
     defaultPartner,
     defaultClient,
+    defaultModel,
     headerInfo?.estimateId,
     headerInfo?.dealId,
     isRecalculated,
@@ -121,20 +134,27 @@ export function DownloadModal({
       setShowDetails(false);
       const initialPartner = defaultPartner || headerInfo?.companyName || 'Intcomex';
       const initialClient = defaultClient || headerInfo?.customerName || 'Cliente Final';
+      const initialModel = defaultModel || 'Cisco';
       setPartnerName(initialPartner);
       setClientName(initialClient);
-      setFilename(computeCorporateFilename(initialPartner, initialClient, params));
+      setModelName(initialModel);
+      setFilename(computeCorporateFilename(initialPartner, initialClient, initialModel, params));
     }
-  }, [isOpen]);
+  }, [isOpen, defaultPartner, defaultClient, defaultModel]);
 
   const handlePartnerChange = (val: string) => {
     setPartnerName(val);
-    setFilename(computeCorporateFilename(val, clientName, params));
+    setFilename(computeCorporateFilename(val, clientName, modelName, params));
   };
 
   const handleClientChange = (val: string) => {
     setClientName(val);
-    setFilename(computeCorporateFilename(partnerName, val, params));
+    setFilename(computeCorporateFilename(partnerName, val, modelName, params));
+  };
+
+  const handleModelChange = (val: string) => {
+    setModelName(val);
+    setFilename(computeCorporateFilename(partnerName, clientName, val, params));
   };
 
   if (!isOpen) return null;
@@ -388,6 +408,20 @@ export function DownloadModal({
                       onChange={(e) => handleClientChange(e.target.value)}
                       placeholder="ej. Banco de Chile, Cencosud"
                       className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                      <Layers className="w-3 h-3 text-cyan-400" />
+                      Modelo de Equipos / Familia
+                    </label>
+                    <input
+                      type="text"
+                      value={modelName}
+                      onChange={(e) => handleModelChange(e.target.value)}
+                      placeholder="ej. 7x, C9200, Catalyst, Meraki"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500"
                     />
                   </div>
 

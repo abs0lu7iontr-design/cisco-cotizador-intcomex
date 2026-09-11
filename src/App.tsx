@@ -213,24 +213,37 @@ function AppContent() {
     }
   };
 
-  // Parse partner and client from filename or header info
+  // Parse partner, client and model from filename or header info
   const getPartnerClientDefaults = () => {
     let partner = 'Intcomex';
     let client = 'Cliente Final';
+    let model = 'Cisco';
 
-    if (currentFileName) {
-      const parts = currentFileName.split('_');
-      if (parts.length >= 2) {
-        partner = parts[0].trim() || partner;
-        client = parts[1].trim() || client;
-      }
-    } else if (processedResult?.headerInfo?.companyName) {
+    if (processedResult?.headerInfo?.companyName) {
       partner = processedResult.headerInfo.companyName;
     }
-    return { partner, client };
+    if (processedResult?.headerInfo?.customerName) {
+      client = processedResult.headerInfo.customerName;
+    }
+
+    if (currentFileName) {
+      const clean = currentFileName.replace(/\.[^/.]+$/, '');
+      const parts = clean.split(/[_.\s-]+/);
+      if (parts.length >= 1 && parts[0] && !parts[0].match(/^(estimate|\d+)$/i)) {
+        partner = parts[0].trim();
+      }
+      if (parts.length >= 2 && parts[1] && !parts[1].match(/^(estimate|\d+)$/i)) {
+        client = parts[1].trim();
+      }
+      if (parts.length >= 3 && parts[2] && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|\d+)$/i)) {
+        model = parts[2].trim();
+      }
+    }
+
+    return { partner, client, model };
   };
 
-  const { partner: defaultPartner, client: defaultClient } = getPartnerClientDefaults();
+  const { partner: defaultPartner, client: defaultClient, model: defaultModel } = getPartnerClientDefaults();
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
@@ -332,6 +345,7 @@ function AppContent() {
           defaultFilename={processedResult.fileName || 'Cotizacion_Cisco_CALC.xlsx'}
           defaultPartner={defaultPartner}
           defaultClient={defaultClient}
+          defaultModel={defaultModel}
           workbookBuffer={processedResult.workbookBuffer}
           rawWorkbookBuffer={rawWorkbookBuffer}
           params={params}

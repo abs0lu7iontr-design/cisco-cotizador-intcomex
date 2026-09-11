@@ -535,9 +535,9 @@ export async function parseEstimateWorkbook(
 
   const cleanBase = fileName.replace(/\.[^/.]+$/, '');
   const parts = cleanBase.split(/[_.\s-]+/);
-  const partnerFromName = parts[0] || 'Intcomex';
-  const clientFromName = parts[1] || 'Cliente';
-  const techFromName = parts.length >= 3 && !parts[2].startsWith('INT') && !parts[2].startsWith('DEAL') && !parts[2].startsWith('CALC') && !parts[2].startsWith('RECALC') ? parts[2] : 'Cisco';
+  const partnerFromName = parts[0] && !parts[0].match(/^(estimate|\d+)$/i) ? parts[0] : 'Intcomex';
+  const clientFromName = parts[1] && !parts[1].match(/^(estimate|\d+)$/i) ? parts[1] : 'Cliente';
+  const techFromName = parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|\d+)$/i) ? parts[2] : 'Cisco';
 
   const outputFileName = generateQuotationFileName({
     partner: headerInfo?.companyName || partnerFromName,
@@ -1123,9 +1123,9 @@ export async function generateOptimizedWorkbook(
 
   const cleanBase = fileName.replace(/\.[^/.]+$/, '');
   const parts = cleanBase.split(/[_.\s-]+/);
-  const partnerFromName = parts[0] || 'Intcomex';
-  const clientFromName = parts[1] || 'Cliente';
-  const techFromName = parts.length >= 3 && !parts[2].startsWith('INT') && !parts[2].startsWith('DEAL') && !parts[2].startsWith('CALC') && !parts[2].startsWith('RECALC') ? parts[2] : 'Cisco';
+  const partnerFromName = parts[0] && !parts[0].match(/^(estimate|\d+)$/i) ? parts[0] : 'Intcomex';
+  const clientFromName = parts[1] && !parts[1].match(/^(estimate|\d+)$/i) ? parts[1] : 'Cliente';
+  const techFromName = parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|\d+)$/i) ? parts[2] : 'Cisco';
 
   const outputFileName = generateQuotationFileName({
     partner: headerInfo?.companyName || partnerFromName,

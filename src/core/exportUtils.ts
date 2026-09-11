@@ -16,21 +16,18 @@ export interface QuotationFileNameParams {
 
 /**
  * Genera el nombre de archivo estandarizado corporativo:
- * partner_cliente_equipo_dealid(si corresponde)_estimate_margenes_CALC/RECALC_hora_fecha.xlsx
+ * partner_cliente_modeloequipos_Estimate_N°Estimate_Ix_Mx_CALC/RECALC_hh-mm_dd-mm-aa.xlsx
  */
 export function generateQuotationFileName(params: QuotationFileNameParams): string {
   const sanitize = (str: string) => (str || '').replace(/[^a-zA-Z0-9_-]/g, '').trim();
 
   const partner = sanitize(params.partner || 'Intcomex');
   const cliente = sanitize(params.customerName || 'Cliente');
-  const equipo = sanitize(params.technologyOrFamily || 'Cisco');
+  const modeloEquipos = sanitize(params.technologyOrFamily || 'Cisco');
 
-  const dealStr =
-    params.dealId && params.dealId !== 'NA' && params.dealId.trim() !== ''
-      ? `_DEAL-${sanitize(params.dealId)}`
-      : '';
-
-  const estimate = sanitize(params.estimateId || 'ESTIMATE');
+  // Limpiar y asegurar prefijo 'Estimate_' seguido del número/identificador
+  const rawEst = sanitize(params.estimateId || 'ESTIMATE');
+  const cleanEst = rawEst.replace(/^Estimate[_-]?/i, '') || 'ESTIMATE';
 
   // Soporta tanto formato decimal (0.07) como entero/porcentual (7.0)
   const intVal =
@@ -42,8 +39,9 @@ export function generateQuotationFileName(params: QuotationFileNameParams): stri
       ? Math.round(params.marginPct * 100)
       : Math.round(params.marginPct);
 
-  // Nomenclatura corporativa solicitada: sólo internación y margen (el arancel no se modifica)
-  const margenes = `INT${intVal}_MA${maVal}`;
+  // Abreviación solicitada: "Ix" para internación y "Mx" para margen (ej. I7_M5)
+  const internacionTag = `I${intVal}`;
+  const margenTag = `M${maVal}`;
   const actionTag = params.isRecalculated ? 'RECALC' : 'CALC';
 
   const now = new Date();
@@ -51,5 +49,5 @@ export function generateQuotationFileName(params: QuotationFileNameParams): stri
   const hora = `${pad(now.getHours())}-${pad(now.getMinutes())}`;
   const fecha = `${pad(now.getDate())}-${pad(now.getMonth() + 1)}-${String(now.getFullYear()).slice(-2)}`;
 
-  return `${partner}_${cliente}_${equipo}${dealStr}_${estimate}_${margenes}_${actionTag}_${hora}_${fecha}.xlsx`;
+  return `${partner}_${cliente}_${modeloEquipos}_Estimate_${cleanEst}_${internacionTag}_${margenTag}_${actionTag}_${hora}_${fecha}.xlsx`;
 }
