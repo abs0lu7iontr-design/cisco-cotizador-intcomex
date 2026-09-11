@@ -526,7 +526,29 @@ export async function parseEstimateWorkbook(
   }
 
   const roundedProductTotal = Math.round(calculatedProductTotal * 100) / 100;
-  const outputFileName = suggestFileName(fileName);
+
+  const isRecalc = Boolean(
+    isPreviouslyProcessed ||
+    (params && (params.internacionPct !== 7.0 || params.margenPct !== 5.0)) ||
+    (overrides && Object.keys(overrides).length > 0)
+  );
+
+  const cleanBase = fileName.replace(/\.[^/.]+$/, '');
+  const parts = cleanBase.split(/[_.\s-]+/);
+  const partnerFromName = parts[0] || 'Intcomex';
+  const clientFromName = parts[1] || 'Cliente';
+  const techFromName = parts.length >= 3 && !parts[2].startsWith('INT') && !parts[2].startsWith('DEAL') && !parts[2].startsWith('CALC') && !parts[2].startsWith('RECALC') ? parts[2] : 'Cisco';
+
+  const outputFileName = generateQuotationFileName({
+    partner: headerInfo?.companyName || partnerFromName,
+    customerName: headerInfo?.customerName || clientFromName,
+    technologyOrFamily: techFromName,
+    dealId: headerInfo?.dealId,
+    estimateId: headerInfo?.estimateId || 'ESTIMATE',
+    internacionPct: params.internacionPct,
+    marginPct: params.margenPct,
+    isRecalculated: isRecalc,
+  });
 
   const result: ProcessedEstimateResult = {
     fileName: outputFileName,
@@ -1099,17 +1121,22 @@ export async function generateOptimizedWorkbook(
     (overrides && Object.keys(overrides).length > 0)
   );
 
-  const outputFileName = headerInfo?.estimateId
-    ? generateQuotationFileName({
-        partner: headerInfo.companyName || 'Intcomex',
-        customerName: headerInfo.customerName || 'Cliente',
-        dealId: headerInfo.dealId,
-        estimateId: headerInfo.estimateId,
-        internacionPct: params.internacionPct,
-        marginPct: params.margenPct,
-        isRecalculated,
-      })
-    : suggestFileName(fileName, isRecalculated ? 'RECALC' : 'CALC');
+  const cleanBase = fileName.replace(/\.[^/.]+$/, '');
+  const parts = cleanBase.split(/[_.\s-]+/);
+  const partnerFromName = parts[0] || 'Intcomex';
+  const clientFromName = parts[1] || 'Cliente';
+  const techFromName = parts.length >= 3 && !parts[2].startsWith('INT') && !parts[2].startsWith('DEAL') && !parts[2].startsWith('CALC') && !parts[2].startsWith('RECALC') ? parts[2] : 'Cisco';
+
+  const outputFileName = generateQuotationFileName({
+    partner: headerInfo?.companyName || partnerFromName,
+    customerName: headerInfo?.customerName || clientFromName,
+    technologyOrFamily: techFromName,
+    dealId: headerInfo?.dealId,
+    estimateId: headerInfo?.estimateId || 'ESTIMATE',
+    internacionPct: params.internacionPct,
+    marginPct: params.margenPct,
+    isRecalculated,
+  });
 
   const result: ProcessedEstimateResult = {
     fileName: outputFileName,

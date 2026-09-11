@@ -53,10 +53,11 @@ export function DownloadModal({
 }: DownloadModalProps) {
   const isDesktop = Boolean((window as any).pywebview?.api);
 
-  const computeCorporateFilename = (pName?: string, cName?: string) => {
+  const computeCorporateFilename = (pName?: string, cName?: string, currentParams?: QuoteParameters) => {
+    const activeParams = currentParams || params;
     const isRecalc = Boolean(
       isRecalculated ||
-      (params && (params.internacionPct !== 7.0 || params.margenPct !== 5.0)) ||
+      (activeParams && (activeParams.internacionPct !== 7.0 || activeParams.margenPct !== 5.0)) ||
       (customOverrides && Object.keys(customOverrides).length > 0)
     );
 
@@ -75,16 +76,15 @@ export function DownloadModal({
       technologyOrFamily: tech,
       dealId: headerInfo?.dealId,
       estimateId: headerInfo?.estimateId || 'ESTIMATE',
-      internacionPct: params?.internacionPct ?? 7.0,
-      marginPct: params?.margenPct ?? 5.0,
-      arancelPct: params?.arancelPct ?? 6.0,
+      internacionPct: activeParams?.internacionPct ?? 7.0,
+      marginPct: activeParams?.margenPct ?? 5.0,
       isRecalculated: isRecalc,
     });
   };
 
   const [partnerName, setPartnerName] = useState(defaultPartner || headerInfo?.companyName || 'Intcomex');
   const [clientName, setClientName] = useState(defaultClient || headerInfo?.customerName || 'Cliente Final');
-  const [filename, setFilename] = useState(() => computeCorporateFilename(defaultPartner, defaultClient));
+  const [filename, setFilename] = useState(() => computeCorporateFilename(defaultPartner, defaultClient, params));
 
   // Details form is collapsed by default
   const [showDetails, setShowDetails] = useState(false);
@@ -97,7 +97,22 @@ export function DownloadModal({
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Reset state completely every time the modal opens (no cache between files)
+  // Actualización reactiva en vivo del nombre de archivo al mover parámetros de internación o margen
+  useEffect(() => {
+    const currentPartner = partnerName || defaultPartner || headerInfo?.companyName || 'Intcomex';
+    const currentClient = clientName || defaultClient || headerInfo?.customerName || 'Cliente Final';
+    setFilename(computeCorporateFilename(currentPartner, currentClient, params));
+  }, [
+    params?.internacionPct,
+    params?.margenPct,
+    defaultPartner,
+    defaultClient,
+    headerInfo?.estimateId,
+    headerInfo?.dealId,
+    isRecalculated,
+  ]);
+
+  // Reset modal state completely every time the modal opens (no cache between files)
   useEffect(() => {
     if (isOpen) {
       setSaveSuccess(null);
@@ -108,18 +123,18 @@ export function DownloadModal({
       const initialClient = defaultClient || headerInfo?.customerName || 'Cliente Final';
       setPartnerName(initialPartner);
       setClientName(initialClient);
-      setFilename(computeCorporateFilename(initialPartner, initialClient));
+      setFilename(computeCorporateFilename(initialPartner, initialClient, params));
     }
-  }, [isOpen, defaultPartner, defaultClient, defaultFilename, headerInfo, params, isRecalculated]);
+  }, [isOpen]);
 
   const handlePartnerChange = (val: string) => {
     setPartnerName(val);
-    setFilename(computeCorporateFilename(val, clientName));
+    setFilename(computeCorporateFilename(val, clientName, params));
   };
 
   const handleClientChange = (val: string) => {
     setClientName(val);
-    setFilename(computeCorporateFilename(partnerName, val));
+    setFilename(computeCorporateFilename(partnerName, val, params));
   };
 
   if (!isOpen) return null;
