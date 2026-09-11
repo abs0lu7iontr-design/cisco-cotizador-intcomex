@@ -5,6 +5,7 @@
 import ExcelJS from 'exceljs';
 import { RawBomItem, RawBomParsedResult, sanitizeTrim } from './dsvBomParser';
 import { DsvModalFormData, Dsv48LineItem, DsvTransformationSummary, SkuCategoryType } from './types';
+import { isCiscoLicenseSku } from '../../core/ciscoTaxonomy';
 
 /**
  * Genera la fecha actual en formato oficial DD-MMM-YYYY con el mes en inglés y mayúsculas.
@@ -74,7 +75,8 @@ export function detectSkuCategory(sku: string): SkuCategoryType {
     upper.startsWith('SUB-') ||
     upper.includes('-DNA') ||
     upper.includes('-LIC') ||
-    upper.includes('-SUB')
+    upper.includes('-SUB') ||
+    isCiscoLicenseSku(upper)
   ) {
     return 'subscription';
   }
@@ -171,12 +173,21 @@ export function calculateDsvPrices(
   effectiveCategory: SkuCategoryType;
   discrepancy: DsvDiscrepancy | null;
 } {
-  const effectiveCategory = overrideCategory || detectSkuCategory(sku);
+  const baseCategory = overrideCategory || detectSkuCategory(sku);
   const partNumber = itemData?.partNumber || sku;
   const description = itemData?.description || '';
   const lineNumber = itemData?.lineNumber || '';
 
-  const isService = effectiveCategory === 'service' || isCiscoServiceSku(partNumber, description);
+  const isService = baseCategory === 'service' || isCiscoServiceSku(partNumber, description);
+  const isSubscription =
+    baseCategory === 'subscription' ||
+    isCiscoLicenseSku(partNumber, description, durationMonths);
+
+  const effectiveCategory: SkuCategoryType = isService
+    ? 'service'
+    : isSubscription
+    ? 'subscription'
+    : 'hardware';
 
   if (isService) {
     const years = durationMonths >= 12 ? Math.max(1, Math.round(durationMonths / 12)) : 1;

@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { LineCategory, IotStatus } from './types';
+import { isCiscoLicenseSku } from '../../core/ciscoTaxonomy';
 
 export function classifyCiscoLine(partNumber: string, description: string): {
   category: LineCategory;
@@ -38,8 +39,15 @@ export function classifyCiscoLine(partNumber: string, description: string): {
   }
 
   // 4. Suscripciones SaaS / Licenciamiento Cloud
-  if (sku.startsWith('LIC-') || sku.endsWith('-SUB') || desc.includes('SUBSCRIPTION') || desc.includes('TERM LICENSE')) {
-    return { category: 'SUBSCRIPTION', iotStatus, ruleEvidence: 'Licencia Cloud / Suscripción de software' };
+  const isSubscriptionSku = 
+    sku.startsWith('LIC-') || 
+    sku.endsWith('-SUB') || 
+    desc.includes('SUBSCRIPTION') || 
+    desc.includes('TERM LICENSE') ||
+    isCiscoLicenseSku(sku, desc);
+
+  if (isSubscriptionSku) {
+    return { category: 'SUBSCRIPTION', iotStatus, ruleEvidence: 'Licencia Cloud / Suscripción de software Cisco' };
   }
 
   // 5. Otros Servicios
