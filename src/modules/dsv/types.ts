@@ -47,7 +47,7 @@ export interface Dsv48LineItem {
   billToStateProvinceCountyRegion: string;      // Col AF (32): "" [HIDDEN]
   billToZipPostalCode: string;                  // Col AG (33): "" [HIDDEN]
   billToCountry: string;                        // Col AH (34): "" [HIDDEN]
-  shipToName: string;                           // Col AI (35): BOM Col E (ENDUSER NAME)
+  shipToName: string;                           // Col AI (35): BOM Col C (RESELLER NAME / Partner - Igual a Col T)
   shipToAddress1: string;                       // Col AJ (36): "Chile"
   shipToAddress2: string;                       // Col AK (37): ""
   shipToCity: string;                           // Col AL (38): "Chile"

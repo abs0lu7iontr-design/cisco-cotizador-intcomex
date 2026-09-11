@@ -164,7 +164,7 @@ Soporta `.xls` legacy y `.xlsx` modernos. Mapeo de índices 0-based:
 - Z: `Buyer/Reseller Zip / Postal Code` -> `""` [Ancho: 5]
 - AA: `Buyer/Reseller Country` -> `"CL"`
 - AB a AH: `Bill-To` (Name, Address1, Address2, City, State, Zip, Country) -> `""` [OCULTAS: `hidden: true`]
-- AI: `Ship-To Name` -> BOM Col E (`ENDUSER NAME`)
+- AI: `Ship-To Name` -> BOM Col C (`RESELLER NAME` / Partner - Igual a Celda T `Buyer/Reseller Name`)
 - AJ: `Ship-To Address1` -> `"Chile"`
 - AK: `Ship-To Address2` -> `""` [Ancho: 5]
 - AL: `Ship-To City` -> `"Chile"`

@@ -242,7 +242,7 @@ export function transformRawBomToDsv(
       billToStateProvinceCountyRegion: '',                // AF (32) [HIDDEN]
       billToZipPostalCode: '',                            // AG (33) [HIDDEN]
       billToCountry: '',                                  // AH (34) [HIDDEN]
-      shipToName: endUserNameVal,                         // AI (35) - Ship-To Name
+      shipToName: resellerNameVal,                        // AI (35) - Ship-To Name (Igual a Buyer/Reseller Name en Celda T)
       shipToAddress1: 'Chile',                            // AJ (36)
       shipToAddress2: '',                                 // AK (37) [ANCHO 5]
       shipToCity: 'Chile',                                // AL (38)
