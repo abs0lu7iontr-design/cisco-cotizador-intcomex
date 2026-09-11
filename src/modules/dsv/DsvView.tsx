@@ -195,14 +195,20 @@ export const DsvView: React.FC = () => {
     setIsSavingCloud(true);
     setErrorMessage(null);
     try {
+      const dealVal = rawBom.dealIdFromBom || rawBom.authorizationNumber || 'NA';
+      const partnerVal = rawBom.resellerName || rawBom.items[0]?.resellerName || 'Intcomex Partner';
+      const customerVal = rawBom.endUserName || rawBom.items[0]?.endUserName || 'Cliente Final';
+
       const summary = transformRawBomToDsv(
         rawBom,
         {
-          so: rawBom.header?.dealId || 'SO-PENDING',
+          so: dealVal || 'SO-PENDING',
           po: 'PO-PENDING',
-          dealId: rawBom.header?.dealId || 'NA',
-          partnerId: rawBom.header?.resellerName || 'PARTNER-CL',
+          dealId: dealVal,
+          partnerId: partnerVal,
           endCustomerAddress: 'Chile',
+          partnerName: partnerVal,
+          endCustomerName: customerVal,
         },
         overrides,
         false
@@ -211,12 +217,12 @@ export const DsvView: React.FC = () => {
       const totalReportedNet = summary.rows.reduce((acc, r) => acc + (r.reportedNetPrice || 0), 0);
 
       const res = await saveDsvToCloud({
-        dealId: rawBom.header?.dealId || 'NA',
-        soNumber: rawBom.header?.dealId || 'SO-PENDING',
+        dealId: dealVal,
+        soNumber: dealVal,
         poNumber: 'PO-PENDING',
-        partnerId: rawBom.header?.resellerName || 'PARTNER-CL',
-        resellerName: rawBom.header?.resellerName || 'Intcomex Partner',
-        endCustomerName: rawBom.header?.endUserName || 'Cliente Final',
+        partnerId: partnerVal,
+        resellerName: partnerVal,
+        endCustomerName: customerVal,
         endCustomerAddress: 'Chile',
         originalFileName: rawBom.fileName,
         createdAt: new Date().toISOString(),
@@ -427,33 +433,47 @@ export const DsvView: React.FC = () => {
       ) : (
         <div className="space-y-4">
           {/* Summary Metric Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Archivo BOM</span>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Archivo BOM</span>
               <span className="text-xs font-bold text-white mt-1 truncate" title={rawBom.fileName}>
                 {rawBom.fileName}
               </span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Deal ID Detectado</span>
-              <span className="text-xs font-mono font-bold text-blue-400 mt-1">
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Deal ID</span>
+              <span className="text-xs font-mono font-bold text-blue-400 mt-1 truncate">
                 {rawBom.dealIdFromBom || rawBom.authorizationNumber || 'No detectado'}
               </span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ítems Válidos DSV</span>
-              <span className="text-xs font-bold text-emerald-400 mt-1 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>{validItems.length} productos (List Price &gt; $0)</span>
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Partner (Canal)</span>
+              <span className="text-xs font-bold text-cyan-300 mt-1 truncate" title={rawBom.resellerName || rawBom.items[0]?.resellerName || 'No detectado'}>
+                {rawBom.resellerName || rawBom.items[0]?.resellerName || 'No detectado'}
               </span>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Ítems Descartados</span>
-              <span className="text-xs font-bold text-rose-400 mt-1">
-                {discardedItems.length} ítems ($0.00)
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cliente Final</span>
+              <span className="text-xs font-bold text-purple-300 mt-1 truncate" title={rawBom.endUserName || rawBom.items[0]?.endUserName || 'No detectado'}>
+                {rawBom.endUserName || rawBom.items[0]?.endUserName || 'No detectado'}
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Válidos DSV</span>
+              <span className="text-xs font-bold text-emerald-400 mt-1 flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                <span>{validItems.length} (List &gt; $0)</span>
+              </span>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Descartados</span>
+              <span className="text-xs font-bold text-rose-400 mt-1 truncate">
+                {discardedItems.length} ($0.00)
               </span>
             </div>
           </div>

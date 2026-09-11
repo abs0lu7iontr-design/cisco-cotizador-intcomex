@@ -22,6 +22,7 @@ import {
   generateCleanDsvWorkbook,
   isZeroValueBomItem,
   getFormattedDsvDate,
+  generateDsvFilename,
 } from './dsvEngine';
 
 interface DsvModalProps {
@@ -45,17 +46,21 @@ export const DsvModal: React.FC<DsvModalProps> = ({
     dealId: '',
     partnerId: '',
     endCustomerAddress: 'Chile',
+    partnerName: '',
+    endCustomerName: '',
   });
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Pre-fill Deal ID when modal opens (filtered to max 8 numeric digits)
+  // Pre-fill Deal ID, Partner Name and End Customer Name when modal opens
   useEffect(() => {
     if (isOpen && rawBom) {
       const initialDealId = (rawBom.dealIdFromBom || rawBom.authorizationNumber || '')
         .replace(/\D/g, '')
         .slice(0, 8);
+      const initialPartner = rawBom.resellerName || (rawBom.items && rawBom.items[0]?.resellerName) || '';
+      const initialEndUser = rawBom.endUserName || (rawBom.items && rawBom.items[0]?.endUserName) || '';
 
       setFormData({
         so: '',
@@ -63,11 +68,23 @@ export const DsvModal: React.FC<DsvModalProps> = ({
         dealId: initialDealId,
         partnerId: '',
         endCustomerAddress: 'Chile',
+        partnerName: initialPartner,
+        endCustomerName: initialEndUser,
       });
       setSuccessMessage(null);
       setIsGenerating(false);
     }
   }, [isOpen, rawBom]);
+
+  // Reactive standardized filename: NumerodeDEAL_DSV_partner_clientefinal_fecha.xlsx
+  const previewFilename = useMemo(() => {
+    if (!rawBom) return '';
+    return generateDsvFilename(
+      formData.dealId || rawBom.dealIdFromBom || rawBom.authorizationNumber,
+      formData.partnerName || rawBom.resellerName,
+      formData.endCustomerName || rawBom.endUserName
+    );
+  }, [formData.dealId, formData.partnerName, formData.endCustomerName, rawBom]);
 
   // Statistics of items
   const stats = useMemo(() => {
@@ -105,6 +122,12 @@ export const DsvModal: React.FC<DsvModalProps> = ({
     if (!isPartnerIdValid) {
       warnings.push('Partner Identification está vacío');
     }
+    if (!formData.partnerName?.trim()) {
+      warnings.push('Partner / Reseller Name está vacío');
+    }
+    if (!formData.endCustomerName?.trim()) {
+      warnings.push('End Customer Name (Cliente Final) está vacío');
+    }
     if (!isAddressValid) {
       warnings.push('End Customer Address 1 está vacío');
     }
@@ -122,7 +145,10 @@ export const DsvModal: React.FC<DsvModalProps> = ({
     }));
   };
 
-  const handleTextChange = (field: 'partnerId' | 'endCustomerAddress', rawVal: string) => {
+  const handleTextChange = (
+    field: 'partnerId' | 'endCustomerAddress' | 'partnerName' | 'endCustomerName',
+    rawVal: string
+  ) => {
     setFormData((prev) => ({
       ...prev,
       [field]: rawVal,
@@ -134,13 +160,13 @@ export const DsvModal: React.FC<DsvModalProps> = ({
     setSuccessMessage(null);
 
     try {
-      // 1. Transform raw BOM to 48 columns DSV with overrides
+      // 1. Transform raw BOM to 48 columns DSV with overrides and updated formData
       const summary = transformRawBomToDsv(rawBom, formData, overrides, false);
-      const dateStr = getFormattedDsvDate();
-      const baseName = rawBom.fileName
-        ? rawBom.fileName.replace(/\.[^/.]+$/, '')
-        : 'Cisco_Deal_BOM';
-      const outputFilename = `${baseName}_DSV_${dateStr}.xlsx`;
+      const outputFilename = previewFilename || generateDsvFilename(
+        formData.dealId,
+        formData.partnerName,
+        formData.endCustomerName
+      );
 
       // 2. Generate clean Excel with 48 columns
       const { buffer } = await generateCleanDsvWorkbook(summary.rows, outputFilename);
@@ -371,9 +397,63 @@ export const DsvModal: React.FC<DsvModalProps> = ({
                 </div>
                 <p className="text-[10px] text-slate-500">Buyer/Reseller Partner Identification</p>
               </div>
+
+              {/* 5. Partner / Reseller Name (Col T & AI) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Partner / Reseller Name (Col T y AI) <span className="text-rose-400">*</span>
+                  </label>
+                  {Boolean(rawBom.resellerName && formData.partnerName === rawBom.resellerName) && (
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-950 text-blue-300 border border-blue-800/60">
+                      Auto-detectado del BOM
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs text-slate-500 font-mono">
+                    <Building className="w-3.5 h-3.5" />
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Ej. LOGICALIS CHILE S.A."
+                    value={formData.partnerName || ''}
+                    onChange={(e) => handleTextChange('partnerName', e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors font-medium"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500">Canal / Reseller (asigna Col T, Col AI Ship-To y nombre archivo)</p>
+              </div>
+
+              {/* 6. End Customer Name (Col AP) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-300">
+                    End Customer / Cliente Final (Col AP) <span className="text-rose-400">*</span>
+                  </label>
+                  {Boolean(rawBom.endUserName && formData.endCustomerName === rawBom.endUserName) && (
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-950 text-blue-300 border border-blue-800/60">
+                      Auto-detectado del BOM
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs text-slate-500 font-mono">
+                    <Building className="w-3.5 h-3.5" />
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Ej. BANCO DE CHILE"
+                    value={formData.endCustomerName || ''}
+                    onChange={(e) => handleTextChange('endCustomerName', e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors font-medium"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500">Cliente final del Deal (asigna Col AP y nombre archivo)</p>
+              </div>
             </div>
 
-            {/* 5. End Customer Address 1 (Col AQ) */}
+            {/* 7. End Customer Address 1 (Col AQ) */}
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-300">
                 End Customer Address 1 (Col AQ) <span className="text-rose-400">*</span>
@@ -393,6 +473,22 @@ export const DsvModal: React.FC<DsvModalProps> = ({
               <p className="text-[10px] text-slate-500">
                 Acepta comas libremente. Se sanitiza automáticamente con .trim() al exportar.
               </p>
+            </div>
+
+            {/* Standardized Live Filename Preview Card */}
+            <div className="p-3.5 rounded-2xl bg-slate-950 border border-blue-900/40 shadow-inner space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-blue-400 flex items-center gap-1.5">
+                  <Download className="w-3.5 h-3.5" />
+                  Nombre de Archivo a Descargar (Estandarizado)
+                </span>
+                <span className="text-[10px] font-mono text-slate-400">
+                  NumerodeDEAL_DSV_partner_clientefinal_fecha.xlsx
+                </span>
+              </div>
+              <div className="bg-slate-900 px-3 py-2 rounded-xl border border-slate-800 flex items-center justify-between text-xs font-mono text-emerald-400 font-bold break-all select-all">
+                <span>{previewFilename}</span>
+              </div>
             </div>
           </div>
 

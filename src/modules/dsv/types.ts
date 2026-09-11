@@ -10,6 +10,8 @@ export interface DsvModalFormData {
   dealId: string;             // Col L: Deal ID (8 numeric digits)
   partnerId: string;          // Col U: Buyer/Reseller Partner Identification
   endCustomerAddress: string; // Col AQ: End Customer Address1
+  partnerName?: string;       // Col T: Buyer/Reseller Name (Auto-detectado del BOM)
+  endCustomerName?: string;   // Col AP: End Customer Name (Auto-detectado del BOM)
 }
 
 export interface Dsv48LineItem {

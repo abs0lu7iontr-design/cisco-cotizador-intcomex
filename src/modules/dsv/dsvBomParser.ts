@@ -87,8 +87,8 @@ export async function parseRawDealBom(
     const rowStr = row.map((c) => sanitizeTrim(c).toUpperCase()).join(' ');
 
     if (rowStr.includes('AUTHORIZATION')) score += 3;
-    if (rowStr.includes('RESELLER')) score += 2;
-    if (rowStr.includes('ENDUSER') || rowStr.includes('END USER')) score += 2;
+    if (rowStr.includes('RESELLER') || rowStr.includes('PARTNER') || rowStr.includes('CANAL')) score += 2;
+    if (rowStr.includes('ENDUSER') || rowStr.includes('END USER') || rowStr.includes('CUSTOMER') || rowStr.includes('CLIENTE')) score += 2;
     if (rowStr.includes('LINE#') || rowStr.includes('LINE #')) score += 3;
     if (rowStr.includes('MAGIC KEY')) score += 2;
     if (rowStr.includes('CISCO SKU') || rowStr.includes('SKU')) score += 3;
@@ -99,6 +99,24 @@ export async function parseRawDealBom(
     if (score > maxScore) {
       maxScore = score;
       bestHeaderRowIndex = r;
+    }
+  }
+
+  // Pre-scan metadata rows before header row to detect partner/customer if present in key-value format
+  for (let r = 0; r < Math.min(rawRows.length, 25); r++) {
+    const row = rawRows[r];
+    if (!row || !Array.isArray(row)) continue;
+    for (let c = 0; c < row.length; c++) {
+      const cellVal = sanitizeTrim(row[c]);
+      if (!cellVal) continue;
+      const mReseller = cellVal.match(/^(?:reseller|partner|canal)\s*(?:name)?\s*[:=]\s*(.+)$/i);
+      if (mReseller && mReseller[1] && !globalResellerName) {
+        globalResellerName = sanitizeTrim(mReseller[1]);
+      }
+      const mEndUser = cellVal.match(/^(?:end\s*user|end\s*customer|customer|cliente\s*final|cliente)\s*(?:name)?\s*[:=]\s*(.+)$/i);
+      if (mEndUser && mEndUser[1] && !globalEndUserName) {
+        globalEndUserName = sanitizeTrim(mEndUser[1]);
+      }
     }
   }
 
@@ -123,9 +141,30 @@ export async function parseRawDealBom(
 
       if (text === 'AUTHORIZATION NUMBER' || (text.includes('AUTHORIZATION') && !text.includes('DISTRIBUTOR'))) {
         colAuth = colIdx;
-      } else if (text === 'RESELLER NAME' || (text.includes('RESELLER') && text.includes('NAME'))) {
+      } else if (
+        text === 'RESELLER NAME' ||
+        text === 'PARTNER NAME' ||
+        text === 'RESELLER' ||
+        text === 'PARTNER' ||
+        text === 'CANAL' ||
+        (text.includes('RESELLER') && text.includes('NAME')) ||
+        (text.includes('PARTNER') && text.includes('NAME'))
+      ) {
         colReseller = colIdx;
-      } else if (text === 'ENDUSER NAME' || text === 'END USER NAME' || (text.includes('ENDUSER') && text.includes('NAME'))) {
+      } else if (
+        text === 'ENDUSER NAME' ||
+        text === 'END USER NAME' ||
+        text === 'END CUSTOMER NAME' ||
+        text === 'CUSTOMER NAME' ||
+        text === 'ENDUSER' ||
+        text === 'END USER' ||
+        text === 'END CUSTOMER' ||
+        text === 'CUSTOMER' ||
+        text === 'CLIENTE' ||
+        text === 'CLIENTE FINAL' ||
+        (text.includes('ENDUSER') && text.includes('NAME')) ||
+        (text.includes('CUSTOMER') && text.includes('NAME'))
+      ) {
         colEndUser = colIdx;
       } else if (text === 'LINE#' || text === 'LINE #' || text === 'LINE NUMBER') {
         colLine = colIdx;
@@ -226,6 +265,21 @@ export async function parseRawDealBom(
       distiDiscountPct: discountVal,
       description: descStr,
     });
+  }
+
+  // 4. Fallback: Si no se encontraron en celdas ni columnas, inferir de partes del nombre de archivo
+  if (!globalResellerName || !globalEndUserName) {
+    const cleanBase = fileName.replace(/\.[^/.]+$/, '');
+    const parts = cleanBase.split(/[_.\s-]+/);
+    const meaningful = parts.filter(
+      (p) => !p.match(/^(cisco|deal|bom|pricing|details|estimate|\d+|dsv)$/i)
+    );
+    if (!globalResellerName && meaningful[0]) {
+      globalResellerName = meaningful[0];
+    }
+    if (!globalEndUserName && meaningful[1]) {
+      globalEndUserName = meaningful[1];
+    }
   }
 
   return {

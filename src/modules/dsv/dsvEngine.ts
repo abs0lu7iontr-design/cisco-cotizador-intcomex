@@ -202,8 +202,12 @@ export function transformRawBomToDsv(
       itemOverride
     );
 
-    const resellerNameVal = sanitizeTrim(item.resellerName || rawBom.resellerName);
-    const endUserNameVal = sanitizeTrim(item.endUserName || rawBom.endUserName);
+    const resellerNameVal = sanitizeTrim(
+      form?.partnerName || item.resellerName || rawBom.resellerName
+    );
+    const endUserNameVal = sanitizeTrim(
+      form?.endCustomerName || item.endUserName || rawBom.endUserName
+    );
     const authNumberVal = cleanDealId || sanitizeTrim(item.authorizationNumber);
 
     // Mapeo Oficial de las 48 Columnas (A - AV)
@@ -545,4 +549,35 @@ export async function generateCleanDsvWorkbook(
     buffer: buffer as ArrayBuffer,
     fileName: outFileName,
   };
+}
+
+/**
+ * Sanitiza una cadena para incluirla de manera limpia en el nombre de archivo DSV
+ */
+export function sanitizeDsvFilenamePart(str: string): string {
+  if (!str) return '';
+  return str
+    .trim()
+    .replace(/[\\/:*?"<>|.,;()]+/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+/**
+ * Genera el nombre de archivo oficial estandarizado para la exportación DSV:
+ * NumerodeDEAL_DSV_partner_clientefinal_fecha.xlsx
+ */
+export function generateDsvFilename(
+  dealId?: string,
+  partner?: string,
+  client?: string,
+  dateStr?: string
+): string {
+  const cleanDeal = (dealId || '').replace(/[^\w-]/g, '').trim() || 'DEAL';
+  const cleanPartner = sanitizeDsvFilenamePart(partner || '') || 'Partner';
+  const cleanClient = sanitizeDsvFilenamePart(client || '') || 'Cliente';
+  const date = dateStr || getFormattedDsvDate();
+
+  return `${cleanDeal}_DSV_${cleanPartner}_${cleanClient}_${date}.xlsx`;
 }
