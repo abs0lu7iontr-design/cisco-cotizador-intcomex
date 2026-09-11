@@ -6,4 +6,5 @@ export * from './types';
 export * from './dsvBomParser';
 export * from './dsvEngine';
 export * from './DsvModal';
+export * from './DsvDiscrepancyModal';
 export * from './DsvView';

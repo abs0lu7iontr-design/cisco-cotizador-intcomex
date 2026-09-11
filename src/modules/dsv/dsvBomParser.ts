@@ -13,11 +13,15 @@ export interface RawBomItem {
   lineNumber: string;          // Col F (5) - LINE# (e.g. 1.0, 1.0.1)
   magicKey: string;            // Col G (6) - MAGIC KEY
   ciscoSku: string;            // Col H (7) - CISCO SKU
+  partNumber?: string;         // Alias for ciscoSku
   qty: number;                 // Col J (9) - QUANTITY
   durationMonths: number;      // Col K (10) - DURATION(Months)
   listPrice: number;           // Col O (14) - LIST_PRICE (Strictly unit list price)
   distiDiscountPct: number;    // Col S (18) - DISTI DISCOUNT (%)
   description?: string;
+  durationNetPrice?: number;   // Col AE (30) - DURATION NET PRICE
+  durationListPrice?: number;  // Col AD (29) - DURATION LIST PRICE
+  distiDiscount?: number;      // Col S (18) - DISTI DISCOUNT
 }
 
 export interface RawBomParsedResult {
@@ -131,6 +135,8 @@ export async function parseRawDealBom(
   let colDuration = 10;   // Col K (10) - DURATION(Months)
   let colListPrice = 14;  // Col O (14) - LIST_PRICE
   let colDiscount = 18;   // Col S (18) - DISTI DISCOUNT
+  let colDurationListPrice = 29; // Col AD (29) - DURATION LIST PRICE
+  let colDurationNetPrice = 30;  // Col AE (30) - DURATION NET PRICE
   let colDesc = -1;
 
   if (maxScore >= 4) {
@@ -192,6 +198,10 @@ export async function parseRawDealBom(
       ) {
         // Strictly Col S (DISTI DISCOUNT)
         colDiscount = colIdx;
+      } else if (text.includes('DURATION') && text.includes('NET') && text.includes('PRICE')) {
+        colDurationNetPrice = colIdx;
+      } else if (text.includes('DURATION') && text.includes('LIST') && text.includes('PRICE')) {
+        colDurationListPrice = colIdx;
       } else if (text === 'DESCRIPTION' || text === 'DESC' || text === 'PRODUCT DESCRIPTION') {
         colDesc = colIdx;
       }
@@ -244,6 +254,29 @@ export async function parseRawDealBom(
     const listVal = safeParseFloat(row[colListPrice]);
     const discountVal = safeParseFloat(row[colDiscount]);
 
+    const durationNetPrice = safeParseFloat(
+      (colDurationNetPrice !== -1 ? row[colDurationNetPrice] : undefined) ??
+      row['DURATION NET PRICE'] ??
+      row['Duration Net Price'] ??
+      row[30] ??
+      0
+    );
+    const durationListPrice = safeParseFloat(
+      (colDurationListPrice !== -1 ? row[colDurationListPrice] : undefined) ??
+      row['DURATION LIST PRICE'] ??
+      row['Duration List Price'] ??
+      row[29] ??
+      0
+    );
+    const distiDiscount = safeParseFloat(
+      (colDiscount !== -1 ? row[colDiscount] : undefined) ??
+      row['DISTI DISCOUNT'] ??
+      row['Disti Discount'] ??
+      row[18] ??
+      discountVal ??
+      0
+    );
+
     if (authStr && !globalAuthNumber) {
       globalAuthNumber = authStr;
       if (!dealIdFromBom) dealIdFromBom = authStr;
@@ -259,11 +292,15 @@ export async function parseRawDealBom(
       lineNumber: lineStr || `${items.length + 1}.0`,
       magicKey: magicKeyStr,
       ciscoSku: skuStr,
+      partNumber: skuStr,
       qty: qtyVal,
       durationMonths: durationVal,
       listPrice: listVal,
       distiDiscountPct: discountVal,
       description: descStr,
+      durationNetPrice,
+      durationListPrice,
+      distiDiscount,
     });
   }
 

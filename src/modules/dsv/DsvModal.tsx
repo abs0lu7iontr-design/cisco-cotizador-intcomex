@@ -16,14 +16,16 @@ import {
   IdCard,
 } from 'lucide-react';
 import { RawBomParsedResult } from './dsvBomParser';
-import { DsvModalFormData, SkuCategoryType } from './types';
+import { DsvModalFormData, SkuCategoryType, Dsv48LineItem } from './types';
 import {
   transformRawBomToDsv,
   generateCleanDsvWorkbook,
   isZeroValueBomItem,
   getFormattedDsvDate,
   generateDsvFilename,
+  DsvDiscrepancy,
 } from './dsvEngine';
+import { DsvDiscrepancyModal } from './DsvDiscrepancyModal';
 
 interface DsvModalProps {
   isOpen: boolean;
@@ -52,6 +54,8 @@ export const DsvModal: React.FC<DsvModalProps> = ({
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [pendingDiscrepancies, setPendingDiscrepancies] = useState<DsvDiscrepancy[]>([]);
+  const [isDiscrepancyModalOpen, setIsDiscrepancyModalOpen] = useState(false);
 
   // Pre-fill Deal ID, Partner Name and End Customer Name when modal opens
   useEffect(() => {
@@ -156,22 +160,66 @@ export const DsvModal: React.FC<DsvModalProps> = ({
   };
 
   const handleExportDsv = async () => {
+    if (!rawBom) return;
+
+    // 1. Transform raw BOM to 48 columns DSV with overrides and updated formData
+    const summary = transformRawBomToDsv(rawBom, formData, overrides, false);
+
+    // 2. Conciliación Financiera: Si hay discrepancias activas (> $0.02 USD), retener descarga y mostrar modal
+    const discrepancies = summary.rows
+      .filter((it) => it.discrepancy !== null && it.discrepancy !== undefined)
+      .map((it) => it.discrepancy!);
+
+    if (discrepancies.length > 0) {
+      setPendingDiscrepancies(discrepancies);
+      setIsDiscrepancyModalOpen(true);
+      return;
+    }
+
+    // 3. Si no hay discrepancias, ejecutar descarga directamente
+    await executeExport(summary.rows);
+  };
+
+  const handleResolveDiscrepancy = async (decision: 'BOM' | 'MATH') => {
+    setIsDiscrepancyModalOpen(false);
+    if (!rawBom) return;
+
+    const summary = transformRawBomToDsv(rawBom, formData, overrides, false);
+
+    if (decision === 'MATH') {
+      // Sobrescribir colK con calculatedPrice en las filas afectadas
+      summary.rows.forEach((it) => {
+        if (it.discrepancy) {
+          it.reportedNetPrice = it.discrepancy.calculatedPrice;
+        }
+      });
+    }
+
+    await executeExport(summary.rows);
+  };
+
+  const handleCancelDiscrepancy = () => {
+    setIsDiscrepancyModalOpen(false);
+    setIsGenerating(false);
+  };
+
+  const executeExport = async (rows: Dsv48LineItem[]) => {
     setIsGenerating(true);
     setSuccessMessage(null);
 
     try {
-      // 1. Transform raw BOM to 48 columns DSV with overrides and updated formData
-      const summary = transformRawBomToDsv(rawBom, formData, overrides, false);
-      const outputFilename = previewFilename || generateDsvFilename(
-        formData.dealId,
-        formData.partnerName,
-        formData.endCustomerName
-      );
+      const outputFilename =
+        previewFilename ||
+        generateDsvFilename(
+          formData.dealId,
+          formData.partnerName,
+          formData.endCustomerName
+        );
 
-      // 2. Generate clean Excel with 48 columns
-      const { buffer } = await generateCleanDsvWorkbook(summary.rows, outputFilename);
+      // Generate clean Excel with 48 columns
+      const { buffer } = await generateCleanDsvWorkbook(rows, outputFilename);
 
-      // 3. Desktop PyWebView vs Web Browser handling
+      // Desktop PyWebView vs Web Browser handling
       const isDesktop = Boolean((window as any).pywebview?.api?.save_estimate_structured);
 
       if (isDesktop) {
@@ -546,6 +594,14 @@ export const DsvModal: React.FC<DsvModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Financial Discrepancy Resolution Modal */}
+      <DsvDiscrepancyModal
+        isOpen={isDiscrepancyModalOpen}
+        discrepancies={pendingDiscrepancies}
+        onResolve={handleResolveDiscrepancy}
+        onCancel={handleCancelDiscrepancy}
+      />
     </div>
   );
 };

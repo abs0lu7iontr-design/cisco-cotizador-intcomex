@@ -115,48 +115,133 @@ export function getDsvDiscountRate(sku: string, defaultRate: number = 42): numbe
  *   * Col J (Reported Product Unit Price): LIST_PRICE * (1 - descuento) -> NUNCA se multiplica por años.
  *   * Col K (Reported Net Price): Columna_J * cantidad_de_años -> J multiplicado por los años.
  */
+export interface DsvDiscrepancy {
+  sku: string;
+  lineNumber: string;
+  durationMonths: number;
+  calculatedPrice: number;   // Opción 1: List * (1 - Disc)
+  bomReportedPrice: number;  // Opción 2: Columna AE
+  difference: number;
+  selectedResolution?: 'BOM' | 'MATH';
+}
+
+// Clasificador universal de contratos de servicio Cisco
+export function isCiscoServiceSku(sku: string, description: string = ''): boolean {
+  const normSku = String(sku || '').trim().toUpperCase();
+  const normDesc = String(description || '').trim().toUpperCase();
+
+  const servicePrefixRegex = /^(CON|CX|CXE|CXS|SVS|AS|ASF|HT|HTS|SP|SPA|SOL|TRN|EDU)-/i;
+  if (servicePrefixRegex.test(normSku)) return true;
+
+  const serviceKeywords = ['SMARTNET', 'SOLUTION SUPPORT', 'SUCCESS TRACK', 'SUPPORT SERVICE', 'TECH SUPPORT'];
+  return serviceKeywords.some((kw) => normDesc.includes(kw));
+}
+
+/**
+ * FASE 4: Lógica Financiera (Columnas J y K en DSV) y Conciliación Silenciosa
+ * 
+ * - Hardware y Suscripciones (Misma fórmula):
+ *   * Col J (Reported Product Unit Price): LIST_PRICE * (1 - 0.42) [o 0.20 para familias SMB: C1000, C1200, C1300, CBS]
+ *   * Col K (Reported Net Price): LIST_PRICE * (1 - (DISTI_DISCOUNT / 100))
+ * 
+ * - Servicios Cisco:
+ *   * Col J: INTACTA -> LIST_PRICE * (1 - descuento) [37% o 41.41%]
+ *   * Opción 1 (Cálculo Teórico): durationList * (1 - distiDisc)
+ *   * Opción 2 (Dato Oficial Cisco BOM): Columna AE (DURATION NET PRICE)
+ *   * Conciliación: Si diff > $0.02 USD, genera DsvDiscrepancy para resolución de usuario
+ *   * Col K por defecto: Opción 2 (Columna AE)
+ */
 export function calculateDsvPrices(
   sku: string,
   listPrice: number,
   distiDiscountPct: number,
   durationMonths: number,
-  overrideCategory?: SkuCategoryType
-): { reportedProductUnitPrice: number; reportedNetPrice: number; effectiveCategory: SkuCategoryType } {
+  overrideCategory?: SkuCategoryType,
+  itemData?: {
+    durationNetPrice?: number;
+    durationListPrice?: number;
+    distiDiscount?: number;
+    description?: string;
+    lineNumber?: string;
+    partNumber?: string;
+  }
+): {
+  reportedProductUnitPrice: number;
+  reportedNetPrice: number;
+  effectiveCategory: SkuCategoryType;
+  discrepancy: DsvDiscrepancy | null;
+} {
   const effectiveCategory = overrideCategory || detectSkuCategory(sku);
+  const partNumber = itemData?.partNumber || sku;
+  const description = itemData?.description || '';
+  const lineNumber = itemData?.lineNumber || '';
 
-  if (effectiveCategory === 'service') {
-    // 1. Determinación de Años
+  const isService = effectiveCategory === 'service' || isCiscoServiceSku(partNumber, description);
+
+  if (isService) {
     const years = durationMonths >= 12 ? Math.max(1, Math.round(durationMonths / 12)) : 1;
 
-    // 2. Determinación del Descuento
+    // 1. Columna J: INTACTA
     const discount = durationMonths >= 36 ? 0.4141 : 0.37;
-
-    // 3. Columna J: Siempre valor unitario anual (SIN multiplicar por años)
     const colJ = Number((listPrice * (1 - discount)).toFixed(2));
 
-    // 4. Columna K: Columna J multiplicado por la cantidad de años
-    const colK = Number((colJ * years).toFixed(2));
+    // 2. Opción 1: Cálculo Teórico Dinámico
+    const distiDisc =
+      (itemData?.distiDiscount ?? distiDiscountPct) > 1
+        ? (itemData?.distiDiscount ?? distiDiscountPct) / 100
+        : (itemData?.distiDiscount ?? distiDiscountPct ?? 0);
+
+    const durationList =
+      itemData?.durationListPrice && itemData.durationListPrice > 0
+        ? itemData.durationListPrice
+        : listPrice * years;
+
+    const option1_MathNet = Number((durationList * (1 - distiDisc)).toFixed(2));
+
+    // 3. Opción 2: Dato Oficial Cisco (Columna AE)
+    const hasBomDurationNet = itemData?.durationNetPrice !== undefined && itemData.durationNetPrice > 0;
+    const option2_BomNet = hasBomDurationNet
+      ? Number(itemData.durationNetPrice!.toFixed(2))
+      : option1_MathNet;
+
+    // 4. Conciliación silenciosa (Tolerancia: $0.02 USD)
+    const diff = Number(Math.abs(option1_MathNet - option2_BomNet).toFixed(2));
+    let discrepancy: DsvDiscrepancy | null = null;
+
+    if (hasBomDurationNet && diff > 0.02) {
+      discrepancy = {
+        sku: partNumber,
+        lineNumber: lineNumber,
+        durationMonths,
+        calculatedPrice: option1_MathNet,
+        bomReportedPrice: option2_BomNet,
+        difference: diff,
+      };
+    }
+
+    // Valor por defecto: Columna AE oficial de Cisco
+    const colK = option2_BomNet;
 
     return {
       reportedProductUnitPrice: colJ,
       reportedNetPrice: colK,
-      effectiveCategory,
+      effectiveCategory: 'service',
+      discrepancy,
     };
   } else {
     // Hardware y Suscripciones (Misma fórmula financiera)
-    // NUEVA LÓGICA
     const discountRate = getDsvDiscountRate(sku);
-    const discountMultiplier = 1 - (discountRate / 100);
-    
-    // El cálculo del costo DSV debe usar el nuevo multiplicador (0.80 para SMB, 0.58 por defecto)
-    const costoDsv = Math.round((listPrice * discountMultiplier) * 100) / 100;
+    const discountMultiplier = 1 - discountRate / 100;
+
+    const costoDsv = Math.round(listPrice * discountMultiplier * 100) / 100;
     const colJ = costoDsv;
-    const discRate = distiDiscountPct > 0 ? distiDiscountPct / 100 : (discountRate / 100);
+    const discRate = distiDiscountPct > 0 ? distiDiscountPct / 100 : discountRate / 100;
     const colK = Number((listPrice * (1 - discRate)).toFixed(2));
     return {
       reportedProductUnitPrice: colJ,
       reportedNetPrice: colK,
       effectiveCategory,
+      discrepancy: null,
     };
   }
 }
@@ -191,16 +276,24 @@ export function transformRawBomToDsv(
 
     const itemLineKey = sanitizeTrim(item.lineNumber);
     const itemOverride = overrides[itemLineKey];
-    const detected = detectSkuCategory(item.ciscoSku);
 
-    // Lógica Financiera Columnas J y K
-    const { reportedProductUnitPrice, reportedNetPrice, effectiveCategory } = calculateDsvPrices(
-      item.ciscoSku,
-      item.listPrice,
-      item.distiDiscountPct,
-      item.durationMonths,
-      itemOverride
-    );
+    // Lógica Financiera Columnas J y K con Doble Verificación
+    const { reportedProductUnitPrice, reportedNetPrice, effectiveCategory, discrepancy } =
+      calculateDsvPrices(
+        item.ciscoSku,
+        item.listPrice,
+        item.distiDiscountPct,
+        item.durationMonths,
+        itemOverride,
+        {
+          durationNetPrice: item.durationNetPrice,
+          durationListPrice: item.durationListPrice,
+          distiDiscount: item.distiDiscount ?? item.distiDiscountPct,
+          description: item.description,
+          lineNumber: item.lineNumber,
+          partNumber: item.partNumber || item.ciscoSku,
+        }
+      );
 
     const resellerNameVal = sanitizeTrim(
       form?.partnerName || item.resellerName || rawBom.resellerName
@@ -264,18 +357,24 @@ export function transformRawBomToDsv(
       originalListPrice: Number(item.listPrice) || 0,
       originalDistiDiscountPct: Number(item.distiDiscountPct) || 0,
       durationMonths: Number(item.durationMonths) || 0,
-      detectedType: detected,
+      detectedType: effectiveCategory,
       overrideType: itemOverride,
+      discrepancy,
     };
 
     dsvRows.push(dsvRow);
   }
+
+  const discrepanciesList = dsvRows
+    .filter((r) => r.discrepancy !== null && r.discrepancy !== undefined)
+    .map((r) => r.discrepancy!);
 
   return {
     totalOriginalItems: rawBom.items.length,
     validDsvItems: dsvRows.length,
     discardedZeroItems: discardedCount,
     rows: dsvRows,
+    discrepancies: discrepanciesList,
   };
 }
 

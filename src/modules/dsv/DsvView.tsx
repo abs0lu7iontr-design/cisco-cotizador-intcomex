@@ -524,13 +524,21 @@ export const DsvView: React.FC = () => {
                   {validItems.map((item, idx) => {
                     const lineKey = item.lineNumber;
                     const itemOverride = overrides[lineKey];
-                    const { reportedProductUnitPrice, reportedNetPrice, effectiveCategory } =
+                    const { reportedProductUnitPrice, reportedNetPrice, effectiveCategory, discrepancy } =
                       calculateDsvPrices(
                         item.ciscoSku,
                         item.listPrice,
                         item.distiDiscountPct,
                         item.durationMonths,
-                        itemOverride
+                        itemOverride,
+                        {
+                          durationNetPrice: item.durationNetPrice,
+                          durationListPrice: item.durationListPrice,
+                          distiDiscount: item.distiDiscount ?? item.distiDiscountPct,
+                          description: item.description,
+                          lineNumber: item.lineNumber,
+                          partNumber: item.partNumber || item.ciscoSku,
+                        }
                       );
 
                     const isManual = Boolean(itemOverride);
@@ -591,6 +599,14 @@ export const DsvView: React.FC = () => {
                         </td>
                         <td className="p-3 text-right font-bold text-indigo-300">
                           ${reportedNetPrice.toFixed(2)}
+                          {discrepancy && (
+                            <span
+                              className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] bg-amber-950/80 text-amber-300 border border-amber-500/40 inline-block font-sans font-bold"
+                              title={`Discrepancia detectada: Diferencia de $${discrepancy.difference.toFixed(2)} USD entre cálculo teórico ($${discrepancy.calculatedPrice.toFixed(2)}) y BOM Cisco ($${discrepancy.bomReportedPrice.toFixed(2)})`}
+                            >
+                              ⚠️ ±${discrepancy.difference.toFixed(2)}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );

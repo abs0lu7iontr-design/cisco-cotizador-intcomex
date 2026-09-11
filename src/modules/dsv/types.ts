@@ -14,6 +14,8 @@ export interface DsvModalFormData {
   endCustomerName?: string;   // Col AP: End Customer Name (Auto-detectado del BOM)
 }
 
+import type { DsvDiscrepancy } from './dsvEngine';
+
 export interface Dsv48LineItem {
   status: string;                               // Col A (1): "NEW"
   distributorToResellerSalesOrderDate: string;  // Col B (2): DD-MMM-YYYY
@@ -70,6 +72,7 @@ export interface Dsv48LineItem {
   durationMonths: number;
   detectedType: SkuCategoryType;
   overrideType?: SkuCategoryType;
+  discrepancy?: DsvDiscrepancy | null;
 }
 
 export interface DsvTransformationSummary {
@@ -77,4 +80,5 @@ export interface DsvTransformationSummary {
   validDsvItems: number;
   discardedZeroItems: number;
   rows: Dsv48LineItem[];
+  discrepancies?: DsvDiscrepancy[];
 }
