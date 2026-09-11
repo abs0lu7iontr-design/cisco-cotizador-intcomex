@@ -23,6 +23,7 @@ import {
   getSharedSkuRules,
   publishSharedSkuRules,
 } from '../modules/cloud';
+import { executeSafeMiningAudit, AuditReport } from '../modules/mining';
 
 export type NavViewId =
   | 'dashboard'
@@ -99,6 +100,12 @@ interface CiscoAutomatedState {
   loadPriorAuditMargins: () => Promise<void>;
   dismissDetectedAuditModal: () => void;
 
+  // Mining & Industrial Conditions Audit
+  miningAuditData: AuditReport | null;
+  setMiningAuditData: (data: AuditReport | null) => void;
+  isMiningAuditModalOpen: boolean;
+  setIsMiningAuditModalOpen: (open: boolean) => void;
+
   processFileBuffer: (buffer: ArrayBuffer, fileName: string) => Promise<void>;
   setRowRule: (rowIdx: number, rule: OverrideRuleType, sku?: string) => Promise<void>;
   cycleRowRule: (rowIdx: number) => Promise<void>;
@@ -143,6 +150,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
   const [isRecalculated, setIsRecalculated] = useState<boolean>(false);
   const [detectedAudit, setDetectedAudit] = useState<DetectedAuditInfo | null>(null);
   const [isDetectedAuditModalOpen, setIsDetectedAuditModalOpen] = useState<boolean>(false);
+
+  // Mining & Industrial Conditions Audit
+  const [miningAuditData, setMiningAuditData] = useState<AuditReport | null>(null);
+  const [isMiningAuditModalOpen, setIsMiningAuditModalOpen] = useState<boolean>(false);
 
   // UI Controls
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -421,6 +432,14 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           setPendingFastTrackAudit(null);
           setIsFastTrackOpportunityModalOpen(false);
         }
+
+        // 6. MÓDULO AUDITOR DE MINERÍA Y SERVICIOS CISCO (Read-Only)
+        const auditReport = executeSafeMiningAudit(rawResult);
+        if (auditReport && auditReport.overallStatus !== 'NO_RULES') {
+          setMiningAuditData(auditReport);
+        } else {
+          setMiningAuditData(null);
+        }
       } catch (err: any) {
         console.error('Error processing workbook:', err);
         setErrorMessage(
@@ -651,6 +670,19 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         setCurrentFileName(record.originalFileName || `${record.estimateId}_${record.dealId}.xlsx`);
         setCurrentView('quoter');
         setActiveQuoterTab('table');
+
+        // Evaluar condiciones minería
+        const auditReport = executeSafeMiningAudit({
+          headerInfo: record.headerInfo || { customerName: record.partnerName || 'Intcomex Partner', companyName: record.clientFinalName || 'Cliente Final' },
+          items: reconstructedItems,
+          originalProductTotal: totalNetCisco,
+          calculatedProductTotal: totalVenta,
+        });
+        if (auditReport && auditReport.overallStatus !== 'NO_RULES') {
+          setMiningAuditData(auditReport);
+        } else {
+          setMiningAuditData(null);
+        }
       } catch (err: any) {
         console.error('Error cargando cotización desde la nube:', err);
         setErrorMessage(`Error restaurando cotización: ${err?.message || 'Datos corruptos'}`);
@@ -765,6 +797,8 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     setIsRecalculated(false);
     setDetectedAudit(null);
     setIsDetectedAuditModalOpen(false);
+    setMiningAuditData(null);
+    setIsMiningAuditModalOpen(false);
     setErrorMessage(null);
     setParams(DEFAULT_PARAMS);
   }, []);
@@ -855,6 +889,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       isDetectedAuditModalOpen,
       loadPriorAuditMargins,
       dismissDetectedAuditModal,
+      miningAuditData,
+      setMiningAuditData,
+      isMiningAuditModalOpen,
+      setIsMiningAuditModalOpen,
       isProcessing,
       errorMessage,
       activeQuoterTab,

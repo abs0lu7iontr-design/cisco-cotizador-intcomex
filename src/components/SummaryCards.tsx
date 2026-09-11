@@ -4,14 +4,22 @@
 
 import React from 'react';
 import { ProcessedEstimateResult, QuoteParameters } from '../core/types';
-import { DollarSign, TrendingUp, ShieldCheck, Truck, Sparkles, Layers, Percent } from 'lucide-react';
+import { DollarSign, TrendingUp, ShieldCheck, Truck, Sparkles, Layers, Percent, Pickaxe } from 'lucide-react';
+import { AuditReport } from '../modules/mining';
 
 interface SummaryCardsProps {
   data: ProcessedEstimateResult;
   params: QuoteParameters;
+  miningAudit?: AuditReport | null;
+  onOpenMiningAudit?: () => void;
 }
 
-export const SummaryCards: React.FC<SummaryCardsProps> = ({ data, params }) => {
+export const SummaryCards: React.FC<SummaryCardsProps> = ({
+  data,
+  params,
+  miningAudit,
+  onOpenMiningAudit,
+}) => {
   const formatCurrency = (amount?: number) => {
     if (amount === undefined || amount === null || isNaN(amount)) return '$0.00';
     return (
@@ -129,6 +137,51 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ data, params }) => {
           {totalItemsCount} unidades totales {ftCount > 0 ? `(${ftCount} con promo Fast Track)` : ''}
         </p>
       </div>
+
+      {/* Mining Audit Executive Banner */}
+      {miningAudit && miningAudit.overallStatus !== 'NO_RULES' && onOpenMiningAudit && (
+        <div className="sm:col-span-2 lg:col-span-4 bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-md">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-inner">
+              <Pickaxe className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-bold text-white">
+                  Auditoría Comercial Minera: {miningAudit.matchedAccount?.groupName || 'Cuenta Detectada'}
+                </span>
+                <span
+                  className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                    miningAudit.overallStatus === 'COMPLIANT'
+                      ? 'bg-emerald-950 text-emerald-300 border-emerald-700/60'
+                      : miningAudit.overallStatus === 'REQUIRES_REVIEW'
+                      ? 'bg-rose-950 text-rose-300 border-rose-700/60'
+                      : 'bg-amber-950 text-amber-300 border-amber-700/60'
+                  }`}
+                >
+                  {miningAudit.overallStatus === 'COMPLIANT'
+                    ? '100% Conforme'
+                    : miningAudit.overallStatus === 'REQUIRES_REVIEW'
+                    ? 'Diferencias Detectadas'
+                    : 'Revisión Manual'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                {miningAudit.lines.length} líneas auditadas &bull;{' '}
+                {miningAudit.sntOpportunityCount > 0
+                  ? `${miningAudit.sntOpportunityCount} contratos SNT detectados para migración`
+                  : 'Condiciones de suscripción y producto validadas'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onOpenMiningAudit}
+            className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-colors cursor-pointer"
+          >
+            Ver Informe Detallado &rarr;
+          </button>
+        </div>
+      )}
     </div>
   );
 };

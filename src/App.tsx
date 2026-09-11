@@ -19,6 +19,7 @@ import { QuickCalculator } from './components/QuickCalculator';
 import { RulesExplanationModal } from './components/RulesExplanationModal';
 import { DownloadModal } from './components/DownloadModal';
 import { PriorAuditDetectedModal } from './components/PriorAuditDetectedModal';
+import { MiningAuditModal } from './modules/mining';
 import { DashboardView } from './components/DashboardView';
 import { UploadView } from './components/UploadView';
 import { EstimatesHistoryView } from './components/EstimatesHistoryView';
@@ -86,6 +87,9 @@ function AppContent() {
     isDetectedAuditModalOpen,
     loadPriorAuditMargins,
     dismissDetectedAuditModal,
+    miningAuditData,
+    isMiningAuditModalOpen,
+    setIsMiningAuditModalOpen,
   } = useCiscoAutomatedStore();
 
   // Initialize theme on application mount
@@ -313,6 +317,13 @@ function AppContent() {
         onModifyMargins={dismissDetectedAuditModal}
       />
 
+      {/* Mining & Industrial Conditions Audit Modal */}
+      <MiningAuditModal
+        isOpen={isMiningAuditModalOpen}
+        onClose={() => setIsMiningAuditModalOpen(false)}
+        report={miningAuditData}
+      />
+
       {/* Structured Dual Download Modal (Web & Desktop) */}
       {processedResult?.workbookBuffer && (
         <DownloadModal
@@ -358,6 +369,8 @@ function AppContent() {
           isSavingCloud={isSavingCloud}
           onDsvClick={handleDsvClick}
           onFastTrackClick={() => setIsFastTrackAdminModalOpen(true)}
+          onMiningAuditClick={() => setIsMiningAuditModalOpen(true)}
+          miningAuditReport={miningAuditData}
           onThemeClick={() => setIsThemeModalOpen(true)}
           onClearClick={clearEstimate}
           onToggleSidebar={() => setIsNavSidebarOpen((prev) => !prev)}
@@ -456,7 +469,12 @@ function AppContent() {
               ) : processedResult ? (
                 <div className="space-y-6">
                   {/* Summary Metric Cards */}
-                  <SummaryCards data={processedResult} params={params} />
+                  <SummaryCards
+                    data={processedResult}
+                    params={params}
+                    miningAudit={miningAuditData}
+                    onOpenMiningAudit={() => setIsMiningAuditModalOpen(true)}
+                  />
 
                   {/* Main Grid: Parameters Sidebar + Quoter Views */}
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">

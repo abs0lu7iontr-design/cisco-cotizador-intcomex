@@ -19,6 +19,7 @@ import {
   Zap,
   Palette,
   Share2,
+  Pickaxe,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 
@@ -31,6 +32,8 @@ interface NavbarProps {
   isSavingCloud?: boolean;
   onDsvClick?: () => void;
   onFastTrackClick?: () => void;
+  onMiningAuditClick?: () => void;
+  miningAuditReport?: any;
   onThemeClick?: () => void;
   onClearClick: () => void;
   onToggleSidebar?: () => void;
@@ -51,6 +54,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   isSavingCloud = false,
   onDsvClick,
   onFastTrackClick,
+  onMiningAuditClick,
+  miningAuditReport,
   onThemeClick,
   onClearClick,
   onToggleSidebar,
@@ -162,6 +167,28 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Zap className="w-4 h-4 text-amber-400" />
               <span className="hidden sm:inline">Fast Track</span>
+            </button>
+          )}
+
+          {/* Mining Audit Badge / Button */}
+          {hasData && miningAuditReport && miningAuditReport.overallStatus !== 'NO_RULES' && onMiningAuditClick && (
+            <button
+              id="btn-mining-audit"
+              onClick={onMiningAuditClick}
+              className={`inline-flex items-center space-x-1.5 text-xs font-bold px-3 py-2 rounded-xl border transition-all cursor-pointer shadow-md ${
+                miningAuditReport.overallStatus === 'COMPLIANT'
+                  ? 'bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 border-emerald-700/60'
+                  : miningAuditReport.overallStatus === 'REQUIRES_REVIEW'
+                  ? 'bg-rose-950/70 hover:bg-rose-900/80 text-rose-300 border-rose-700/60'
+                  : 'bg-amber-950/70 hover:bg-amber-900/80 text-amber-300 border-amber-700/60'
+              }`}
+              title={`Auditoría Minería: ${miningAuditReport.matchedAccount?.groupName || 'Cuenta Detectada'}`}
+            >
+              <Pickaxe className="w-4 h-4 text-amber-400" />
+              <span className="hidden sm:inline">Auditoría Minera</span>
+              {miningAuditReport.sntOpportunityCount > 0 && (
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              )}
             </button>
           )}
 
