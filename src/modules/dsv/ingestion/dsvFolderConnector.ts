@@ -2,7 +2,7 @@
 // CISCO AUTOMATED v2.1 - ONEDRIVE DIRECTORY CONNECTOR & SCANNER
 // ============================================================================
 
-import { parseEmlContent, extractHighestDealId } from './emlParser';
+import { parseCiscoEml, parseJorgeEml, extractHighestDealId } from './emlParser';
 import { DealConsolidator } from './dealConsolidator';
 import { ConsolidatedDealRecord } from './types';
 
@@ -25,7 +25,7 @@ export async function scanOneDriveDsvDirectory(): Promise<ConsolidatedDealRecord
   try {
     const ciscoDirHandle = await rootHandle.getDirectoryHandle('cisco');
     const bomFilesMap = new Map<string, { fileName: string; fileBuffer: ArrayBuffer; lastModified: number }>();
-    const emlEntries: Array<{ name: string; content: string; lastModified: number }> = [];
+    const emlEntries: Array<{ name: string; file: File }> = [];
 
     for await (const [name, handle] of (ciscoDirHandle as any).entries()) {
       if (handle.kind === 'file') {
@@ -33,6 +33,7 @@ export async function scanOneDriveDsvDirectory(): Promise<ConsolidatedDealRecord
         const lowerName = name.toLowerCase();
 
         if (lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx') || lowerName.endsWith('.xlsm')) {
+          // Archivo BOM suelto en disco (si existiera)
           const dealId = extractHighestDealId(name);
           if (dealId) {
             bomFilesMap.set(dealId, {
@@ -42,30 +43,39 @@ export async function scanOneDriveDsvDirectory(): Promise<ConsolidatedDealRecord
             });
           }
         } else if (lowerName.endsWith('.eml')) {
-          emlEntries.push({
-            name,
-            content: await file.text(),
-            lastModified: file.lastModified,
-          });
+          emlEntries.push({ name, file });
         }
       }
     }
 
-    // Procesar correos de Cisco (Dirección y vinculación a BOM)
-    for (const eml of emlEntries) {
-      const parsed = parseEmlContent(eml.content, eml.name);
-      if (parsed.dealId) {
+    // Procesar correos .eml de Cisco (Extracción de Base64 MIME BOM y Dirección)
+    for (const entry of emlEntries) {
+      const rawContent = await entry.file.text();
+      const parsed = parseCiscoEml(rawContent, entry.name);
+
+      const dealId = parsed.dealId || extractHighestDealId(entry.name);
+
+      if (dealId) {
+        // El BOM se extrae preferentemente del adjunto Base64 dentro del .eml
+        const bomFile = parsed.bomAttachment
+          ? {
+              fileName: parsed.bomAttachment.fileName,
+              fileBuffer: parsed.bomAttachment.buffer,
+              lastModified: parsed.dateHeaderTimestamp ?? entry.file.lastModified,
+            }
+          : bomFilesMap.get(dealId);
+
         consolidator.registerCiscoData({
-          dealId: parsed.dealId,
-          fileName: eml.name,
-          lastModified: parsed.dateHeaderTimestamp ?? eml.lastModified,
+          dealId,
+          fileName: entry.name,
+          lastModified: parsed.dateHeaderTimestamp ?? entry.file.lastModified,
           address: parsed.address,
-          bomFile: bomFilesMap.get(parsed.dealId),
+          bomFile,
         });
       }
     }
 
-    // Asegurar registro de BOMs huérfanos sin correo previo
+    // Asegurar registro de BOMs sueltos en disco sin correo asociado
     for (const [dealId, bom] of bomFilesMap.entries()) {
       if (!consolidator.hasCiscoData(dealId)) {
         consolidator.registerCiscoData({
@@ -77,7 +87,7 @@ export async function scanOneDriveDsvDirectory(): Promise<ConsolidatedDealRecord
       }
     }
   } catch (err) {
-    console.warn('No se encontró la subcarpeta cisco/ en el directorio seleccionado.', err);
+    console.warn('Subcarpeta cisco no encontrada:', err);
   }
 
   // 2. Procesar Subcarpeta "jorge"
@@ -86,12 +96,14 @@ export async function scanOneDriveDsvDirectory(): Promise<ConsolidatedDealRecord
     for await (const [name, handle] of (jorgeDirHandle as any).entries()) {
       if (handle.kind === 'file' && name.toLowerCase().endsWith('.eml')) {
         const file = await handle.getFile();
-        const content = await file.text();
-        const parsed = parseEmlContent(content, name);
+        const rawContent = await file.text();
+        const parsed = parseJorgeEml(rawContent, name);
 
-        if (parsed.dealId) {
+        const dealId = parsed.dealId || extractHighestDealId(name);
+
+        if (dealId) {
           consolidator.registerJorgeData({
-            dealId: parsed.dealId,
+            dealId,
             fileName: name,
             lastModified: parsed.dateHeaderTimestamp ?? file.lastModified,
             poNumber: parsed.poNumber || '',
@@ -101,7 +113,7 @@ export async function scanOneDriveDsvDirectory(): Promise<ConsolidatedDealRecord
       }
     }
   } catch (err) {
-    console.warn('No se encontró la subcarpeta jorge/ en el directorio seleccionado.', err);
+    console.warn('Subcarpeta jorge no encontrada:', err);
   }
 
   return consolidator.consolidate();
@@ -113,7 +125,8 @@ export async function scanOneDriveDsvDirectory(): Promise<ConsolidatedDealRecord
 export async function scanFileListDsvDirectory(fileList: FileList): Promise<ConsolidatedDealRecord[]> {
   const consolidator = new DealConsolidator();
   const bomFilesMap = new Map<string, { fileName: string; fileBuffer: ArrayBuffer; lastModified: number }>();
-  const ciscoEmlEntries: Array<{ name: string; content: string; lastModified: number }> = [];
+  const ciscoEmlEntries: Array<{ name: string; file: File }> = [];
+  const jorgeEmlEntries: Array<{ name: string; file: File }> = [];
 
   for (let i = 0; i < fileList.length; i++) {
     const file = fileList[i];
@@ -135,40 +148,56 @@ export async function scanFileListDsvDirectory(fileList: FileList): Promise<Cons
           });
         }
       } else if (lowerName.endsWith('.eml')) {
-        ciscoEmlEntries.push({
-          name,
-          content: await file.text(),
-          lastModified: file.lastModified,
-        });
+        ciscoEmlEntries.push({ name, file });
       }
     } else if (isJorge && lowerName.endsWith('.eml')) {
-      const content = await file.text();
-      const parsed = parseEmlContent(content, name);
-      if (parsed.dealId) {
-        consolidator.registerJorgeData({
-          dealId: parsed.dealId,
-          fileName: name,
-          lastModified: parsed.dateHeaderTimestamp ?? file.lastModified,
-          poNumber: parsed.poNumber || '',
-          soNumber: parsed.soNumber || '',
-        });
-      }
+      jorgeEmlEntries.push({ name, file });
     }
   }
 
-  for (const eml of ciscoEmlEntries) {
-    const parsed = parseEmlContent(eml.content, eml.name);
-    if (parsed.dealId) {
+  // 1. Procesar correos Cisco
+  for (const entry of ciscoEmlEntries) {
+    const rawContent = await entry.file.text();
+    const parsed = parseCiscoEml(rawContent, entry.name);
+    const dealId = parsed.dealId || extractHighestDealId(entry.name);
+
+    if (dealId) {
+      const bomFile = parsed.bomAttachment
+        ? {
+            fileName: parsed.bomAttachment.fileName,
+            fileBuffer: parsed.bomAttachment.buffer,
+            lastModified: parsed.dateHeaderTimestamp ?? entry.file.lastModified,
+          }
+        : bomFilesMap.get(dealId);
+
       consolidator.registerCiscoData({
-        dealId: parsed.dealId,
-        fileName: eml.name,
-        lastModified: parsed.dateHeaderTimestamp ?? eml.lastModified,
+        dealId,
+        fileName: entry.name,
+        lastModified: parsed.dateHeaderTimestamp ?? entry.file.lastModified,
         address: parsed.address,
-        bomFile: bomFilesMap.get(parsed.dealId),
+        bomFile,
       });
     }
   }
 
+  // 2. Procesar correos Jorge
+  for (const entry of jorgeEmlEntries) {
+    const rawContent = await entry.file.text();
+    const parsed = parseJorgeEml(rawContent, entry.name);
+    const dealId = parsed.dealId || extractHighestDealId(entry.name);
+
+    if (dealId) {
+      consolidator.registerJorgeData({
+        dealId,
+        fileName: entry.name,
+        lastModified: parsed.dateHeaderTimestamp ?? entry.file.lastModified,
+        poNumber: parsed.poNumber || '',
+        soNumber: parsed.soNumber || '',
+      });
+    }
+  }
+
+  // 3. Registrar BOMs sueltos sin correo
   for (const [dealId, bom] of bomFilesMap.entries()) {
     if (!consolidator.hasCiscoData(dealId)) {
       consolidator.registerCiscoData({
