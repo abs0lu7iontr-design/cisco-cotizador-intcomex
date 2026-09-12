@@ -66,9 +66,7 @@ export const DsvView: React.FC = () => {
         dealId: record.dealId,
         po: record.jorge?.poNumber || '',
         so: record.jorge?.soNumber || '',
-        endCustomerAddress: record.cisco.address
-          ? `${record.cisco.address.street}, ${record.cisco.address.city}, ${record.cisco.address.country}`
-          : 'Chile',
+        endCustomerAddress: record.cisco.address?.street || 'Chile',
       });
       setActiveTab('manual');
       setIsModalOpen(true);

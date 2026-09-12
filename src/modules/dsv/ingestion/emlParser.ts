@@ -221,23 +221,28 @@ export function parseCiscoEml(rawEml: string, fileName?: string): ParsedCiscoEml
     }
   }
 
-  // 3. Extraer Dirección desde "End Customer Address:"
+  // 3. Extraer Dirección Literal desde "End Customer Address:"
   let address: ExtractedAddress | undefined;
-  const addrRegex = /End\s*Customer\s*Address\s*:?\s*([\s\S]*?)(?=(?:End\s*Customer|Shipping|Billing|Reseller|Order|Line|Item|\n\s*\n|$))/i;
+
+  // Busca el bloque tras 'End Customer Address:' hasta el siguiente campo o fin de celda
+  const addrRegex = /End\s*Customer\s*Address\s*:?\s*([\s\S]*?)(?=(?:Reseller|Partner|Billing|Shipping|End\s*Customer|Order|Line|Deal|$))/i;
   const addrMatch = decodedBody.match(addrRegex);
 
   if (addrMatch) {
+    // Limpia saltos de línea internos y normaliza espacios manteniendo el texto original
     const rawAddr = addrMatch[1]
       .split('\n')
       .map((line) => line.trim())
       .filter((line) => line.length > 0)
-      .join(', ');
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
 
     if (rawAddr.length > 3) {
       address = {
-        street: rawAddr,
-        city: 'Santiago',
-        country: 'Chile',
+        street: rawAddr, // Texto 100% literal: "RUTA 68 KM 17,8 AL COSTADO DE LA PLAZA DE PEAJE LO PRADO,SANTIAGO,METROPOLITANA DE SANTIAGO,CL,"
+        city: '',
+        country: '',
       };
     }
   }

@@ -417,7 +417,7 @@ export const DsvIngestionView: React.FC<DsvIngestionViewProps> = ({
                         {/* Address */}
                         <td className="py-3.5 px-4">
                           {hasAddr ? (
-                            <div className="flex items-start space-x-1.5 text-slate-300 max-w-[200px]" title={`${record.cisco!.address!.street}, ${record.cisco!.address!.city}, ${record.cisco!.address!.country}`}>
+                            <div className="flex items-start space-x-1.5 text-slate-300 max-w-[200px]" title={record.cisco!.address!.street}>
                               <MapPin className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />
                               <span className="truncate text-xs">
                                 {record.cisco!.address!.street}
