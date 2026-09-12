@@ -1,59 +1,142 @@
 // ============================================================================
-// CISCO AUTOMATED v2.1 - MIME EML PARSER & ATTACHMENT EXTRACTOR
-// ============================================================================
+// CISCO AUTOMATED v2.1 - MIME EML MULTIPART DECODER & ATTACHMENT EXTRACTOR
+// ==========================================
 
 import { ExtractedAddress } from './types';
 
-// Decodificador de Quoted-Printable (=XX y soft line breaks) compatible con UTF-8
-export function decodeQuotedPrintable(input: string): string {
-  if (!input) return '';
-  // Remover soft line breaks
-  const normalized = input.replace(/=(?:\r\n|\r|\n)/g, '');
+// ==========================================
+// 1. UTILITARIOS DECODIFICADORES MIME UTF-8
+// ==========================================
 
+export function decodeBase64ToUtf8(base64Str: string): string {
   try {
-    // Decodificar secuencias continuas de bytes escapados (=XX) como UTF-8
-    return normalized.replace(/(?:=[0-9A-Fa-f]{2})+/g, (match) => {
-      const hexPairs = match.split('=').filter(Boolean);
-      const bytes = new Uint8Array(hexPairs.map((hex) => parseInt(hex, 16)));
-      return new TextDecoder('utf-8').decode(bytes);
-    });
+    const cleanB64 = base64Str.replace(/[\r\n\s]/g, '');
+    const binary = atob(cleanB64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder('utf-8').decode(bytes);
   } catch {
-    // Fallback seguro a decodificación ASCII / ISO-8859-1
-    return normalized.replace(/=([0-9A-Fa-f]{2})/g, (_, hex) =>
-      String.fromCharCode(parseInt(hex, 16))
-    );
+    try {
+      return atob(base64Str.replace(/[\r\n\s]/g, ''));
+    } catch {
+      return '';
+    }
   }
 }
 
-// Limpiador de HTML a texto plano normalizado
-export function stripHtmlAndNormalize(html: string): string {
-  if (!html) return '';
+export function decodeQuotedPrintable(input: string): string {
+  const raw = input.replace(/=(?:\r\n|\r|\n)/g, '');
+  const bytes: number[] = [];
+  let i = 0;
+  while (i < raw.length) {
+    if (raw[i] === '=' && i + 2 < raw.length && /^[0-9A-Fa-f]{2}$/.test(raw.substring(i + 1, i + 3))) {
+      bytes.push(parseInt(raw.substring(i + 1, i + 3), 16));
+      i += 3;
+    } else {
+      bytes.push(raw.charCodeAt(i));
+      i++;
+    }
+  }
+  try {
+    return new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+  } catch {
+    return raw;
+  }
+}
+
+export function stripHtmlToPlainText(html: string): string {
   return html
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(?:p|div|tr|td|li|h\d)>/gi, '\n')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
+    .replace(/&[a-zA-Z]+;/g, ' ')
     .replace(/\r\n|\r/g, '\n')
     .replace(/[ \t]+/g, ' ')
     .trim();
 }
 
-// Convertidor de Base64 MIME a ArrayBuffer para el Excel .xls
-export function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const cleanBase64 = base64.replace(/[\r\n\s]/g, '');
-  const binaryString = atob(cleanBase64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+/**
+ * Recorre todas las partes de un correo .eml (multipart)
+ * decodificando el texto en Base64 o Quoted-Printable.
+ */
+export function extractDecodedEmailBody(rawEml: string): string {
+  const boundaryMatch = rawEml.match(/boundary=["']?([^"';\r\n]+)["']?/i);
+  const textParts: string[] = [];
+
+  const decodeBodyPart = (headerBlock: string, bodyBlock: string): string => {
+    const cteMatch = headerBlock.match(/Content-Transfer-Encoding:\s*([^\s;\r\n]+)/i);
+    const encoding = cteMatch ? cteMatch[1].toLowerCase() : '7bit';
+
+    const ctMatch = headerBlock.match(/Content-Type:\s*([^;\r\n]+)/i);
+    const contentType = ctMatch ? ctMatch[1].toLowerCase() : 'text/plain';
+
+    if (!contentType.includes('text/') && !contentType.includes('html')) {
+      return '';
+    }
+
+    if (encoding === 'base64') {
+      return decodeBase64ToUtf8(bodyBlock);
+    } else if (encoding === 'quoted-printable') {
+      return decodeQuotedPrintable(bodyBlock);
+    }
+    return bodyBlock;
+  };
+
+  if (boundaryMatch) {
+    const boundary = boundaryMatch[1].trim();
+    const parts = rawEml.split('--' + boundary);
+
+    for (const part of parts) {
+      if (!part.trim() || part.trim() === '--') continue;
+
+      const sepIndex = part.indexOf('\n\n') !== -1 ? part.indexOf('\n\n') : part.indexOf('\r\n\r\n');
+      const sepLen = part.indexOf('\r\n\r\n') !== -1 ? 4 : 2;
+
+      if (sepIndex !== -1) {
+        const header = part.substring(0, sepIndex);
+        const body = part.substring(sepIndex + sepLen);
+
+        // Soporte para multipart anidado (ej. alternative dentro de mixed)
+        const nestedBoundaryMatch = header.match(/boundary=["']?([^"';\r\n]+)["']?/i);
+        if (nestedBoundaryMatch) {
+          const nestedBoundary = nestedBoundaryMatch[1].trim();
+          const nestedParts = body.split('--' + nestedBoundary);
+          for (const np of nestedParts) {
+            const nSep = np.indexOf('\n\n') !== -1 ? np.indexOf('\n\n') : np.indexOf('\r\n\r\n');
+            const nLen = np.indexOf('\r\n\r\n') !== -1 ? 4 : 2;
+            if (nSep !== -1) {
+              textParts.push(decodeBodyPart(np.substring(0, nSep), np.substring(nSep + nLen)));
+            }
+          }
+        } else {
+          textParts.push(decodeBodyPart(header, body));
+        }
+      }
+    }
+  } else {
+    // Correo de una sola parte
+    const sepIndex = rawEml.indexOf('\n\n') !== -1 ? rawEml.indexOf('\n\n') : rawEml.indexOf('\r\n\r\n');
+    const sepLen = rawEml.indexOf('\r\n\r\n') !== -1 ? 4 : 2;
+    if (sepIndex !== -1) {
+      textParts.push(decodeBodyPart(rawEml.substring(0, sepIndex), rawEml.substring(sepIndex + sepLen)));
+    } else {
+      textParts.push(rawEml);
+    }
   }
-  return bytes.buffer;
+
+  const combined = textParts.join('\n');
+  return stripHtmlToPlainText(combined);
 }
+
+// ==========================================
+// 2. PARSER CARPETA CISCO
+// ==========================================
 
 export interface ParsedCiscoEml {
   dealId: string | null;
@@ -65,100 +148,98 @@ export interface ParsedCiscoEml {
   dateHeaderTimestamp?: number;
 }
 
-export interface ParsedJorgeEml {
-  dealId: string | null;
-  poNumber: string | null;
-  soNumber: string | null;
-  dateHeaderTimestamp?: number;
-}
-
-/**
- * Resuelve el Deal ID más alto de 8 dígitos presente en un texto o nombre de archivo.
- */
-export function extractHighestDealId(text: string): string | null {
-  if (!text) return null;
-  const matches = [...text.matchAll(/(?:^|\D)(\d{8})(?!\d)/g)]
-    .map((m) => parseInt(m[1], 10))
-    .filter((n) => !isNaN(n) && String(n).length === 8);
-
-  if (matches.length === 0) return null;
-  return Math.max(...matches).toString();
-}
-
-/**
- * Procesa un archivo .eml proveniente de la carpeta "cisco"
- */
-export function parseCiscoEml(rawEml: string, fileName: string = ''): ParsedCiscoEml {
+export function parseCiscoEml(rawEml: string, fileName?: string): ParsedCiscoEml {
   let dealId: string | null = null;
   let bomAttachment: { fileName: string; buffer: ArrayBuffer } | undefined;
 
-  // 1. Extraer el archivo adjunto [Deal]_Cisco-Deal-BOM-Pricing-Details.xls
-  // Busca bloques MIME con el nombre de archivo específico y captura el Base64
-  let bomMatch = rawEml.match(
-    /(?:name|filename)="?([^"\r\n]*_Cisco-Deal-BOM-Pricing-Details\.xlsx?)"?[\s\S]*?Content-Transfer-Encoding:\s*base64[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=--|\r?\n\r?\n[A-Z][a-zA-Z-]+:|$)/i
-  );
+  // 1. Extraer adjunto x_Cisco-Deal-BOM-Pricing-Details.xls
+  const bomMimeRegex = /Content-(?:Type|Disposition):[\s\S]*?(?:name|filename)=["']?([^"';\r\n]*_Cisco-Deal-BOM-Pricing-Details\.xlsx?)["']?[\s\S]*?Content-Transfer-Encoding:\s*base64[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=--|\r?\n\r?\n[A-Z][a-zA-Z-]+:|$)/i;
+  let bomMatch = rawEml.match(bomMimeRegex);
 
+  // Fallback si Content-Transfer-Encoding va antes de name/filename
   if (!bomMatch) {
     bomMatch = rawEml.match(
-      /Content-Transfer-Encoding:\s*base64[\s\S]*?(?:name|filename)="?([^"\r\n]*_Cisco-Deal-BOM-Pricing-Details\.xlsx?)"?[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=--|\r?\n\r?\n[A-Z][a-zA-Z-]+:|$)/i
+      /Content-Transfer-Encoding:\s*base64[\s\S]*?(?:name|filename)=["']?([^"';\r\n]*_Cisco-Deal-BOM-Pricing-Details\.xlsx?)["']?[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=--|\r?\n\r?\n[A-Z][a-zA-Z-]+:|$)/i
     );
   }
 
+  // Fallback para cualquier archivo Excel adjunto
   if (!bomMatch) {
-    // Fallback general para cualquier Excel adjunto con nombre relevante
     bomMatch = rawEml.match(
-      /(?:name|filename)="?([^"\r\n]*\.(?:xls|xlsx|xlsm))"?[\s\S]*?Content-Transfer-Encoding:\s*base64[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=--|$)/i
+      /(?:name|filename)=["']?([^"';\r\n]*\.(?:xls|xlsx|xlsm))["']?[\s\S]*?Content-Transfer-Encoding:\s*base64[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=--|$)/i
     );
   }
 
   if (bomMatch) {
-    const attachmentFileName = bomMatch[1].trim();
-    const base64Data = bomMatch[2];
+    const attachmentName = bomMatch[1].trim();
+    const base64Data = bomMatch[2].replace(/[\r\n\s]/g, '');
 
-    // Extrae el Deal ID (8 dígitos) desde el nombre del adjunto: x_Cisco-Deal-BOM...
-    const dealMatch = attachmentFileName.match(/(?:^|\D)(\d{8})(?!\d)/);
-    if (dealMatch) {
+    // Extraer Deal ID directo del nombre del BOM
+    const dealMatch = attachmentName.match(/\b(\d{8})\b/);
+    if (dealMatch && !dealMatch[1].startsWith('202')) {
       dealId = dealMatch[1];
     }
 
     try {
+      const binary = atob(base64Data);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
       bomAttachment = {
-        fileName: attachmentFileName,
-        buffer: base64ToArrayBuffer(base64Data),
+        fileName: attachmentName,
+        buffer: bytes.buffer,
       };
     } catch (e) {
       console.error('Error al decodificar Base64 del BOM adjunto:', e);
     }
   }
 
-  // 2. Extraer Dirección y Deal ID desde el texto decodificado
-  const decodedText = stripHtmlAndNormalize(decodeQuotedPrintable(rawEml));
+  // 2. Decodificar el cuerpo completo del correo
+  const decodedBody = extractDecodedEmailBody(rawEml);
 
-  // Respaldo de Deal ID en el nombre del archivo o en el texto si no vino en el adjunto
+  // Respaldo de Deal ID en el cuerpo
+  if (!dealId) {
+    const dealInBody = decodedBody.match(/\b(?:DEAL(?:\s*ID)?|ACUERDO)[\s:#=]+(\d{8})\b/i);
+    if (dealInBody && !dealInBody[1].startsWith('202')) {
+      dealId = dealInBody[1];
+    }
+  }
+
+  // Respaldo de Deal ID por nombre de archivo si no vino en el BOM ni cuerpo
   if (!dealId && fileName) {
     dealId = extractHighestDealId(fileName);
   }
 
+  // Fallback si hay números de 8 dígitos en el texto decodificado que no sean fechas
   if (!dealId) {
-    const textDeals = [...decodedText.matchAll(/(?:^|\D)(\d{8})(?!\d)/g)]
-      .map((m) => parseInt(m[1], 10))
-      .filter((n) => !isNaN(n) && String(n).length === 8);
-    if (textDeals.length > 0) dealId = Math.max(...textDeals).toString();
+    const textDeals = [...decodedBody.matchAll(/(?:^|\D)(\d{8})(?!\d)/g)]
+      .map((m) => m[1])
+      .filter((id) => !id.startsWith('202'));
+    if (textDeals.length > 0) {
+      dealId = Math.max(...textDeals.map((n) => parseInt(n, 10))).toString();
+    }
   }
 
-  // 3. Extracción de Dirección de Despacho
+  // 3. Extraer Dirección desde "End Customer Address:"
   let address: ExtractedAddress | undefined;
-  const addressBlockRegex =
-    /(?:End\s*Customer\s*Address|Install\s*Site\s*Address|Site\s*Address|Direcci[oó]n(?:\s*de\s*despacho|\s*de\s*entrega)?)\s*:?\s*([^\n\r]+(?:\n[^\n\r]+){0,2})/i;
-  const addrMatch = decodedText.match(addressBlockRegex);
+  const addrRegex = /End\s*Customer\s*Address\s*:?\s*([\s\S]*?)(?=(?:End\s*Customer|Shipping|Billing|Reseller|Order|Line|Item|\n\s*\n|$))/i;
+  const addrMatch = decodedBody.match(addrRegex);
 
   if (addrMatch) {
-    const fullAddr = addrMatch[1].replace(/\s+/g, ' ').trim();
-    address = {
-      street: fullAddr,
-      city: 'Santiago',
-      country: 'Chile',
-    };
+    const rawAddr = addrMatch[1]
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .join(', ');
+
+    if (rawAddr.length > 3) {
+      address = {
+        street: rawAddr,
+        city: 'Santiago',
+        country: 'Chile',
+      };
+    }
   }
 
   // 4. Extracción de cabecera Date
@@ -172,40 +253,65 @@ export function parseCiscoEml(rawEml: string, fileName: string = ''): ParsedCisc
   return { dealId, bomAttachment, address, dateHeaderTimestamp };
 }
 
-/**
- * Procesa un archivo .eml proveniente de la carpeta "jorge"
- */
-export function parseJorgeEml(rawEml: string, fileName: string = ''): ParsedJorgeEml {
-  const cleanText = stripHtmlAndNormalize(decodeQuotedPrintable(rawEml));
+// ==========================================
+// 3. PARSER CARPETA JORGE
+// ==========================================
 
-  // 1. DEAL X o DEAL ID X (exactamente 8 dígitos, toma el mayor si hay varios)
-  const dealRegex = /\bDEAL(?:\s*ID)?[\s:#=_]+(\d{8})\b/gi;
-  const dealMatches = [...cleanText.matchAll(dealRegex)].map((m) => parseInt(m[1], 10));
-  let dealId = dealMatches.length > 0 ? Math.max(...dealMatches).toString() : null;
+export interface ParsedJorgeEml {
+  dealId: string | null;
+  poNumber: string | null;
+  soNumber: string | null;
+  dateHeaderTimestamp?: number;
+}
 
-  // Respaldo de Deal ID por nombre de archivo o cualquier número de 8 dígitos en el texto
+export function parseJorgeEml(rawEml: string, fileName?: string): ParsedJorgeEml {
+  // 1. Obtener cuerpo decodificado de Base64/Quoted-Printable/HTML
+  const cleanBody = extractDecodedEmailBody(rawEml);
+
+  // 2. Extraer DEAL ID (8 dígitos, no debe empezar con '202' para no confundir con fechas)
+  // Soporta: "comprado según deal 86146758", "DEAL: 86146758", "DEAL ID: 86146758"
+  let dealId: string | null = null;
+  const dealRegex = /\b(?:DEAL(?:\s*ID)?|ACUERDO)[\s:#=]+(\d{8})\b/gi;
+  const dealMatches = [...cleanBody.matchAll(dealRegex)]
+    .map((m) => m[1])
+    .filter((id) => !id.startsWith('202')); // Descartar fechas como 20260911
+
+  if (dealMatches.length > 0) {
+    dealId = Math.max(...dealMatches.map((n) => parseInt(n, 10))).toString();
+  }
+
+  // Respaldo de Deal ID por nombre de archivo
   if (!dealId && fileName) {
     dealId = extractHighestDealId(fileName);
   }
 
+  // Fallback si hay números de 8 dígitos en el texto decodificado que no sean fechas
   if (!dealId) {
-    const textDeals = [...cleanText.matchAll(/(?:^|\D)(\d{8})(?!\d)/g)]
-      .map((m) => parseInt(m[1], 10))
-      .filter((n) => !isNaN(n) && String(n).length === 8);
-    if (textDeals.length > 0) dealId = Math.max(...textDeals).toString();
+    const textDeals = [...cleanBody.matchAll(/(?:^|\D)(\d{8})(?!\d)/g)]
+      .map((m) => m[1])
+      .filter((id) => !id.startsWith('202'));
+    if (textDeals.length > 0) {
+      dealId = Math.max(...textDeals.map((n) => parseInt(n, 10))).toString();
+    }
   }
 
-  // 2. PO X (exactamente 6 dígitos numéricos)
-  const poRegex = /(?:\bPO|\bP\.O\.|\bPurchase\s*Order|\bOrden\s*de\s*Compra)[\s:#=_]+(\d{6})(?!\d)/i;
-  const poMatch = cleanText.match(poRegex);
-  const poNumber = poMatch ? poMatch[1] : null;
+  // 3. Extraer PO (Exactamente 6 dígitos)
+  // Soporta: "PO 329099", "PO: 329099", "P.O. 329099", "Purchase Order 329099"
+  let poNumber: string | null = null;
+  const poMatch = cleanBody.match(/(?:\bPO|\bP\.O\.|\bPurchase\s*Order|\bOrden\s*de\s*Compra)[\s:#=]+(\d{6})\b/i);
+  if (poMatch) {
+    poNumber = poMatch[1];
+  }
 
-  // 3. SO X (exactamente 9 dígitos numéricos)
-  const soRegex = /(?:\bSO|\bS\.O\.|\bSales\s*Order|\bPedido|\bOrden\s*de\s*Venta)[\s:#=_]+(\d{9})(?!\d)/i;
-  const soMatch = cleanText.match(soRegex);
-  const soNumber = soMatch ? soMatch[1] : null;
+  // 4. Extraer SO (Exactamente 9 dígitos)
+  // Soporta: "SO 120608263", "SO: 120608263", "S.O. 120608263", "Sales Order 120608263"
+  let soNumber: string | null = null;
+  const soMatch = cleanBody.match(/(?:\bSO|\bS\.O\.|\bSales\s*Order|\bPedido|\bOrden\s*de\s*Venta)[\s:#=]+(\d{9})\b/i);
+  if (soMatch) {
+    soNumber = soMatch[1];
+  }
 
-  // 4. Extracción de cabecera Date
+  // 5. Extracción de cabecera Date
   let dateHeaderTimestamp: number | undefined;
   const dateMatch = rawEml.match(/^Date:\s*(.+)$/im);
   if (dateMatch) {
@@ -217,11 +323,27 @@ export function parseJorgeEml(rawEml: string, fileName: string = ''): ParsedJorg
 }
 
 /**
+ * Resuelve el Deal ID más alto de 8 dígitos presente en un texto o nombre de archivo,
+ * descartando secuencias que comiencen con '202' (fechas como 20260911).
+ */
+export function extractHighestDealId(text: string): string | null {
+  if (!text) return null;
+  const matches = [...text.matchAll(/(?:^|\D)(\d{8})(?!\d)/g)]
+    .map((m) => m[1])
+    .filter((id) => !id.startsWith('202'))
+    .map((id) => parseInt(id, 10))
+    .filter((n) => !isNaN(n) && String(n).length === 8);
+
+  if (matches.length === 0) return null;
+  return Math.max(...matches).toString();
+}
+
+/**
  * Función unificada para retrocompatibilidad
  */
 export function parseEmlContent(
   rawEml: string,
-  fileName: string
+  fileName: string = ''
 ): {
   dealId: string | null;
   poNumber: string | null;
