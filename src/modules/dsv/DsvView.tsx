@@ -17,11 +17,13 @@ import {
   Layers,
   Wrench,
   RotateCcw,
+  FolderSync,
 } from 'lucide-react';
 import { parseRawDealBom, RawBomParsedResult } from './dsvBomParser';
 import { DsvModal } from './DsvModal';
 import { isZeroValueBomItem, calculateDsvPrices, transformRawBomToDsv } from './dsvEngine';
-import { SkuCategoryType } from './types';
+import { SkuCategoryType, DsvModalFormData } from './types';
+import { DsvIngestionView, ConsolidatedDealRecord } from './ingestion';
 import { saveDsvToCloud } from '../cloud';
 import { useCiscoAutomatedStore } from '../../core/store';
 
@@ -41,9 +43,41 @@ export const DsvView: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [exportNotification, setExportNotification] = useState<string | null>(null);
-
   // Manual Overrides Map: lineNumber -> SkuCategoryType
   const [overrides, setOverrides] = useState<Record<string, SkuCategoryType>>({});
+
+  // Tab State: manual vs onedrive ingestion
+  const [activeTab, setActiveTab] = useState<'manual' | 'onedrive'>('manual');
+  const [ingestedFormData, setIngestedFormData] = useState<Partial<DsvModalFormData> | undefined>(undefined);
+
+  const handleGenerateFromRecord = async (record: ConsolidatedDealRecord) => {
+    if (!record.cisco?.bomFile) {
+      setErrorMessage('El registro no contiene el archivo BOM de Cisco (.xls / .xlsx).');
+      return;
+    }
+    try {
+      setIsProcessing(true);
+      const parsed = await parseRawDealBom(
+        record.cisco.bomFile.fileBuffer,
+        record.cisco.bomFile.fileName
+      );
+      setRawBom(parsed);
+      setIngestedFormData({
+        dealId: record.dealId,
+        po: record.jorge?.poNumber || '',
+        so: record.jorge?.soNumber || '',
+        endCustomerAddress: record.cisco.address
+          ? `${record.cisco.address.street}, ${record.cisco.address.city}, ${record.cisco.address.country}`
+          : 'Chile',
+      });
+      setActiveTab('manual');
+      setIsModalOpen(true);
+    } catch (err: any) {
+      setErrorMessage(`Error al procesar BOM consolidado: ${err?.message || 'Error desconocido'}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   // Context Menu state
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -274,6 +308,7 @@ export const DsvView: React.FC = () => {
         onClose={() => setIsModalOpen(false)}
         rawBom={rawBom}
         overrides={overrides}
+        initialFormData={ingestedFormData}
         onSuccess={(filename) => {
           setExportNotification(`Plantilla DSV de 48 columnas exportada con éxito: ${filename}`);
         }}
@@ -354,15 +389,30 @@ export const DsvView: React.FC = () => {
         {/* Action Buttons */}
         <div className="flex items-center gap-3">
           <button
-            onClick={handleSelectBom}
-            disabled={isProcessing}
-            className="inline-flex items-center space-x-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+            onClick={() => setActiveTab(activeTab === 'manual' ? 'onedrive' : 'manual')}
+            className={`inline-flex items-center space-x-2 text-xs font-bold px-4 py-2.5 rounded-xl border shadow-lg transition-all cursor-pointer ${
+              activeTab === 'onedrive'
+                ? 'bg-indigo-600 border-indigo-500 text-white shadow-indigo-600/30'
+                : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
+            }`}
+            title="Conectar carpetas cisco/ y jorge/ de OneDrive para ingesta automática de Deals"
           >
-            <UploadCloud className="w-4 h-4" />
-            <span>{rawBom ? 'Cambiar Deal BOM' : '1. Cargar Deal BOM (.xls/.xlsx)'}</span>
+            <FolderSync className="w-4 h-4 text-indigo-400" />
+            <span>{activeTab === 'onedrive' ? 'Modo Manual (BOM)' : 'Bandeja OneDrive'}</span>
           </button>
 
-          {rawBom && (
+          {activeTab === 'manual' && (
+            <button
+              onClick={handleSelectBom}
+              disabled={isProcessing}
+              className="inline-flex items-center space-x-2 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
+            >
+              <UploadCloud className="w-4 h-4" />
+              <span>{rawBom ? 'Cambiar Deal BOM' : '1. Cargar Deal BOM (.xls/.xlsx)'}</span>
+            </button>
+          )}
+
+          {activeTab === 'manual' && rawBom && (
             <>
               <button
                 onClick={handleSaveDsvToCloud}
@@ -410,7 +460,12 @@ export const DsvView: React.FC = () => {
       )}
 
       {/* Main Content */}
-      {!rawBom ? (
+      {activeTab === 'onedrive' ? (
+        <DsvIngestionView
+          onGenerateDsvForRecord={handleGenerateFromRecord}
+          onBackToManual={() => setActiveTab('manual')}
+        />
+      ) : !rawBom ? (
         <div className="flex flex-col items-center justify-center p-12 bg-slate-900/40 border-2 border-dashed border-slate-800 rounded-3xl text-center space-y-4">
           <div className="w-16 h-16 rounded-3xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-400">
             <FileSpreadsheet className="w-8 h-8 text-blue-400" />

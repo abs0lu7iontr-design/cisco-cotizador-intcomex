@@ -33,6 +33,7 @@ interface DsvModalProps {
   rawBom: RawBomParsedResult | null;
   overrides?: Record<string, SkuCategoryType>;
   onSuccess?: (filepathOrFilename: string) => void;
+  initialFormData?: Partial<DsvModalFormData>;
 }
 
 export const DsvModal: React.FC<DsvModalProps> = ({
@@ -41,6 +42,7 @@ export const DsvModal: React.FC<DsvModalProps> = ({
   rawBom,
   overrides = {},
   onSuccess,
+  initialFormData,
 }) => {
   const [formData, setFormData] = useState<DsvModalFormData>({
     so: '',
@@ -67,18 +69,18 @@ export const DsvModal: React.FC<DsvModalProps> = ({
       const initialEndUser = rawBom.endUserName || (rawBom.items && rawBom.items[0]?.endUserName) || '';
 
       setFormData({
-        so: '',
-        po: '',
-        dealId: initialDealId,
-        partnerId: '',
-        endCustomerAddress: 'Chile',
-        partnerName: initialPartner,
-        endCustomerName: initialEndUser,
+        so: initialFormData?.so || '',
+        po: initialFormData?.po || '',
+        dealId: initialFormData?.dealId || initialDealId,
+        partnerId: initialFormData?.partnerId || '',
+        endCustomerAddress: initialFormData?.endCustomerAddress || 'Chile',
+        partnerName: initialFormData?.partnerName || initialPartner,
+        endCustomerName: initialFormData?.endCustomerName || initialEndUser,
       });
       setSuccessMessage(null);
       setIsGenerating(false);
     }
-  }, [isOpen, rawBom]);
+  }, [isOpen, rawBom, initialFormData]);
 
   // Reactive standardized filename: NumerodeDEAL_DSV_partner_clientefinal_fecha.xlsx
   const previewFilename = useMemo(() => {
