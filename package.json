@@ -12,7 +12,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "doctor": "npx react-doctor@latest",
-    "prepare:pages": "npm run build && node -e \"const fs=require('fs'); fs.mkdirSync('dist-pages',{recursive:true}); fs.copyFileSync('dist/index.html','dist-pages/index.html'); if(fs.existsSync('dist/favicon.ico')) fs.copyFileSync('dist/favicon.ico','dist-pages/favicon.ico'); if(fs.existsSync('public/_headers')) fs.copyFileSync('public/_headers','dist-pages/_headers'); else if(fs.existsSync('_headers')) fs.copyFileSync('_headers','dist-pages/_headers');\"",
+    "prepare:pages": "npm run build && node -e \"const fs=require('fs'); fs.mkdirSync('dist-pages',{recursive:true}); for(const f of fs.readdirSync('dist')){ if(f.endsWith('.html')||f.endsWith('.js')||f.endsWith('.ico')||f.endsWith('.css')||f==='_headers'){ fs.copyFileSync('dist/'+f,'dist-pages/'+f); } } if(fs.existsSync('public/_headers')) fs.copyFileSync('public/_headers','dist-pages/_headers'); else if(fs.existsSync('_headers')) fs.copyFileSync('_headers','dist-pages/_headers');\"",
     "deploy:preview": "npm run prepare:pages && npx wrangler pages deploy dist-pages --project-name=cisco-automated --branch develop",
     "deploy:prod": "npm run prepare:pages && npx wrangler pages deploy dist-pages --project-name=cisco-automated --branch main",
     "deploy:pages": "npm run prepare:pages && npx wrangler pages deploy dist-pages --project-name=cisco-automated",
@@ -23,6 +23,7 @@
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
+    "comlink": "^4.4.2",
     "dotenv": "^17.2.3",
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
@@ -33,7 +34,8 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "vite": "^6.2.3",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^4.6.4"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.54.2",

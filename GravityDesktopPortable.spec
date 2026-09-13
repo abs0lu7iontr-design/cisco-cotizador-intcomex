@@ -26,6 +26,8 @@ a = Analysis(
     datas=[
         ('dist/index.html', 'dist'),
         ('dist/index.html', '.'),
+        ('dist/*.js', 'dist'),
+        ('dist/*.js', '.'),
         ('desktop_app/schema.sql', 'desktop_app'),
         ('desktop_app/app_icon.ico', 'desktop_app'),
         ('desktop_app/app_icon.png', 'desktop_app'),
