@@ -21,6 +21,7 @@ import { RulesExplanationModal } from './components/RulesExplanationModal';
 import { DownloadModal } from './components/DownloadModal';
 import { PriorAuditDetectedModal } from './components/PriorAuditDetectedModal';
 import { MiningAuditModal, MiningAlertModal } from './modules/mining';
+import { BoRequestModal, resolveWarehouseForLines, BoLineItem } from './modules/bo';
 import { DashboardView } from './components/DashboardView';
 import { UploadView } from './components/UploadView';
 import { EstimatesHistoryView } from './components/EstimatesHistoryView';
@@ -127,6 +128,7 @@ function AppContent() {
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
+  const [isBoModalOpen, setIsBoModalOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -249,6 +251,22 @@ function AppContent() {
 
   const { partner: defaultPartner, client: defaultClient, model: defaultModel } = getPartnerClientDefaults();
 
+  // Prepare Back Order (BO) lines with dynamic warehouse assignment (E1 vs ED2)
+  const boLines: BoLineItem[] = React.useMemo(() => {
+    if (!processedResult?.items) return [];
+    const validItems = processedResult.items.filter(
+      (it) => it.partNumber && !it.isInfoRow && it.qty > 0
+    );
+    return resolveWarehouseForLines(
+      validItems.map((it) => ({
+        partNumber: it.partNumber,
+        qty: it.qty,
+        unitNetPrice: it.netCiscoUnit,
+        initialTermMonths: parseInt(it.serviceDurationMonths, 10) || undefined,
+      }))
+    );
+  }, [processedResult?.items]);
+
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
       {/* Hidden file input */}
@@ -350,6 +368,14 @@ function AppContent() {
         onClose={() => setIsMiningAlertModalOpen(false)}
       />
 
+      {/* Back Order (BO) Request Modal for Ventas Core */}
+      <BoRequestModal
+        isOpen={isBoModalOpen}
+        initialClientName={defaultClient}
+        initialLines={boLines}
+        onClose={() => setIsBoModalOpen(false)}
+      />
+
       {/* Structured Dual Download Modal (Web & Desktop) */}
       {processedResult?.workbookBuffer && (
         <DownloadModal
@@ -395,6 +421,7 @@ function AppContent() {
           onSaveCloudClick={handleSaveCloud}
           isSavingCloud={isSavingCloud}
           onDsvClick={handleDsvClick}
+          onBoClick={() => setIsBoModalOpen(true)}
           onFastTrackClick={() => setIsFastTrackAdminModalOpen(true)}
           onMiningAuditClick={() => setIsMiningAuditModalOpen(true)}
           miningAuditReport={miningAuditData}

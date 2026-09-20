@@ -32,6 +32,7 @@ interface NavbarProps {
   onSaveCloudClick?: () => void;
   isSavingCloud?: boolean;
   onDsvClick?: () => void;
+  onBoClick?: () => void;
   onFastTrackClick?: () => void;
   onMiningAuditClick?: () => void;
   miningAuditReport?: any;
@@ -54,6 +55,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSaveCloudClick,
   isSavingCloud = false,
   onDsvClick,
+  onBoClick,
   onFastTrackClick,
   onMiningAuditClick,
   miningAuditReport,
@@ -252,6 +254,20 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <FileCheck className="w-4 h-4 text-amber-100" />
               <span>Generar DSV</span>
+            </button>
+          )}
+
+          {/* Solicitar BO Button */}
+          {hasData && onBoClick && (
+            <button
+              id="btn-solicitar-bo"
+              onClick={onBoClick}
+              disabled={isProcessing}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition-all shadow-md shadow-amber-950/20 cursor-pointer"
+              title="Generar correo de solicitud de Back Order hacia Ventas Core"
+            >
+              <span>📑</span>
+              <span>Solicitar BO</span>
             </button>
           )}
 
