@@ -132,6 +132,22 @@ function AppContent() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Prepare Back Order (BO) lines with dynamic warehouse assignment (E1 vs ED2)
+  const boLines: BoLineItem[] = React.useMemo(() => {
+    if (!processedResult?.items) return [];
+    const validItems = processedResult.items.filter(
+      (it) => it.partNumber && !it.isInfoRow && it.qty > 0
+    );
+    return resolveWarehouseForLines(
+      validItems.map((it) => ({
+        partNumber: it.partNumber,
+        qty: it.qty,
+        unitNetPrice: it.netCiscoUnit,
+        initialTermMonths: parseInt(it.serviceDurationMonths, 10) || undefined,
+      }))
+    );
+  }, [processedResult?.items]);
+
   const handleSaveCloud = async () => {
     if (!processedResult) return;
     setIsSavingCloud(true);
@@ -250,22 +266,6 @@ function AppContent() {
   };
 
   const { partner: defaultPartner, client: defaultClient, model: defaultModel } = getPartnerClientDefaults();
-
-  // Prepare Back Order (BO) lines with dynamic warehouse assignment (E1 vs ED2)
-  const boLines: BoLineItem[] = React.useMemo(() => {
-    if (!processedResult?.items) return [];
-    const validItems = processedResult.items.filter(
-      (it) => it.partNumber && !it.isInfoRow && it.qty > 0
-    );
-    return resolveWarehouseForLines(
-      validItems.map((it) => ({
-        partNumber: it.partNumber,
-        qty: it.qty,
-        unitNetPrice: it.netCiscoUnit,
-        initialTermMonths: parseInt(it.serviceDurationMonths, 10) || undefined,
-      }))
-    );
-  }, [processedResult?.items]);
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
