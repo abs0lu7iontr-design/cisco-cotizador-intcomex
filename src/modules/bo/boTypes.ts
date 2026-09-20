@@ -70,3 +70,25 @@ export function resolveWarehouseForLines(
     bodega: globalBodega,
   }));
 }
+
+/**
+ * Separa las líneas entre aquellas con valor financiero activo y las de costo cero ($0 USD)
+ */
+export function partitionBoLinesByCost(lines: BoLineItem[]): {
+  activeLines: BoLineItem[];
+  zeroCostLines: BoLineItem[];
+} {
+  const activeLines: BoLineItem[] = [];
+  const zeroCostLines: BoLineItem[] = [];
+
+  for (const line of lines) {
+    if (line.unitNetPrice > 0 && line.extendedNetPrice > 0) {
+      activeLines.push(line);
+    } else {
+      zeroCostLines.push(line);
+    }
+  }
+
+  return { activeLines, zeroCostLines };
+}
+
