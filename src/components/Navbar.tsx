@@ -22,6 +22,7 @@ import {
   Pickaxe,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
+import { useAppTheme } from '../context/ThemeContext';
 
 interface NavbarProps {
   onUploadClick: () => void;
@@ -66,6 +67,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   hasData,
   fileName,
 }) => {
+  const { theme, toggleTheme } = useAppTheme();
   return (
     <header id="app-navbar" className="bg-slate-900/95 text-slate-100 border-b border-slate-800 shadow-md sticky top-0 z-30">
       <div className="max-w-[1700px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
@@ -144,16 +146,27 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="hidden sm:inline">Reglas</span>
           </button>
 
+          {/* Theme Mode Toggle (Cyber HUD vs Enterprise) */}
+          <button
+            id="btn-hud-theme-toggle"
+            onClick={toggleTheme}
+            className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-300 hover:border-cyan-500 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+            title="Alternar diseño visual entre Cyber HUD y Enterprise Clean"
+          >
+            <span>🎨</span>
+            <span>Temas ({theme === 'cyber' ? 'Cyber HUD' : 'Enterprise'})</span>
+          </button>
+
           {/* Theme Selector Button */}
           {onThemeClick && (
             <button
               id="btn-theme-selector"
               onClick={onThemeClick}
               className="inline-flex items-center space-x-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-2 rounded-xl transition-colors cursor-pointer"
-              title="Cambiar tema y colores visuales"
+              title="Cambiar paleta de colores visuales"
             >
               <Palette className="w-4 h-4 text-pink-400" />
-              <span className="hidden sm:inline">Temas</span>
+              <span className="hidden sm:inline">Paleta</span>
             </button>
           )}
 

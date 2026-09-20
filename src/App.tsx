@@ -7,6 +7,7 @@ import {
   CiscoAutomatedProvider,
   useCiscoAutomatedStore,
 } from './core/store';
+import { ThemeProvider } from './context/ThemeContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoginScreen } from './components/LoginScreen';
 import { Sidebar } from './components/Sidebar';
@@ -627,9 +628,11 @@ function AppContent() {
 export function App() {
   return (
     <ErrorBoundary fallbackTitle="Error Crítico en la Aplicación">
-      <CiscoAutomatedProvider>
-        <AppContent />
-      </CiscoAutomatedProvider>
+      <ThemeProvider>
+        <CiscoAutomatedProvider>
+          <AppContent />
+        </CiscoAutomatedProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

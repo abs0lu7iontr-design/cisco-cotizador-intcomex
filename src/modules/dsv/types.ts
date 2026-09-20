@@ -82,3 +82,31 @@ export interface DsvTransformationSummary {
   rows: Dsv48LineItem[];
   discrepancies?: DsvDiscrepancy[];
 }
+
+export interface ReconciliationItem {
+  sku: string;
+  description: string;
+  categoryTag?: string; // Autogenerado si viene vacío
+  theoreticalPrice: number; // Cálculo Teórico Intcomex
+  officialPrice: number;    // BOM Oficial Cisco CCW
+}
+
+export type AppTheme = 'cyber' | 'enterprise';
+
+/**
+ * Resuelve automáticamente la etiqueta del componente según la nomenclatura de Cisco
+ */
+export function resolveCategoryBadge(sku: string): string {
+  const upper = sku.toUpperCase();
+  if (upper.startsWith('CON-') || upper.startsWith('CX-')) {
+    return '[SVC // SMARTNET]';
+  }
+  if (upper.includes('-DNA-') || upper.includes('-SUB') || upper.includes('-LIC')) {
+    return '[LIC // DNA-3Y]';
+  }
+  if (upper.startsWith('PWR-') || upper.includes('CAB-') || upper.includes('-PWR')) {
+    return '[PWR // MODULAR]';
+  }
+  return '[HW // CORE]';
+}
+
