@@ -10,3 +10,5 @@ export * from './serviceClassifier';
 export * from './miningAuditor';
 export * from './estimateAuditAdapter';
 export * from './MiningAuditModal';
+export * from './miningDetector';
+export * from './MiningAlertModal';

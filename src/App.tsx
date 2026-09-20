@@ -20,7 +20,7 @@ import { QuickCalculator } from './components/QuickCalculator';
 import { RulesExplanationModal } from './components/RulesExplanationModal';
 import { DownloadModal } from './components/DownloadModal';
 import { PriorAuditDetectedModal } from './components/PriorAuditDetectedModal';
-import { MiningAuditModal } from './modules/mining';
+import { MiningAuditModal, MiningAlertModal } from './modules/mining';
 import { DashboardView } from './components/DashboardView';
 import { UploadView } from './components/UploadView';
 import { EstimatesHistoryView } from './components/EstimatesHistoryView';
@@ -91,6 +91,9 @@ function AppContent() {
     miningAuditData,
     isMiningAuditModalOpen,
     setIsMiningAuditModalOpen,
+    miningAlertData,
+    isMiningAlertModalOpen,
+    setIsMiningAlertModalOpen,
   } = useCiscoAutomatedStore();
 
   // Initialize theme on application mount
@@ -336,6 +339,15 @@ function AppContent() {
         isOpen={isMiningAuditModalOpen}
         onClose={() => setIsMiningAuditModalOpen(false)}
         report={miningAuditData}
+      />
+
+      {/* Mining Observer Modal - Daniel Peña Special Discount Alert (>= $150.000 USD) */}
+      <MiningAlertModal
+        isOpen={isMiningAlertModalOpen && Boolean(miningAlertData?.shouldAlert)}
+        totalListPrice={miningAlertData?.totalListPrice || 0}
+        initialDealId={processedResult?.headerInfo?.dealId || null}
+        mailtoUrlTemplate={miningAlertData?.mailtoUrl || ''}
+        onClose={() => setIsMiningAlertModalOpen(false)}
       />
 
       {/* Structured Dual Download Modal (Web & Desktop) */}

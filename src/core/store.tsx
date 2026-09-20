@@ -24,7 +24,7 @@ import {
   getSharedSkuRules,
   publishSharedSkuRules,
 } from '../modules/cloud';
-import { executeSafeMiningAudit, AuditReport } from '../modules/mining';
+import { executeSafeMiningAudit, AuditReport, inspectEstimateForMining, MiningAlertData } from '../modules/mining';
 
 export type NavViewId =
   | 'dashboard'
@@ -107,6 +107,12 @@ interface CiscoAutomatedState {
   isMiningAuditModalOpen: boolean;
   setIsMiningAuditModalOpen: (open: boolean) => void;
 
+  // Mining Observer (Daniel Peña Special Discount Alert >= $150.000 USD)
+  miningAlertData: MiningAlertData | null;
+  setMiningAlertData: (data: MiningAlertData | null) => void;
+  isMiningAlertModalOpen: boolean;
+  setIsMiningAlertModalOpen: (open: boolean) => void;
+
   processFileBuffer: (buffer: ArrayBuffer, fileName: string) => Promise<void>;
   setRowRule: (rowIdx: number, rule: OverrideRuleType, sku?: string) => Promise<void>;
   cycleRowRule: (rowIdx: number) => Promise<void>;
@@ -155,6 +161,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
   // Mining & Industrial Conditions Audit
   const [miningAuditData, setMiningAuditData] = useState<AuditReport | null>(null);
   const [isMiningAuditModalOpen, setIsMiningAuditModalOpen] = useState<boolean>(false);
+
+  // Mining Observer (Daniel Peña Special Discount Alert >= $150.000 USD)
+  const [miningAlertData, setMiningAlertData] = useState<MiningAlertData | null>(null);
+  const [isMiningAlertModalOpen, setIsMiningAlertModalOpen] = useState<boolean>(false);
 
   // UI Controls
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -469,6 +479,20 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         } else {
           setMiningAuditData(null);
         }
+
+        // 7. MÓDULO OBSERVADOR DE MINERÍA (Solo Detección y Alerta Daniel Peña >= $150.000 USD)
+        const miningInspection: MiningAlertData = inspectEstimateForMining(
+          fileName || currentFileName,
+          rawResult?.items || [],
+          rawResult?.headerInfo?.dealId || null
+        );
+        if (miningInspection.shouldAlert) {
+          setMiningAlertData(miningInspection);
+          setIsMiningAlertModalOpen(true);
+        } else {
+          setMiningAlertData(null);
+          setIsMiningAlertModalOpen(false);
+        }
       } catch (err: any) {
         console.error('Error processing workbook:', err);
         setErrorMessage(
@@ -713,6 +737,20 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         } else {
           setMiningAuditData(null);
         }
+
+        // Evaluar observador minería
+        const miningInspection: MiningAlertData = inspectEstimateForMining(
+          record.originalFileName || '',
+          reconstructedItems,
+          record.headerInfo?.dealId || null
+        );
+        if (miningInspection.shouldAlert) {
+          setMiningAlertData(miningInspection);
+          setIsMiningAlertModalOpen(true);
+        } else {
+          setMiningAlertData(null);
+          setIsMiningAlertModalOpen(false);
+        }
       } catch (err: any) {
         console.error('Error cargando cotización desde la nube:', err);
         setErrorMessage(`Error restaurando cotización: ${err?.message || 'Datos corruptos'}`);
@@ -829,6 +867,8 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     setIsDetectedAuditModalOpen(false);
     setMiningAuditData(null);
     setIsMiningAuditModalOpen(false);
+    setMiningAlertData(null);
+    setIsMiningAlertModalOpen(false);
     setErrorMessage(null);
     setParams(DEFAULT_PARAMS);
   }, []);
@@ -874,6 +914,14 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       setIsDetectedAuditModalOpen,
       loadPriorAuditMargins,
       dismissDetectedAuditModal,
+      miningAuditData,
+      setMiningAuditData,
+      isMiningAuditModalOpen,
+      setIsMiningAuditModalOpen,
+      miningAlertData,
+      setMiningAlertData,
+      isMiningAlertModalOpen,
+      setIsMiningAlertModalOpen,
       isProcessing,
       errorMessage,
       activeQuoterTab,
@@ -923,6 +971,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       setMiningAuditData,
       isMiningAuditModalOpen,
       setIsMiningAuditModalOpen,
+      miningAlertData,
+      setMiningAlertData,
+      isMiningAlertModalOpen,
+      setIsMiningAlertModalOpen,
       isProcessing,
       errorMessage,
       activeQuoterTab,
