@@ -108,6 +108,13 @@ class DatabaseManager:
                         override_type TEXT NOT NULL,
                         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                     );
+
+                    CREATE TABLE IF NOT EXISTS bo_sku_catalog (
+                        part_number TEXT PRIMARY KEY,
+                        intcomex_sku TEXT NOT NULL,
+                        base_part_number TEXT,
+                        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                    );
                 """)
                 conn.commit()
             self._ensure_updated_user_schema()
@@ -131,6 +138,33 @@ class DatabaseManager:
             cursor.execute("SELECT sku, override_type FROM sku_overrides")
             rows = cursor.fetchall()
             return {row["sku"]: row["override_type"] for row in rows}
+
+    def save_bo_sku_db(self, part_number: str, intcomex_sku: str, base_part_number: str = ""):
+        """Saves or updates a Cisco Part Number to Intcomex SKU mapping in SQLite."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO bo_sku_catalog (part_number, intcomex_sku, base_part_number, updated_at)
+                VALUES (?, ?, ?, ?)
+            """, (part_number.strip().upper(), intcomex_sku.strip().upper(), (base_part_number or "").strip().upper(), datetime.now().isoformat()))
+            conn.commit()
+
+    def get_bo_skus_db(self) -> Dict[str, str]:
+        """Gets all Part Number -> Intcomex SKU mappings from SQLite."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT part_number, intcomex_sku, base_part_number FROM bo_sku_catalog")
+            rows = cursor.fetchall()
+            mapping = {}
+            for row in rows:
+                sku = row["intcomex_sku"]
+                pn = row["part_number"]
+                base_pn = row["base_part_number"]
+                if pn:
+                    mapping[pn.upper()] = sku
+                if base_pn:
+                    mapping[base_pn.upper()] = sku
+            return mapping
 
     def _ensure_updated_user_schema(self):
         """Migrates users table schema if old CHECK constraint without 'pm' is present."""

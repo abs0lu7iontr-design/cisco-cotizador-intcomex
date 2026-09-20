@@ -4,4 +4,5 @@
 
 export * from './boTypes';
 export * from './boEmailHelper';
+export * from './boSkuCatalogService';
 export * from './BoRequestModal';

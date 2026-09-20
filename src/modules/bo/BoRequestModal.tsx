@@ -2,10 +2,28 @@
 // CISCO AUTOMATED v2.1 - BACK ORDER (BO) REQUEST MODAL (ACTIVE & DISCARDED P/N)
 // ============================================================================
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { BoLineItem, partitionBoLinesByCost } from './boTypes';
 import { BO_EMAIL_TO, BO_EMAIL_CC, copyBoTableToClipboard } from './boEmailHelper';
-import { ChevronDown, ChevronUp, Download, Plus, Trash2, Check, Mail, Copy, AlertCircle } from 'lucide-react';
+import {
+  fetchBoSkuCatalog,
+  saveBoSkuMapping,
+  batchSaveBoSkuMappings,
+  findSkuInCatalog,
+} from './boSkuCatalogService';
+import {
+  ChevronDown,
+  ChevronUp,
+  Download,
+  Plus,
+  Trash2,
+  Check,
+  Mail,
+  Copy,
+  AlertCircle,
+  Cloud,
+  RefreshCw,
+} from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -26,15 +44,49 @@ export const BoRequestModal: React.FC<Props> = ({
   const [isDiscardedExpanded, setIsDiscardedExpanded] = useState<boolean>(true);
   const [copied, setCopied] = useState<boolean>(false);
 
-  // Inicializar y particionar líneas cada vez que se abre el modal o cambian las líneas iniciales
+  // Estados de persistencia y catálogo en la nube
+  const [skuCatalog, setSkuCatalog] = useState<Record<string, string>>({});
+  const [isCloudReady, setIsCloudReady] = useState<boolean>(false);
+  const [cloudStatus, setCloudStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [memorizedSkuCount, setMemorizedSkuCount] = useState<number>(0);
+  const statusTimerRef = useRef<any>(null);
+
+  // Inicializar, particionar líneas y auto-completar SKUs desde la nube al abrir el modal
   useEffect(() => {
-    if (isOpen) {
-      setClientName(initialClientName || 'Cliente');
-      const { activeLines, zeroCostLines } = partitionBoLinesByCost(initialLines);
-      setLines(activeLines);
-      setDiscardedLines(zeroCostLines);
-      setCopied(false);
-    }
+    if (!isOpen) return;
+
+    setClientName(initialClientName || 'Cliente');
+    setCopied(false);
+
+    const { activeLines, zeroCostLines } = partitionBoLinesByCost(initialLines);
+
+    // Cargar catálogo de SKUs desde Firestore Cloud + Local Cache
+    fetchBoSkuCatalog().then(({ catalog, isCloudConnected }) => {
+      setSkuCatalog(catalog);
+      setIsCloudReady(isCloudConnected);
+      const count = Object.keys(catalog).length;
+      setMemorizedSkuCount(count);
+
+      // Auto-rellenar SKU si no viene definido
+      const filledActive = activeLines.map((line) => {
+        if (!line.sku) {
+          const matched = findSkuInCatalog(line.partNumber, catalog);
+          return matched ? { ...line, sku: matched } : line;
+        }
+        return line;
+      });
+
+      const filledDiscarded = zeroCostLines.map((line) => {
+        if (!line.sku) {
+          const matched = findSkuInCatalog(line.partNumber, catalog);
+          return matched ? { ...line, sku: matched } : line;
+        }
+        return line;
+      });
+
+      setLines(filledActive);
+      setDiscardedLines(filledDiscarded);
+    });
   }, [isOpen, initialClientName, initialLines]);
 
   // Totales de la tabla activa
@@ -46,16 +98,94 @@ export const BoRequestModal: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  const handleSkuChange = (index: number, newSku: string) => {
+  // Actualización de Part Number editable en tabla activa
+  const handlePartNumberChange = (index: number, newPn: string) => {
     const updated = [...lines];
-    updated[index].sku = newSku.toUpperCase();
+    const item = { ...updated[index], partNumber: newPn };
+
+    // Si no tiene SKU, intentar auto-rellenarlo con el nuevo P/N
+    if (!item.sku) {
+      const matched = findSkuInCatalog(newPn, skuCatalog);
+      if (matched) {
+        item.sku = matched;
+      }
+    }
+    updated[index] = item;
     setLines(updated);
   };
 
+  // Actualización de Part Number editable en tabla de descartados
+  const handleDiscardedPartNumberChange = (index: number, newPn: string) => {
+    const updated = [...discardedLines];
+    const item = { ...updated[index], partNumber: newPn };
+    if (!item.sku) {
+      const matched = findSkuInCatalog(newPn, skuCatalog);
+      if (matched) {
+        item.sku = matched;
+      }
+    }
+    updated[index] = item;
+    setDiscardedLines(updated);
+  };
+
+  // Edición de SKU en tabla activa
+  const handleSkuChange = (index: number, newSku: string) => {
+    const updated = [...lines];
+    updated[index] = { ...updated[index], sku: newSku.toUpperCase() };
+    setLines(updated);
+  };
+
+  // Guardado persistente en la nube al salir del campo SKU activo
+  const handleSkuBlur = async (index: number) => {
+    const item = lines[index];
+    if (!item || !item.partNumber || !item.sku) return;
+
+    setCloudStatus('saving');
+    const res = await saveBoSkuMapping(item.partNumber, item.sku);
+
+    if (res.success) {
+      setSkuCatalog((prev) => ({
+        ...prev,
+        [item.partNumber.trim().toUpperCase()]: item.sku.trim().toUpperCase(),
+      }));
+      setMemorizedSkuCount((prev) => prev + 1);
+      setCloudStatus('saved');
+    } else {
+      setCloudStatus('error');
+    }
+
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    statusTimerRef.current = setTimeout(() => setCloudStatus('idle'), 3500);
+  };
+
+  // Edición de SKU en tabla de descartados
   const handleDiscardedSkuChange = (index: number, newSku: string) => {
     const updated = [...discardedLines];
-    updated[index].sku = newSku.toUpperCase();
+    updated[index] = { ...updated[index], sku: newSku.toUpperCase() };
     setDiscardedLines(updated);
+  };
+
+  // Guardado persistente en la nube al salir del campo SKU descartado
+  const handleDiscardedSkuBlur = async (index: number) => {
+    const item = discardedLines[index];
+    if (!item || !item.partNumber || !item.sku) return;
+
+    setCloudStatus('saving');
+    const res = await saveBoSkuMapping(item.partNumber, item.sku);
+
+    if (res.success) {
+      setSkuCatalog((prev) => ({
+        ...prev,
+        [item.partNumber.trim().toUpperCase()]: item.sku.trim().toUpperCase(),
+      }));
+      setMemorizedSkuCount((prev) => prev + 1);
+      setCloudStatus('saved');
+    } else {
+      setCloudStatus('error');
+    }
+
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    statusTimerRef.current = setTimeout(() => setCloudStatus('idle'), 3500);
   };
 
   // Mover una línea de descartadas a la tabla activa
@@ -78,8 +208,17 @@ export const BoRequestModal: React.FC<Props> = ({
     setDiscardedLines((prev) => [...prev, item]);
   };
 
-  // Copiar tabla HTML al portapapeles
+  // Copiar tabla HTML al portapapeles y sincronizar SKUs a la nube
   const handleCopy = async () => {
+    // Sincronizar todos los SKUs cargados a la base de datos antes de copiar
+    const validItemsToSync = lines
+      .filter((l) => l.partNumber && l.sku)
+      .map((l) => ({ partNumber: l.partNumber, sku: l.sku }));
+
+    if (validItemsToSync.length > 0) {
+      batchSaveBoSkuMappings(validItemsToSync);
+    }
+
     const ok = await copyBoTableToClipboard(lines);
     if (ok) {
       setCopied(true);
@@ -121,13 +260,46 @@ export const BoRequestModal: React.FC<Props> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="w-full max-w-5xl bg-zinc-950 border border-zinc-800 rounded-2xl p-5 sm:p-6 shadow-2xl text-zinc-100 font-sans flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-zinc-800 pb-3 mb-3">
+        <div className="flex flex-wrap items-center justify-between border-b border-zinc-800 pb-3 mb-3 gap-2">
           <div>
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <span>📋</span> Solicitud de Creación de BO (Ventas Core)
-            </h2>
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <span>📋</span> Solicitud de Creación de BO (Ventas Core)
+              </h2>
+
+              {/* Indicador de Estado Cloud Database */}
+              <div
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono border transition-all ${
+                  cloudStatus === 'saving'
+                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 animate-pulse'
+                    : cloudStatus === 'saved'
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                    : isCloudReady
+                    ? 'bg-emerald-950/40 border-emerald-800/50 text-emerald-400'
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-400'
+                }`}
+                title="Sincronización en la nube con Firestore y almacenamiento local para memoria de SKUs"
+              >
+                {cloudStatus === 'saving' ? (
+                  <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
+                ) : cloudStatus === 'saved' ? (
+                  <Check className="w-3 h-3 text-emerald-400" />
+                ) : (
+                  <Cloud className="w-3 h-3 text-indigo-400" />
+                )}
+                <span>
+                  {cloudStatus === 'saving'
+                    ? 'Guardando en la nube...'
+                    : cloudStatus === 'saved'
+                    ? 'SKU guardado en la nube'
+                    : isCloudReady
+                    ? `Nube Activa (${memorizedSkuCount} SKUs)`
+                    : `Caché Local (${memorizedSkuCount} SKUs)`}
+                </span>
+              </div>
+            </div>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Valores netos de costo puro (sin márgenes ni internación). Solo se incluyen ítems con valor económico en la tabla principal.
+              Valores netos de costo puro. Part Numbers con sufijo <strong className="text-zinc-200">-CBN</strong> editable y auto-rellenado inteligente de SKUs Intcomex desde la base de datos en la nube.
             </p>
           </div>
           <button
@@ -216,10 +388,20 @@ export const BoRequestModal: React.FC<Props> = ({
                             value={line.sku}
                             placeholder="SKU Intcomex"
                             onChange={(e) => handleSkuChange(idx, e.target.value)}
+                            onBlur={() => handleSkuBlur(idx)}
                             className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-center font-mono text-white text-xs w-32 focus:border-amber-400 focus:outline-none uppercase"
+                            title="Código SKU Intcomex (se guarda automáticamente en la nube al salir del campo)"
                           />
                         </td>
-                        <td className="p-2 text-center font-bold text-zinc-200">{line.partNumber}</td>
+                        <td className="p-2 text-center">
+                          <input
+                            type="text"
+                            value={line.partNumber}
+                            onChange={(e) => handlePartNumberChange(idx, e.target.value)}
+                            className="bg-zinc-950 border border-zinc-700/80 rounded px-2 py-1 text-center font-mono font-bold text-zinc-100 text-xs w-full max-w-[240px] focus:border-amber-400 focus:outline-none"
+                            title="Part Number Cisco (editable, por defecto incluye sufijo -CBN o puedes usar espacio CBN)"
+                          />
+                        </td>
                         <td className="p-2 text-center font-bold text-amber-400">{line.bodega}</td>
                         <td className="p-2 text-center">{line.qty}</td>
                         <td className="p-2 text-right text-zinc-300">
@@ -340,10 +522,20 @@ export const BoRequestModal: React.FC<Props> = ({
                                 value={dLine.sku}
                                 placeholder="Opcional"
                                 onChange={(e) => handleDiscardedSkuChange(dIdx, e.target.value)}
+                                onBlur={() => handleDiscardedSkuBlur(dIdx)}
                                 className="bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-center font-mono text-zinc-400 text-[11px] w-28 focus:border-amber-400 focus:outline-none uppercase"
+                                title="Código SKU Intcomex (se guarda automáticamente en la nube al salir del campo)"
                               />
                             </td>
-                            <td className="p-1.5 text-center text-zinc-300 font-medium">{dLine.partNumber}</td>
+                            <td className="p-1.5 text-center">
+                              <input
+                                type="text"
+                                value={dLine.partNumber}
+                                onChange={(e) => handleDiscardedPartNumberChange(dIdx, e.target.value)}
+                                className="bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-center font-mono text-zinc-300 text-[11px] w-full max-w-[200px] focus:border-amber-400 focus:outline-none"
+                                title="Part Number Cisco (editable)"
+                              />
+                            </td>
                             <td className="p-1.5 text-center text-zinc-500">{dLine.bodega}</td>
                             <td className="p-1.5 text-center">{dLine.qty}</td>
                             <td className="p-1.5 text-right text-zinc-500">$0,00</td>

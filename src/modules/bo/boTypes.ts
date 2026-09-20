@@ -19,6 +19,28 @@ export interface BoEstimateData {
 }
 
 /**
+ * Formatea el Part Number exclusivamente para el módulo BO agregando '-CBN' al final
+ * si no contiene ya una variante de sufijo CBN (ej. '-CBN', ' CBN', etc.)
+ */
+export function formatBoPartNumber(pn: string): string {
+  const trimmed = (pn || '').trim();
+  if (!trimmed) return '';
+  if (/[-_\s]+CBN$/i.test(trimmed)) {
+    return trimmed;
+  }
+  return `${trimmed}-CBN`;
+}
+
+/**
+ * Obtiene el Part Number base removiendo cualquier sufijo CBN para maximizar
+ * la coincidencia con el catálogo de SKUs de Intcomex.
+ */
+export function normalizeBasePartNumber(pn: string): string {
+  const trimmed = (pn || '').trim();
+  return trimmed.replace(/[-_\s]+CBN$/i, '').trim();
+}
+
+/**
  * Determina la bodega para cada línea según la presencia de Hardware
  */
 export function resolveWarehouseForLines(
@@ -33,9 +55,11 @@ export function resolveWarehouseForLines(
 ): BoLineItem[] {
   // 1. Detectar si una línea es servicio o licencia
   const classified = rawLines.map((line) => {
-    const pn = line.partNumber.trim().toUpperCase();
-    const isService = pn.startsWith('CON-') || pn.startsWith('CX-');
-    const isLicense = pn.startsWith('LIC-') || pn.includes('-DNA-') || pn.includes('-SUB');
+    const rawPn = line.partNumber.trim();
+    const boPn = formatBoPartNumber(rawPn);
+    const upperPn = rawPn.toUpperCase();
+    const isService = upperPn.startsWith('CON-') || upperPn.startsWith('CX-');
+    const isLicense = upperPn.startsWith('LIC-') || upperPn.includes('-DNA-') || upperPn.includes('-SUB');
     const isServiceOrLicense = isService || isLicense;
     const isHardware = !isServiceOrLicense;
 
@@ -47,11 +71,17 @@ export function resolveWarehouseForLines(
     }
 
     const extended = Math.round(finalUnitPrice * line.qty);
-    const resolvedSku = line.sku || (skuCatalogLookup ? skuCatalogLookup(line.partNumber) : '');
+    const resolvedSku =
+      line.sku ||
+      (skuCatalogLookup
+        ? skuCatalogLookup(boPn) ||
+          skuCatalogLookup(rawPn) ||
+          skuCatalogLookup(normalizeBasePartNumber(rawPn))
+        : '');
 
     return {
       sku: resolvedSku,
-      partNumber: line.partNumber,
+      partNumber: boPn,
       bodega: 'E1' as 'E1' | 'ED2',
       qty: line.qty,
       unitNetPrice: finalUnitPrice,

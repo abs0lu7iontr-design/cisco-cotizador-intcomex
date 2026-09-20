@@ -436,6 +436,23 @@ class DesktopBridge:
         """Signals UI to switch to quoter tab."""
         return True
 
+    def save_bo_sku(self, part_number: str, intcomex_sku: str, base_part_number: str = ""):
+        """Saves Cisco Part Number to Intcomex SKU mapping in SQLite."""
+        try:
+            self.db.save_bo_sku_db(part_number, intcomex_sku, base_part_number)
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
+    def get_bo_skus(self):
+        """Gets all Part Number -> Intcomex SKU mappings from SQLite."""
+        try:
+            return self.db.get_bo_skus_db()
+        except Exception as e:
+            print(f"[DesktopAPI Error - get_bo_skus]: {e}")
+            return {}
+
+
 
 def get_index_html_path() -> str:
     """

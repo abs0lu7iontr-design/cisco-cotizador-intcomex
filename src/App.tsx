@@ -21,7 +21,13 @@ import { RulesExplanationModal } from './components/RulesExplanationModal';
 import { DownloadModal } from './components/DownloadModal';
 import { PriorAuditDetectedModal } from './components/PriorAuditDetectedModal';
 import { MiningAuditModal, MiningAlertModal } from './modules/mining';
-import { BoRequestModal, resolveWarehouseForLines, BoLineItem } from './modules/bo';
+import {
+  BoRequestModal,
+  resolveWarehouseForLines,
+  BoLineItem,
+  findSkuInCatalog,
+  getLocalBoSkuCache,
+} from './modules/bo';
 import { DashboardView } from './components/DashboardView';
 import { UploadView } from './components/UploadView';
 import { EstimatesHistoryView } from './components/EstimatesHistoryView';
@@ -138,13 +144,15 @@ function AppContent() {
     const validItems = processedResult.items.filter(
       (it) => it.partNumber && !it.isInfoRow && it.qty > 0
     );
+    const localCatalog = getLocalBoSkuCache();
     return resolveWarehouseForLines(
       validItems.map((it) => ({
         partNumber: it.partNumber,
         qty: it.qty,
         unitNetPrice: it.netCiscoUnit,
         initialTermMonths: parseInt(it.serviceDurationMonths, 10) || undefined,
-      }))
+      })),
+      (pn) => findSkuInCatalog(pn, localCatalog)
     );
   }, [processedResult?.items]);
 
