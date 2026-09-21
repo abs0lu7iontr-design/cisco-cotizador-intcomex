@@ -26,6 +26,7 @@ import {
   DsvDiscrepancy,
 } from './dsvEngine';
 import { DsvDiscrepancyModal } from './DsvDiscrepancyModal';
+import { usePartnerDatabase } from '../../hooks/usePartnerDatabase';
 
 interface DsvModalProps {
   isOpen: boolean;
@@ -81,6 +82,24 @@ export const DsvModal: React.FC<DsvModalProps> = ({
       setIsGenerating(false);
     }
   }, [isOpen, rawBom, initialFormData]);
+
+  // 1. EL NOMBRE DEL BOM ES INTOCABLE PARA LA EXPORTACIÓN (Columnas T y AI)
+  const originalBomName = useMemo(() => {
+    if (!rawBom) return '';
+    return rawBom.resellerName || (rawBom.items && rawBom.items[0]?.resellerName) || formData.partnerName || '';
+  }, [rawBom, formData.partnerName]);
+
+  // 2. Ejecutar búsqueda difusa matemática para códigos XCL (Levenshtein >90% con persistencia Local-First)
+  const { suggestedXcl, matchScore, matchedNameDb, learnNewPartner } = usePartnerDatabase(originalBomName);
+
+  useEffect(() => {
+    if (suggestedXcl && !formData.partnerId) {
+      setFormData((prev) => ({
+        ...prev,
+        partnerId: suggestedXcl,
+      }));
+    }
+  }, [suggestedXcl, formData.partnerId]);
 
   // Reactive standardized filename: NumerodeDEAL_DSV_partner_clientefinal_fecha.xlsx
   const previewFilename = useMemo(() => {
@@ -164,8 +183,19 @@ export const DsvModal: React.FC<DsvModalProps> = ({
   const handleExportDsv = async () => {
     if (!rawBom) return;
 
-    // 1. Transform raw BOM to 48 columns DSV with overrides and updated formData
-    const summary = transformRawBomToDsv(rawBom, formData, overrides, false);
+    // Aprender nuevo código XCL si el usuario lo ingresó a mano y difiere del sugerido
+    const cleanXcl = formData.partnerId.trim().toUpperCase();
+    if (cleanXcl && cleanXcl.length >= 5 && cleanXcl !== suggestedXcl) {
+      await learnNewPartner(originalBomName, cleanXcl);
+    }
+
+    // 1. Transform raw BOM to 48 columns DSV respetando el nombre original del BOM en Cols T y AI
+    const exportFormData: DsvModalFormData = {
+      ...formData,
+      partnerName: originalBomName || formData.partnerName,
+      partnerId: cleanXcl,
+    };
+    const summary = transformRawBomToDsv(rawBom, exportFormData, overrides, false);
 
     // 2. Conciliación Financiera: Si hay discrepancias activas (> $0.02 USD), retener descarga y mostrar modal
     const discrepancies = summary.rows
@@ -186,7 +216,12 @@ export const DsvModal: React.FC<DsvModalProps> = ({
     setIsDiscrepancyModalOpen(false);
     if (!rawBom) return;
 
-    const summary = transformRawBomToDsv(rawBom, formData, overrides, false);
+    const exportFormData: DsvModalFormData = {
+      ...formData,
+      partnerName: originalBomName || formData.partnerName,
+      partnerId: formData.partnerId.trim().toUpperCase(),
+    };
+    const summary = transformRawBomToDsv(rawBom, exportFormData, overrides, false);
 
     if (decision === 'MATH') {
       // Sobrescribir colK con calculatedPrice en las filas afectadas
@@ -426,13 +461,28 @@ export const DsvModal: React.FC<DsvModalProps> = ({
                 <p className="text-[10px] text-slate-500">Exactamente 8 dígitos numéricos (del BOM)</p>
               </div>
 
-              {/* 4. Partner Identification (Col U) */}
-              <div className="space-y-1.5">
+              {/* 4. Partner Identification (Col U) con Autocompletado Difuso (Fuzzy Matching >90%) */}
+              <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 space-y-2.5">
+                <div className="mb-2">
+                  <span className="block text-[10px] text-slate-400 font-mono">
+                    Nombre detectado en BOM (No modificable):
+                  </span>
+                  <span className="block text-xs text-slate-200 font-bold truncate">
+                    {originalBomName || 'No detectado'}
+                  </span>
+                </div>
+
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-slate-300">
                     Partner Identification (Col U) <span className="text-rose-400">*</span>
                   </label>
+                  {matchScore >= 90 && (
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800/60">
+                      Match {Math.round(matchScore)}%
+                    </span>
+                  )}
                 </div>
+
                 <div className="relative">
                   <span className="absolute left-3 top-2.5 text-xs text-slate-500 font-mono">
                     <IdCard className="w-3.5 h-3.5" />
@@ -441,24 +491,36 @@ export const DsvModal: React.FC<DsvModalProps> = ({
                     type="text"
                     placeholder="Ej. XCL005331"
                     value={formData.partnerId}
-                    onChange={(e) => handleTextChange('partnerId', e.target.value)}
+                    onChange={(e) => handleTextChange('partnerId', e.target.value.toUpperCase())}
                     className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl pl-9 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none transition-colors"
                   />
                 </div>
-                <p className="text-[10px] text-slate-500">Buyer/Reseller Partner Identification</p>
+
+                {matchScore >= 90 && (
+                  <p className="text-xs text-emerald-400 mt-1.5 flex items-center gap-1 font-medium">
+                    <span>✓</span>
+                    XCL encontrado basado en &quot;{matchedNameDb}&quot; ({Math.round(matchScore)}% similitud en BD)
+                  </p>
+                )}
+                {matchScore > 0 && matchScore < 90 && (
+                  <p className="text-xs text-amber-400 mt-1.5 font-medium">
+                    Similitud baja ({Math.round(matchScore)}%) con &quot;{matchedNameDb}&quot;. Por favor verifica e ingresa el XCL manualmente.
+                  </p>
+                )}
+                <p className="text-[10px] text-slate-500">
+                  Buyer/Reseller Partner Identification (se inyecta en Col U)
+                </p>
               </div>
 
-              {/* 5. Partner / Reseller Name (Col T & AI) */}
+              {/* 5. Partner / Reseller Name (Col T & AI) - Inmutable desde el BOM */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-slate-300">
                     Partner / Reseller Name (Col T y AI) <span className="text-rose-400">*</span>
                   </label>
-                  {Boolean(rawBom.resellerName && formData.partnerName === rawBom.resellerName) && (
-                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-950 text-blue-300 border border-blue-800/60">
-                      Auto-detectado del BOM
-                    </span>
-                  )}
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-950 text-blue-300 border border-blue-800/60">
+                    Inmutable del BOM
+                  </span>
                 </div>
                 <div className="relative">
                   <span className="absolute left-3 top-2.5 text-xs text-slate-500 font-mono">
@@ -466,13 +528,14 @@ export const DsvModal: React.FC<DsvModalProps> = ({
                   </span>
                   <input
                     type="text"
+                    readOnly
                     placeholder="Ej. LOGICALIS CHILE S.A."
-                    value={formData.partnerName || ''}
-                    onChange={(e) => handleTextChange('partnerName', e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none transition-colors font-medium"
+                    value={originalBomName || formData.partnerName || ''}
+                    className="w-full bg-slate-950/70 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-300 font-medium cursor-not-allowed opacity-90 select-none"
+                    title="El nombre del Reseller extraído del BOM es sagrado e inmutable para las columnas T y AI"
                   />
                 </div>
-                <p className="text-[10px] text-slate-500">Canal / Reseller (asigna Col T, Col AI Ship-To y nombre archivo)</p>
+                <p className="text-[10px] text-slate-500">Canal / Reseller original del BOM (preservado 100% en Col T y Col AI)</p>
               </div>
 
               {/* 6. End Customer Name (Col AP) */}
