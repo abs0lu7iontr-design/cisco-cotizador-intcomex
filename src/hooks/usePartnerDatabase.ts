@@ -6,11 +6,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { doc, setDoc, collection, onSnapshot, Firestore } from 'firebase/firestore';
 import { getSimilarityScore } from '../utils/fuzzyMatch';
+import { getPartnerDocId } from '../utils/partnerDbUtils';
 import { getFirestoreInstance } from '../modules/cloud/firebaseConfig';
 
 export interface PartnerRecord {
   resellerName: string;
   xclCode: string;
+  updatedAt?: number;
 }
 
 const LOCAL_STORAGE_PARTNERS_KEY = 'cisco_partners_xcl_cache_v1';
@@ -155,20 +157,30 @@ export function usePartnerDatabase(originalBomName: string) {
     // Actualización local inmediata (Local-First)
     setPartners((prev) => {
       const filtered = prev.filter((p) => p.resellerName.toUpperCase() !== cleanName.toUpperCase());
-      const updated = [...filtered, { resellerName: cleanName, xclCode: cleanXcl }];
+      const updated = [...filtered, { resellerName: cleanName, xclCode: cleanXcl, updatedAt: Date.now() }];
       try {
         localStorage.setItem(LOCAL_STORAGE_PARTNERS_KEY, JSON.stringify(updated));
       } catch (_) {}
       return updated;
     });
 
-    // Guardado en Firestore
+    // Guardado determinista en Firestore
+    const docId = getPartnerDocId(cleanName);
+    if (!docId) return;
+
     try {
       const instance = getFirestoreInstance();
       if (instance.isReady && instance.db) {
-        const docKey = cleanName.toUpperCase().replace(/\//g, '-');
-        const docRef = doc(instance.db, 'partners_xcl', docKey);
-        await setDoc(docRef, { resellerName: cleanName, xclCode: cleanXcl }, { merge: true });
+        const docRef = doc(instance.db, 'partners_xcl', docId);
+        await setDoc(
+          docRef,
+          {
+            resellerName: cleanName,
+            xclCode: cleanXcl,
+            updatedAt: Date.now(),
+          },
+          { merge: true }
+        );
       }
     } catch (error) {
       console.error('Error al guardar partner en Firestore:', error);

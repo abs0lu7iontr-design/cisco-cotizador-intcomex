@@ -6,6 +6,7 @@
 import React, { useRef, useState } from 'react';
 import { getFirestore, writeBatch, doc } from 'firebase/firestore';
 import { getFirestoreInstance } from '../../cloud/firebaseConfig';
+import { getPartnerDocId } from '../../../utils/partnerDbUtils';
 
 interface PartnerItem {
   resellerName: string;
@@ -93,10 +94,8 @@ export const DsvPartnerUploader: React.FC<DsvPartnerUploaderProps> = ({ onUpload
           const batch = writeBatch(dbInstance);
 
           chunk.forEach((item) => {
-            const docId = item.resellerName
-              .trim()
-              .toUpperCase()
-              .replace(/[\/\\.#$\[\]]/g, '-');
+            const docId = getPartnerDocId(item.resellerName);
+            if (!docId) return;
 
             const docRef = doc(dbInstance, 'partners_xcl', docId);
 

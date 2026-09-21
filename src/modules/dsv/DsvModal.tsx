@@ -216,10 +216,15 @@ export const DsvModal: React.FC<DsvModalProps> = ({
     setIsDiscrepancyModalOpen(false);
     if (!rawBom) return;
 
+    const cleanXcl = formData.partnerId.trim().toUpperCase();
+    if (cleanXcl && cleanXcl.length >= 5 && cleanXcl !== suggestedXcl) {
+      await learnNewPartner(originalBomName, cleanXcl);
+    }
+
     const exportFormData: DsvModalFormData = {
       ...formData,
       partnerName: originalBomName || formData.partnerName,
-      partnerId: formData.partnerId.trim().toUpperCase(),
+      partnerId: cleanXcl,
     };
     const summary = transformRawBomToDsv(rawBom, exportFormData, overrides, false);
 

@@ -14,6 +14,7 @@ export interface DsvExportViewProps {
   value: string;
   onChange: (val: string) => void;
   onLearnPartnerTrigger?: (learnFn: (bomName: string, xclCode: string) => Promise<void>) => void;
+  onDownloadPlantillaDsv?: () => Promise<void>;
   className?: string;
 }
 
@@ -24,6 +25,7 @@ export const DsvExportView: React.FC<DsvExportViewProps> = ({
   value,
   onChange,
   onLearnPartnerTrigger,
+  onDownloadPlantillaDsv,
   className = '',
 }) => {
   // 1. Ejecutar búsqueda difusa (Fuzzy Matching >90%)
@@ -42,6 +44,19 @@ export const DsvExportView: React.FC<DsvExportViewProps> = ({
       onLearnPartnerTrigger(learnNewPartner);
     }
   }, [onLearnPartnerTrigger, learnNewPartner]);
+
+  // 3. Persistencia automática al descargar plantilla DSV
+  const handleDownloadPlantillaDsv = async () => {
+    const finalXcl = value.trim().toUpperCase();
+
+    if (finalXcl && originalBomName && finalXcl !== suggestedXcl) {
+      await learnNewPartner(originalBomName, finalXcl);
+    }
+
+    if (onDownloadPlantillaDsv) {
+      await onDownloadPlantillaDsv();
+    }
+  };
 
   return (
     <div className={className}>
