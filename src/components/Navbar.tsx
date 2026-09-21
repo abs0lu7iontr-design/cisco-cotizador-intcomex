@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { useAppTheme } from '../context/ThemeContext';
+import { DsvPartnerUploader } from '../modules/dsv/components/DsvPartnerUploader';
 
 interface NavbarProps {
   onUploadClick: () => void;
@@ -147,6 +148,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             <HelpCircle className="w-4 h-4 text-indigo-400" />
             <span className="hidden sm:inline">Reglas</span>
           </button>
+
+          {/* Global Partner Database Loader */}
+          <DsvPartnerUploader />
 
           {/* Theme Mode Toggle (Cyber HUD vs Enterprise) */}
           <button

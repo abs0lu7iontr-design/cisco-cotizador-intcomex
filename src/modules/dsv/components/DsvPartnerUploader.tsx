@@ -147,11 +147,11 @@ export const DsvPartnerUploader: React.FC<DsvPartnerUploaderProps> = ({ onUpload
         type="button"
         disabled={loading}
         onClick={() => fileInputRef.current?.click()}
-        className="px-2.5 py-1 text-[11px] font-mono rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 hover:border-cyan-400 text-slate-300 hover:text-cyan-300 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
-        title="Actualizar o sembrar base de Partners (initial_partners.json)"
+        className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs font-semibold text-slate-300 hover:border-cyan-500 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+        title="Actualizar o sembrar base global de Partners (initial_partners.json)"
       >
-        <span>📁</span>
-        <span>{loading ? 'Sincronizando...' : 'Base Partners (JSON)'}</span>
+        <span>⚙️</span>
+        <span className="hidden sm:inline">{loading ? 'Sincronizando...' : 'Base Partners'}</span>
       </button>
 
       {feedback && (

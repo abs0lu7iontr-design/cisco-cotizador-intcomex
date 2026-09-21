@@ -27,7 +27,6 @@ import {
 } from './dsvEngine';
 import { DsvDiscrepancyModal } from './DsvDiscrepancyModal';
 import { usePartnerDatabase } from '../../hooks/usePartnerDatabase';
-import { DsvPartnerUploader } from './components/DsvPartnerUploader';
 
 interface DsvModalProps {
   isOpen: boolean;
@@ -433,87 +432,81 @@ export const DsvModal: React.FC<DsvModalProps> = ({
               </div>
 
               {/* 3. Deal ID (Col L) - Exact 8 numeric digits */}
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-slate-300">
-                    Deal ID (Col L) <span className="text-rose-400">*</span>
+                  <label className="text-xs font-mono text-slate-300 flex items-center gap-1.5">
+                    <span>Deal ID (Col L) *</span>
                   </label>
                   <span
-                    className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                      isDealIdValid ? 'text-emerald-400 bg-emerald-950/60' : 'text-amber-400 bg-amber-950/60'
+                    className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                      isDealIdValid
+                        ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
+                        : 'bg-amber-950/80 text-amber-400 border border-amber-800/60'
                     }`}
                   >
                     {formData.dealId.length}/8 dígitos
                   </span>
                 </div>
                 <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-xs text-slate-500 font-mono">
-                    <Hash className="w-3.5 h-3.5" />
-                  </span>
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500 font-mono text-xs">
+                    #
+                  </div>
                   <input
                     type="text"
+                    maxLength={8}
                     inputMode="numeric"
-                    placeholder="Ej. 85890781"
+                    placeholder="85890781"
                     value={formData.dealId}
                     onChange={(e) => handleNumericChange('dealId', e.target.value, 8)}
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl pl-9 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none transition-colors"
+                    className="w-full bg-[#050c1a] border border-cyan-950 focus:border-cyan-500 rounded-lg pl-7 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 outline-none transition-all"
                   />
                 </div>
-                <p className="text-[10px] text-slate-500">Exactamente 8 dígitos numéricos (del BOM)</p>
+                <p className="text-[10px] text-slate-500 font-mono">
+                  Exactamente 8 dígitos numéricos (del BOM)
+                </p>
               </div>
 
-              {/* 4. Partner Identification (Col U) con Autocompletado Difuso (Fuzzy Matching >90%) */}
-              <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 space-y-2.5">
-                <div className="mb-2">
-                  <span className="block text-[10px] text-slate-400 font-mono">
-                    Nombre detectado en BOM (No modificable):
-                  </span>
-                  <span className="block text-xs text-slate-200 font-bold truncate">
-                    {originalBomName || 'No detectado'}
-                  </span>
-                </div>
-
+              {/* 4. Partner Identification (Col U) - Diseño HUD Simétrico */}
+              <div className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-slate-300">
-                    Partner Identification (Col U) <span className="text-rose-400">*</span>
+                  <label className="text-xs font-mono text-slate-300 flex items-center gap-1.5">
+                    <span>Partner Identification (Col U) *</span>
                   </label>
-                  <div className="flex items-center gap-2">
-                    {matchScore >= 90 && (
-                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800/60">
-                        Match {Math.round(matchScore)}%
-                      </span>
-                    )}
-                    <DsvPartnerUploader />
-                  </div>
+                  {matchScore >= 90 ? (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-[#00ff9d] border border-emerald-500/40 shadow-[0_0_8px_rgba(0,255,157,0.2)]">
+                      Match {Math.round(matchScore)}%
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-700">
+                      Manual
+                    </span>
+                  )}
                 </div>
-
                 <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-xs text-slate-500 font-mono">
-                    <IdCard className="w-3.5 h-3.5" />
-                  </span>
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500 font-mono text-xs">
+                    🪪
+                  </div>
                   <input
                     type="text"
-                    placeholder="Ej. XCL005331"
                     value={formData.partnerId}
                     onChange={(e) => handleTextChange('partnerId', e.target.value.toUpperCase())}
-                    className="w-full bg-[#050c1a] border border-cyan-950 focus:border-cyan-500 rounded-xl pl-9 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none transition-colors"
+                    placeholder="Ej. XCL007919"
+                    className={`w-full bg-[#050c1a] border rounded-lg pl-8 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 outline-none transition-all ${
+                      matchScore >= 90
+                        ? 'border-emerald-500/50 focus:border-emerald-400'
+                        : 'border-cyan-950 focus:border-cyan-500'
+                    }`}
                   />
                 </div>
-
-                {matchScore >= 90 && (
-                  <p className="text-[11px] font-mono text-emerald-400 flex items-center gap-1 mt-1">
-                    <span>✓</span>
-                    <span>Auto-detectado de: <strong>{matchedNameDb}</strong> ({Math.round(matchScore)}% similitud)</span>
+                {matchScore >= 90 ? (
+                  <p className="text-[10px] text-[#00ff9d] font-mono truncate" title={`Auto-detectado: ${matchedNameDb}`}>
+                    ✓ Auto-detectado: {matchedNameDb}
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-slate-500 font-mono">
+                    Buyer/Reseller Partner Identification (se inyecta en Col U)
                   </p>
                 )}
-                {matchScore > 0 && matchScore < 90 && (
-                  <p className="text-xs text-amber-400 mt-1.5 font-medium">
-                    Similitud baja ({Math.round(matchScore)}%) con &quot;{matchedNameDb}&quot;. Por favor verifica e ingresa el XCL manualmente.
-                  </p>
-                )}
-                <p className="text-[10px] text-slate-500">
-                  Buyer/Reseller Partner Identification (se inyecta en Col U)
-                </p>
               </div>
 
               {/* 5. Partner / Reseller Name (Col T & AI) - Inmutable desde el BOM */}
