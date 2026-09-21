@@ -12,3 +12,6 @@ export * from './estimateAuditAdapter';
 export * from './MiningAuditModal';
 export * from './miningDetector';
 export * from './MiningAlertModal';
+export * from './miningFastTrackDetector';
+export * from './MiningFastTrackWarningModal';
+

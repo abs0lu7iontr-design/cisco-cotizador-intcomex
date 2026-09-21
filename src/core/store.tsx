@@ -24,7 +24,14 @@ import {
   getSharedSkuRules,
   publishSharedSkuRules,
 } from '../modules/cloud';
-import { executeSafeMiningAudit, AuditReport, inspectEstimateForMining, MiningAlertData } from '../modules/mining';
+import {
+  executeSafeMiningAudit,
+  AuditReport,
+  inspectEstimateForMining,
+  MiningAlertData,
+  detectMiningFastTrackUsage,
+  MiningFastTrackAlertData,
+} from '../modules/mining';
 
 export type NavViewId =
   | 'dashboard'
@@ -113,6 +120,12 @@ interface CiscoAutomatedState {
   isMiningAlertModalOpen: boolean;
   setIsMiningAlertModalOpen: (open: boolean) => void;
 
+  // Mining Observer: Fast Track Usage Warning
+  miningFastTrackWarningData: MiningFastTrackAlertData | null;
+  setMiningFastTrackWarningData: (data: MiningFastTrackAlertData | null) => void;
+  isMiningFastTrackWarningModalOpen: boolean;
+  setIsMiningFastTrackWarningModalOpen: (open: boolean) => void;
+
   processFileBuffer: (buffer: ArrayBuffer, fileName: string) => Promise<void>;
   setRowRule: (rowIdx: number, rule: OverrideRuleType, sku?: string) => Promise<void>;
   cycleRowRule: (rowIdx: number) => Promise<void>;
@@ -165,6 +178,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
   // Mining Observer (Daniel Peña Special Discount Alert >= $150.000 USD)
   const [miningAlertData, setMiningAlertData] = useState<MiningAlertData | null>(null);
   const [isMiningAlertModalOpen, setIsMiningAlertModalOpen] = useState<boolean>(false);
+
+  // Mining Observer: Fast Track Usage Warning
+  const [miningFastTrackWarningData, setMiningFastTrackWarningData] = useState<MiningFastTrackAlertData | null>(null);
+  const [isMiningFastTrackWarningModalOpen, setIsMiningFastTrackWarningModalOpen] = useState<boolean>(false);
 
   // UI Controls
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -459,17 +476,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           }
         } catch (_) {}
 
-        // 5. MÓDULO 3: Cross-Check Fast Track Audit
-        const auditRes = await auditEstimateWithFastTrack(rawResult.items);
-        if (auditRes && auditRes.hasOpportunity) {
-          setPendingFastTrackAudit(auditRes);
-          setIsFastTrackOpportunityModalOpen(true);
-        } else {
-          setPendingFastTrackAudit(null);
-          setIsFastTrackOpportunityModalOpen(false);
-        }
-
-        // 6. MÓDULO AUDITOR DE MINERÍA Y SERVICIOS CISCO (Read-Only)
+        // 5. MÓDULO AUDITOR DE MINERÍA Y SERVICIOS CISCO (Read-Only)
         const auditReport = executeSafeMiningAudit({
           ...rawResult,
           fileName: fileName || currentFileName,
@@ -480,7 +487,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           setMiningAuditData(null);
         }
 
-        // 7. MÓDULO OBSERVADOR DE MINERÍA (Solo Detección y Alerta Daniel Peña >= $150.000 USD)
+        // 6. MÓDULO OBSERVADOR DE MINERÍA (Solo Detección y Alerta Daniel Peña >= $150.000 USD)
         const miningInspection: MiningAlertData = inspectEstimateForMining(
           fileName || currentFileName,
           rawResult?.items || [],
@@ -492,6 +499,51 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         } else {
           setMiningAlertData(null);
           setIsMiningAlertModalOpen(false);
+        }
+
+        // 7. EVALUACIÓN OBSERVADOR MINERÍA: CRUCE FAST TRACK (MODO OBSERVADOR)
+        const isMiningAccount =
+          Boolean(miningInspection?.isMining) ||
+          Boolean(auditReport && auditReport.overallStatus !== 'NO_RULES' && auditReport.matchedAccount);
+
+        const matchedMiningName =
+          auditReport?.matchedAccount?.groupName ||
+          miningInspection?.matchedKeyword?.toUpperCase() ||
+          rawResult?.headerInfo?.companyName ||
+          'Cuenta Minera';
+
+        if (isMiningAccount) {
+          // En minería NO se usa Fast Track: suprimir modal estándar de oportunidad comercial
+          setPendingFastTrackAudit(null);
+          setIsFastTrackOpportunityModalOpen(false);
+
+          // Cruce preventivo con Fast Track para detectar posibles cotizaciones con FT en CCW
+          const ftMiningAlert = await detectMiningFastTrackUsage(
+            rawResult.items,
+            true,
+            matchedMiningName
+          );
+          if (ftMiningAlert.shouldAlert) {
+            setMiningFastTrackWarningData(ftMiningAlert);
+            setIsMiningFastTrackWarningModalOpen(true);
+          } else {
+            setMiningFastTrackWarningData(null);
+            setIsMiningFastTrackWarningModalOpen(false);
+          }
+        } else {
+          // Para cuentas generales (no minería): no activar alerta minera
+          setMiningFastTrackWarningData(null);
+          setIsMiningFastTrackWarningModalOpen(false);
+
+          // Flujo estándar de oportunidad Fast Track para cuentas generales
+          const auditRes = await auditEstimateWithFastTrack(rawResult.items);
+          if (auditRes && auditRes.hasOpportunity) {
+            setPendingFastTrackAudit(auditRes);
+            setIsFastTrackOpportunityModalOpen(true);
+          } else {
+            setPendingFastTrackAudit(null);
+            setIsFastTrackOpportunityModalOpen(false);
+          }
         }
       } catch (err: any) {
         console.error('Error processing workbook:', err);
@@ -751,6 +803,29 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           setMiningAlertData(null);
           setIsMiningAlertModalOpen(false);
         }
+
+        // Evaluar posible uso de Fast Track en minería
+        const isMiningAccount =
+          Boolean(miningInspection?.isMining) ||
+          Boolean(auditReport && auditReport.overallStatus !== 'NO_RULES' && auditReport.matchedAccount);
+
+        if (isMiningAccount) {
+          const ftMiningAlert = await detectMiningFastTrackUsage(
+            reconstructedItems,
+            true,
+            auditReport?.matchedAccount?.groupName || miningInspection?.matchedKeyword?.toUpperCase()
+          );
+          if (ftMiningAlert.shouldAlert) {
+            setMiningFastTrackWarningData(ftMiningAlert);
+            setIsMiningFastTrackWarningModalOpen(true);
+          } else {
+            setMiningFastTrackWarningData(null);
+            setIsMiningFastTrackWarningModalOpen(false);
+          }
+        } else {
+          setMiningFastTrackWarningData(null);
+          setIsMiningFastTrackWarningModalOpen(false);
+        }
       } catch (err: any) {
         console.error('Error cargando cotización desde la nube:', err);
         setErrorMessage(`Error restaurando cotización: ${err?.message || 'Datos corruptos'}`);
@@ -922,6 +997,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       setMiningAlertData,
       isMiningAlertModalOpen,
       setIsMiningAlertModalOpen,
+      miningFastTrackWarningData,
+      setMiningFastTrackWarningData,
+      isMiningFastTrackWarningModalOpen,
+      setIsMiningFastTrackWarningModalOpen,
       isProcessing,
       errorMessage,
       activeQuoterTab,
@@ -975,6 +1054,8 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       setMiningAlertData,
       isMiningAlertModalOpen,
       setIsMiningAlertModalOpen,
+      miningFastTrackWarningData,
+      isMiningFastTrackWarningModalOpen,
       isProcessing,
       errorMessage,
       activeQuoterTab,

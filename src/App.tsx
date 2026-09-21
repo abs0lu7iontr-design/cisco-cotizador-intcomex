@@ -20,7 +20,11 @@ import { QuickCalculator } from './components/QuickCalculator';
 import { RulesExplanationModal } from './components/RulesExplanationModal';
 import { DownloadModal } from './components/DownloadModal';
 import { PriorAuditDetectedModal } from './components/PriorAuditDetectedModal';
-import { MiningAuditModal, MiningAlertModal } from './modules/mining';
+import {
+  MiningAuditModal,
+  MiningAlertModal,
+  MiningFastTrackWarningModal,
+} from './modules/mining';
 import {
   BoRequestModal,
   resolveWarehouseForLines,
@@ -101,6 +105,9 @@ function AppContent() {
     miningAlertData,
     isMiningAlertModalOpen,
     setIsMiningAlertModalOpen,
+    miningFastTrackWarningData,
+    isMiningFastTrackWarningModalOpen,
+    setIsMiningFastTrackWarningModalOpen,
   } = useCiscoAutomatedStore();
 
   // Initialize theme on application mount
@@ -374,6 +381,13 @@ function AppContent() {
         initialDealId={processedResult?.headerInfo?.dealId || null}
         mailtoUrlTemplate={miningAlertData?.mailtoUrl || ''}
         onClose={() => setIsMiningAlertModalOpen(false)}
+      />
+
+      {/* Mining Observer Modal - Fast Track Usage Warning (>= 2 items with equal discount) */}
+      <MiningFastTrackWarningModal
+        isOpen={isMiningFastTrackWarningModalOpen}
+        data={miningFastTrackWarningData}
+        onClose={() => setIsMiningFastTrackWarningModalOpen(false)}
       />
 
       {/* Back Order (BO) Request Modal for Ventas Core */}
