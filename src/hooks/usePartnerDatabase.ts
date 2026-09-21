@@ -88,6 +88,28 @@ export function usePartnerDatabase(originalBomName: string) {
     }
   }, []);
 
+  // Escuchar actualizaciones locales inmediatas (ej. carga desde DsvPartnerUploader)
+  useEffect(() => {
+    const handleLocalUpdate = () => {
+      try {
+        const cached = localStorage.getItem(LOCAL_STORAGE_PARTNERS_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            setPartners(parsed);
+          }
+        }
+      } catch (_) {}
+    };
+
+    window.addEventListener('cisco_partners_updated', handleLocalUpdate);
+    window.addEventListener('storage', handleLocalUpdate);
+    return () => {
+      window.removeEventListener('cisco_partners_updated', handleLocalUpdate);
+      window.removeEventListener('storage', handleLocalUpdate);
+    };
+  }, []);
+
   // 2. Ejecutar búsqueda difusa matemática (Fuzzy Matching >90%)
   useEffect(() => {
     if (!originalBomName || originalBomName.trim().length === 0 || partners.length === 0) {

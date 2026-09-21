@@ -27,6 +27,7 @@ import {
 } from './dsvEngine';
 import { DsvDiscrepancyModal } from './DsvDiscrepancyModal';
 import { usePartnerDatabase } from '../../hooks/usePartnerDatabase';
+import { DsvPartnerUploader } from './components/DsvPartnerUploader';
 
 interface DsvModalProps {
   isOpen: boolean;
@@ -476,11 +477,14 @@ export const DsvModal: React.FC<DsvModalProps> = ({
                   <label className="text-xs font-semibold text-slate-300">
                     Partner Identification (Col U) <span className="text-rose-400">*</span>
                   </label>
-                  {matchScore >= 90 && (
-                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800/60">
-                      Match {Math.round(matchScore)}%
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {matchScore >= 90 && (
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800/60">
+                        Match {Math.round(matchScore)}%
+                      </span>
+                    )}
+                    <DsvPartnerUploader />
+                  </div>
                 </div>
 
                 <div className="relative">
@@ -492,14 +496,14 @@ export const DsvModal: React.FC<DsvModalProps> = ({
                     placeholder="Ej. XCL005331"
                     value={formData.partnerId}
                     onChange={(e) => handleTextChange('partnerId', e.target.value.toUpperCase())}
-                    className="w-full bg-slate-950 border border-slate-800 focus:border-blue-500 rounded-xl pl-9 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none transition-colors"
+                    className="w-full bg-[#050c1a] border border-cyan-950 focus:border-cyan-500 rounded-xl pl-9 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none transition-colors"
                   />
                 </div>
 
                 {matchScore >= 90 && (
-                  <p className="text-xs text-emerald-400 mt-1.5 flex items-center gap-1 font-medium">
+                  <p className="text-[11px] font-mono text-emerald-400 flex items-center gap-1 mt-1">
                     <span>✓</span>
-                    XCL encontrado basado en &quot;{matchedNameDb}&quot; ({Math.round(matchScore)}% similitud en BD)
+                    <span>Auto-detectado de: <strong>{matchedNameDb}</strong> ({Math.round(matchScore)}% similitud)</span>
                   </p>
                 )}
                 {matchScore > 0 && matchScore < 90 && (
