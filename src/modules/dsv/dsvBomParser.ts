@@ -17,10 +17,15 @@ export interface RawBomItem {
   qty: number;                 // Col J (9) - QUANTITY
   durationMonths: number;      // Col K (10) - DURATION(Months)
   listPrice: number;           // Col O (14) - LIST_PRICE (Strictly unit list price)
+  extendedListPrice?: number;  // Col P (15) - EXTENDED LIST PRICE
+  unitNetPrice?: number;       // Col Q (16) - UNIT NET PRICE
+  extendedNetPrice?: number;   // Col R (17) - EXTENDED NET PRICE
   distiDiscountPct: number;    // Col S (18) - DISTI DISCOUNT (%)
+  skuIdentifier?: string;      // Col Y (24) - SKU IDENTIFIER (ej: 'XAAS')
   description?: string;
-  durationNetPrice?: number;   // Col AE (30) - DURATION NET PRICE
   durationListPrice?: number;  // Col AD (29) - DURATION LIST PRICE
+  durationNetPrice?: number;   // Col AE (30) - DURATION NET PRICE
+  pricingTerm?: number;        // Col AF (31) - PRICING TERM
   distiDiscount?: number;      // Col S (18) - DISTI DISCOUNT
 }
 
@@ -134,9 +139,14 @@ export async function parseRawDealBom(
   let colQty = 9;         // Col J (9) - QUANTITY
   let colDuration = 10;   // Col K (10) - DURATION(Months)
   let colListPrice = 14;  // Col O (14) - LIST_PRICE
+  let colExtList = 15;    // Col P (15) - EXTENDED LIST PRICE
+  let colUnitNet = 16;    // Col Q (16) - UNIT NET PRICE
+  let colExtNet = 17;     // Col R (17) - EXTENDED NET PRICE
   let colDiscount = 18;   // Col S (18) - DISTI DISCOUNT
+  let colSkuIdentifier = 24; // Col Y (24) - SKU IDENTIFIER (ej: 'XAAS')
   let colDurationListPrice = 29; // Col AD (29) - DURATION LIST PRICE
   let colDurationNetPrice = 30;  // Col AE (30) - DURATION NET PRICE
+  let colPricingTerm = 31; // Col AF (31) - PRICING TERM
   let colDesc = -1;
 
   if (maxScore >= 4) {
@@ -190,6 +200,12 @@ export async function parseRawDealBom(
       ) {
         // Strictly Col O (LIST_PRICE)
         colListPrice = colIdx;
+      } else if (text.includes('EXTENDED') && text.includes('LIST') && text.includes('PRICE')) {
+        colExtList = colIdx;
+      } else if (text.includes('UNIT') && text.includes('NET') && text.includes('PRICE')) {
+        colUnitNet = colIdx;
+      } else if (text.includes('EXTENDED') && text.includes('NET') && text.includes('PRICE')) {
+        colExtNet = colIdx;
       } else if (
         text === 'DISTI DISCOUNT' ||
         text === 'DISTI DISCOUNT (%)' ||
@@ -198,10 +214,14 @@ export async function parseRawDealBom(
       ) {
         // Strictly Col S (DISTI DISCOUNT)
         colDiscount = colIdx;
+      } else if (text === 'SKU IDENTIFIER' || text === 'SKU_IDENTIFIER' || text.includes('IDENTIFIER')) {
+        colSkuIdentifier = colIdx;
       } else if (text.includes('DURATION') && text.includes('NET') && text.includes('PRICE')) {
         colDurationNetPrice = colIdx;
       } else if (text.includes('DURATION') && text.includes('LIST') && text.includes('PRICE')) {
         colDurationListPrice = colIdx;
+      } else if (text === 'PRICING TERM' || text === 'PRICING_TERM' || (text.includes('PRICING') && text.includes('TERM'))) {
+        colPricingTerm = colIdx;
       } else if (text === 'DESCRIPTION' || text === 'DESC' || text === 'PRODUCT DESCRIPTION') {
         colDesc = colIdx;
       }
@@ -252,7 +272,35 @@ export async function parseRawDealBom(
 
     const durationVal = Math.round(safeParseFloat(row[colDuration]));
     const listVal = safeParseFloat(row[colListPrice]);
+    const extListVal = safeParseFloat(
+      (colExtList !== -1 ? row[colExtList] : undefined) ??
+      row['EXTENDED LIST PRICE'] ??
+      row['Extended List Price'] ??
+      row[15] ??
+      0
+    );
+    const unitNetVal = safeParseFloat(
+      (colUnitNet !== -1 ? row[colUnitNet] : undefined) ??
+      row['UNIT NET PRICE'] ??
+      row['Unit Net Price'] ??
+      row[16] ??
+      0
+    );
+    const extNetVal = safeParseFloat(
+      (colExtNet !== -1 ? row[colExtNet] : undefined) ??
+      row['EXTENDED NET PRICE'] ??
+      row['Extended Net Price'] ??
+      row[17] ??
+      0
+    );
     const discountVal = safeParseFloat(row[colDiscount]);
+    const skuIdentifierVal = sanitizeTrim(
+      (colSkuIdentifier !== -1 ? row[colSkuIdentifier] : undefined) ??
+      row['SKU IDENTIFIER'] ??
+      row['Sku Identifier'] ??
+      row[24] ??
+      ''
+    );
 
     const durationNetPrice = safeParseFloat(
       (colDurationNetPrice !== -1 ? row[colDurationNetPrice] : undefined) ??
@@ -268,6 +316,13 @@ export async function parseRawDealBom(
       row[29] ??
       0
     );
+    const pricingTermVal = Math.round(safeParseFloat(
+      (colPricingTerm !== -1 ? row[colPricingTerm] : undefined) ??
+      row['PRICING TERM'] ??
+      row['Pricing Term'] ??
+      row[31] ??
+      0
+    ));
     const distiDiscount = safeParseFloat(
       (colDiscount !== -1 ? row[colDiscount] : undefined) ??
       row['DISTI DISCOUNT'] ??
@@ -296,10 +351,15 @@ export async function parseRawDealBom(
       qty: qtyVal,
       durationMonths: durationVal,
       listPrice: listVal,
+      extendedListPrice: extListVal,
+      unitNetPrice: unitNetVal,
+      extendedNetPrice: extNetVal,
       distiDiscountPct: discountVal,
+      skuIdentifier: skuIdentifierVal,
       description: descStr,
       durationNetPrice,
       durationListPrice,
+      pricingTerm: pricingTermVal,
       distiDiscount,
     });
   }

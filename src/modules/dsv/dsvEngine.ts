@@ -6,6 +6,7 @@ import ExcelJS from 'exceljs';
 import { RawBomItem, RawBomParsedResult, sanitizeTrim } from './dsvBomParser';
 import { DsvModalFormData, Dsv48LineItem, DsvTransformationSummary, SkuCategoryType } from './types';
 import { isCiscoLicenseSku } from '../../core/ciscoTaxonomy';
+import { resolveDsvRowPrices, DsvBomRowRaw } from './dsvSubscriptionResolver';
 
 /**
  * Genera la fecha actual en formato oficial DD-MMM-YYYY con el mes en inglés y mayúsculas.
@@ -166,12 +167,23 @@ export function calculateDsvPrices(
     description?: string;
     lineNumber?: string;
     partNumber?: string;
+    qty?: number;
+    quantity?: number;
+    extendedListPrice?: number;
+    unitNetPrice?: number;
+    extendedNetPrice?: number;
+    skuIdentifier?: string;
+    pricingTerm?: number;
+    magicKey?: string;
   }
 ): {
   reportedProductUnitPrice: number;
   reportedNetPrice: number;
   effectiveCategory: SkuCategoryType;
   discrepancy: DsvDiscrepancy | null;
+  unitListPriceFullTerm: number;
+  durationDisplay: string;
+  isPeriodicSubscription: boolean;
 } {
   const baseCategory = overrideCategory || detectSkuCategory(sku);
   const partNumber = itemData?.partNumber || sku;
@@ -179,15 +191,6 @@ export function calculateDsvPrices(
   const lineNumber = itemData?.lineNumber || '';
 
   const isService = baseCategory === 'service' || isCiscoServiceSku(partNumber, description);
-  const isSubscription =
-    baseCategory === 'subscription' ||
-    isCiscoLicenseSku(partNumber, description, durationMonths);
-
-  const effectiveCategory: SkuCategoryType = isService
-    ? 'service'
-    : isSubscription
-    ? 'subscription'
-    : 'hardware';
 
   if (isService) {
     const years = durationMonths >= 12 ? Math.max(1, Math.round(durationMonths / 12)) : 1;
@@ -238,21 +241,48 @@ export function calculateDsvPrices(
       reportedNetPrice: colK,
       effectiveCategory: 'service',
       discrepancy,
+      unitListPriceFullTerm: listPrice,
+      durationDisplay: durationMonths > 0 ? `${durationMonths}m` : '-',
+      isPeriodicSubscription: false,
     };
   } else {
-    // Hardware y Suscripciones (Misma fórmula financiera)
-    const discountRate = getDsvDiscountRate(sku);
-    const discountMultiplier = 1 - discountRate / 100;
+    // Hardware y Suscripciones (Resolución con Subscription Resolver)
+    const rawRow: DsvBomRowRaw = {
+      lineNumber: lineNumber,
+      magicKey: itemData?.magicKey || '',
+      ciscoSku: partNumber,
+      quantity: itemData?.quantity ?? itemData?.qty ?? 1,
+      durationMonthsColK: durationMonths,
+      unitListPriceColO: listPrice,
+      extendedListPriceColP: itemData?.extendedListPrice,
+      unitNetPriceColQ: itemData?.unitNetPrice,
+      extendedNetPriceColR: itemData?.extendedNetPrice,
+      skuIdentifierColY: itemData?.skuIdentifier,
+      durationListPriceColAD: itemData?.durationListPrice,
+      durationNetPriceColAE: itemData?.durationNetPrice,
+      pricingTermColAF: itemData?.pricingTerm,
+      manualCategory: overrideCategory,
+      partnerDiscountRate: getDsvDiscountRate(partNumber) / 100,
+      dealDiscountRate: distiDiscountPct > 0 ? distiDiscountPct / 100 : undefined,
+      description,
+    };
 
-    const costoDsv = Math.round(listPrice * discountMultiplier * 100) / 100;
-    const colJ = costoDsv;
-    const discRate = distiDiscountPct > 0 ? distiDiscountPct / 100 : discountRate / 100;
-    const colK = Number((listPrice * (1 - discRate)).toFixed(2));
+    const resolved = resolveDsvRowPrices(rawRow);
+
+    const effectiveCat: SkuCategoryType = resolved.isPeriodicSubscription
+      ? 'subscription'
+      : baseCategory === 'subscription'
+      ? 'subscription'
+      : 'hardware';
+
     return {
-      reportedProductUnitPrice: colJ,
-      reportedNetPrice: colK,
-      effectiveCategory,
+      reportedProductUnitPrice: resolved.colJRepUnitPrice,
+      reportedNetPrice: resolved.colKNetPrice,
+      effectiveCategory: effectiveCat,
       discrepancy: null,
+      unitListPriceFullTerm: resolved.unitListPriceFullTerm,
+      durationDisplay: resolved.durationDisplay,
+      isPeriodicSubscription: resolved.isPeriodicSubscription,
     };
   }
 }
@@ -289,22 +319,34 @@ export function transformRawBomToDsv(
     const itemOverride = overrides[itemLineKey];
 
     // Lógica Financiera Columnas J y K con Doble Verificación
-    const { reportedProductUnitPrice, reportedNetPrice, effectiveCategory, discrepancy } =
-      calculateDsvPrices(
-        item.ciscoSku,
-        item.listPrice,
-        item.distiDiscountPct,
-        item.durationMonths,
-        itemOverride,
-        {
-          durationNetPrice: item.durationNetPrice,
-          durationListPrice: item.durationListPrice,
-          distiDiscount: item.distiDiscount ?? item.distiDiscountPct,
-          description: item.description,
-          lineNumber: item.lineNumber,
-          partNumber: item.partNumber || item.ciscoSku,
-        }
-      );
+    const {
+      reportedProductUnitPrice,
+      reportedNetPrice,
+      effectiveCategory,
+      discrepancy,
+      unitListPriceFullTerm,
+    } = calculateDsvPrices(
+      item.ciscoSku,
+      item.listPrice,
+      item.distiDiscountPct,
+      item.durationMonths,
+      itemOverride,
+      {
+        durationNetPrice: item.durationNetPrice,
+        durationListPrice: item.durationListPrice,
+        distiDiscount: item.distiDiscount ?? item.distiDiscountPct,
+        description: item.description,
+        lineNumber: item.lineNumber,
+        partNumber: item.partNumber || item.ciscoSku,
+        qty: item.qty,
+        extendedListPrice: item.extendedListPrice,
+        unitNetPrice: item.unitNetPrice,
+        extendedNetPrice: item.extendedNetPrice,
+        skuIdentifier: item.skuIdentifier,
+        pricingTerm: item.pricingTerm,
+        magicKey: item.magicKey,
+      }
+    );
 
     const resellerNameVal = sanitizeTrim(
       form?.partnerName || item.resellerName || rawBom.resellerName
@@ -365,7 +407,7 @@ export function transformRawBomToDsv(
       endCustomerZipPostalCode: '',                       // AU (47) [ANCHO 5]
       endCustomerCountry: 'CL',                           // AV (48)
 
-      originalListPrice: Number(item.listPrice) || 0,
+      originalListPrice: (unitListPriceFullTerm ?? Number(item.listPrice)) || 0,
       originalDistiDiscountPct: Number(item.distiDiscountPct) || 0,
       durationMonths: Number(item.durationMonths) || 0,
       detectedType: effectiveCategory,

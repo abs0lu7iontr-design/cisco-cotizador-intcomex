@@ -9,5 +9,6 @@ export * from './DsvModal';
 export * from './DsvDiscrepancyModal';
 export * from './DsvView';
 export * from './DsvExportView';
+export * from './dsvSubscriptionResolver';
 export * from './components/DsvPartnerUploader';
 export * from './ingestion';

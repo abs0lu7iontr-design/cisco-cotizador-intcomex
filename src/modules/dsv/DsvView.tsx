@@ -577,8 +577,15 @@ export const DsvView: React.FC = () => {
                   {validItems.map((item, idx) => {
                     const lineKey = item.lineNumber;
                     const itemOverride = overrides[lineKey];
-                    const { reportedProductUnitPrice, reportedNetPrice, effectiveCategory, discrepancy } =
-                      calculateDsvPrices(
+                    const {
+                      reportedProductUnitPrice,
+                      reportedNetPrice,
+                      effectiveCategory,
+                      discrepancy,
+                      unitListPriceFullTerm,
+                      durationDisplay,
+                      isPeriodicSubscription,
+                    } = calculateDsvPrices(
                         item.ciscoSku,
                         item.listPrice,
                         item.distiDiscountPct,
@@ -591,6 +598,13 @@ export const DsvView: React.FC = () => {
                           description: item.description,
                           lineNumber: item.lineNumber,
                           partNumber: item.partNumber || item.ciscoSku,
+                          qty: item.qty,
+                          extendedListPrice: item.extendedListPrice,
+                          unitNetPrice: item.unitNetPrice,
+                          extendedNetPrice: item.extendedNetPrice,
+                          skuIdentifier: item.skuIdentifier,
+                          pricingTerm: item.pricingTerm,
+                          magicKey: item.magicKey,
                         }
                       );
 
@@ -643,10 +657,17 @@ export const DsvView: React.FC = () => {
                           )}
                         </td>
                         <td className="p-3 text-center text-slate-400">
-                          {item.durationMonths > 0 ? `${item.durationMonths}m` : '-'}
+                          {durationDisplay || (item.durationMonths > 0 ? `${item.durationMonths}m` : '-')}
                         </td>
                         <td className="p-3 text-center font-bold text-white">{item.qty}</td>
-                        <td className="p-3 text-right text-slate-400">${item.listPrice.toFixed(2)}</td>
+                        <td className="p-3 text-right text-slate-400">
+                          ${unitListPriceFullTerm ? unitListPriceFullTerm.toFixed(2) : item.listPrice.toFixed(2)}
+                          {isPeriodicSubscription && (
+                            <span className="block text-[9px] text-blue-400 font-sans">
+                              (x{item.durationMonths || 1}m)
+                            </span>
+                          )}
+                        </td>
                         <td className="p-3 text-right font-bold text-amber-300">
                           ${reportedProductUnitPrice.toFixed(2)}
                         </td>
