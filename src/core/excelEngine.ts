@@ -23,6 +23,7 @@ import {
 } from './calculations';
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../lib/intcomexLogoBase64';
 import { generateQuotationFileName } from './exportUtils';
+import { parseEstimateWithHierarchy, ProcessedEstimateLine } from '../modules/estimate';
 
 function getCellString(cell: ExcelJS.Cell | null | undefined): string {
   if (!cell || cell.value === null || cell.value === undefined) return '';
@@ -325,7 +326,37 @@ export async function parseEstimateWorkbook(
   let calculatedProductTotal = 0;
   let originalProductTotal = 0;
 
-  // 4. Extract and calculate line items
+  // 4. Pre-parse rows with Hierarchical Parser (Multi-Block Initial Terms & Subscriptions)
+  const rawRows: any[][] = [];
+  for (let r = headerRowIndex + 1; r <= worksheet.rowCount; r++) {
+    const lineNum = getCellString(worksheet.getCell(r, colMap.colLine));
+    const partNum = getCellString(worksheet.getCell(r, colMap.colPart));
+    const desc = getCellString(worksheet.getCell(r, colMap.colDesc));
+    if (!lineNum && !partNum && !desc) continue;
+
+    const rowArr: any[] = [];
+    rowArr[0] = lineNum;
+    rowArr[1] = partNum;
+    rowArr[2] = getCellString(worksheet.getCell(r, colMap.colSmart));
+    rowArr[3] = desc;
+    rowArr[4] = getCellString(worksheet.getCell(r, colMap.colDur));
+    rowArr[5] = worksheet.getCell(r, colMap.colLead).value;
+    rowArr[6] = parseNumericValue(worksheet.getCell(r, colMap.colList).value);
+    rowArr[7] = getCellString(worksheet.getCell(r, colMap.colTerm));
+    rowArr[8] = worksheet.getCell(r, colMap.colQty).value;
+    rowArr[9] = parseNumericValue(worksheet.getCell(r, colMap.colNet).value);
+    rowArr[10] = parseNumericValue(worksheet.getCell(r, colMap.colDisc).value);
+    rowArr[11] = parseNumericValue(worksheet.getCell(r, colMap.colExt).value);
+    rawRows.push(rowArr);
+  }
+
+  const hierarchicalLines = parseEstimateWithHierarchy(rawRows);
+  const hierMap = new Map<string, ProcessedEstimateLine>();
+  hierarchicalLines.forEach((hl) => {
+    hierMap.set(hl.lineNumber, hl);
+  });
+
+  // 5. Extract and calculate line items
   for (let r = headerRowIndex + 1; r <= worksheet.rowCount; r++) {
     const lineNumStr = getCellString(worksheet.getCell(r, colMap.colLine));
     const partNumStr = getCellString(worksheet.getCell(r, colMap.colPart));
@@ -432,6 +463,12 @@ export async function parseEstimateWorkbook(
       ? Number((((unitListPrice - netCiscoUnit) / unitListPrice) * 100).toFixed(2))
       : parseNumericValue(worksheet.getCell(r, colMap.colDisc).value);
 
+    const hierLine = hierMap.get(lineNumStr);
+    const parentGroup = hierLine ? hierLine.parentGroup : '1';
+    let detectedDurationMonths = hierLine ? hierLine.detectedDurationMonths : 1;
+    let isPeriodicSubscription = hierLine ? hierLine.isPeriodicSubscription : false;
+    let realUnitCost = hierLine ? hierLine.realUnitCost : rawNetCiscoUnit;
+
     // Dentro del bucle de items: Si el archivo fue previamente procesado, restaurar costos de fábrica
     if (isPreviouslyProcessed && shadowSnapshot[lineNumStr]) {
       const snap = shadowSnapshot[lineNumStr];
@@ -439,6 +476,45 @@ export async function parseEstimateWorkbook(
       unitListPrice = snap.manzana;    // List price original
       discPct = snap.cereza;           // Descuento original
       rawNetCiscoUnit = snap.pera;
+      realUnitCost = snap.pera;
+      if (snap.mango) detectedDurationMonths = snap.mango;
+      if (snap.sandia !== undefined) isPeriodicSubscription = Boolean(snap.sandia);
+    }
+
+    const rawExtCost = parseNumericValue(worksheet.getCell(r, colMap.colExt).value);
+
+    // Caso Sub-líneas a costo $0.00 (como LIC-MT-E-INCL o contenedores .0 a costo 0)
+    if (rawNetCiscoUnit === 0 && rawExtCost === 0) {
+      items.push({
+        rowIdx: r,
+        lineNumber: lineNumStr || `${items.length + 1}.0`,
+        partNumber: partNumStr,
+        smartAccountMandatory: smartAccount,
+        description: finalDescription,
+        serviceDurationMonths: detectedDurationMonths > 1 ? `${detectedDurationMonths} Months` : serviceDuration,
+        originalLeadTimeDays: leadTimeNum,
+        transformedLeadTime,
+        unitListPrice,
+        pricingTerm,
+        qty,
+        netCiscoUnit: 0,
+        discPct,
+        parentGroup,
+        detectedDurationMonths,
+        realUnitCost: 0,
+        isPeriodicSubscription,
+        unitNetPriceCcw: 0,
+        extendedNetPriceCcw: 0,
+        months: detectedDurationMonths,
+        isIntangible: true,
+        llevaArancel: false,
+        costoInternacion: 0,
+        costoArancel: 0,
+        costoTotalUnitario: 0,
+        precioVentaUnitario: 0,
+        precioVentaExtendido: 0,
+      });
+      continue;
     }
 
     // 2. Excepción de Cálculo Universal SaaS (Look-ahead Failsafe Anti-Contaminación)
@@ -448,18 +524,31 @@ export async function parseEstimateWorkbook(
     // Look-ahead estrictamente local (solo fila siguiente) para no mezclar licencias
     const nextDesc1 = getCellString(worksheet.getCell(r + 1, colMap.colDesc));
 
-    if (isCloudSubscriptionSku(sku, nextDesc1)) {
+    if (isPeriodicSubscription || isCloudSubscriptionSku(sku, nextDesc1)) {
       try {
         const nextPart1 = getCellString(worksheet.getCell(r + 1, colMap.colPart));
         const nextDesc2 = getCellString(worksheet.getCell(r + 2, colMap.colDesc));
         const nextPart2 = getCellString(worksheet.getCell(r + 2, colMap.colPart));
 
         // Extrae el número entero de meses truncando el ".00"
-        const months = extractInitialTermMonths(nextDesc1, nextPart1, nextDesc2, nextPart2, description, serviceDuration);
+        const months = detectedDurationMonths > 1
+          ? detectedDurationMonths
+          : extractInitialTermMonths(nextDesc1, nextPart1, nextDesc2, nextPart2, description, serviceDuration);
+
+        detectedDurationMonths = months;
+        isPeriodicSubscription = true;
+
+        if (months > 1) {
+          const formattedDur = months % 12 === 0 ? `${months / 12}Y` : `${months} Meses`;
+          if (!finalDescription.includes(`(${formattedDur})`)) {
+            finalDescription += ` (${formattedDur})`;
+          }
+        }
 
         // Multiplicación secuencial estricta de Precio Mensual * Meses * Qty
         merakiResult = calculateMerakiLicenseCosts(unitListPrice, discPct, qty, months, params);
         isMerakiHandled = true;
+        realUnitCost = merakiResult.costoTotalUnitario;
       } catch (err) {
         console.warn('[SaaS Look-Ahead Failsafe]: Falling back to standard calculation:', err);
         isMerakiHandled = false;
@@ -484,6 +573,13 @@ export async function parseEstimateWorkbook(
         qty,
         netCiscoUnit: merakiResult.costoTotalUnitario,
         discPct,
+        parentGroup,
+        detectedDurationMonths: merakiResult.months,
+        realUnitCost: merakiResult.costoTotalUnitario,
+        isPeriodicSubscription: true,
+        unitNetPriceCcw: rawNetCiscoUnit,
+        extendedNetPriceCcw: rawExtCost,
+        months: merakiResult.months,
         isFastTrackPromo: hasPromo,
         originalNetCiscoUnit: hasPromo ? rawNetCiscoUnit : undefined,
         fastTrackDiscountPct: hasPromo ? discPct : undefined,
@@ -508,7 +604,7 @@ export async function parseEstimateWorkbook(
         partNumber: partNumStr,
         smartAccountMandatory: smartAccount,
         description: finalDescription,
-        serviceDurationMonths: serviceDuration,
+        serviceDurationMonths: detectedDurationMonths > 1 ? `${detectedDurationMonths} Months` : serviceDuration,
         originalLeadTimeDays: leadTimeNum,
         transformedLeadTime,
         unitListPrice,
@@ -516,6 +612,13 @@ export async function parseEstimateWorkbook(
         qty,
         netCiscoUnit,
         discPct,
+        parentGroup,
+        detectedDurationMonths,
+        realUnitCost: netCiscoUnit,
+        isPeriodicSubscription: false,
+        unitNetPriceCcw: rawNetCiscoUnit,
+        extendedNetPriceCcw: rawExtCost,
+        months: detectedDurationMonths,
         isFastTrackPromo: hasPromo,
         originalNetCiscoUnit: hasPromo ? rawNetCiscoUnit : undefined,
         fastTrackDiscountPct: hasPromo ? discPct : undefined,
@@ -1093,13 +1196,15 @@ export async function generateOptimizedWorkbook(
     metaSheet.state = 'veryHidden';
   }
 
-  const shadowLedger = items.map((it) => ({
-    line: it.lineNumber,
-    manzana: it.unitListPrice ?? 0,
-    cereza: it.discPct ?? 0,
-    pera: it.originalUnitCost ?? it.originalNetCiscoUnit ?? it.netCiscoUnit ?? 0,
-    mango: it.months ?? (parseInt(it.serviceDurationMonths, 10) || 0),
-    sandia: Boolean(it.isFastTrackApplied ?? it.isFastTrackPromo),
+  const shadowLedger = items.map((item) => ({
+    line: item.lineNumber,
+    manzana: item.unitListPrice ?? 0,
+    cereza: (item.unitNetPriceCcw ?? 0) > 0 && (item.unitListPrice ?? 0) > 0
+      ? ((1 - ((item.unitNetPriceCcw ?? 0) / item.unitListPrice)) * 100)
+      : (item.discPct ?? 0),
+    pera: item.realUnitCost ?? item.originalUnitCost ?? item.originalNetCiscoUnit ?? item.netCiscoUnit ?? 0,
+    mango: item.detectedDurationMonths ?? item.months ?? (parseInt(item.serviceDurationMonths, 10) || 1),
+    sandia: Boolean(item.isPeriodicSubscription),
   }));
 
   const payload = {

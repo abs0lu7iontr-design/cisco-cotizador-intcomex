@@ -598,12 +598,25 @@ export function recalculateEstimateResult(
     const override = overrides ? overrides[rowIdx] : undefined;
 
     // SaaS / Meraki Cloud Subscription with multi-month duration
-    if (item.months && item.months > 1) {
+    const isPeriodic = Boolean(item.isPeriodicSubscription || (item.months && item.months > 1));
+    const durationMonths = item.detectedDurationMonths ?? item.months ?? 1;
+
+    if (item.realUnitCost === 0 && (item.unitListPrice === 0 || item.netCiscoUnit === 0)) {
+      // Sub-línea a costo $0.00 (ej. LIC-MT-E-INCL)
+      return {
+        ...item,
+        costoInternacion: 0,
+        costoArancel: 0,
+        costoTotalUnitario: 0,
+        precioVentaUnitario: 0,
+        precioVentaExtendido: 0,
+      };
+    } else if (isPeriodic && durationMonths > 1 && item.unitListPrice > 0) {
       const meraki = calculateMerakiLicenseCosts(
         item.unitListPrice,
         item.discPct,
         item.qty,
-        item.months,
+        durationMonths,
         params
       );
 
@@ -613,6 +626,7 @@ export function recalculateEstimateResult(
       return {
         ...item,
         netCiscoUnit: meraki.costoTotalUnitario,
+        realUnitCost: meraki.costoTotalUnitario,
         ...meraki,
       };
     } else {

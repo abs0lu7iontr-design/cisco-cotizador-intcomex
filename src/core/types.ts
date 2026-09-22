@@ -61,6 +61,14 @@ export interface EstimateLineItem {
   fastTrackDiscountPct?: number;
   fastTrackSavings?: number;
   months?: number;
+
+  // Hierarchical & Subscription Fields
+  parentGroup?: string;
+  detectedDurationMonths?: number;
+  realUnitCost?: number;
+  isPeriodicSubscription?: boolean;
+  unitNetPriceCcw?: number;
+  extendedNetPriceCcw?: number;
 }
 
 export interface DetectedAuditInfo {
