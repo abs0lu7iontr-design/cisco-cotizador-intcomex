@@ -4,38 +4,47 @@
 
 import { BoLineItem } from './boTypes';
 
-export const BO_EMAIL_TO = 'ventascore.cl@intcomex.com';
-export const BO_EMAIL_CC = 'ciscoteam.cl@intcomex.com';
+export const DEFAULT_BO_EMAIL_TO = 'ventascore.cl@intcomex.com';
+export const DEFAULT_BO_EMAIL_CC = 'ciscoteam.cl@intcomex.com';
+export const BO_EMAIL_TO = DEFAULT_BO_EMAIL_TO;
+export const BO_EMAIL_CC = DEFAULT_BO_EMAIL_CC;
 
-const formatCL = (val: number, decimals: number = 2) => {
-  return val.toLocaleString('es-CL', {
+export const formatCLP = (val: number, decimals: number = 2): string => {
+  return Number(val || 0).toLocaleString('es-CL', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
 };
 
+export const formatCL = formatCLP;
+
 /**
- * Genera la tabla HTML compatible con el portapapeles de Microsoft Outlook
+ * Genera la tabla HTML compatible con el portapapeles de Microsoft Outlook,
+ * mostrando siempre 2 decimales obligatorios con formato chileno y fila de Total General.
  */
 export function generateBoHtmlTable(lines: BoLineItem[]): string {
-  const rowsHtml = lines
+  const activeLines = lines.filter((l) => !l.isExcludedZeroCost && (l.extendedNetPrice > 0 || l.unitNetPrice > 0));
+
+  const rowsHtml = activeLines
     .map(
       (line) => `
     <tr style="text-align: center; font-family: Calibri, sans-serif; font-size: 11pt;">
-      <td style="border: 1px solid #000; padding: 5px; text-align: center;">${line.sku || 'N/A'}</td>
-      <td style="border: 1px solid #000; padding: 5px; text-align: center;">${line.partNumber}</td>
-      <td style="border: 1px solid #000; padding: 5px; text-align: center; font-weight: bold;">${line.bodega}</td>
-      <td style="border: 1px solid #000; padding: 5px; text-align: center;">${line.qty}</td>
-      <td style="border: 1px solid #000; padding: 5px; text-align: right;">${formatCL(line.unitNetPrice, 2)}</td>
-      <td style="border: 1px solid #000; padding: 5px; text-align: right;">${formatCL(line.extendedNetPrice, 0)}</td>
+      <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.sku || 'N/A'}</td>
+      <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.partNumber}</td>
+      <td style="border: 1px solid #000; padding: 6px; text-align: center; font-weight: bold;">${line.bodega}</td>
+      <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.qty}</td>
+      <td style="border: 1px solid #000; padding: 6px; text-align: right;">${formatCLP(line.unitNetPrice, 2)}</td>
+      <td style="border: 1px solid #000; padding: 6px; text-align: right; font-weight: bold;">${formatCLP(line.extendedNetPrice, 2)}</td>
     </tr>`
     )
     .join('');
 
+  const totalVenta = activeLines.reduce((acc, l) => acc + (Number(l.extendedNetPrice) || 0), 0);
+
   return `
   <p style="font-family: Calibri, sans-serif; font-size: 11pt;">Estimado,</p>
   <p style="font-family: Calibri, sans-serif; font-size: 11pt;">Buenos días, por favor crear BO.</p>
-  <table style="border-collapse: collapse; width: 100%; max-width: 800px; font-family: Calibri, sans-serif; font-size: 11pt; border: 1px solid #000;">
+  <table style="border-collapse: collapse; width: 100%; max-width: 850px; font-family: Calibri, sans-serif; font-size: 11pt; border: 1px solid #000;">
     <thead>
       <tr style="background-color: #808080; color: #000; font-weight: bold; text-align: center;">
         <th style="border: 1px solid #000; padding: 6px;">SKU</th>
@@ -48,6 +57,10 @@ export function generateBoHtmlTable(lines: BoLineItem[]): string {
     </thead>
     <tbody>
       ${rowsHtml}
+      <tr style="font-family: Calibri, sans-serif; font-size: 11pt; font-weight: bold; background-color: #f2f2f2;">
+        <td colspan="4" style="border: 1px solid #000; padding: 6px; text-align: right;">Total General:</td>
+        <td colspan="2" style="border: 1px solid #000; padding: 6px; text-align: right;">$${formatCLP(totalVenta, 2)} USD</td>
+      </tr>
     </tbody>
   </table>
   <br/>
@@ -58,9 +71,13 @@ export function generateBoHtmlTable(lines: BoLineItem[]): string {
  * Copia el HTML con formato directamente al portapapeles para pegar en Outlook
  */
 export async function copyBoTableToClipboard(lines: BoLineItem[]): Promise<boolean> {
+  const activeLines = lines.filter((l) => !l.isExcludedZeroCost && (l.extendedNetPrice > 0 || l.unitNetPrice > 0));
   const htmlContent = generateBoHtmlTable(lines);
-  const plainText = lines
-    .map((l) => `${l.sku}\t${l.partNumber}\t${l.bodega}\t${l.qty}\t${l.unitNetPrice}\t${l.extendedNetPrice}`)
+  const plainText = activeLines
+    .map(
+      (l) =>
+        `${l.sku || 'N/A'}\t${l.partNumber}\t${l.bodega}\t${l.qty}\t${formatCLP(l.unitNetPrice, 2)}\t${formatCLP(l.extendedNetPrice, 2)}`
+    )
     .join('\n');
 
   try {
@@ -74,7 +91,7 @@ export async function copyBoTableToClipboard(lines: BoLineItem[]): Promise<boole
     ]);
     return true;
   } catch (err) {
-    console.error('Error al copiar al portapapeles:', err);
+    console.error('Error al copiar tabla BO al portapapeles:', err);
     return false;
   }
 }

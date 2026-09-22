@@ -4,7 +4,12 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { BoLineItem, partitionBoLinesByCost } from './boTypes';
-import { BO_EMAIL_TO, BO_EMAIL_CC, copyBoTableToClipboard } from './boEmailHelper';
+import {
+  DEFAULT_BO_EMAIL_TO,
+  DEFAULT_BO_EMAIL_CC,
+  formatCLP,
+  copyBoTableToClipboard,
+} from './boEmailHelper';
 import {
   fetchBoSkuCatalog,
   saveBoSkuMapping,
@@ -20,7 +25,6 @@ import {
   Check,
   Mail,
   Copy,
-  AlertCircle,
   Cloud,
   RefreshCw,
 } from 'lucide-react';
@@ -29,6 +33,7 @@ interface Props {
   isOpen: boolean;
   initialClientName: string;
   initialLines: BoLineItem[];
+  assignedBodega?: 'E1' | 'ED';
   onClose: () => void;
 }
 
@@ -36,8 +41,11 @@ export const BoRequestModal: React.FC<Props> = ({
   isOpen,
   initialClientName,
   initialLines,
+  assignedBodega,
   onClose,
 }) => {
+  const [recipientEmail, setRecipientEmail] = useState(DEFAULT_BO_EMAIL_TO);
+  const [ccEmail, setCcEmail] = useState(DEFAULT_BO_EMAIL_CC);
   const [clientName, setClientName] = useState(initialClientName || 'Cliente');
   const [lines, setLines] = useState<BoLineItem[]>([]);
   const [discardedLines, setDiscardedLines] = useState<BoLineItem[]>([]);
@@ -56,6 +64,8 @@ export const BoRequestModal: React.FC<Props> = ({
     if (!isOpen) return;
 
     setClientName(initialClientName || 'Cliente');
+    setRecipientEmail(DEFAULT_BO_EMAIL_TO);
+    setCcEmail(DEFAULT_BO_EMAIL_CC);
     setCopied(false);
 
     const { activeLines, zeroCostLines } = partitionBoLinesByCost(initialLines);
@@ -95,6 +105,8 @@ export const BoRequestModal: React.FC<Props> = ({
     const totalExtended = lines.reduce((acc, l) => acc + (Number(l.extendedNetPrice) || 0), 0);
     return { totalQty, totalExtended };
   }, [lines]);
+
+  const currentBodega = assignedBodega || lines[0]?.bodega || discardedLines[0]?.bodega || 'E1';
 
   if (!isOpen) return null;
 
@@ -228,11 +240,11 @@ export const BoRequestModal: React.FC<Props> = ({
 
   // Abrir cliente de correo
   const handleOpenOutlook = () => {
-    const subject = encodeURIComponent(`RV: Cotización ${clientName}`);
+    const subject = encodeURIComponent(`RV: Cotización ${clientName.trim()}`);
     const body = encodeURIComponent(
       'Estimado,\n\nBuenos días, por favor crear BO.\n\n(Pega aquí la tabla copiada usando CTRL+V)\n\nSaludos,'
     );
-    window.location.href = `mailto:${BO_EMAIL_TO}?cc=${BO_EMAIL_CC}&subject=${subject}&body=${body}`;
+    window.location.href = `mailto:${recipientEmail}?cc=${ccEmail}&subject=${subject}&body=${body}`;
   };
 
   // Descargar CSV con los P/N descartados de costo 0
@@ -242,7 +254,7 @@ export const BoRequestModal: React.FC<Props> = ({
     const rows = discardedLines
       .map(
         (l) =>
-          `"${l.sku || ''}","${l.partNumber}","${l.bodega}",${l.qty},${l.unitNetPrice},${l.extendedNetPrice}`
+          `"${l.sku || ''}","${l.partNumber}","${l.bodega}",${l.qty},${formatCLP(l.unitNetPrice, 2)},${formatCLP(l.extendedNetPrice, 2)}`
       )
       .join('\n');
     const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
@@ -266,6 +278,13 @@ export const BoRequestModal: React.FC<Props> = ({
               <h2 className="text-base font-bold text-white flex items-center gap-2">
                 <span>📋</span> Solicitud de Creación de BO (Ventas Core)
               </h2>
+
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800">
+                Precios Finales de Venta
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800">
+                Bodega: {currentBodega}
+              </span>
 
               {/* Indicador de Estado Cloud Database */}
               <div
@@ -299,7 +318,7 @@ export const BoRequestModal: React.FC<Props> = ({
               </div>
             </div>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Valores netos de costo puro. Part Numbers con sufijo <strong className="text-zinc-200">-CBN</strong> editable y auto-rellenado inteligente de SKUs Intcomex desde la base de datos en la nube.
+              Valores calculados por el cotizador con margen e internación. Part Numbers con sufijo <strong className="text-zinc-200">-CBN</strong> editable y auto-rellenado de SKUs Intcomex.
             </p>
           </div>
           <button
@@ -311,35 +330,45 @@ export const BoRequestModal: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Resumen Superior y Cabecera Correo */}
+        {/* Resumen Superior y Cabecera Correo Editable */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-zinc-900/60 p-3 rounded-xl border border-zinc-800 text-xs mb-3">
           <div>
-            <span className="text-zinc-500 font-mono text-[11px] block">Para:</span>
-            <div className="text-white font-medium truncate font-mono text-xs">{BO_EMAIL_TO}</div>
+            <label className="text-zinc-400 font-mono text-[10px] block mb-1">Para:</label>
+            <input
+              type="email"
+              value={recipientEmail}
+              onChange={(e) => setRecipientEmail(e.target.value)}
+              className="w-full bg-zinc-950 border border-zinc-700 focus:border-cyan-500 rounded px-2.5 py-1 text-xs font-mono text-white outline-none"
+            />
           </div>
           <div>
-            <span className="text-zinc-500 font-mono text-[11px] block">CC:</span>
-            <div className="text-white font-medium truncate font-mono text-xs">{BO_EMAIL_CC}</div>
+            <label className="text-zinc-400 font-mono text-[10px] block mb-1">CC:</label>
+            <input
+              type="text"
+              value={ccEmail}
+              onChange={(e) => setCcEmail(e.target.value)}
+              className="w-full bg-zinc-950 border border-zinc-700 focus:border-cyan-500 rounded px-2.5 py-1 text-xs font-mono text-white outline-none"
+            />
           </div>
           <div>
-            <span className="text-zinc-500 font-mono text-[11px] block">Asunto: RV: Cotización</span>
+            <label className="text-zinc-400 font-mono text-[10px] block mb-1">Asunto: RV: Cotización</label>
             <input
               type="text"
               value={clientName}
               onChange={(e) => setClientName(e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-700 rounded px-2 py-0.5 text-xs text-white focus:outline-none focus:border-amber-400 font-medium"
+              className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400 font-medium font-mono"
               placeholder="Nombre del Cliente"
             />
           </div>
           <div className="flex items-center justify-between sm:justify-end gap-3 sm:border-l sm:border-zinc-800 sm:pl-3">
             <div className="text-right">
-              <span className="text-zinc-500 font-mono text-[11px] block">Total Neto BO:</span>
+              <span className="text-zinc-400 font-mono text-[10px] block">Total Venta BO:</span>
               <span className="text-emerald-400 font-mono font-bold text-sm">
-                ${totals.totalExtended.toLocaleString('es-CL')} USD
+                ${formatCLP(totals.totalExtended, 2)} USD
               </span>
             </div>
             <div className="text-right">
-              <span className="text-zinc-500 font-mono text-[11px] block">Líneas Activas:</span>
+              <span className="text-zinc-400 font-mono text-[10px] block">Líneas Activas:</span>
               <span className="text-white font-mono font-bold text-sm">{lines.length}</span>
             </div>
           </div>
@@ -355,7 +384,7 @@ export const BoRequestModal: React.FC<Props> = ({
                 Tabla Principal para BO ({lines.length} {lines.length === 1 ? 'ítem con costo' : 'ítems con costo'})
               </span>
               <span className="text-[11px] text-zinc-400 font-mono">
-                Bodega Asignada: <strong className="text-amber-400 font-bold">{lines[0]?.bodega || 'E1'}</strong>
+                Bodega Asignada: <strong className="text-amber-400 font-bold">{currentBodega}</strong>
               </span>
             </div>
 
@@ -405,10 +434,10 @@ export const BoRequestModal: React.FC<Props> = ({
                         <td className="p-2 text-center font-bold text-amber-400">{line.bodega}</td>
                         <td className="p-2 text-center">{line.qty}</td>
                         <td className="p-2 text-right text-zinc-300">
-                          {line.unitNetPrice.toLocaleString('es-CL', { minimumFractionDigits: 2 })}
+                          {formatCLP(line.unitNetPrice, 2)}
                         </td>
                         <td className="p-2 text-right font-bold text-emerald-400">
-                          {line.extendedNetPrice.toLocaleString('es-CL')}
+                          {formatCLP(line.extendedNetPrice, 2)}
                         </td>
                         <td className="p-2 text-center">
                           <button
@@ -430,7 +459,7 @@ export const BoRequestModal: React.FC<Props> = ({
                       <td className="p-2.5 text-center text-white">{totals.totalQty}</td>
                       <td className="p-2.5 text-right text-zinc-400">—</td>
                       <td className="p-2.5 text-right text-emerald-400 text-sm">
-                        ${totals.totalExtended.toLocaleString('es-CL')}
+                        ${formatCLP(totals.totalExtended, 2)}
                       </td>
                       <td className="p-2.5 text-center"></td>
                     </tr>
@@ -480,7 +509,7 @@ export const BoRequestModal: React.FC<Props> = ({
                     title="Agregar todos los P/N descartados a la tabla principal del BO"
                   >
                     <Plus className="w-3 h-3 text-amber-400" />
-                    <span>Agregar Todos al BO</span>
+                    <span>Agregar Todos</span>
                   </button>
                 </div>
               )}
@@ -488,15 +517,8 @@ export const BoRequestModal: React.FC<Props> = ({
 
             {isDiscardedExpanded && (
               <div className="p-3">
-                <p className="text-[11px] text-zinc-400 mb-2.5 flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                  <span>
-                    Estos P/N no tienen costo neto ($0 USD, e.g. cables, kits de montaje, licencias base o inclusiones) y fueron excluidos automáticamente para mantener limpia la solicitud a Ventas Core. Si necesitas incluir alguno, pulsa <strong>"Agregar"</strong>.
-                  </span>
-                </p>
-
                 {discardedLines.length === 0 ? (
-                  <div className="p-4 text-center text-zinc-500 text-xs font-mono border border-dashed border-zinc-800 rounded-lg">
+                  <div className="text-xs text-zinc-500 text-center py-4 font-sans">
                     No hay líneas descartadas (todos los P/N del Estimate están en la tabla principal de BO).
                   </div>
                 ) : (
@@ -539,7 +561,7 @@ export const BoRequestModal: React.FC<Props> = ({
                             <td className="p-1.5 text-center text-zinc-500">{dLine.bodega}</td>
                             <td className="p-1.5 text-center">{dLine.qty}</td>
                             <td className="p-1.5 text-right text-zinc-500">$0,00</td>
-                            <td className="p-1.5 text-right text-zinc-500">$0</td>
+                            <td className="p-1.5 text-right text-zinc-500">$0,00</td>
                             <td className="p-1.5 text-center">
                               <button
                                 type="button"

@@ -145,7 +145,7 @@ function AppContent() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Prepare Back Order (BO) lines with dynamic warehouse assignment (E1 vs ED2)
+  // Prepare Back Order (BO) lines with dynamic warehouse assignment (E1 vs ED)
   const boLines: BoLineItem[] = React.useMemo(() => {
     if (!processedResult?.items) return [];
     const validItems = processedResult.items.filter(
@@ -156,8 +156,10 @@ function AppContent() {
       validItems.map((it) => ({
         partNumber: it.partNumber,
         qty: it.qty,
-        unitNetPrice: it.netCiscoUnit,
-        initialTermMonths: parseInt(it.serviceDurationMonths, 10) || undefined,
+        unitSalePrice: it.precioVentaUnitario,
+        extendedSalePrice: it.precioVentaExtendido,
+        isIntangible: it.isIntangible,
+        isHardware: !it.isIntangible,
       })),
       (pn) => findSkuInCatalog(pn, localCatalog)
     );
@@ -395,6 +397,7 @@ function AppContent() {
         isOpen={isBoModalOpen}
         initialClientName={defaultClient}
         initialLines={boLines}
+        assignedBodega={boLines.length > 0 ? boLines[0].bodega : 'E1'}
         onClose={() => setIsBoModalOpen(false)}
       />
 

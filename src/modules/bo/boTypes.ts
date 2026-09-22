@@ -3,18 +3,22 @@
 // ============================================================================
 
 export interface BoLineItem {
+  id?: string;
   sku: string;               // Código Intcomex (ej. EN614MKC66, editable)
-  partNumber: string;        // P/N oficial Cisco
-  bodega: 'E1' | 'ED2';      // E1 o ED2
+  partNumber: string;        // P/N oficial Cisco con sufijo -CBN (editable)
+  bodega: 'E1' | 'ED';       // E1 (Hardware / Mixto) | ED (Solo Servicios o Licencias)
   qty: number;               // Cantidad
-  unitNetPrice: number;      // Costo neto unitario
-  extendedNetPrice: number;  // Math.round(unitNetPrice * qty)
+  unitNetPrice: number;      // Precio de venta unitario final (con margen e internación)
+  extendedNetPrice: number;  // Precio de venta extendido final (con margen e internación)
   isHardware: boolean;
-  isServiceOrLicense: boolean;
+  isServiceOrLicense?: boolean;
+  isExcludedZeroCost?: boolean;
 }
 
 export interface BoEstimateData {
   clientName: string;
+  recipientEmail?: string;
+  ccEmail?: string;
   lines: BoLineItem[];
 }
 
@@ -41,36 +45,48 @@ export function normalizeBasePartNumber(pn: string): string {
 }
 
 /**
- * Determina la bodega para cada línea según la presencia de Hardware
+ * Determina la bodega para cada línea según la presencia de Hardware,
+ * consumiendo directamente los valores de venta calculados por el cotizador (Cero Recálculos).
  */
 export function resolveWarehouseForLines(
   rawLines: Array<{
     sku?: string;
     partNumber: string;
     qty: number;
-    unitNetPrice: number;
+    unitNetPrice?: number;
+    extendedNetPrice?: number;
+    unitSalePrice?: number;
+    extendedSalePrice?: number;
+    isIntangible?: boolean;
+    isHardware?: boolean;
     initialTermMonths?: number;
   }>,
   skuCatalogLookup?: (pn: string) => string
 ): BoLineItem[] {
-  // 1. Detectar si una línea es servicio o licencia
-  const classified = rawLines.map((line) => {
+  // 1. Detectar si existe hardware en la cotización
+  const hasHardware = rawLines.some((l) => {
+    if (typeof l.isHardware === 'boolean') return l.isHardware;
+    if (typeof l.isIntangible === 'boolean') return !l.isIntangible;
+    const upper = l.partNumber.trim().toUpperCase();
+    return !upper.startsWith('CON-') && !upper.startsWith('CX-') && !upper.startsWith('LIC-') && !upper.includes('-SUB');
+  });
+
+  const assignedBodega: 'E1' | 'ED' = hasHardware ? 'E1' : 'ED';
+
+  // 2. Mapear consumiendo directamente los precios finales del cotizador sin recalcular
+  return rawLines.map((line) => {
     const rawPn = line.partNumber.trim();
     const boPn = formatBoPartNumber(rawPn);
     const upperPn = rawPn.toUpperCase();
     const isService = upperPn.startsWith('CON-') || upperPn.startsWith('CX-');
     const isLicense = upperPn.startsWith('LIC-') || upperPn.includes('-DNA-') || upperPn.includes('-SUB');
     const isServiceOrLicense = isService || isLicense;
-    const isHardware = !isServiceOrLicense;
+    const isLineHw = line.isHardware ?? (line.isIntangible !== undefined ? !line.isIntangible : !isServiceOrLicense);
 
-    // Normalizar precio unitario de servicio si viniera en base mensual
-    let finalUnitPrice = line.unitNetPrice;
-    if (isService && line.initialTermMonths && line.initialTermMonths > 1 && finalUnitPrice < 50) {
-      // Ajuste si la columna del estimate viene por mes individual
-      finalUnitPrice = line.unitNetPrice * line.initialTermMonths;
-    }
+    // Priorizar precios de venta calculados finales
+    const finalUnitPrice = line.unitSalePrice !== undefined ? line.unitSalePrice : (line.unitNetPrice || 0);
+    const finalExtendedPrice = line.extendedSalePrice !== undefined ? line.extendedSalePrice : (line.extendedNetPrice || (finalUnitPrice * line.qty));
 
-    const extended = Math.round(finalUnitPrice * line.qty);
     const resolvedSku =
       line.sku ||
       (skuCatalogLookup
@@ -82,23 +98,38 @@ export function resolveWarehouseForLines(
     return {
       sku: resolvedSku,
       partNumber: boPn,
-      bodega: 'E1' as 'E1' | 'ED2',
+      bodega: assignedBodega,
       qty: line.qty,
       unitNetPrice: finalUnitPrice,
-      extendedNetPrice: extended,
-      isHardware,
+      extendedNetPrice: finalExtendedPrice,
+      isHardware: isLineHw,
       isServiceOrLicense,
+      isExcludedZeroCost: finalUnitPrice === 0 && finalExtendedPrice === 0,
     };
   });
+}
 
-  // 2. Regla global de bodega: Si hay al menos un hardware, todo va a E1; si es solo licencias/servicios, va a ED2
-  const hasHardware = classified.some((line) => line.isHardware);
-  const globalBodega: 'E1' | 'ED2' = hasHardware ? 'E1' : 'ED2';
-
-  return classified.map((line) => ({
-    ...line,
-    bodega: globalBodega,
-  }));
+/**
+ * Función puente compatible: Prepara las líneas consumiendo directamente los valores calculados
+ * y retornando tanto el arreglo como la bodega global ('E1' o 'ED').
+ */
+export function prepareBoLinesFromCalculated(
+  calculatedLines: Array<{
+    sku?: string;
+    partNumber: string;
+    qty: number;
+    unitSalePrice?: number;
+    extendedSalePrice?: number;
+    unitNetPrice?: number;
+    extendedNetPrice?: number;
+    isIntangible?: boolean;
+    isHardware?: boolean;
+  }>,
+  skuCatalogLookup?: (pn: string) => string
+): { lines: BoLineItem[]; assignedBodega: 'E1' | 'ED' } {
+  const lines = resolveWarehouseForLines(calculatedLines, skuCatalogLookup);
+  const assignedBodega = lines.length > 0 ? lines[0].bodega : 'E1';
+  return { lines, assignedBodega };
 }
 
 /**
@@ -121,4 +152,3 @@ export function partitionBoLinesByCost(lines: BoLineItem[]): {
 
   return { activeLines, zeroCostLines };
 }
-
