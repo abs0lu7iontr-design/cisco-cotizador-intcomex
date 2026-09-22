@@ -612,22 +612,33 @@ export function recalculateEstimateResult(
         precioVentaExtendido: 0,
       };
     } else if (isPeriodic && durationMonths > 1 && item.unitListPrice > 0) {
+      const effectiveDisc = hasPromo && item.unitListPrice > 0
+        ? Number((((item.unitListPrice - netCiscoUnit) / item.unitListPrice) * 100).toFixed(2))
+        : item.discPct;
+
       const meraki = calculateMerakiLicenseCosts(
         item.unitListPrice,
-        item.discPct,
+        effectiveDisc,
         item.qty,
         durationMonths,
         params
       );
 
-      originalProductTotal += meraki.costoTotalUnitario * item.qty;
+      originalProductTotal += baseNetCiscoUnit * item.qty;
       calculatedProductTotal += meraki.precioVentaExtendido;
 
       return {
         ...item,
         netCiscoUnit: meraki.costoTotalUnitario,
         realUnitCost: meraki.costoTotalUnitario,
+        discPct: effectiveDisc,
         ...meraki,
+        isFastTrackPromo: hasPromo || item.isFastTrackPromo,
+        originalNetCiscoUnit: baseNetCiscoUnit,
+        fastTrackDiscountPct: hasPromo ? effectiveDisc : item.fastTrackDiscountPct,
+        fastTrackSavings: hasPromo
+          ? Number(((baseNetCiscoUnit - meraki.costoTotalUnitario) * item.qty).toFixed(2))
+          : item.fastTrackSavings,
       };
     } else {
       const calculated = calculateLineItemCosts(

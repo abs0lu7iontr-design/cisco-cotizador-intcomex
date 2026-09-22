@@ -581,9 +581,9 @@ export async function parseEstimateWorkbook(
         extendedNetPriceCcw: rawExtCost,
         months: merakiResult.months,
         isFastTrackPromo: hasPromo,
-        originalNetCiscoUnit: hasPromo ? rawNetCiscoUnit : undefined,
+        originalNetCiscoUnit: hasPromo ? (rawNetCiscoUnit * merakiResult.months) : undefined,
         fastTrackDiscountPct: hasPromo ? discPct : undefined,
-        fastTrackSavings: hasPromo ? Number(((rawNetCiscoUnit - merakiResult.costoTotalUnitario) * qty).toFixed(2)) : undefined,
+        fastTrackSavings: hasPromo ? Number((((rawNetCiscoUnit * merakiResult.months) - merakiResult.costoTotalUnitario) * qty).toFixed(2)) : undefined,
         ...merakiResult,
       });
     } else {

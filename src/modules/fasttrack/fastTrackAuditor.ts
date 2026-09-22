@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { EstimateLineItem } from '../../core/types';
-import { FastTrackAuditResult, FastTrackAuditMatch } from './types';
+import { FastTrackAuditResult, FastTrackAuditMatch, FastTrackProduct } from './types';
 import {
   isFastTrackAuditEnabled,
   getFastTrackItem,
@@ -17,9 +17,10 @@ import {
  * Failsafe: Si está desactivado o la base de datos está vacía, omite silenciosamente el proceso.
  */
 export async function auditEstimateWithFastTrack(
-  items: EstimateLineItem[]
+  items: EstimateLineItem[],
+  fastTrackLookup?: (pn: string) => Promise<FastTrackProduct | null>
 ): Promise<FastTrackAuditResult | null> {
-  const stats = await getFastTrackStats();
+  const stats = fastTrackLookup ? { validUntil: null, promotionCode: undefined, promotionTitle: undefined } : await getFastTrackStats();
   const expStatus = getFastTrackExpirationStatus(stats.validUntil);
 
   if (stats.validUntil) {
@@ -28,7 +29,7 @@ export async function auditEstimateWithFastTrack(
   }
 
   // 1. Verificación de Interruptor Global (Kill Switch)
-  if (!isFastTrackAuditEnabled()) {
+  if (!fastTrackLookup && !isFastTrackAuditEnabled()) {
     return {
       hasOpportunity: false,
       totalMatchedSkus: 0,
@@ -42,7 +43,7 @@ export async function auditEstimateWithFastTrack(
   }
 
   // 2. Verificación de existencia de datos en IndexedDB
-  const count = await getFastTrackCount();
+  const count = fastTrackLookup ? 1 : await getFastTrackCount();
   if (count === 0) {
     return {
       hasOpportunity: false,
@@ -80,7 +81,9 @@ export async function auditEstimateWithFastTrack(
 
   // 4. Consultar concurrentemente en IndexedDB todos los SKUs candidatos
   const ftProducts = await Promise.all(
-    candidates.map((item) => getFastTrackItem(item.partNumber))
+    candidates.map((item) =>
+      fastTrackLookup ? fastTrackLookup(item.partNumber) : getFastTrackItem(item.partNumber)
+    )
   );
 
   const matches: FastTrackAuditMatch[] = [];
@@ -92,18 +95,45 @@ export async function auditEstimateWithFastTrack(
     const ftProduct = ftProducts[i];
     if (!ftProduct) continue;
 
-    // Calcular descuento actual del archivo CCW/BOM
+    // Duración en meses para suscripciones periódicas (ej. Meraki SUB, licencias multi-anuales)
+    const durationMonths = Math.max(
+      1,
+      item.detectedDurationMonths || item.months || 1
+    );
+    const isPeriodic = Boolean(
+      item.isPeriodicSubscription || durationMonths > 1
+    );
+
+    // Precio de lista total correspondiente al plazo completo del ítem
+    const contractListPrice = isPeriodic
+      ? item.unitListPrice * durationMonths
+      : item.unitListPrice;
+
+    // Calcular descuento observado en CCW de manera robusta
+    const calculatedDiscountPct =
+      contractListPrice > 0
+        ? Number((((contractListPrice - item.netCiscoUnit) / contractListPrice) * 100).toFixed(2))
+        : 0;
+
     const currentDiscountPct =
-      item.unitListPrice > 0
-        ? Number((((item.unitListPrice - item.netCiscoUnit) / item.unitListPrice) * 100).toFixed(2))
-        : Number(item.discPct) || 0;
+      typeof item.discPct === 'number' && item.discPct > 0
+        ? Number(item.discPct.toFixed(2))
+        : Math.max(0, calculatedDiscountPct);
 
     const ftDiscountPct = Number(ftProduct.distributorDiscount) || 0;
 
     // Regla de Oportunidad: Descuento Fast Track MAYOR al del archivo
     if (ftDiscountPct > currentDiscountPct + 0.1) {
+      // Precio neto unitario mensual o base para inyectar en promoNetPrices
       const promoUnitNetPrice = Number((item.unitListPrice * (1 - ftDiscountPct / 100)).toFixed(2));
-      const unitSavings = Number((item.netCiscoUnit - promoUnitNetPrice).toFixed(2));
+
+      // Costo neto total del contrato bajo la promoción Fast Track
+      const promoContractNetCost = isPeriodic
+        ? promoUnitNetPrice * durationMonths
+        : promoUnitNetPrice;
+
+      // Ahorro unitario real comparando costos totales de contrato (o unitarios si es HW)
+      const unitSavings = Number((item.netCiscoUnit - promoContractNetCost).toFixed(2));
       const totalSavings = Number((unitSavings * item.qty).toFixed(2));
 
       if (unitSavings > 0) {

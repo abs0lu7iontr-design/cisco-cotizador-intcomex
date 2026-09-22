@@ -39,6 +39,9 @@ export interface MiningEstimateItemInput {
   unitNetPrice?: number;
   discPct?: number;
   isInfoRow?: boolean;
+  detectedDurationMonths?: number;
+  months?: number;
+  isPeriodicSubscription?: boolean;
 }
 
 /**
@@ -88,11 +91,28 @@ export async function detectMiningFastTrackUsage(
       const netPrice = (item.netCiscoUnit !== undefined ? item.netCiscoUnit : item.unitNetPrice) || 0;
       const qty = (item.qty !== undefined ? item.qty : item.quantity) || 1;
 
+      // Duración en meses para suscripciones periódicas (ej. Meraki SUB)
+      const durationMonths = Math.max(
+        1,
+        item.detectedDurationMonths || item.months || 1
+      );
+      const isPeriodic = Boolean(
+        item.isPeriodicSubscription || durationMonths > 1
+      );
+
+      // Normalizar precio de lista para comparar bases homogéneas
+      const contractListPrice = isPeriodic ? listPrice * durationMonths : listPrice;
+
+      const calculatedDiscountPct =
+        contractListPrice > 0
+          ? Number((((contractListPrice - netPrice) / contractListPrice) * 100).toFixed(1))
+          : 0;
+
       // Descuento observado en CCW redondeado a 1 decimal
       const currentDiscountPct =
-        listPrice > 0
-          ? Number((((listPrice - netPrice) / listPrice) * 100).toFixed(1))
-          : Number(item.discPct) || 0;
+        typeof item.discPct === 'number' && item.discPct > 0
+          ? Number(item.discPct.toFixed(1))
+          : Math.max(0, calculatedDiscountPct);
 
       // Consultar en Fast Track DB
       const ftProduct = fastTrackLookup ? await fastTrackLookup(pn) : await getFastTrackItem(pn);
