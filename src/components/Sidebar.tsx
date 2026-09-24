@@ -9,6 +9,7 @@ import {
   Calculator,
   UploadCloud,
   FileCheck,
+  Bot,
   History,
   Users,
   ShieldAlert,
@@ -52,6 +53,12 @@ export function Sidebar({
       label: 'Cotizador Cisco CCW',
       icon: Calculator,
       highlight: true,
+      section: 'main',
+    },
+    {
+      id: 'configuriator' as NavViewId,
+      label: 'ConfigurIAtor (AI BOM)',
+      icon: Bot,
       section: 'main',
     },
     {

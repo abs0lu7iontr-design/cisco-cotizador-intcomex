@@ -41,6 +41,7 @@ export type NavViewId =
   | 'quoter'
   | 'upload'
   | 'dsv'
+  | 'configuriator'
   | 'estimates'
   | 'users'
   | 'audit'

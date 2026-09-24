@@ -46,6 +46,9 @@ venv.bak/
 *.sqlite3
 gravity_database.db
 gravity_storage/
+ai_config.json
+partner_profiles.json
+overrides.json
 
 # Executables & Binaries (Allow specs, exclude compiled binaries)
 *.exe

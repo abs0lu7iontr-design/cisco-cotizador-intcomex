@@ -509,6 +509,61 @@ class DesktopBridge:
         except Exception as e:
             return {"success": False, "error": str(e), "profiles": {}}
 
+    # -------------------------------------------------------------------------
+    # 5.3 CONFIGURIATOR MULTI-AI KEYS & FAILOVER PERSISTENCE
+    # -------------------------------------------------------------------------
+    def _get_ai_config_filepaths(self):
+        paths = []
+        try:
+            user_home = os.path.expanduser("~")
+            config_dir = os.path.join(user_home, ".cotizador_intcomex")
+            os.makedirs(config_dir, exist_ok=True)
+            paths.append(os.path.join(config_dir, "ai_config.json"))
+        except Exception:
+            pass
+
+        try:
+            exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+            paths.append(os.path.join(exe_dir, "ai_config.json"))
+        except Exception:
+            pass
+
+        return list(dict.fromkeys(paths))
+
+    def save_ai_config(self, config_json: str):
+        """Saves ConfigurIAtor Multi-API Key Pool configuration persistently to disk."""
+        try:
+            data = json.loads(config_json) if isinstance(config_json, str) else config_json
+            if not isinstance(data, dict):
+                return {"success": False, "error": "Invalid AI config payload"}
+
+            for path in self._get_ai_config_filepaths():
+                try:
+                    with open(path, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2, ensure_ascii=False)
+                except Exception as e:
+                    print(f"Warning writing AI config to {path}: {e}")
+
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_ai_config(self):
+        """Loads ConfigurIAtor Multi-API Key Pool configuration from disk."""
+        try:
+            for path in self._get_ai_config_filepaths():
+                if os.path.exists(path):
+                    try:
+                        with open(path, "r", encoding="utf-8") as f:
+                            file_data = json.load(f)
+                            if isinstance(file_data, dict):
+                                return {"success": True, "config": file_data}
+                    except Exception:
+                        pass
+            return {"success": True, "config": None}
+        except Exception as e:
+            return {"success": False, "error": str(e), "config": None}
+
 
 def get_index_html_path() -> str:
     """

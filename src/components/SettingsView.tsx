@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Settings,
   HardDrive,
@@ -7,8 +7,20 @@ import {
   CheckCircle2,
   AlertCircle,
   Palette,
+  Bot,
+  KeyRound,
+  Trash2,
 } from 'lucide-react';
 import { APP_THEMES, getSavedThemeId } from '../core/themeEngine';
+import {
+  AiConfigSettings,
+  AiProviderId,
+  PROVIDER_META,
+  loadAiSettings,
+  saveAiSettings,
+  addApiKeyToPool,
+  syncAiSettingsFromDesktopBridge,
+} from '../modules/configuriator';
 
 interface SettingsViewProps {
   onOpenThemes?: () => void;
@@ -19,6 +31,42 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
   const [supabaseKey, setSupabaseKey] = useState('');
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
+
+  // ConfigurIAtor AI Multi-Provider Pool State
+  const [aiSettings, setAiSettings] = useState<AiConfigSettings>(() => loadAiSettings());
+  const [aiProvider, setAiProvider] = useState<Exclude<AiProviderId, 'local_deterministic'>>('gemini');
+  const [aiKeyLabel, setAiKeyLabel] = useState('');
+  const [aiKeyValue, setAiKeyValue] = useState('');
+  const [aiKeyModel, setAiKeyModel] = useState('gemini-2.5-flash');
+  const [aiSavedMsg, setAiSavedMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    syncAiSettingsFromDesktopBridge().then((synced) => setAiSettings(synced));
+  }, []);
+
+  const handleAddAiKey = () => {
+    if (!aiKeyValue.trim()) return;
+    const next = addApiKeyToPool({
+      provider: aiProvider,
+      label: aiKeyLabel,
+      apiKey: aiKeyValue,
+      model: aiKeyModel,
+    });
+    setAiSettings(next);
+    setAiKeyValue('');
+    setAiKeyLabel('');
+    setAiSavedMsg('API Key guardada y activada en el pool de rotación.');
+    setTimeout(() => setAiSavedMsg(null), 4000);
+  };
+
+  const handleRemoveAiKey = (id: string) => {
+    const next: AiConfigSettings = {
+      ...aiSettings,
+      keys: aiSettings.keys.filter((k) => k.id !== id),
+    };
+    saveAiSettings(next);
+    setAiSettings(next);
+  };
 
   const activeThemeId = getSavedThemeId();
   const currentTheme = APP_THEMES.find((t) => t.id === activeThemeId) || APP_THEMES[0];
@@ -111,6 +159,132 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
             Activo
           </span>
         </div>
+      </div>
+
+      {/* ConfigurIAtor AI & Multi-Provider API Pool */}
+      <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2.5 text-cyan-400 font-bold text-xs uppercase tracking-wider">
+            <Bot className="w-4 h-4" />
+            <span>ConfigurIAtor AI &bull; Pool Multi-API (Gemini, OpenRouter Free, Groq Free, DeepSeek)</span>
+          </div>
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-700/40">
+            {aiSettings.keys.length} Key(s) en rotación
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-400">
+          Registra múltiples API Keys para que si una agota sus tokens (Error 429), el agente cambie automáticamente a la siguiente Key o a proveedores gratuitos como OpenRouter (DeepSeek V3 Free) o Groq.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+              Proveedor IA
+            </label>
+            <select
+              value={aiProvider}
+              onChange={(e) => {
+                const p = e.target.value as Exclude<AiProviderId, 'local_deterministic'>;
+                setAiProvider(p);
+                setAiKeyModel(PROVIDER_META[p].defaultModel);
+              }}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white"
+            >
+              <option value="gemini">Google Gemini (Principal)</option>
+              <option value="openrouter">OpenRouter (DeepSeek / Qwen Gratis)</option>
+              <option value="groq">Groq Cloud (Llama 4 / 3.3 Gratis)</option>
+              <option value="deepseek">DeepSeek Oficial API</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+              Modelo
+            </label>
+            <select
+              value={aiKeyModel}
+              onChange={(e) => setAiKeyModel(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white"
+            >
+              {PROVIDER_META[aiProvider].models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+              Etiqueta (Opcional)
+            </label>
+            <input
+              type="text"
+              value={aiKeyLabel}
+              onChange={(e) => setAiKeyLabel(e.target.value)}
+              placeholder="Ej. Key Principal / Respaldo"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <input
+            type="password"
+            value={aiKeyValue}
+            onChange={(e) => setAiKeyValue(e.target.value)}
+            placeholder={PROVIDER_META[aiProvider].placeholder}
+            className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
+          />
+          <button
+            type="button"
+            onClick={handleAddAiKey}
+            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition-all cursor-pointer flex items-center gap-1.5"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>Agregar Key al Pool</span>
+          </button>
+        </div>
+
+        {aiSavedMsg && (
+          <div className="p-3 rounded-xl bg-emerald-950/50 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{aiSavedMsg}</span>
+          </div>
+        )}
+
+        {aiSettings.keys.length > 0 && (
+          <div className="space-y-2 pt-2">
+            {aiSettings.keys.map((k, i) => (
+              <div
+                key={k.id}
+                className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs"
+              >
+                <div className="flex items-center space-x-3">
+                  <span className="font-mono text-slate-500 font-bold">#{i + 1}</span>
+                  <div>
+                    <span className="font-bold text-white">{k.label}</span>
+                    <span className="ml-2 text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 text-indigo-300 border border-slate-800 uppercase">
+                      {k.provider} &bull; {k.model}
+                    </span>
+                    <span className="ml-2 font-mono text-[11px] text-slate-500">
+                      ({k.apiKey.slice(0, 5)}••••{k.apiKey.slice(-4)})
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveAiKey(k.id)}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 cursor-pointer"
+                  title="Quitar Key"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Storage Settings */}

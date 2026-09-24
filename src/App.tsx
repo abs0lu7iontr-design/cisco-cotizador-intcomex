@@ -41,6 +41,7 @@ import { AuditLogsView } from './components/AuditLogsView';
 import { SettingsView } from './components/SettingsView';
 import { ThemeSelectorModal } from './components/ThemeSelectorModal';
 import { DsvView } from './modules/dsv';
+import { ConfiguriatorView } from './modules/configuriator';
 import { FastTrackAdminModal, FastTrackOpportunityModal } from './modules/fasttrack';
 import { applyTheme, getSavedThemeId } from './core/themeEngine';
 import { useSessionInactivity, SessionInactivityModal } from './modules/security';
@@ -515,6 +516,12 @@ function AppContent() {
           {currentView === 'dsv' && (
             <ErrorBoundary fallbackTitle="Error en Generador DSV Cisco">
               <DsvView />
+            </ErrorBoundary>
+          )}
+
+          {currentView === 'configuriator' && (
+            <ErrorBoundary fallbackTitle="Error en ConfigurIAtor (AI BOM Generator)">
+              <ConfiguriatorView />
             </ErrorBoundary>
           )}
 
