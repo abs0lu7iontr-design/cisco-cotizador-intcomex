@@ -73,8 +73,7 @@ export async function detectMiningFastTrackUsage(
     return typeof listPrice === 'number' && listPrice > 0 && typeof netPrice === 'number' && netPrice > 0;
   });
 
-  if (candidates.length < 2) {
-    // Si hay menos de 2 ítems válidos en total, es imposible tener al menos 2 con descuento igual
+  if (candidates.length === 0) {
     return {
       isMining: true,
       shouldAlert: false,
@@ -120,6 +119,14 @@ export async function detectMiningFastTrackUsage(
 
       const ftDiscountPct = Number(ftProduct.distributorDiscount) || 0;
 
+      // REGLA CRÍTICA DE CONCORDANCIA:
+      // Un ítem solo se considera configurado con Fast Track en CCW si su descuento
+      // observado en CCW coincide realmente con el descuento del catálogo Fast Track (±0.5% por redondeo).
+      // Si el Estimate tiene p. ej. 65% (Deal/Acuerdo Minero) y Fast Track es 55% o 63%, NO es Fast Track.
+      if (ftDiscountPct <= 0 || Math.abs(currentDiscountPct - ftDiscountPct) > 0.5) {
+        return null;
+      }
+
       const matched: MiningFastTrackMatchedItem = {
         rowIdx: item.rowIdx,
         lineNumber: item.lineNumber || '',
@@ -136,11 +143,11 @@ export async function detectMiningFastTrackUsage(
     })
   );
 
-  // Filtrar solo los ítems que efectivamente están en el catálogo Fast Track
+  // Filtrar solo los ítems que están en Fast Track Y cuyo descuento CCW coincide con Fast Track
   const ftMatchedItems = crossResults.filter((r): r is MiningFastTrackMatchedItem => r !== null);
 
-  // 4. Si no encuentra nada en Fast Track o hay menos de 2 ítems, no se muestra ningún pop-up
-  if (ftMatchedItems.length < 2) {
+  // 4. Si ningún ítem presenta el descuento de Fast Track en CCW, no se muestra ningún pop-up
+  if (ftMatchedItems.length === 0) {
     return {
       isMining: true,
       shouldAlert: false,
@@ -149,44 +156,19 @@ export async function detectMiningFastTrackUsage(
     };
   }
 
-  // 5. Agrupar ítems coincidentes por su descuento observado en el Estimate
-  const discountGroups: Record<string, MiningFastTrackMatchedItem[]> = {};
-
-  for (const item of ftMatchedItems) {
-    const key = item.currentDiscountPct.toFixed(1);
-    if (!discountGroups[key]) {
-      discountGroups[key] = [];
-    }
-    discountGroups[key].push(item);
-  }
-
-  // 6. Verificar si existe al menos un grupo con 2 o más ítems con descuento igual
-  let alertGroup: MiningFastTrackMatchedItem[] | null = null;
-  let commonPct = 0;
-
-  for (const [discStr, group] of Object.entries(discountGroups)) {
-    if (group.length >= 2) {
-      alertGroup = group;
-      commonPct = parseFloat(discStr);
-      break;
-    }
-  }
-
-  if (!alertGroup || alertGroup.length < 2) {
-    return {
-      isMining: true,
-      shouldAlert: false,
-      matchedItems: [],
-      accountName,
-    };
-  }
+  // Determinar descuento(s) coincidente(s) para mostrar en el resumen
+  const uniqueDiscounts = Array.from(
+    new Set(ftMatchedItems.map((item) => Math.round(item.fastTrackDiscountPct * 10) / 10))
+  );
+  const commonPct = uniqueDiscounts[0] || 0;
+  const discountSummaryLabel = uniqueDiscounts.map((d) => `${d}%`).join(' / ');
 
   return {
     isMining: true,
     shouldAlert: true,
-    matchedItems: alertGroup,
+    matchedItems: ftMatchedItems,
     commonDiscountPct: commonPct,
     accountName,
-    explanation: `Se detectaron ${alertGroup.length} ítems en el catálogo Fast Track con descuento idéntico (${commonPct}%). En cuentas de minería no se utiliza Fast Track; se sugiere revisar nuevamente el Estimate en CCW.`,
+    explanation: `Se detectaron ${ftMatchedItems.length} ítem(s) cuyo descuento en CCW coincide exactamente con el catálogo Fast Track (${discountSummaryLabel}). En cuentas de minería no se utiliza Fast Track; se sugiere revisar nuevamente el Estimate en CCW.`,
   };
 }

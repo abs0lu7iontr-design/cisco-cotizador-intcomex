@@ -7,9 +7,9 @@ export const MINING_KEYWORDS = [
   'codelco', 'chuquicamata', 'teniente', 'andina', 'radomiro', 'tomic', 'hales', 'salvador', 'gabriela mistral',
   'amsa', 'antofagasta minerals', 'pelambres', 'centinela', 'antucoya', 'zaldivar', 'collahuasi', 
   'lundin', 'candelaria', 'caserones', 'freeport', 'el abra',
-  'honeywell', 'rockwell', 'emerson', 'schneider', 'caterpillar', 'bechtel', 'sigdo koppers', 'sk',
+  'honeywell', 'rockwell', 'emerson', 'schneider', 'caterpillar', 'bechtel', 'sigdo koppers', 'skic', 'sk',
   'cap', 'cmp', 'enami', 'molymet', 'sqm', 'finning', 'komatsu', 'albemarle', 'sierra gorda', 'kghm', 'goldfields',
-  'anglo', 'american', 'los bronces', 'el soldado', 'chagres', 'mantos', 'copper', 'mantos blancos', 'manto verde', 'capstone',
+  'anglo american', 'anglo', 'los bronces', 'el soldado', 'chagres', 'mantos copper', 'mantos blancos', 'manto verde', 'capstone',
   'teck', 'quebrada blanca', 'qb2', 'andacollo',
   'glencore', 'lomas bayas', 'altonorte'
 ];
@@ -37,9 +37,20 @@ export function inspectEstimateForMining(
   lineItems: MiningLineItemInput[],
   detectedDealId?: string | null
 ): MiningAlertData {
-  // 1. Detección por nombre de archivo
-  const normalizedFileName = fileName.toLowerCase().replace(/[^a-z0-9]/g, ' ');
-  const matchedKeyword = MINING_KEYWORDS.find((kw) => normalizedFileName.includes(kw));
+  // 1. Detección por palabra completa delimitada (evita falsos positivos como 'sk' dentro de 'DeskPro')
+  const normalizedFileName = (fileName || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const matchedKeyword = MINING_KEYWORDS.find((kw) => {
+    const normKw = kw.toLowerCase().trim();
+    const regex = new RegExp(`(^|\\s)${normKw}(\\s|$)`, 'i');
+    return regex.test(normalizedFileName);
+  });
 
   // Si no es un cliente minero, salimos inmediatamente
   if (!matchedKeyword) {

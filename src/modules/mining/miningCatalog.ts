@@ -33,7 +33,7 @@ export const MINING_CONDITIONS_CATALOG: AccountConditionRule[] = [
   {
     groupId: 3,
     groupName: "Honeywell, Rockwell, Emerson, Schneider, Caterpillar, Bechtel, Sigdo Koppers",
-    verifiedAliases: ["honeywell", "rockwell", "emerson", "schneider", "caterpillar", "bechtel", "sigdo koppers", "skic"],
+    verifiedAliases: ["honeywell", "rockwell", "emerson", "schneider", "caterpillar", "bechtel", "sigdo koppers", "skic", "sk"],
     productTiers: [
       { minUsd: parseUsdAmount("1K")!, maxUsd: parseUsdAmount("150K")!, discountPct: 62 }
     ],

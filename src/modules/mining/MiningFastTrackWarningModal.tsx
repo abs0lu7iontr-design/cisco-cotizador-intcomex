@@ -24,6 +24,14 @@ export const MiningFastTrackWarningModal: React.FC<Props> = ({
 
   const { matchedItems, commonDiscountPct, accountName } = data;
 
+  const uniqueDiscounts = Array.from(
+    new Set(matchedItems.map((it) => Math.round(it.fastTrackDiscountPct * 10) / 10))
+  );
+  const discountLabel =
+    uniqueDiscounts.length > 0
+      ? uniqueDiscounts.map((d) => `${d}%`).join(' / ')
+      : `${commonDiscountPct}%`;
+
   const handleCopySummary = async () => {
     const linesText = matchedItems
       .map(
@@ -39,7 +47,7 @@ export const MiningFastTrackWarningModal: React.FC<Props> = ({
     const summaryText =
       `[ALERTA MINERÍA - POSIBLE USO DE FAST TRACK]\n` +
       `Cuenta Minera: ${accountName || 'Minería Detectada'}\n` +
-      `Descuento común detectado: ${commonDiscountPct}%\n` +
+      `Descuento Fast Track detectado: ${discountLabel}\n` +
       `Ítems detectados (${matchedItems.length}):\n` +
       linesText +
       `\n\nSugerencia: Revisar nuevamente el Estimate en Cisco CCW (en minería aplican descuentos corporativos negociados, no Fast Track).`;
@@ -87,7 +95,7 @@ export const MiningFastTrackWarningModal: React.FC<Props> = ({
             </span>
           </div>
           <p className="text-zinc-300 text-[11px] pl-6">
-            Al realizar el cruce con el catálogo Fast Track, se detectaron <strong className="text-amber-300">{matchedItems.length} ítems</strong> que pertenecen a Fast Track y presentan descuentos idénticos (<strong className="text-amber-300">{commonDiscountPct}%</strong>). Esto indica que el Estimate pudo haber sido configurado en CCW utilizando una promoción Fast Track en lugar del acuerdo minero.
+            Al realizar el cruce con el catálogo Fast Track, se detectaron <strong className="text-amber-300">{matchedItems.length} ítem(s)</strong> cuyo descuento en CCW coincide exactamente con el del catálogo Fast Track (<strong className="text-amber-300">{discountLabel}</strong>). Esto indica que el Estimate pudo haber sido configurado en CCW utilizando una promoción Fast Track en lugar del acuerdo minero.
           </p>
           <div className="bg-zinc-900/80 border border-amber-500/20 rounded-lg p-2 text-[11px] text-zinc-200 pl-3">
             💡 <strong className="text-amber-300">Sugerencia Preventiva:</strong> Se sugiere revisar nuevamente el Estimate en <strong>Cisco CCW</strong> antes de emitir la cotización definitiva para validar los descuentos de la cuenta minera.
@@ -102,7 +110,7 @@ export const MiningFastTrackWarningModal: React.FC<Props> = ({
               Ítems con Posible Uso de Fast Track ({matchedItems.length})
             </span>
             <span className="text-[10px] text-zinc-400 font-mono">
-              Descuento observado en CCW: <strong className="text-amber-400 font-bold">{commonDiscountPct}%</strong>
+              Descuento Fast Track detectado en CCW: <strong className="text-amber-400 font-bold">{discountLabel}</strong>
             </span>
           </div>
 
