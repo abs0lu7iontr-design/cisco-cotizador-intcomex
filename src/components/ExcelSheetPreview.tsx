@@ -439,15 +439,24 @@ export const ExcelSheetPreview: React.FC<ExcelSheetPreviewProps> = ({
           </table>
         </div>
 
-        {/* Footer Single 14-Day Notice */}
-        <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-400">
-          <div className="flex items-center space-x-2 text-slate-200">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+        {/* Footer Single 14-Day Notice & Lead Time Disclaimer */}
+        <div className="pt-4 border-t border-slate-800 flex flex-col gap-1.5 text-xs text-slate-400">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center space-x-2 text-slate-200">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+              <span>
+                <strong>Validez de la Oferta:</strong> Esta cotización tiene una validez de <strong className="text-rose-500">14 días</strong> corridos a contar de su fecha de emisión.
+              </span>
+            </div>
+            <span className="font-mono text-[11px] text-slate-500">Cisco Automated v2.1</span>
+          </div>
+
+          {/* Nueva nota de lead time */}
+          <div className="flex items-center space-x-2 text-slate-400 pl-4 border-l-2 border-indigo-500/40 text-[11px]">
             <span>
-              <strong>Validez de la Oferta:</strong> Esta cotización tiene una validez de <strong className="text-rose-500">14 días</strong> corridos a contar de su fecha de emisión.
+              <strong className="text-slate-300">Plazo de entrega:</strong> El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden.
             </span>
           </div>
-          <span className="font-mono text-[11px] text-slate-500">Cisco Automated v2.1</span>
         </div>
       </div>
     </div>

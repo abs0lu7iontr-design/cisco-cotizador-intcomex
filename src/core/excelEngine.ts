@@ -168,6 +168,10 @@ export function isFooterOrNoteRow(lineStr: string, partStr: string, descStr: str
     'validez',
     'esta cotización',
     'esta cotizacion',
+    'plazo de entrega',
+    'tiempo final de despacho',
+    'tiempo de espera',
+    'mayor tiempo de espera',
     'valid through',
     'validity',
     'fob point',
@@ -1113,21 +1117,6 @@ export async function generateOptimizedWorkbook(
     worksheet.getCell('G12').alignment = { horizontal: 'right', vertical: 'middle' };
     worksheet.getCell('G12').border = undefined;
 
-    // Row lastItemRow + 3: 14-day validity single notice
-    const noticeRowIdx = totalRowIndex + 2;
-    safeUnmerge(worksheet, `A${noticeRowIdx}:G${noticeRowIdx}`);
-    const validityCell = worksheet.getCell(`A${noticeRowIdx}`);
-    validityCell.value = {
-      richText: [
-        { text: 'Validez de la Oferta: ', font: { name: 'Arial', size: 8.5, color: { argb: 'FF334155' } } },
-        { text: 'Esta cotización tiene una validez de ', font: { name: 'Arial', size: 8.5, color: { argb: 'FF334155' } } },
-        { text: '14 días corridos', font: { name: 'Arial', size: 8.5, bold: true, color: { argb: 'FFCC0000' } } },
-        { text: ' a contar de su fecha de emisión.', font: { name: 'Arial', size: 8.5, color: { argb: 'FF334155' } } },
-      ],
-    };
-    validityCell.alignment = { horizontal: 'left', vertical: 'middle' };
-    validityCell.border = undefined;
-    worksheet.mergeCells(`A${noticeRowIdx}:G${noticeRowIdx}`);
   } catch (err) {
     console.warn('Metadata restoration note:', err);
   }
@@ -1165,7 +1154,9 @@ export async function generateOptimizedWorkbook(
     { width: 18 }, // Extended Net Price
   ];
 
+  // 1. Fila de Validez de Oferta (Fila totalRowIndex + 2)
   const validityRow = totalRowIndex + 2;
+  safeUnmerge(worksheet, `A${validityRow}:G${validityRow}`);
   const validityCell = worksheet.getCell(`A${validityRow}`);
   validityCell.value = {
     richText: [
@@ -1183,10 +1174,31 @@ export async function generateOptimizedWorkbook(
       },
     ],
   };
-  validityCell.font = { name: 'Arial', size: 8, color: { argb: 'FF333333' } };
   validityCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
   validityCell.border = undefined;
   validityCell.fill = undefined;
+  worksheet.mergeCells(`A${validityRow}:G${validityRow}`);
+
+  // 2. Fila de Plazo de Entrega Máximo (Fila validityRow + 1)
+  const leadTimeNoticeRow = validityRow + 1;
+  safeUnmerge(worksheet, `A${leadTimeNoticeRow}:G${leadTimeNoticeRow}`);
+  const leadTimeCell = worksheet.getCell(`A${leadTimeNoticeRow}`);
+  leadTimeCell.value = {
+    richText: [
+      {
+        text: 'Plazo de entrega: ',
+        font: { name: 'Arial', size: 8, bold: true, color: { argb: 'FF333333' } },
+      },
+      {
+        text: 'El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden.',
+        font: { name: 'Arial', size: 8, italic: true, color: { argb: 'FF555555' } },
+      },
+    ],
+  };
+  leadTimeCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
+  leadTimeCell.border = undefined;
+  leadTimeCell.fill = undefined;
+  worksheet.mergeCells(`A${leadTimeNoticeRow}:G${leadTimeNoticeRow}`);
 
   // Inyección de Snapshot espejo en hoja ultra-oculta (sys_metadata)
   let metaSheet = workbook.getWorksheet('sys_metadata');
