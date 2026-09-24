@@ -262,7 +262,8 @@ export function calculateMerakiLicenseCosts(
   discPct: number,
   qty: number,
   months: number,
-  params: QuoteParameters
+  params: QuoteParameters,
+  override?: OverrideRuleType | string
 ) {
   const safeMonths = Math.max(1, months);
   const safeQty = Math.max(1, qty);
@@ -270,28 +271,48 @@ export function calculateMerakiLicenseCosts(
   // a) Costo Neto Mensual
   const costoNetoMensual = unitListPrice * (1 - discPct / 100);
 
-  // b) Precio Venta Mensual (Margen)
-  const marginRate = params.margenPct / 100;
-  const rawPrecioVentaMensual = marginRate >= 1 ? costoNetoMensual : costoNetoMensual / (1 - marginRate);
-
-  // c) Redondear Precio Venta Mensual a 2 decimales
-  const precioVentaMensual = roundFinancial(rawPrecioVentaMensual);
-
-  // d) Nuevo 'Unit Net Price' / 'Precio Venta Unitario' final
-  const precioVentaUnitario = roundFinancial(precioVentaMensual * safeMonths);
-
-  // e) Nuevo 'Extended Net Price' / 'Precio Venta Extendido'
-  const precioVentaExtendido = roundFinancial(precioVentaUnitario * safeQty);
-
-  // Costo Total Unitario (Net Cisco Unit Total for Contract)
+  // Costo Total Unitario Base (Net Cisco Unit Total for Contract)
   const netCiscoUnitTotal = roundFinancial(costoNetoMensual * safeMonths);
 
+  // Aplicación estricta de regla manual (3-state override)
+  const normOverride = normalizeOverrideRule(override);
+  let isIntangible = true;
+  let llevaArancel = false;
+  let costoInternacion = 0;
+  let costoArancel = 0;
+
+  if (normOverride === 'equipo') {
+    isIntangible = false;
+    llevaArancel = false;
+    costoInternacion = roundFinancial(netCiscoUnitTotal * (params.internacionPct / 100));
+  } else if (normOverride === 'arancel') {
+    isIntangible = false;
+    llevaArancel = true;
+    costoInternacion = roundFinancial(netCiscoUnitTotal * (params.internacionPct / 100));
+    costoArancel = roundFinancial(netCiscoUnitTotal * (params.arancelPct / 100));
+  } else {
+    // Defecto: Intangible puro (0% Internación, 0% Arancel)
+    isIntangible = true;
+    llevaArancel = false;
+    costoInternacion = 0;
+    costoArancel = 0;
+  }
+
+  const costoTotalUnitario = roundFinancial(netCiscoUnitTotal + costoInternacion + costoArancel);
+
+  // b) Precio Venta Total y Mensual (Margen Comercial: PV = Costo / (1 - Margen))
+  const marginRate = params.margenPct / 100;
+  const rawPrecioVentaUnitario = marginRate >= 1 ? costoTotalUnitario : costoTotalUnitario / (1 - marginRate);
+  const precioVentaUnitario = roundFinancial(rawPrecioVentaUnitario);
+  const precioVentaExtendido = roundFinancial(precioVentaUnitario * safeQty);
+  const precioVentaMensual = roundFinancial(precioVentaUnitario / safeMonths);
+
   return {
-    isIntangible: true,
-    llevaArancel: false,
-    costoInternacion: 0,
-    costoArancel: 0,
-    costoTotalUnitario: netCiscoUnitTotal,
+    isIntangible,
+    llevaArancel,
+    costoInternacion,
+    costoArancel,
+    costoTotalUnitario,
     precioVentaUnitario,
     precioVentaExtendido,
     netCiscoUnitCalculated: netCiscoUnitTotal,
@@ -381,12 +402,14 @@ export function solveGoalSeekParameters(
       if (item.isInfoRow) continue; 
 
       if (item.precioVentaMensual !== undefined && item.unitListPrice !== undefined && item.discPct !== undefined && item.months !== undefined) {
+        const rowOverride = overrides && item.rowIdx ? overrides[item.rowIdx] : undefined;
         const res = calculateMerakiLicenseCosts(
           item.unitListPrice,
           item.discPct,
           item.qty,
           item.months,
-          p
+          p,
+          rowOverride
         );
         sum += res.precioVentaExtendido;
       } else {
@@ -592,10 +615,11 @@ export function recalculateEstimateResult(
     }
 
     const rowIdx = item.rowIdx;
+    const cleanSkuKey = (item.partNumber || '').trim().toUpperCase();
     const hasPromo = Boolean(promoPrices && promoPrices[rowIdx] !== undefined);
     const baseNetCiscoUnit = item.originalNetCiscoUnit ?? item.netCiscoUnit;
     const netCiscoUnit = hasPromo ? promoPrices![rowIdx] : baseNetCiscoUnit;
-    const override = overrides ? overrides[rowIdx] : undefined;
+    const override = overrides ? (overrides[rowIdx] ?? (cleanSkuKey ? (overrides as any)[cleanSkuKey] : undefined)) : undefined;
 
     // SaaS / Meraki Cloud Subscription with multi-month duration
     const isPeriodic = Boolean(item.isPeriodicSubscription || (item.months && item.months > 1));
@@ -603,8 +627,13 @@ export function recalculateEstimateResult(
 
     if (item.realUnitCost === 0 && (item.unitListPrice === 0 || item.netCiscoUnit === 0)) {
       // Sub-línea a costo $0.00 (ej. LIC-MT-E-INCL)
+      const normRule = normalizeOverrideRule(override);
+      const isIntangible = normRule === 'intangible' ? true : (normRule === 'arancel' || normRule === 'equipo' ? false : (item.isIntangible ?? true));
+      const llevaArancel = normRule === 'arancel';
       return {
         ...item,
+        isIntangible,
+        llevaArancel,
         costoInternacion: 0,
         costoArancel: 0,
         costoTotalUnitario: 0,
@@ -621,20 +650,21 @@ export function recalculateEstimateResult(
         effectiveDisc,
         item.qty,
         durationMonths,
-        params
+        params,
+        override
       );
 
-      originalProductTotal += baseNetCiscoUnit * item.qty;
+      originalProductTotal += meraki.netCiscoUnitCalculated * item.qty;
       calculatedProductTotal += meraki.precioVentaExtendido;
 
       return {
         ...item,
-        netCiscoUnit: meraki.costoTotalUnitario,
+        netCiscoUnit: meraki.netCiscoUnitCalculated,
         realUnitCost: meraki.costoTotalUnitario,
         discPct: effectiveDisc,
         ...meraki,
         isFastTrackPromo: hasPromo || item.isFastTrackPromo,
-        originalNetCiscoUnit: baseNetCiscoUnit,
+        originalNetCiscoUnit: item.originalNetCiscoUnit ?? meraki.netCiscoUnitCalculated,
         fastTrackDiscountPct: hasPromo ? effectiveDisc : item.fastTrackDiscountPct,
         fastTrackSavings: hasPromo
           ? Number(((baseNetCiscoUnit - meraki.costoTotalUnitario) * item.qty).toFixed(2))

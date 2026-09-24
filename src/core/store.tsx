@@ -621,16 +621,32 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         ? 'arancel'
         : 'equipo') as OverrideRuleType;
 
-      setCustomOverrideMap((prev) => ({
-        ...prev,
-        [rowIdx]: normRule,
-      }));
-
       const targetItem = processedResult?.items.find((i) => i.rowIdx === rowIdx);
       const itemSku = sku || targetItem?.partNumber;
+      const cleanSku = itemSku ? itemSku.trim().toUpperCase() : undefined;
 
-      if (itemSku) {
-        const cleanSku = itemSku.trim().toUpperCase();
+      const updatedMap: Record<number, OverrideRuleType> = {
+        ...customOverrideMap,
+        [rowIdx]: normRule,
+      };
+
+      if (cleanSku && processedResult?.items) {
+        processedResult.items.forEach((it) => {
+          if ((it.partNumber || '').trim().toUpperCase() === cleanSku) {
+            updatedMap[it.rowIdx] = normRule;
+          }
+        });
+      }
+
+      setCustomOverrideMap(updatedMap);
+
+      if (processedResult) {
+        setProcessedResult((prev) =>
+          prev ? recalculateEstimateResult(prev, params, updatedMap, fastTrackPromoMap) : prev
+        );
+      }
+
+      if (cleanSku) {
         const updated = { ...skuOverridesMap, [cleanSku]: normRule };
         setSkuOverridesMap(updated);
 
@@ -671,7 +687,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         }
       }
     },
-    [processedResult, skuOverridesMap, currentUser]
+    [processedResult, skuOverridesMap, currentUser, customOverrideMap, params, fastTrackPromoMap]
   );
 
   const cycleRowRule = useCallback(

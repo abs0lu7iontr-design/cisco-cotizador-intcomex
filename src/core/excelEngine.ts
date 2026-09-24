@@ -20,6 +20,7 @@ import {
   isMainLineItem,
   isCloudSubscriptionSku,
   safeParseFloat,
+  normalizeOverrideRule,
 } from './calculations';
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../lib/intcomexLogoBase64';
 import { generateQuotationFileName } from './exportUtils';
@@ -489,6 +490,11 @@ export async function parseEstimateWorkbook(
 
     // Caso Sub-líneas a costo $0.00 (como LIC-MT-E-INCL o contenedores .0 a costo 0)
     if (rawNetCiscoUnit === 0 && rawExtCost === 0) {
+      const rowOverride = overrides ? (overrides[r] ?? (sku ? (overrides as any)[sku] : undefined)) : undefined;
+      const normRule = normalizeOverrideRule(rowOverride);
+      const isIntangible = normRule === 'intangible' ? true : (normRule === 'arancel' || normRule === 'equipo' ? false : true);
+      const llevaArancel = normRule === 'arancel';
+
       items.push({
         rowIdx: r,
         lineNumber: lineNumStr || `${items.length + 1}.0`,
@@ -510,8 +516,8 @@ export async function parseEstimateWorkbook(
         unitNetPriceCcw: 0,
         extendedNetPriceCcw: 0,
         months: detectedDurationMonths,
-        isIntangible: true,
-        llevaArancel: false,
+        isIntangible,
+        llevaArancel,
         costoInternacion: 0,
         costoArancel: 0,
         costoTotalUnitario: 0,
@@ -549,8 +555,9 @@ export async function parseEstimateWorkbook(
           }
         }
 
+        const rowOverride = overrides ? (overrides[r] ?? (sku ? (overrides as any)[sku] : undefined)) : undefined;
         // Multiplicación secuencial estricta de Precio Mensual * Meses * Qty
-        merakiResult = calculateMerakiLicenseCosts(unitListPrice, discPct, qty, months, params);
+        merakiResult = calculateMerakiLicenseCosts(unitListPrice, discPct, qty, months, params, rowOverride);
         isMerakiHandled = true;
         realUnitCost = merakiResult.costoTotalUnitario;
       } catch (err) {
@@ -560,7 +567,7 @@ export async function parseEstimateWorkbook(
     }
 
     if (isMerakiHandled && merakiResult) {
-      originalProductTotal += merakiResult.costoTotalUnitario * qty;
+      originalProductTotal += merakiResult.netCiscoUnitCalculated * qty;
       calculatedProductTotal += merakiResult.precioVentaExtendido;
 
       items.push({
@@ -575,7 +582,7 @@ export async function parseEstimateWorkbook(
         unitListPrice,
         pricingTerm,
         qty,
-        netCiscoUnit: merakiResult.costoTotalUnitario,
+        netCiscoUnit: merakiResult.netCiscoUnitCalculated,
         discPct,
         parentGroup,
         detectedDurationMonths: merakiResult.months,
@@ -597,7 +604,7 @@ export async function parseEstimateWorkbook(
         : (unitListPrice > 0 ? unitListPrice * (1 - (standardDiscount / 100)) : 0);
       originalProductTotal += baseNetCost * qty;
 
-      const rowOverride = overrides ? overrides[r] : undefined;
+      const rowOverride = overrides ? (overrides[r] ?? (sku ? (overrides as any)[sku] : undefined)) : undefined;
       const calculated = calculateLineItemCosts(netCiscoUnit, qty, sku, description, params, rowOverride);
 
       calculatedProductTotal += calculated.precioVentaExtendido;
