@@ -385,6 +385,7 @@ export interface LearnedCiscoSkuRecord {
 }
 
 export function getLearnedCiscoSkus(): Record<string, LearnedCiscoSkuRecord> {
+  if (typeof localStorage === 'undefined') return {};
   try {
     const raw = localStorage.getItem(DYNAMIC_SKU_STORAGE_KEY);
     return raw ? JSON.parse(raw) : {};
@@ -394,6 +395,7 @@ export function getLearnedCiscoSkus(): Record<string, LearnedCiscoSkuRecord> {
 }
 
 export function saveLearnedCiscoSku(record: LearnedCiscoSkuRecord): void {
+  if (typeof localStorage === 'undefined') return;
   try {
     const current = getLearnedCiscoSkus();
     current[record.sku.trim().toUpperCase()] = {

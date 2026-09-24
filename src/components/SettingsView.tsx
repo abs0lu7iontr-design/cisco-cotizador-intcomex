@@ -37,7 +37,7 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
   const [aiProvider, setAiProvider] = useState<Exclude<AiProviderId, 'local_deterministic'>>('gemini');
   const [aiKeyLabel, setAiKeyLabel] = useState('');
   const [aiKeyValue, setAiKeyValue] = useState('');
-  const [aiKeyModel, setAiKeyModel] = useState('gemini-2.5-flash');
+  const [aiKeyModel, setAiKeyModel] = useState('gemini-3.5-flash');
   const [aiSavedMsg, setAiSavedMsg] = useState<string | null>(null);
 
   useEffect(() => {

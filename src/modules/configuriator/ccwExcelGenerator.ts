@@ -1,17 +1,23 @@
 // ============================================================================
-// CISCO AUTOMATED v2.1 - CCW UPLOAD EXCEL GENERATOR (10-COLUMN OFFICIAL FORMAT)
+// CISCO AUTOMATED v2.1 - CCW UPLOAD EXCEL GENERATOR (10-COLUMN MADRE-HIJO)
 // Genera el archivo Excel oficial "UploadExcelTemplate" con hoja "Sheet1" y
-// orden secuencial estricto Padre -> Hijas para ensamblado VALID en Cisco CCW.
+// orden secuencial estricto MADRE -> HIJOS para ensamblado VALID en Cisco CCW.
 // ============================================================================
 
 import ExcelJS from 'exceljs';
-import { ExtractedRequirementResult, ExtractedRequirementItem } from './aiBomExtractor';
+import {
+  ExtractedRequirementResult,
+  ExtractedRequirementItem,
+  normalizeParentChassisSku,
+} from './aiBomExtractor';
 import {
   EOL_CATALOG_2026,
   EOL_MAPPING,
   resolveChassisRule,
   resolveMerakiSubLicense,
   checkSkuInFastTrackDb,
+  normalizeCiscoDnaTermYears,
+  SubItemConfig,
 } from './catalogRules';
 import { FastTrackProduct } from '../fasttrack/types';
 
@@ -38,8 +44,8 @@ export interface CcwAssembledRow {
 }
 
 /**
- * Resuelve el SKU objetivo de un ítem respetando si el modelo sigue vigente en 2026
- * o si el usuario eligió mantener el SKU original.
+ * Resuelve el SKU Madre objetivo de un ítem respetando si el modelo sigue vigente en 2026
+ * o si el usuario eligió mantener el SKU original, y normaliza sufijos (-E / -A / -HW).
  */
 export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
   targetSku: string;
@@ -47,10 +53,10 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
   eolReason?: string;
   officialCiscoUrl?: string;
 } {
+  const tier = item.licenseTier === 'Advantage' ? 'Advantage' : 'Essentials';
   const rawSku = (item.rawMentionedSku || '').trim().toUpperCase();
-  const suggested = (item.suggestedActiveSku || '').trim().toUpperCase();
+  const suggested = normalizeParentChassisSku(item.suggestedActiveSku || '', tier);
 
-  // Si el usuario pidió explícitamente mantener el SKU original (cuando no está bloqueado o por decisión propia)
   if (item.keepOriginalSku && rawSku) {
     return {
       targetSku: rawSku,
@@ -60,18 +66,16 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
     };
   }
 
-  // Verificar catálogo EOL 2026
   if (rawSku && EOL_CATALOG_2026[rawSku]) {
     const entry = EOL_CATALOG_2026[rawSku];
     return {
-      targetSku: entry.replacementSku,
+      targetSku: normalizeParentChassisSku(entry.replacementSku, tier),
       wasReplacedFromEol: true,
       eolReason: entry.eolNote,
       officialCiscoUrl: entry.officialCiscoDocUrl || item.officialCiscoUrl,
     };
   }
 
-  // Si la IA detectó que es EOL 2026 y dio un reemplazo distinto
   if (rawSku && item.isEol2026 && suggested && suggested !== rawSku) {
     return {
       targetSku: suggested,
@@ -81,34 +85,34 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
     };
   }
 
-  // Si el modelo NO es EOL en 2026 y existe rawSku, se mantiene el SKU original sin reemplazarlo
-  if (rawSku && !item.isEol2026 && !EOL_MAPPING[rawSku]) {
-    return {
-      targetSku: rawSku,
-      wasReplacedFromEol: false,
-      officialCiscoUrl: item.officialCiscoUrl,
-    };
-  }
-
   if (suggested) {
     return {
       targetSku: suggested,
-      wasReplacedFromEol: Boolean(rawSku && rawSku !== suggested),
+      wasReplacedFromEol: Boolean(item.isEol2026 && rawSku && rawSku !== suggested),
       eolReason: item.eolReason,
       officialCiscoUrl: item.officialCiscoUrl,
     };
   }
 
-  // Deducción determinista por características cuando no vino SKU
+  if (rawSku && !item.isEol2026 && !EOL_MAPPING[rawSku] && !rawSku.includes(' ')) {
+    return {
+      targetSku: normalizeParentChassisSku(rawSku, tier),
+      wasReplacedFromEol: false,
+      officialCiscoUrl: item.officialCiscoUrl,
+    };
+  }
+
   if (item.deviceType === 'switch') {
     const ports = item.ports === 48 ? '48' : '24';
-    const poe = item.isPoe === false ? 'T' : item.poeBudget === 'full_poe' && ports === '48' ? 'FP' : 'P';
+    const poe =
+      item.isPoe === false ? 'T' : item.poeBudget === 'full_poe' && ports === '48' ? 'FP' : 'P';
     const uplink = item.uplinkType === '10G' || item.uplinkType === 'SFP+' ? '4X' : '4G';
-    const tier = item.licenseTier === 'Advantage' ? 'A' : 'E';
+    const tierCode = tier === 'Advantage' ? 'A' : 'E';
     return {
-      targetSku: `C9200L-${ports}${poe}-${uplink}-${tier}`,
+      targetSku: `C9200L-${ports}${poe}-${uplink}-${tierCode}`,
       wasReplacedFromEol: false,
-      officialCiscoUrl: 'https://www.cisco.com/c/en/us/products/switches/catalyst-9200-series-switches/index.html',
+      officialCiscoUrl:
+        'https://www.cisco.com/c/en/us/products/switches/catalyst-9200-series-switches/index.html',
     };
   }
 
@@ -124,7 +128,8 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
     return {
       targetSku: 'C8200-1N-4T',
       wasReplacedFromEol: false,
-      officialCiscoUrl: 'https://www.cisco.com/c/en/us/products/routers/catalyst-8200-series-edge-platforms/index.html',
+      officialCiscoUrl:
+        'https://www.cisco.com/c/en/us/products/routers/catalyst-8200-series-edge-platforms/index.html',
     };
   }
 
@@ -136,13 +141,131 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
   }
 
   return {
-    targetSku: rawSku || 'C9200L-24P-4G-E',
+    targetSku: normalizeParentChassisSku(rawSku || 'C9200L-24P-4G-E', tier),
     wasReplacedFromEol: false,
   };
 }
 
 /**
- * Construye las filas secuenciales de ensamblado CCW y las cruza con Fast Track DB
+ * Garantiza que cualquier equipo Cisco que no esté en CHASSIS_RULES ni Meraki
+ * aún tenga sus sub-líneas Hijo (de la IA o de ingeniería por familia) para
+ * que NUNCA falle la estructura Madre-Hijo.
+ */
+function resolveFallbackSubItems(
+  targetSku: string,
+  item: ExtractedRequirementItem,
+  merakiLicenseMode: 'coterm' | 'subscription'
+): SubItemConfig[] {
+  // 1. Verificar si es Meraki (MR, CW-MR, MS, MX)
+  const merakiSub = resolveMerakiSubLicense(targetSku, {
+    licenseTier: item.licenseTier || 'Essentials',
+    termYears: item.termYears || 3,
+    merakiLicenseMode,
+  });
+  if (merakiSub) {
+    return [merakiSub];
+  }
+
+  // 2. Si la IA ya estructuró los aiSubItems (Hijos), ajustarlos dinámicamente al plazo/tier seleccionado
+  if (Array.isArray(item.aiSubItems) && item.aiSubItems.length > 0) {
+    const { skuSuffixYear, months } = normalizeCiscoDnaTermYears(item.termYears);
+    const tierCode = item.licenseTier === 'Advantage' ? 'A' : 'E';
+
+    return item.aiSubItems
+      .filter((sub) => sub && sub.partNumber && sub.partNumber.trim().toUpperCase() !== targetSku)
+      .map((sub) => {
+        let pNum = sub.partNumber.trim().toUpperCase();
+        const isDnaOrLic =
+          pNum.includes('-DNA-') ||
+          pNum.startsWith('DNA-') ||
+          pNum.startsWith('LIC-') ||
+          pNum.startsWith('L-FPR') ||
+          Boolean(sub.durationMonths);
+
+        // Sincronizar tier y años si el usuario cambió los selectores en la UI
+        if (pNum.includes('-DNA-')) {
+          pNum = pNum
+            .replace(/-DNA-(E|A)-/i, `-DNA-${tierCode}-`)
+            .replace(/-(1|3|5|7)Y$/i, `-${skuSuffixYear}Y`);
+        } else if (pNum.includes('-NW-')) {
+          pNum = pNum.replace(/-NW-(E|A)-/i, `-NW-${tierCode}-`);
+        }
+
+        return {
+          partNumber: pNum,
+          qtyMultiplier: Number(sub.qtyMultiplier) > 0 ? Number(sub.qtyMultiplier) : 1,
+          durationMonths: isDnaOrLic ? months : undefined,
+          initialTerm: isDnaOrLic ? months : undefined,
+          billingModel: isDnaOrLic ? sub.billingModel || 'Prepaid Term' : undefined,
+          description: sub.description || `Sub-componente CCW (${pNum})`,
+        };
+      });
+  }
+
+  // 3. Fallback universal por tipo de dispositivo para que siempre exista Madre-Hijo
+  const { skuSuffixYear, months } = normalizeCiscoDnaTermYears(item.termYears);
+  const tierCode = item.licenseTier === 'Advantage' ? 'A' : 'E';
+
+  if (targetSku.startsWith('FPR') || item.deviceType === 'firewall') {
+    const baseFpr = targetSku.split('-')[0] || 'FPR1010';
+    return [
+      {
+        partNumber: `L-${baseFpr}T-TMC-${skuSuffixYear}Y`,
+        qtyMultiplier: 1,
+        durationMonths: months,
+        initialTerm: months,
+        billingModel: 'Prepaid Term',
+        description: `Cisco Secure Firewall ${baseFpr} Threat, Malware & URL License (${skuSuffixYear}Y)`,
+      },
+      {
+        partNumber: 'CAB-ACE',
+        qtyMultiplier: 1,
+        description: 'AC Power Cord (Europe/Chile), CEE 7/7, 1.5M',
+      },
+    ];
+  }
+
+  if (targetSku.startsWith('CW91') || item.deviceType === 'access_point') {
+    return [
+      {
+        partNumber: `DNA-E-${skuSuffixYear}Y`,
+        qtyMultiplier: 1,
+        durationMonths: months,
+        initialTerm: months,
+        billingModel: 'Prepaid Term',
+        description: `Cisco Wireless DNA ${item.licenseTier || 'Essentials'} Term (${skuSuffixYear}Y)`,
+      },
+      {
+        partNumber: 'AIR-AP-BRACKET-2',
+        qtyMultiplier: 1,
+        description: 'Cisco AP Universal Mounting Bracket',
+      },
+    ];
+  }
+
+  if (targetSku.startsWith('ISR') || targetSku.startsWith('C11') || item.deviceType === 'router') {
+    return [
+      {
+        partNumber: `DNA-C-T0-${tierCode}-${skuSuffixYear}Y`,
+        qtyMultiplier: 1,
+        durationMonths: months,
+        initialTerm: months,
+        billingModel: 'Prepaid Term',
+        description: `Cisco DNA Subscription for Router (${skuSuffixYear}Y)`,
+      },
+      {
+        partNumber: 'CAB-ACE',
+        qtyMultiplier: 1,
+        description: 'AC Power Cord (Europe/Chile), CEE 7/7, 1.5M',
+      },
+    ];
+  }
+
+  return [];
+}
+
+/**
+ * Construye las filas secuenciales de ensamblado CCW (MADRE -> HIJOS) y las cruza con Fast Track DB
  */
 export async function buildAssembledCcwRows(
   req: ExtractedRequirementResult,
@@ -155,14 +278,11 @@ export async function buildAssembledCcwRows(
     const qty = item.quantity > 0 ? item.quantity : 1;
     const { targetSku, wasReplacedFromEol, eolReason, officialCiscoUrl } = resolveTargetSkuForItem(item);
 
-    // Cruce con base de datos local Fast Track
     const ftMatch = await checkSkuInFastTrackDb(targetSku);
-
-    // Verificar si el SKU tiene regla de ensamblaje (Catalyst 9200/9300/1200/1300/8000)
     const rule = resolveChassisRule(targetSku);
 
     if (rule) {
-      // 1. Fila Padre (Chasis Principal)
+      // 1. Fila MADRE (Chasis Principal)
       rows.push({
         rowId: `row-${idx}-parent`,
         parentIndex: idx,
@@ -184,7 +304,7 @@ export async function buildAssembledCcwRows(
         fastTrackInfo: ftMatch,
       });
 
-      // 2. Filas Hijas consecutivas (Licencia DNA, Fuente PoE, Cable CAB-ACE, Network Stack, Stacking Kit)
+      // 2. Filas HIJAS consecutivas (Licencia DNA, Fuente PoE, Cable CAB-ACE, Network Stack, Stacking Kit)
       const subItems = rule.defaultSubItems({
         licenseTier: item.licenseTier || 'Essentials',
         termYears: item.termYears || 3,
@@ -212,7 +332,7 @@ export async function buildAssembledCcwRows(
         });
       }
     } else {
-      // Producto plano o Meraki (MR / CW / MS / MX)
+      // 1. Fila MADRE (Equipo principal)
       rows.push({
         rowId: `row-${idx}-parent`,
         parentIndex: idx,
@@ -234,28 +354,24 @@ export async function buildAssembledCcwRows(
         fastTrackInfo: ftMatch,
       });
 
-      // Si es equipo Meraki, agregar su licencia inmediatamente debajo
-      const merakiSub = resolveMerakiSubLicense(targetSku, {
-        licenseTier: item.licenseTier || 'Essentials',
-        termYears: item.termYears || 3,
-        merakiLicenseMode,
-      });
-
-      if (merakiSub) {
+      // 2. Filas HIJAS (Meraki, aiSubItems de la IA o fallback universal por familia)
+      const fallbackSubs = resolveFallbackSubItems(targetSku, item, merakiLicenseMode);
+      for (let sIdx = 0; sIdx < fallbackSubs.length; sIdx++) {
+        const sub = fallbackSubs[sIdx];
         rows.push({
-          rowId: `row-${idx}-meraki-lic`,
+          rowId: `row-${idx}-sub-${sIdx}`,
           parentIndex: idx,
           isParent: false,
-          partNumber: merakiSub.partNumber,
-          quantity: qty * merakiSub.qtyMultiplier,
-          durationMonths: merakiSub.durationMonths || '',
+          partNumber: sub.partNumber,
+          quantity: qty * sub.qtyMultiplier,
+          durationMonths: sub.durationMonths || '',
           listPrice: '',
           discountPct: '',
-          initialTerm: merakiSub.initialTerm || '',
-          autoRenewTerm: '',
-          billingModel: merakiSub.billingModel || '',
+          initialTerm: sub.initialTerm || '',
+          autoRenewTerm: sub.autoRenewTerm || '',
+          billingModel: sub.billingModel || '',
           requestedStartDate: '',
-          notes: merakiSub.description,
+          notes: sub.description,
         });
       }
     }
@@ -270,13 +386,17 @@ export async function buildAssembledCcwRows(
 export async function generateCcwUploadWorkbook(
   req: ExtractedRequirementResult,
   precomputedRows?: CcwAssembledRow[]
-): Promise<{ buffer: ArrayBuffer; filename: string; summaryRows: number; assembledRows: CcwAssembledRow[] }> {
+): Promise<{
+  buffer: ArrayBuffer;
+  filename: string;
+  summaryRows: number;
+  assembledRows: CcwAssembledRow[];
+}> {
   const assembledRows = precomputedRows || (await buildAssembledCcwRows(req));
 
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Sheet1');
 
-  // Encabezados oficiales exactos de UploadExcelTemplate de Cisco CCW (Fila 1)
   worksheet.columns = [
     { header: 'Part Number', key: 'partNumber', width: 28 },
     { header: 'Quantity', key: 'quantity', width: 12 },
@@ -290,7 +410,6 @@ export async function generateCcwUploadWorkbook(
     { header: 'Notes', key: 'notes', width: 38 },
   ];
 
-  // Estilizar sutilmente la fila 1 de encabezados para legibilidad sin alterar el parser de CCW
   const headerRow = worksheet.getRow(1);
   headerRow.font = { bold: true, size: 10 };
 

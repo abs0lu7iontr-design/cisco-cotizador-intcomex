@@ -1,8 +1,8 @@
 // ============================================================================
 // CISCO AUTOMATED v2.1 - CONFIGURIATOR VIEW (AI BOM GENERATOR FOR CISCO CCW)
-// Interfaz interactiva multimodal (Texto + Ctrl+V Imágenes), gestor de rotación
-// multi-API (Gemini, OpenRouter Free, Groq Free, DeepSeek), cruce con Fast Track,
-// validación EOL 2026 en cisco.com y exportación oficial UploadExcelTemplate.
+// Prioridad #1: IA Multimodal (Lenguaje Natural + Capturas Ctrl+V).
+// Estructura estricta MADRE-HIJO para Cisco CCW, botón Clear BOM y modo manual
+// desactivado por defecto.
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -13,7 +13,6 @@ import {
   Image as ImageIcon,
   Trash2,
   Plus,
-  CheckCircle2,
   AlertTriangle,
   KeyRound,
   RefreshCw,
@@ -23,11 +22,10 @@ import {
   ShieldCheck,
   FileSpreadsheet,
   ArrowRight,
-  Sliders,
-  Info,
   X,
   Globe,
   Cpu,
+  RotateCcw,
 } from 'lucide-react';
 import {
   extractBOMRequirementsFromInput,
@@ -51,7 +49,7 @@ import {
 import { getLearnedCiscoSkus, EOL_CATALOG_2026 } from './catalogRules';
 
 export const ConfiguriatorView: React.FC = () => {
-  // Entrada de texto e imagen (Ctrl+V o Drag & Drop)
+  // Entrada de lenguaje natural e imagen (Ctrl+V o Drag & Drop)
   const [inputText, setInputText] = useState<string>('');
   const [clientName, setClientName] = useState<string>('Cliente');
   const [pastedImage, setPastedImage] = useState<{
@@ -73,9 +71,10 @@ export const ConfiguriatorView: React.FC = () => {
   const [newProvider, setNewProvider] = useState<Exclude<AiProviderId, 'local_deterministic'>>('gemini');
   const [newKeyLabel, setNewKeyLabel] = useState<string>('');
   const [newKeyValue, setNewKeyValue] = useState<string>('');
-  const [newKeyModel, setNewKeyModel] = useState<string>('gemini-2.5-flash');
+  const [newKeyModel, setNewKeyModel] = useState<string>('gemini-3.5-flash');
 
-  // Agregar SKU manual rápido
+  // Creación de BOM Manual DESACTIVADA por defecto (Prioridad #1 IA)
+  const [isManualModeEnabled, setIsManualModeEnabled] = useState<boolean>(false);
   const [manualSkuInput, setManualSkuInput] = useState<string>('');
   const [manualQtyInput, setManualQtyInput] = useState<number>(1);
 
@@ -88,7 +87,7 @@ export const ConfiguriatorView: React.FC = () => {
     });
   }, []);
 
-  // Recalcular filas ensambladas cuando cambian los ítems extraídos o el modo Meraki
+  // Recalcular filas ensambladas Madre-Hijo cuando cambian los ítems extraídos o el modo Meraki
   const refreshAssembledRows = useCallback(
     async (currentReq: ExtractedRequirementResult | null, mode: 'subscription' | 'coterm') => {
       if (!currentReq || !currentReq.items.length) {
@@ -105,7 +104,7 @@ export const ConfiguriatorView: React.FC = () => {
     refreshAssembledRows(extractionResult, merakiLicenseMode);
   }, [extractionResult, merakiLicenseMode, refreshAssembledRows]);
 
-  // Manejo de pegado de capturas de pantalla con Ctrl + V
+  // Pegado de capturas de pantalla con Ctrl + V
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -125,6 +124,7 @@ export const ConfiguriatorView: React.FC = () => {
             mimeType: file.type || 'image/png',
             previewUrl: dataUrl,
           });
+          setErrorMsg(null);
         };
         reader.readAsDataURL(file);
         break;
@@ -143,14 +143,31 @@ export const ConfiguriatorView: React.FC = () => {
         mimeType: file.type || 'image/png',
         previewUrl: dataUrl,
       });
+      setErrorMsg(null);
     };
     reader.readAsDataURL(file);
   };
 
-  // Ejecutar extracción y armado BOM
+  // Botón CLEAR: limpia todo el BOM IA, el texto, la imagen y los errores para hacer otro
+  const handleClearAllBom = () => {
+    setInputText('');
+    setPastedImage(null);
+    setExtractionResult(null);
+    setAssembledRows([]);
+    setErrorMsg(null);
+    setManualSkuInput('');
+    setManualQtyInput(1);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Ejecutar extracción con IA (Lenguaje Natural + Imagen) y armado Madre-Hijo
   const handleGenerateConfig = async () => {
     if (!inputText.trim() && !pastedImage) {
-      setErrorMsg('Escribe una solicitud comercial o pega una captura de pantalla (Ctrl + V) para generar el BOM.');
+      setErrorMsg(
+        'Escribe tu solicitud en lenguaje natural o pega una captura de pantalla (Ctrl + V) para que la IA arme la configuración Madre-Hijo.'
+      );
       return;
     }
 
@@ -173,20 +190,19 @@ export const ConfiguriatorView: React.FC = () => {
       setExtractionResult(result);
       setAiSettings(loadAiSettings());
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Error al procesar la solicitud.');
+      setErrorMsg(err?.message || 'Error al procesar la solicitud con IA.');
       setAiSettings(loadAiSettings());
     } finally {
       setIsGenerating(false);
     }
   };
 
-  // Modificar parámetros de un equipo padre en vivo (Cantidad, Tier, Plazo, Stacking, PSU Redundante, Mantener EOL)
+  // Modificar parámetros de un equipo Madre en vivo (Cantidad, Tier, Plazo, Stacking, PSU Redundante, Mantener EOL)
   const updateParentItem = (index: number, patch: Partial<ExtractedRequirementItem>) => {
     if (!extractionResult) return;
     const nextItems = extractionResult.items.map((it, idx) => {
       if (idx !== index) return it;
       const updated = { ...it, ...patch };
-      // Si cambió el tier en un C9200/C9300, sincronizar el sufijo -E / -A del SKU sugerido
       if (patch.licenseTier && updated.suggestedActiveSku) {
         if (/^(C9200L?|C9300L?)-.*-(E|A)$/i.test(updated.suggestedActiveSku)) {
           updated.suggestedActiveSku = updated.suggestedActiveSku.replace(
@@ -224,11 +240,14 @@ export const ConfiguriatorView: React.FC = () => {
       isEol2026: eolEntry ? eolEntry.status === 'eos_eol_active' : false,
       eolReason: eolEntry?.eolNote,
       officialCiscoUrl: eolEntry?.officialCiscoDocUrl,
-      deviceType: cleanSku.startsWith('MR') || cleanSku.startsWith('CW')
-        ? 'access_point'
-        : cleanSku.startsWith('C8') || cleanSku.startsWith('ISR')
-          ? 'router'
-          : 'switch',
+      deviceType:
+        cleanSku.startsWith('MR') || cleanSku.startsWith('CW')
+          ? 'access_point'
+          : cleanSku.startsWith('C8') || cleanSku.startsWith('ISR')
+            ? 'router'
+            : cleanSku.startsWith('FPR') || cleanSku.startsWith('MX')
+              ? 'firewall'
+              : 'switch',
       licenseTier: 'Essentials',
       termYears: 3,
       quantity: manualQtyInput > 0 ? manualQtyInput : 1,
@@ -238,7 +257,7 @@ export const ConfiguriatorView: React.FC = () => {
     setExtractionResult((prev) => ({
       clientName: prev?.clientName || clientName,
       items: [...(prev?.items || []), newItem],
-      providerUsed: prev?.providerUsed || 'Edición Manual + Reglas Ingeniería Cisco',
+      providerUsed: prev?.providerUsed || 'Edición Manual + Motor Madre-Hijo Cisco',
     }));
     setManualSkuInput('');
     setManualQtyInput(1);
@@ -320,7 +339,10 @@ export const ConfiguriatorView: React.FC = () => {
   };
 
   const activeKeysCount = aiSettings.keys.filter((k) => k.enabled && k.apiKey.trim()).length;
-  const learnedSkusCount = Object.keys(getLearnedCiscoSkus()).length + Object.keys(EOL_CATALOG_2026).length;
+  const learnedSkusCount =
+    Object.keys(getLearnedCiscoSkus()).length + Object.keys(EOL_CATALOG_2026).length;
+  const totalParents = assembledRows.filter((r) => r.isParent).length;
+  const totalChildren = assembledRows.filter((r) => !r.isParent).length;
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-6" onPaste={handlePaste}>
@@ -333,7 +355,7 @@ export const ConfiguriatorView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-black uppercase tracking-wider text-emerald-300">
-                Regla Crítica de Ensamblado Cisco CCW
+                Regla Crítica de Ensamblado Madre-Hijo Cisco CCW
               </span>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
                 Estado VALID (Verde)
@@ -344,7 +366,7 @@ export const ConfiguriatorView: React.FC = () => {
               <span className="px-2 py-0.5 rounded bg-emerald-900/80 border border-emerald-400/50 text-emerald-200 font-mono font-bold">
                 ☑ Import Lines as assembled configurations
               </span>{' '}
-              para que los equipos queden ensamblados en estado <strong>VALID (Verde)</strong>.
+              para que los equipos Madre e Hijos queden ensamblados en estado <strong>VALID (Verde)</strong>.
             </p>
           </div>
         </div>
@@ -355,7 +377,7 @@ export const ConfiguriatorView: React.FC = () => {
             className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-indigo-300 border border-indigo-500/40 text-xs font-bold transition-all cursor-pointer shadow-sm"
           >
             <KeyRound className="w-4 h-4 text-indigo-400" />
-            <span>APIs & Rotación ({activeKeysCount} activas)</span>
+            <span>APIs & Rotación ({activeKeysCount} IA activas)</span>
           </button>
         </div>
       </div>
@@ -369,44 +391,53 @@ export const ConfiguriatorView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
               <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">
-                ConfigurIAtor &bull; AI BOM Generator para Cisco CCW
+                ConfigurIAtor &bull; AI BOM Generator (Madre-Hijo CCW)
               </h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-950 text-indigo-300 border border-indigo-700/50">
-                UploadExcelTemplate 10-Col
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-950 text-emerald-300 border border-emerald-700/50">
+                Prioridad #1: IA Multimodal (Gemini 3.5/3.8 + OpenRouter)
               </span>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-950/80 text-cyan-300 border border-cyan-700/40 flex items-center gap-1">
                 <Globe className="w-3 h-3" />
-                <span>Cisco.com EOL 2026 + Base Dinámica ({learnedSkusCount} SKUs)</span>
+                <span>Cisco.com EOL 2026 ({learnedSkusCount} SKUs)</span>
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Convierte correos en lenguaje natural o capturas de pantalla (Ctrl + V) en configuraciones ensambladas Catalyst / Meraki / ISR listas para importar en Cisco CCW.
+              Analiza solicitudes en lenguaje natural o capturas de pantalla (Ctrl + V) con IA y estructura automáticamente las filas Madre (Chasis) e Hijos (DNA, Fuente, Cable, Stack).
             </p>
           </div>
         </div>
 
-        {/* Estado rápido de motores */}
+        {/* Botón rápido Limpiar / Nuevo BOM si hay datos */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
+          {(inputText || pastedImage || assembledRows.length > 0) && (
+            <button
+              type="button"
+              onClick={handleClearAllBom}
+              className="px-3.5 py-2 rounded-xl bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-700/50 font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+              title="Limpiar solicitud y BOM actual para comenzar uno nuevo"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Limpiar / Nuevo BOM (Clear)</span>
+            </button>
+          )}
+
           <div className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 flex items-center gap-2">
             <Cpu className="w-3.5 h-3.5 text-emerald-400" />
             <span>
-              Failover:{' '}
-              <strong className="text-emerald-300">
-                {activeKeysCount > 0 ? `${activeKeysCount} API(s) + Motor Local` : 'Motor Local Determinista Activo'}
-              </strong>
+              Motores IA: <strong className="text-emerald-300">Gemini 3.5/3.8 + OpenRouter Activos</strong>
             </span>
           </div>
         </div>
       </div>
 
-      {/* Grilla Principal: Panel de Entrada (Izquierda) + Vista Previa Ensamblada CCW (Derecha) */}
+      {/* Grilla Principal: Panel de Entrada IA (Izquierda) + Vista Previa Madre-Hijo CCW (Derecha) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* COLUMNA IZQUIERDA: Entrada Multimodal */}
+        {/* COLUMNA IZQUIERDA: Entrada Multimodal IA */}
         <div className="lg:col-span-5 bg-slate-900/95 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <h3 className="text-xs font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-indigo-400" />
-              <span>1. Solicitud del Cliente (Texto o Captura Ctrl+V)</span>
+              <span>1. Solicitud en Lenguaje Natural o Screenshot (IA)</span>
             </h3>
 
             {/* Ejemplos rápidos */}
@@ -468,13 +499,13 @@ export const ConfiguriatorView: React.FC = () => {
             </div>
           </div>
 
-          {/* Textarea de correo / requerimiento */}
+          {/* Textarea de correo / requerimiento en lenguaje natural */}
           <div>
             <textarea
               rows={6}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Pega aquí el correo del partner/cliente (ej: 'Mauricio, cotízame 2 switches de 24 bocas PoE Catalyst con licencia por 3 años y 3 APs Wi-Fi 6') o presiona Ctrl + V para pegar un pantallazo..."
+              placeholder="Escribe o pega aquí el correo del cliente en lenguaje natural (ej: 'Mauricio, cotízame 2 switches de 24 bocas PoE Catalyst con licencia por 3 años y 3 APs Wi-Fi 6') o presiona Ctrl + V para analizar solo un pantallazo..."
               className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 leading-relaxed resize-y"
             />
           </div>
@@ -512,10 +543,10 @@ export const ConfiguriatorView: React.FC = () => {
                   />
                   <div className="text-xs overflow-hidden">
                     <span className="font-bold text-emerald-300 block">
-                      Captura adjunta lista para análisis multimodal
+                      Captura lista para análisis por Visión IA
                     </span>
                     <span className="text-[11px] text-slate-400">
-                      {pastedImage.mimeType} &bull; Puedes combinarla con instrucciones de texto arriba
+                      {pastedImage.mimeType} &bull; Puedes enviarla sola o acompañada de texto
                     </span>
                   </div>
                 </div>
@@ -546,58 +577,87 @@ export const ConfiguriatorView: React.FC = () => {
             )}
           </div>
 
-          {/* Botón Principal Generar Configuración */}
-          <button
-            type="button"
-            onClick={handleGenerateConfig}
-            disabled={isGenerating}
-            className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-black text-xs sm:text-sm shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer"
-          >
-            {isGenerating ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Analizando Preventa y Ensamblando BOM para CCW...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                <span>Generar Configuración CCW</span>
-              </>
-            )}
-          </button>
+          {/* Botones de Acción: Generar con IA + Botón Clear */}
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleGenerateConfig}
+              disabled={isGenerating}
+              className="flex-1 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-black text-xs sm:text-sm shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer"
+            >
+              {isGenerating ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Analizando con IA y Estructurando Madre-Hijo...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  <span>Generar Configuración con IA</span>
+                </>
+              )}
+            </button>
 
-          {/* Agregar SKU Manualmente */}
-          <div className="pt-3 border-t border-slate-800">
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-              Agregar SKU Directo o EOL al Ensamblador
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={manualSkuInput}
-                onChange={(e) => setManualSkuInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleAddManualItem();
-                }}
-                placeholder="Ej. C9200L-48P-4X-E o WS-C2960X-24TS-L"
-                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
-              />
-              <input
-                type="number"
-                min={1}
-                value={manualQtyInput}
-                onChange={(e) => setManualQtyInput(Math.max(1, Number(e.target.value) || 1))}
-                className="w-16 bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white text-center font-mono focus:outline-none focus:border-indigo-500"
-              />
+            <button
+              type="button"
+              onClick={handleClearAllBom}
+              disabled={isGenerating}
+              className="py-3 px-4 rounded-xl bg-slate-800 hover:bg-rose-950/80 text-slate-300 hover:text-rose-200 border border-slate-700 hover:border-rose-700/50 font-bold text-xs sm:text-sm flex items-center space-x-1.5 transition-all cursor-pointer shrink-0"
+              title="Limpiar texto, imagen y BOM generado (Clear)"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>Clear</span>
+            </button>
+          </div>
+
+          {/* Toggle de Creación Manual (Desactivado por defecto) */}
+          <div className="pt-3 border-t border-slate-800/80 space-y-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-[11px] text-slate-400 font-semibold">
+                Adición Manual de SKUs (Opcional)
+              </span>
               <button
                 type="button"
-                onClick={handleAddManualItem}
-                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                onClick={() => setIsManualModeEnabled((prev) => !prev)}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                  isManualModeEnabled
+                    ? 'bg-indigo-950/80 text-indigo-300 border-indigo-700/50'
+                    : 'bg-slate-950 text-slate-500 border-slate-800 hover:text-slate-300'
+                }`}
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Añadir</span>
+                {isManualModeEnabled ? 'Activado' : 'Desactivado por defecto (Prioridad IA)'}
               </button>
             </div>
+
+            {isManualModeEnabled && (
+              <div className="flex items-center gap-2 animate-fade-in">
+                <input
+                  type="text"
+                  value={manualSkuInput}
+                  onChange={(e) => setManualSkuInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleAddManualItem();
+                  }}
+                  placeholder="Ej. C9200L-48P-4X-E o WS-C2960X-24TS-L"
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  value={manualQtyInput}
+                  onChange={(e) => setManualQtyInput(Math.max(1, Number(e.target.value) || 1))}
+                  className="w-16 bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white text-center font-mono focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddManualItem}
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Añadir</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Mensajes de Error o Log de Rotación de APIs */}
@@ -623,33 +683,47 @@ export const ConfiguriatorView: React.FC = () => {
           )}
         </div>
 
-        {/* COLUMNA DERECHA: Equipos Detectados, Controles de Preventa y Tabla 10 Columnas CCW */}
+        {/* COLUMNA DERECHA: Estructura Madre-Hijo y Tabla 10 Columnas CCW */}
         <div className="lg:col-span-7 space-y-5">
-          {/* Tarjeta de Equipos Principales e Ingeniería Preventa */}
+          {/* Tarjeta de Equipos Madre e Hijos */}
           <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-xs font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
                   <Layers className="w-4 h-4" />
-                  <span>2. Equipos Padre y Reglas de Ingeniería ({extractionResult?.items.length || 0} bloques)</span>
+                  <span>
+                    2. Estructura Ensamblada Madre-Hijo ({totalParents} Equipos Madre &bull; {totalChildren} Sub-SKUs Hijos)
+                  </span>
                 </h3>
                 {extractionResult?.providerUsed && (
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Procesado por: <strong className="text-indigo-300">{extractionResult.providerUsed}</strong>
+                    Analizado por IA: <strong className="text-indigo-300">{extractionResult.providerUsed}</strong>
                     {extractionResult.keyLabelUsed ? ` (${extractionResult.keyLabelUsed})` : ''}
                   </p>
                 )}
               </div>
 
               {assembledRows.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleDownloadCcwExcel}
-                  className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Descargar Excel CCW ({assembledRows.length} líneas)</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleClearAllBom}
+                    className="inline-flex items-center space-x-1.5 px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-rose-950 text-slate-300 hover:text-rose-200 border border-slate-700 text-xs font-bold transition-all cursor-pointer"
+                    title="Limpiar BOM actual"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Limpiar BOM</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadCcwExcel}
+                    className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Descargar Excel CCW ({assembledRows.length} líneas)</span>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -657,10 +731,10 @@ export const ConfiguriatorView: React.FC = () => {
               <div className="text-center py-12 border border-dashed border-slate-800 rounded-xl bg-slate-950/40 space-y-2">
                 <FileSpreadsheet className="w-10 h-10 text-slate-600 mx-auto" />
                 <p className="text-xs font-bold text-slate-400">
-                  Aún no hay equipos generados en la mesa de ensamblaje.
+                  Esperando instrucciones en lenguaje natural o captura de pantalla (Ctrl + V).
                 </p>
                 <p className="text-[11px] text-slate-500 max-w-md mx-auto">
-                  Escribe la solicitud del cliente a la izquierda o usa uno de los botones de ejemplo para generar las líneas padre e hijas de Cisco CCW.
+                  La IA analizará tu solicitud y armará automáticamente cada equipo <strong>MADRE (Chasis)</strong> junto con sus líneas <strong>HIJO (Licencia DNA, Fuente, Cable de Poder, Network Stack)</strong>.
                 </p>
               </div>
             ) : (
@@ -682,8 +756,8 @@ export const ConfiguriatorView: React.FC = () => {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="space-y-1">
                           <div className="flex items-center flex-wrap gap-2">
-                            <span className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/50 text-[10px] font-bold uppercase">
-                              Chasis #{idx + 1}
+                            <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/50 text-[10px] font-black uppercase">
+                              MADRE #{idx + 1} (Chasis)
                             </span>
                             <span className="font-mono text-sm font-black text-white">
                               {parentRow?.partNumber || item.suggestedActiveSku}
@@ -695,7 +769,7 @@ export const ConfiguriatorView: React.FC = () => {
                                 <span>Reemplazo EOL 2026 (de {item.rawMentionedSku})</span>
                               </span>
                             ) : (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-600/40">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-600/40">
                                 Vigente 2026
                               </span>
                             )}
@@ -725,9 +799,7 @@ export const ConfiguriatorView: React.FC = () => {
                           </div>
 
                           {parentRow?.eolReason && (
-                            <p className="text-[11px] text-amber-300/90">
-                              ↳ {parentRow.eolReason}
-                            </p>
+                            <p className="text-[11px] text-amber-300/90">↳ {parentRow.eolReason}</p>
                           )}
                         </div>
 
@@ -752,7 +824,7 @@ export const ConfiguriatorView: React.FC = () => {
                             type="button"
                             onClick={() => removeParentItem(idx)}
                             className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
-                            title="Eliminar este bloque"
+                            title="Eliminar este bloque Madre-Hijo"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -761,7 +833,6 @@ export const ConfiguriatorView: React.FC = () => {
 
                       {/* Controles rápidos de configuración de preventa */}
                       <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-900 text-xs">
-                        {/* Cantidad */}
                         <div className="flex items-center space-x-1.5">
                           <span className="text-[11px] text-slate-400 font-semibold">Cant:</span>
                           <input
@@ -777,7 +848,6 @@ export const ConfiguriatorView: React.FC = () => {
                           />
                         </div>
 
-                        {/* Nivel Licencia */}
                         <div className="flex items-center space-x-1.5">
                           <span className="text-[11px] text-slate-400 font-semibold">Licencia:</span>
                           <select
@@ -794,7 +864,6 @@ export const ConfiguriatorView: React.FC = () => {
                           </select>
                         </div>
 
-                        {/* Plazo Años */}
                         <div className="flex items-center space-x-1.5">
                           <span className="text-[11px] text-slate-400 font-semibold">Plazo:</span>
                           <select
@@ -811,7 +880,6 @@ export const ConfiguriatorView: React.FC = () => {
                           </select>
                         </div>
 
-                        {/* Checkboxes opcionales para Switches Catalyst */}
                         {item.deviceType === 'switch' && (
                           <>
                             <label className="inline-flex items-center space-x-1.5 cursor-pointer select-none text-[11px] text-slate-300">
@@ -841,27 +909,35 @@ export const ConfiguriatorView: React.FC = () => {
                         )}
                       </div>
 
-                      {/* Sub-líneas hijas ensambladas */}
+                      {/* Sub-líneas HIJAS ensambladas */}
                       {childRows.length > 0 && (
-                        <div className="pl-3 border-l-2 border-indigo-500/40 space-y-1 pt-1">
-                          {childRows.map((sub) => (
+                        <div className="pl-3 border-l-2 border-indigo-500/50 space-y-1.5 pt-1">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">
+                            ↳ Componentes HIJOS ensamblados automáticamente ({childRows.length}):
+                          </div>
+                          {childRows.map((sub, cIdx) => (
                             <div
                               key={sub.rowId}
-                              className="flex items-center justify-between text-[11px] text-slate-300 bg-slate-900/60 px-2.5 py-1 rounded-lg"
+                              className="flex items-center justify-between text-[11px] text-slate-300 bg-slate-900/70 px-2.5 py-1.5 rounded-lg border border-slate-800/80"
                             >
-                              <div className="flex items-center space-x-2">
+                              <div className="flex items-center space-x-2 overflow-hidden">
+                                <span className="px-1.5 py-0.5 rounded bg-indigo-950/90 text-indigo-300 border border-indigo-700/40 text-[9px] font-bold uppercase shrink-0">
+                                  HIJO #{cIdx + 1}
+                                </span>
                                 <ArrowRight className="w-3 h-3 text-indigo-400 shrink-0" />
-                                <span className="font-mono font-bold text-indigo-200">
+                                <span className="font-mono font-bold text-indigo-200 shrink-0">
                                   {sub.partNumber}
                                 </span>
-                                <span className="text-slate-400 truncate max-w-[280px]">
+                                <span className="text-slate-400 truncate max-w-[260px]">
                                   {sub.notes}
                                 </span>
                               </div>
                               <div className="flex items-center space-x-3 font-mono text-[11px] shrink-0">
                                 <span className="text-emerald-300">Qty: {sub.quantity}</span>
                                 {sub.durationMonths && (
-                                  <span className="text-cyan-300">{sub.durationMonths}M ({sub.billingModel})</span>
+                                  <span className="text-cyan-300">
+                                    {sub.durationMonths}M ({sub.billingModel})
+                                  </span>
                                 )}
                               </div>
                             </div>
@@ -882,7 +958,7 @@ export const ConfiguriatorView: React.FC = () => {
                 <h3 className="text-xs font-extrabold uppercase tracking-wider text-cyan-300 flex items-center gap-2">
                   <FileSpreadsheet className="w-4 h-4 text-cyan-400" />
                   <span>
-                    3. Vista Previa Hoja "Sheet1" &bull; Formato Oficial UploadExcelTemplate (10 Columnas)
+                    3. Vista Previa Hoja "Sheet1" &bull; Orden Secuencial Madre-Hijo (UploadExcelTemplate)
                   </span>
                 </h3>
                 <span className="text-[11px] font-mono text-slate-400">
@@ -895,6 +971,7 @@ export const ConfiguriatorView: React.FC = () => {
                   <thead>
                     <tr className="bg-slate-950 text-slate-300 border-b border-slate-800 text-[11px] font-bold">
                       <th className="py-2.5 px-3">#</th>
+                      <th className="py-2.5 px-3">Jerarquía</th>
                       <th className="py-2.5 px-3">Part Number</th>
                       <th className="py-2.5 px-3 text-center">Quantity</th>
                       <th className="py-2.5 px-3 text-center">Duration (Mnths)</th>
@@ -909,22 +986,32 @@ export const ConfiguriatorView: React.FC = () => {
                         key={row.rowId}
                         className={
                           row.isParent
-                            ? 'bg-indigo-950/30 font-semibold text-white'
+                            ? 'bg-emerald-950/25 font-semibold text-white'
                             : 'bg-slate-950/40 text-slate-300'
                         }
                       >
                         <td className="py-2 px-3 font-mono text-[11px] text-slate-500">
                           {rIdx + 1}
                         </td>
-                        <td className="py-2 px-3 font-mono">
-                          <div className="flex items-center space-x-1.5">
-                            {!row.isParent && (
-                              <span className="text-indigo-400 pl-2">↳</span>
-                            )}
-                            <span className={row.isParent ? 'text-emerald-300 font-bold' : 'text-slate-200'}>
-                              {row.partNumber}
+                        <td className="py-2 px-3">
+                          {row.isParent ? (
+                            <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/40 text-[10px] font-black uppercase">
+                              MADRE
                             </span>
-                          </div>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded bg-indigo-950/70 text-indigo-300 border border-indigo-700/30 text-[10px] font-bold uppercase ml-2">
+                              ↳ HIJO
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 font-mono">
+                          <span
+                            className={
+                              row.isParent ? 'text-emerald-300 font-bold' : 'text-slate-200 pl-2'
+                            }
+                          >
+                            {row.partNumber}
+                          </span>
                         </td>
                         <td className="py-2 px-3 text-center font-mono">{row.quantity}</td>
                         <td className="py-2 px-3 text-center font-mono text-cyan-300">
@@ -963,7 +1050,7 @@ export const ConfiguriatorView: React.FC = () => {
                     Pool de API Keys & Rotación Automática Multi-Proveedor
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Si una API Key agota sus tokens (Error 429), ConfigurIAtor salta automáticamente a la siguiente Key o al motor gratuito configurado.
+                    Prioridad #1: Google Gemini (3.5/3.8 Flash Multimodal) &rarr; Respaldo #2: OpenRouter (Auto Vision / DeepSeek).
                   </p>
                 </div>
               </div>
@@ -983,7 +1070,7 @@ export const ConfiguriatorView: React.FC = () => {
                   <span>Verificación EOL 2026 en páginas oficiales de Cisco (cisco.com)</span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Usa Google Search Grounding para consultar boletines End-of-Sale 2026 en cisco.com. Si el equipo sigue vigente, NO lo reemplaza.
+                  Evalúa boletines End-of-Sale 2026 en cisco.com. Si el equipo sigue vigente, mantiene el SKU original.
                 </p>
               </div>
               <input
@@ -994,7 +1081,7 @@ export const ConfiguriatorView: React.FC = () => {
               />
             </div>
 
-            {/* Formulario para Añadir Nueva API Key (Gemini, OpenRouter Free, Groq Free, DeepSeek) */}
+            {/* Formulario para Añadir Nueva API Key */}
             <div className="p-4 rounded-xl bg-slate-950/90 border border-indigo-500/30 space-y-3">
               <div className="text-xs font-bold text-indigo-300 uppercase tracking-wider">
                 Añadir Nueva API Key al Pool de Respaldo
@@ -1015,8 +1102,8 @@ export const ConfiguriatorView: React.FC = () => {
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
                   >
                     <option value="gemini">Google Gemini (Principal)</option>
-                    <option value="openrouter">OpenRouter (DeepSeek / Qwen GRATIS)</option>
-                    <option value="groq">Groq Cloud (Llama 4 / 3.3 GRATIS)</option>
+                    <option value="openrouter">OpenRouter (Auto / DeepSeek / Qwen)</option>
+                    <option value="groq">Groq Cloud (Llama 4 / 3.3 Gratis)</option>
                     <option value="deepseek">DeepSeek Oficial API</option>
                   </select>
                 </div>
@@ -1068,21 +1155,6 @@ export const ConfiguriatorView: React.FC = () => {
                   Guardar en el Pool
                 </button>
               </div>
-
-              <div className="flex items-center justify-between text-[11px] text-slate-400">
-                <span>
-                  ¿Necesitas una API Key gratuita para este proveedor?
-                </span>
-                <a
-                  href={PROVIDER_META[newProvider].getKeyUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-indigo-400 hover:text-indigo-300 underline inline-flex items-center gap-1"
-                >
-                  <span>Obtener Key en {PROVIDER_META[newProvider].name.split(' ')[0]}</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
             </div>
 
             {/* Lista de API Keys Configuradas */}
@@ -1091,73 +1163,67 @@ export const ConfiguriatorView: React.FC = () => {
                 Orden de Prioridad y Estado de Tokens ({aiSettings.keys.length} registradas)
               </div>
 
-              {aiSettings.keys.length === 0 ? (
-                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400">
-                  No hay API Keys externas registradas. Actualmente el sistema opera con el <strong>Motor Determinista Local Cisco (0 Tokens)</strong>. Agrega una API Key arriba para habilitar visión multimodal e inferencia en la nube.
-                </div>
-              ) : (
-                aiSettings.keys.map((k, idx) => (
-                  <div
-                    key={k.id}
-                    className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs"
-                  >
-                    <div className="flex items-center space-x-3">
-                      <span className="w-6 h-6 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center font-mono text-[11px] text-slate-400">
-                        #{idx + 1}
-                      </span>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-white">{k.label}</span>
-                          <span className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/40 text-[10px] font-mono uppercase">
-                            {k.provider} &bull; {k.model}
+              {aiSettings.keys.map((k, idx) => (
+                <div
+                  key={k.id}
+                  className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs"
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className="w-6 h-6 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center font-mono text-[11px] text-slate-400">
+                      #{idx + 1}
+                    </span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white">{k.label}</span>
+                        <span className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/40 text-[10px] font-mono uppercase">
+                          {k.provider} &bull; {k.model}
+                        </span>
+                        {k.lastStatus === 'ok' && (
+                          <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[10px] font-bold">
+                            Operativa (200 OK)
                           </span>
-                          {k.lastStatus === 'ok' && (
-                            <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[10px] font-bold">
-                              Operativa
-                            </span>
-                          )}
-                          {k.lastStatus === 'quota_exceeded' && (
-                            <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 text-[10px] font-bold">
-                              Tokens Agotados (429)
-                            </span>
-                          )}
-                          {k.lastStatus === 'invalid' && (
-                            <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 text-[10px] font-bold">
-                              Revisar Key
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                          Key: {k.apiKey.slice(0, 6)}••••••••{k.apiKey.slice(-4)}
-                          {k.lastError ? ` • Último aviso: ${k.lastError}` : ''}
-                        </div>
+                        )}
+                        {k.lastStatus === 'quota_exceeded' && (
+                          <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 text-[10px] font-bold">
+                            Tokens Agotados (429)
+                          </span>
+                        )}
+                        {k.lastStatus === 'invalid' && (
+                          <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 text-[10px] font-bold">
+                            Revisar Key
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                        Key: {k.apiKey.slice(0, 6)}••••••••{k.apiKey.slice(-4)}
+                        {k.lastError ? ` • Último aviso: ${k.lastError}` : ''}
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleKey(k.id)}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
-                          k.enabled
-                            ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/40'
-                            : 'bg-slate-900 text-slate-500 border-slate-800'
-                        }`}
-                      >
-                        {k.enabled ? 'Habilitada' : 'Pausada'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteKey(k.id)}
-                        className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 cursor-pointer"
-                        title="Eliminar Key"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
                   </div>
-                ))
-              )}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleKey(k.id)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
+                        k.enabled
+                          ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/40'
+                          : 'bg-slate-900 text-slate-500 border-slate-800'
+                      }`}
+                    >
+                      {k.enabled ? 'Habilitada' : 'Pausada'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteKey(k.id)}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 cursor-pointer"
+                      title="Eliminar Key"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
 
             <div className="flex justify-end pt-2">

@@ -1,14 +1,14 @@
 // ============================================================================
-// CISCO AUTOMATED v2.1 - AI MULTIMODAL BOM EXTRACTOR & CISCO.COM GROUNDING
-// Extrae requerimientos comerciales desde texto o capturas (Ctrl+V), consulta
-// vigencia EOL 2026 en páginas oficiales de Cisco (cisco.com), rota entre
-// múltiples API Keys/Proveedores si se agotan los tokens, y cuenta con un
-// Motor NLP Determinista Local de respaldo (0 tokens).
+// CISCO AUTOMATED v2.1 - AI MULTIMODAL BOM EXTRACTOR & MADRE-HIJO ARCHITECT
+// Prioridad #1: IA Multimodal (Gemini 3.5/3.8 Flash + OpenRouter Vision/DeepSeek).
+// Analiza lenguaje natural y capturas de pantalla (Ctrl+V), estructura siempre
+// la jerarquía Madre-Hijo de Cisco CCW, verifica EOL 2026 en cisco.com y rota
+// automáticamente entre modelos y API Keys.
 // ============================================================================
 
-import { GoogleGenAI } from '@google/genai';
 import {
   loadAiSettings,
+  saveAiSettings,
   markApiKeyStatus,
   ApiKeyEntry,
 } from './aiProviderManager';
@@ -17,14 +17,15 @@ import {
   saveLearnedCiscoSku,
   getLearnedCiscoSkus,
   CiscoProductFamily,
+  SubItemConfig,
 } from './catalogRules';
 
 export interface ExtractedRequirementItem {
   id?: string;
   rawMentionedSku?: string;
-  suggestedActiveSku?: string; // SKU vigente sugerido por IA o catálogo Cisco 2026
-  isEol2026?: boolean;         // true solo si el SKU está obsoleto/EoS en 2026; si es false se mantiene el original
-  keepOriginalSku?: boolean;   // Permite al preventa forzar conservar el SKU original
+  suggestedActiveSku?: string; // SKU Madre (Chasis Padre) vigente 2026
+  isEol2026?: boolean;         // true solo si está obsoleto/EoS en 2026
+  keepOriginalSku?: boolean;
   eolReason?: string;
   officialCiscoUrl?: string;
   deviceType: 'switch' | 'access_point' | 'router' | 'firewall' | 'license_only' | 'accessory';
@@ -39,6 +40,7 @@ export interface ExtractedRequirementItem {
   includeRedundantPsu?: boolean;
   serviceLevel?: string;
   notes?: string;
+  aiSubItems?: SubItemConfig[]; // Sub-líneas Hijo sugeridas por la IA para ensamblaje Madre-Hijo
 }
 
 export interface ExtractedRequirementResult {
@@ -53,57 +55,97 @@ export interface ExtractedRequirementResult {
 
 const SYSTEM_INSTRUCTION = `
 Eres el Arquitecto Senior de Preventa Técnica "ConfigurIAtor" de Cisco e Intcomex (Año 2026).
-Tu misión es analizar correos comerciales, listas de materiales o capturas de pantalla de clientes y extraer los equipos y licencias Cisco solicitados.
+Tu prioridad absoluta es comprender solicitudes en LENGUAJE NATURAL (correos, chats, requerimientos técnicos) o CAPTURAS DE PANTALLA (tablas, cotizaciones, diagramas, listas de equipos) y transformarlas en una estructura jerárquica **MADRE-HIJO (Parent-Child Assembly)** 100% compatible con Cisco Commerce Workspace (CCW).
 
-REGLAS TÉCNICAS Y DE CICLO DE VIDA (EOL 2026) OBLIGATORIAS:
-1. Si el cliente menciona un SKU específico de Cisco:
-   - Colócalo en "rawMentionedSku" (ej: "WS-C2960X-24PS-L", "C9200L-24P-4G-E", "CBS350-24P-4G", "MR46-HW").
-   - Evalúa su vigencia para el año 2026 basándote en documentación oficial de Cisco (cisco.com / meraki.cisco.com):
-     * Si el SKU SIGUE VIGENTE y ordenable en 2026 (ej: C9200L-24P-4G-E, C9300-24P-E, C1300-24P-4G, MR46-HW, CW9164I-MR, C8200-1N-4T, FPR1010-NGFW-K9), establece "isEol2026": false y pon el mismo SKU en "suggestedActiveSku". ¡NO reemplaces un equipo que sigue vigente!
-     * Si el SKU está en End-of-Sale / End-of-Life (EOL) para 2026 (ej: 2960X, 2960S, 3650, 3850, CBS250, CBS350, SG350, ISR4321, ISR4331, MR33, MR42, ASA5506), establece "isEol2026": true, coloca el SKU de reemplazo oficial Cisco 2026 en "suggestedActiveSku" y explica brevemente en "eolReason".
-2. Si el cliente NO menciona un SKU sino especificaciones en lenguaje natural:
-   - "switch 24 bocas/puertos PoE" -> deviceType="switch", ports=24, isPoe=true, suggestedActiveSku="C9200L-24P-4G-E" (o C9200L-24P-4X-E si pide uplinks 10G/SFP+).
-   - "switch 48 bocas/puertos PoE" -> deviceType="switch", ports=48, isPoe=true, suggestedActiveSku="C9200L-48P-4G-E".
-   - "switch 24 bocas sin PoE / datos" -> deviceType="switch", ports=24, isPoe=false, suggestedActiveSku="C9200L-24T-4G-E".
-   - "switch SMB / económico / Catalyst 1200 o 1300" -> suggestedActiveSku="C1300-24P-4G" (o C1200-24P-4G).
-   - "AP / Access Point Wi-Fi 6 Meraki" -> deviceType="access_point", suggestedActiveSku="MR46-HW" (o "CW9164I-MR" si pide Wi-Fi 6E).
-   - "Router sucursal / WAN" -> deviceType="router", suggestedActiveSku="C8200-1N-4T".
-3. Si no especifica cantidad, quantity = 1.
-4. Si no especifica licencia (Essentials vs Advantage), licenseTier = "Essentials".
-5. Si no especifica plazo de años de licencia, termYears = 3.
-6. Si menciona "stack", "apilado" o "kit de stacking", activa "includeStacking": true.
-7. Si menciona "fuente redundante" o "doble fuente", activa "includeRedundantPsu": true.
-8. Incluye en "officialCiscoUrl" el enlace oficial de cisco.com o meraki.cisco.com de la familia del producto cuando corresponda.
-9. Devuelve ESTRICTAMENTE un objeto JSON válido con la estructura:
+REGLAS OBLIGATORIAS DE ESTRUCTURA MADRE-HIJO Y PREVENTA CISCO CCW (2026):
+1. INTERPRETACIÓN DE LENGUAJE NATURAL E IMÁGENES:
+   - Analiza con precisión qué pide el cliente aunque esté escrito de forma coloquial (ej. "2 switches de 24 bocas PoE con licencia a 3 años", "necesito equipos para 40 usuarios con Wi-Fi 6 y un router de borde", o una foto/captura de una tabla de equipos).
+   - Si en la captura de pantalla aparecen SKUs, descripciones o cantidades, extráelos TODOS sin omitir ninguno.
+2. REGLA DE ORO MADRE-HIJO (CHASIS PADRE + COMPONENTES HIJOS):
+   - Todo equipo de hardware Cisco en CCW requiere un **SKU MADRE (suggestedActiveSku)** y sus **SUB-SKUs HIJOS (aiSubItems)** para quedar en estado VALID (Verde):
+     * Para Switches Catalyst 9200L/9200 (ej. Madre: "C9200L-24P-4G-E" o "C9200L-48P-4X-E"):
+       Hijos obligatorios en "aiSubItems":
+       1) Licencia DNA: "C9200L-DNA-E-24-3Y" (o -A- / -48- / -5Y según corresponda), durationMonths=36, initialTerm=36, billingModel="Prepaid Term".
+       2) Fuente de poder: "PWR-C5-600WAC" (para 24P), "PWR-C5-1KWAC" (para 48P/48FP) o "PWR-C5-125WAC" (para 24T/48T sin PoE).
+       3) Cable de poder Chile/Europa: "CAB-ACE" (qtyMultiplier=1).
+       4) Network Stack: "C9200L-NW-E-24" (o -A- / -48).
+       5) Si pide stacking/apilado: "C9200L-STACK-KIT" (o "C9200-STACK-KIT").
+     * Para Switches Catalyst 9300/9300L (ej. Madre: "C9300-24P-E" o "C9300L-24P-4X-E"):
+       Hijos obligatorios en "aiSubItems":
+       1) Licencia DNA: "C9300-DNA-E-24-3Y" (o C9300L-DNA-...), durationMonths=36, initialTerm=36, billingModel="Prepaid Term".
+       2) Fuente de poder: "PWR-C1-715WAC-P" (24P) o "PWR-C1-1100WAC-P" (48P).
+       3) Cable de poder: "CAB-TA-EU".
+       4) Network Stack: "C9300-NW-E-24".
+       5) Módulo Uplink (en C9300 modular): "C9300-NM-8X" y cable stack "STACK-T1-50CM".
+     * Para Switches SMB Catalyst 1200 / 1300 (ej. Madre: "C1300-24P-4G" o "C1200-24P-4G"):
+       Hijos en "aiSubItems": Cable de poder "CAB-C13-CE" (y soporte opcional "CON-SNT-...").
+     * Para Routers Catalyst 8200 / 8300 / ISR 1100 (ej. Madre: "C8200-1N-4T" o "C8300-1N1S-4T2X"):
+       Hijos en "aiSubItems": Licencia DNA "DNA-C-T0-E-3Y" (durationMonths=36, initialTerm=36, billingModel="Prepaid Term"), fuente y cable "CAB-ACE".
+     * Para Access Points Meraki (ej. Madre: "MR46-HW" o "CW9164I-MR"):
+       Hijos en "aiSubItems": Licencia "LIC-MR-E" (durationMonths=36, initialTerm=36, billingModel="Prepaid Term") o "LIC-ENT-3YR".
+     * Para Firewalls Cisco Secure Firewall / Meraki MX (ej. Madre: "FPR1010-NGFW-K9" o "MX68-HW"):
+       Hijos en "aiSubItems": Licencia de suscripción Threat/Malware/URL ("L-FPR1010T-TMC-3Y" o "LIC-MX68-SEC-3YR", durationMonths=36, initialTerm=36, billingModel="Prepaid Term") y cable "CAB-ACE".
+3. REGLA DE VIGENCIA EOL 2026:
+   - Si el SKU mencionado SIGUE VIGENTE en 2026 (ej. C9200L-24P-4G-E, C9200L-48P-4X-E, C9300-24P-E, C1300-24P-4G, MR46-HW, C8200-1N-4T), pon "isEol2026": false y mantén ese mismo SKU en "suggestedActiveSku".
+   - Si el SKU está en End-of-Sale / EOL en 2026 (ej. WS-C2960X-24PS-L, WS-C2960X-24TS-L, WS-C3850-24P-S, CBS250, CBS350, ISR4321, ISR4331, MR33, MR42), pon "isEol2026": true y coloca su reemplazo oficial 2026 en "suggestedActiveSku".
+4. DEFAULTS DE INGENIERÍA:
+   - Si no indica cantidad: quantity = 1.
+   - Si no indica licencia: licenseTier = "Essentials".
+   - Si no indica plazo: termYears = 3 (36 meses).
+   - Asegúrate de que los SKUs Catalyst 9200/9300 siempre terminen en "-E" (Essentials) o "-A" (Advantage), ej: "C9200L-24P-4G-E".
+
+Devuelve ESTRICTAMENTE un JSON válido con esta estructura exacta (sin bloques markdown adicionales):
 {
-  "clientName": "string opcional",
-  "projectName": "string opcional",
+  "clientName": "Cliente",
+  "projectName": "Proyecto Preventa Cisco",
   "items": [
     {
       "rawMentionedSku": "string opcional",
-      "suggestedActiveSku": "string",
+      "suggestedActiveSku": "C9200L-24P-4G-E",
       "isEol2026": false,
       "eolReason": "string opcional",
       "officialCiscoUrl": "https://www.cisco.com/...",
-      "deviceType": "switch | access_point | router | firewall | license_only | accessory",
+      "deviceType": "switch",
       "ports": 24,
       "isPoe": true,
-      "poeBudget": "standard | full_poe",
-      "uplinkType": "1G | 10G | SFP+",
-      "licenseTier": "Essentials | Advantage",
+      "poeBudget": "standard",
+      "uplinkType": "1G",
+      "licenseTier": "Essentials",
       "termYears": 3,
       "quantity": 1,
       "includeStacking": false,
       "includeRedundantPsu": false,
-      "notes": "string"
+      "notes": "Descripción clara del equipo Madre",
+      "aiSubItems": [
+        {
+          "partNumber": "C9200L-DNA-E-24-3Y",
+          "qtyMultiplier": 1,
+          "durationMonths": 36,
+          "initialTerm": 36,
+          "billingModel": "Prepaid Term",
+          "description": "C9200L Cisco DNA Essentials, 24-Port, 3 Year Term"
+        },
+        {
+          "partNumber": "PWR-C5-600WAC",
+          "qtyMultiplier": 1,
+          "description": "600W AC Config 5 Power Supply"
+        },
+        {
+          "partNumber": "CAB-ACE",
+          "qtyMultiplier": 1,
+          "description": "AC Power Cord (Europe/Chile), CEE 7/7, 1.5M"
+        },
+        {
+          "partNumber": "C9200L-NW-E-24",
+          "qtyMultiplier": 1,
+          "description": "C9200L Network Essentials, 24-Port"
+        }
+      ]
     }
   ]
 }
 `;
 
-/**
- * Extrae el primer objeto JSON válido desde la respuesta de un LLM
- */
 function parseSafeJsonFromText(rawText: string): ExtractedRequirementResult {
   const trimmed = (rawText || '').trim();
   const withoutFences = trimmed
@@ -112,101 +154,156 @@ function parseSafeJsonFromText(rawText: string): ExtractedRequirementResult {
     .trim();
 
   try {
-    return JSON.parse(withoutFences) as ExtractedRequirementResult;
+    const parsed = JSON.parse(withoutFences);
+    if (Array.isArray(parsed)) {
+      return { clientName: 'Cliente', items: parsed };
+    }
+    return parsed as ExtractedRequirementResult;
   } catch {
     const firstBrace = withoutFences.indexOf('{');
     const lastBrace = withoutFences.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace > firstBrace) {
       return JSON.parse(withoutFences.slice(firstBrace, lastBrace + 1)) as ExtractedRequirementResult;
     }
-    throw new Error('La respuesta del modelo no contenía un JSON válido.');
+    throw new Error('La respuesta del modelo no contenía un JSON estructurado válido.');
   }
 }
 
 /**
- * Ejecuta llamada con Google Gemini (@google/genai) con soporte opcional de Google Search Grounding (cisco.com)
+ * Llamada resiliente a Google Gemini con cascada automática de modelos 2026:
+ * Si un modelo devuelve 404 (deprecado como 2.5-flash) o 503 (alta demanda temporal en 3.8-flash),
+ * prueba inmediatamente el siguiente modelo disponible con la misma API Key.
  */
 async function callGeminiProvider(
   keyEntry: ApiKeyEntry,
   input: { text?: string; imageBase64?: string; mimeType?: string },
-  useWebGrounding: boolean
+  _useWebGrounding: boolean
 ): Promise<ExtractedRequirementResult> {
-  const ai = new GoogleGenAI({ apiKey: keyEntry.apiKey.trim() });
-  const promptText = `Analiza la siguiente solicitud comercial de preventa Cisco (verifica vigencia EOL 2026 en páginas oficiales de cisco.com si aplica) y devuelve el JSON estructurado:\n\n${
-    input.text || 'Analiza la imagen/captura adjunta y extrae todos los equipos y licencias Cisco.'
-  }`;
+  const cleanKey = keyEntry.apiKey.trim();
 
-  const contents: any[] = [];
+  // Cascada de modelos Gemini verificados con soporte de Visión + JSON en 2026
+  const modelCascade = Array.from(
+    new Set([
+      keyEntry.model === 'gemini-2.5-flash' ? 'gemini-3.5-flash' : keyEntry.model,
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3.8-flash',
+      'gemini-3.1-flash-lite',
+      'gemini-flash-lite-latest',
+    ].filter(Boolean))
+  );
+
+  const userPrompt = input.text?.trim()
+    ? `Analiza la siguiente solicitud comercial en lenguaje natural (y la imagen adjunta si existe). Extrae todos los equipos Cisco y genera su estructura completa Madre-Hijo (suggestedActiveSku + aiSubItems) en JSON:\n\n"${input.text.trim()}"`
+    : `Analiza minuciosamente esta captura de pantalla / imagen. Extrae todos los equipos, SKUs o requerimientos Cisco que aparezcan en la imagen y genera su estructura completa Madre-Hijo (suggestedActiveSku + aiSubItems) en JSON.`;
+
+  const parts: any[] = [];
   if (input.imageBase64 && input.mimeType) {
-    contents.push({
+    parts.push({
       inlineData: {
-        data: input.imageBase64,
         mimeType: input.mimeType,
+        data: input.imageBase64,
       },
     });
   }
-  contents.push(promptText);
+  parts.push({ text: userPrompt });
 
-  const groundingSources: { title: string; url: string }[] = [];
+  let lastModelError = '';
 
-  // Intento 1: Si useWebGrounding está activo y es consulta de texto/SKU, intentar con Google Search Grounding
-  if (useWebGrounding) {
+  for (const modelName of modelCascade) {
     try {
-      const groundedResp = await ai.models.generateContent({
-        model: keyEntry.model || 'gemini-2.5-flash',
-        contents,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          temperature: 0.1,
-          tools: [{ googleSearch: {} }],
-        },
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: SYSTEM_INSTRUCTION }],
+          },
+          contents: [
+            {
+              role: 'user',
+              parts,
+            },
+          ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.1,
+          },
+        }),
       });
 
-      const candidate = (groundedResp as any).candidates?.[0];
-      const chunks = candidate?.groundingMetadata?.groundingChunks || [];
-      for (const ch of chunks) {
-        if (ch?.web?.uri) {
-          groundingSources.push({
-            title: ch.web.title || 'Cisco Official Documentation',
-            url: ch.web.uri,
-          });
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '');
+        lastModelError = `HTTP ${res.status} (${modelName}): ${errBody.slice(0, 160)}`;
+        // Si es error de autenticación (400 API_KEY_INVALID / 401 / 403), no seguir probando modelos con la misma key
+        if (res.status === 401 || res.status === 403 || errBody.includes('API_KEY_INVALID')) {
+          throw new Error(lastModelError);
         }
+        // Si es 404 (modelo deprecado) o 503/429 (pico de demanda del modelo específico), probar el siguiente modelo de la cascada
+        continue;
       }
 
-      if (groundedResp.text) {
-        const parsed = parseSafeJsonFromText(groundedResp.text);
-        parsed.groundingSources = groundingSources;
-        return parsed;
+      const data: any = await res.json();
+      const rawText =
+        data?.candidates?.[0]?.content?.parts
+          ?.map((p: any) => p.text || '')
+          .join('') || '';
+
+      if (rawText) {
+        const parsed = parseSafeJsonFromText(rawText);
+        if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
+          parsed.providerUsed = `Google Gemini (${modelName})`;
+          return parsed;
+        }
       }
-    } catch (groundingErr: any) {
-      // Si falla por incompatibilidad de tool en el modelo o clave, hacemos fallback inmediato a JSON directo
-      const msg = String(groundingErr?.message || '');
-      if (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('API_KEY_INVALID') || msg.includes('401') || msg.includes('403')) {
-        throw groundingErr;
+    } catch (err: any) {
+      lastModelError = String(err?.message || err);
+      if (lastModelError.includes('API_KEY_INVALID') || lastModelError.includes('HTTP 401') || lastModelError.includes('HTTP 403')) {
+        throw err;
       }
     }
   }
 
-  // Intento 2: Llamada JSON estructurada directa
-  const response = await ai.models.generateContent({
-    model: keyEntry.model || 'gemini-2.5-flash',
-    contents,
-    config: {
-      systemInstruction: SYSTEM_INSTRUCTION,
-      responseMimeType: 'application/json',
-      temperature: 0.1,
-    },
-  });
-
-  const parsed = parseSafeJsonFromText(response.text || '{}');
-  if (groundingSources.length > 0) {
-    parsed.groundingSources = groundingSources;
-  }
-  return parsed;
+  throw new Error(lastModelError || 'No se obtuvo respuesta válida de los modelos Gemini.');
 }
 
 /**
- * Ejecuta llamada compatible con OpenAI Chat Completions (OpenRouter, Groq, DeepSeek)
+ * Si el usuario ingresó una Provisioning Key de OpenRouter (que devuelve 401 User not found en /chat/completions),
+ * aprovisiona automáticamente una Inference Key real vía POST /api/v1/keys y actualiza la configuración.
+ */
+async function tryAutoProvisionOpenRouterKey(provisioningKey: string, keyId: string): Promise<string | null> {
+  try {
+    const createRes = await fetch('https://openrouter.ai/api/v1/keys', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${provisioningKey.trim()}`,
+      },
+      body: JSON.stringify({ name: 'CiscoAutomated_ConfigurIAtor_Auto' }),
+    });
+
+    if (!createRes.ok) return null;
+    const data: any = await createRes.json();
+    const newInferenceKey = data?.key;
+    if (newInferenceKey && typeof newInferenceKey === 'string') {
+      // Actualizar en el pool local para que quede guardada la Inference Key activa
+      const current = loadAiSettings();
+      const updated = {
+        ...current,
+        keys: current.keys.map((k) =>
+          k.id === keyId ? { ...k, apiKey: newInferenceKey, model: 'openrouter/auto', lastStatus: 'ok' as const } : k
+        ),
+      };
+      saveAiSettings(updated);
+      return newInferenceKey;
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Llamada compatible con OpenAI Chat Completions (OpenRouter, Groq, DeepSeek)
  */
 async function callOpenAiCompatibleProvider(
   keyEntry: ApiKeyEntry,
@@ -221,13 +318,12 @@ async function callOpenAiCompatibleProvider(
   const url = endpointMap[keyEntry.provider];
   if (!url) throw new Error(`Proveedor ${keyEntry.provider} no soportado.`);
 
-  const promptText = `Analiza la siguiente solicitud comercial de preventa Cisco para el año 2026 y devuelve ÚNICAMENTE el objeto JSON solicitado:\n\n${
-    input.text || 'Extrae los ítems de la imagen adjunta.'
-  }`;
+  const promptText = input.text?.trim()
+    ? `Analiza la siguiente solicitud comercial de preventa Cisco para el año 2026 y devuelve ÚNICAMENTE el objeto JSON con la estructura Madre-Hijo (suggestedActiveSku + aiSubItems):\n\n${input.text.trim()}`
+    : `Analiza minuciosamente esta imagen/captura de pantalla, extrae todos los equipos o SKUs Cisco que aparecen y devuelve ÚNICAMENTE el objeto JSON con la estructura Madre-Hijo (suggestedActiveSku + aiSubItems).`;
 
   let userContent: any = promptText;
   if (input.imageBase64 && input.mimeType) {
-    // Si el proveedor/modelo soporta visión (Groq Llama 4 Scout, OpenRouter Gemini/Qwen VL)
     userContent = [
       { type: 'text', text: promptText },
       {
@@ -239,28 +335,47 @@ async function callOpenAiCompatibleProvider(
     ];
   }
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${keyEntry.apiKey.trim()}`,
+  // Si tiene imagen y el modelo elegido en OpenRouter era solo-texto, usar openrouter/auto que soporta visión
+  const effectiveModel =
+    keyEntry.provider === 'openrouter' && input.imageBase64 && keyEntry.model.includes('deepseek')
+      ? 'openrouter/auto'
+      : keyEntry.model || 'openrouter/auto';
+
+  const executeRequest = async (token: string) => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token.trim()}`,
+    };
+
+    if (keyEntry.provider === 'openrouter') {
+      headers['HTTP-Referer'] =
+        typeof window !== 'undefined' ? window.location.origin : 'https://cisco-automated.pages.dev';
+      headers['X-Title'] = 'Cisco Automated ConfigurIAtor';
+    }
+
+    return fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: effectiveModel,
+        temperature: 0.1,
+        messages: [
+          { role: 'system', content: SYSTEM_INSTRUCTION },
+          { role: 'user', content: userContent },
+        ],
+      }),
+    });
   };
 
-  if (keyEntry.provider === 'openrouter') {
-    headers['HTTP-Referer'] = typeof window !== 'undefined' ? window.location.origin : 'https://cisco-automated.pages.dev';
-    headers['X-Title'] = 'Cisco Automated ConfigurIAtor';
-  }
+  let res = await executeRequest(keyEntry.apiKey);
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model: keyEntry.model,
-      temperature: 0.1,
-      messages: [
-        { role: 'system', content: SYSTEM_INSTRUCTION },
-        { role: 'user', content: userContent },
-      ],
-    }),
-  });
+  // Si OpenRouter devuelve 401 User not found porque era una Provisioning Key, auto-aprovisionar Inference Key y reintentar
+  if (!res.ok && res.status === 401 && keyEntry.provider === 'openrouter') {
+    const provisionedKey = await tryAutoProvisionOpenRouterKey(keyEntry.apiKey, keyEntry.id);
+    if (provisionedKey) {
+      res = await executeRequest(provisionedKey);
+    }
+  }
 
   if (!res.ok) {
     const errBody = await res.text().catch(() => '');
@@ -269,12 +384,13 @@ async function callOpenAiCompatibleProvider(
 
   const data: any = await res.json();
   const content = data?.choices?.[0]?.message?.content || '{}';
-  return parseSafeJsonFromText(content);
+  const parsed = parseSafeJsonFromText(content);
+  parsed.providerUsed = `${keyEntry.provider.toUpperCase()} (${data?.model || effectiveModel})`;
+  return parsed;
 }
 
 // ============================================================================
-// MOTOR DETERMINISTA LOCAL DE PREVENTA CISCO (FALLBACK 0 TOKENS / OFFLINE)
-// Analiza correos en español/inglés, cantidades, bocas, PoE, plazos y SKUs
+// MOTOR DETERMINISTA LOCAL DE PREVENTA CISCO (SOLO SI EL USUARIO LO ACTIVA)
 // ============================================================================
 export function extractWithLocalDeterministicEngine(text: string): ExtractedRequirementResult {
   const cleanText = (text || '').trim();
@@ -296,11 +412,10 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
           notes: 'Configuración base Catalyst 9200L 24P PoE+',
         },
       ],
-      providerUsed: 'Motor Local Determinista Cisco (Offline / 0 Tokens)',
+      providerUsed: 'Motor Local Determinista Cisco',
     };
   }
 
-  // Dividir por líneas o frases separadas por ";" o "además" / "y también"
   const segments = cleanText
     .split(/\r?\n|;|(?:\s+y\s+(?=\d+\s*(?:switch|ap|access|router|firewall|licencia|c9|ws-|mr|mx|ms|isr|cbs)))/i)
     .map((s) => s.trim())
@@ -308,14 +423,10 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
 
   const extractedItems: ExtractedRequirementItem[] = [];
   const learnedSkus = getLearnedCiscoSkus();
-
-  // Regex para detectar SKUs explícitos de Cisco en el texto
   const skuRegex = /\b(WS-C[A-Z0-9-]+|C9[2345]00[A-Z0-9-]*|C1[023]00-[A-Z0-9-]+|CBS[23]50-[A-Z0-9-]+|ISR4[0-9]{3}[A-Z0-9/-]*|C8[235]00[A-Z0-9-]*|MR[345][0-9](?:-HW)?|CW91[67][0-9][A-Z0-9-]*|MS[1234][0-9]{2}-[A-Z0-9-]+|MX[6789][0-9](?:-HW)?|FPR[1234][0-9]{3}-[A-Z0-9-]+|ASA55[0-9]{2}-[A-Z0-9-]+|GLC-[A-Z0-9-]+|SFP-[A-Z0-9-]+)\b/gi;
 
   const processSegment = (seg: string, idx: number) => {
     const upper = seg.toUpperCase();
-
-    // Extraer plazo en años (ej. "por 5 años", "5Y", "36 meses", "60 meses")
     let termYears = 3;
     const yearsMatch = seg.match(/(\d+)\s*(?:años?|year|yr|y\b)/i);
     const monthsMatch = seg.match(/(\d+)\s*(?:meses|months|m\b)/i);
@@ -326,15 +437,11 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
       if (m >= 12) termYears = Math.round(m / 12);
     }
 
-    // Extraer Tier (Advantage vs Essentials)
     const licenseTier: 'Essentials' | 'Advantage' =
       /\badvantage\b|\bdna-a\b|\bnw-a\b/i.test(seg) ? 'Advantage' : 'Essentials';
-
-    // Stacking y Fuente redundante
     const includeStacking = /\bstack(?:ing|eable|s)?\b|\bapilad[oa]s?\b/i.test(seg);
     const includeRedundantPsu = /\bredundante\b|\bdoble\s+fuente\b/i.test(seg);
 
-    // Cantidad: buscar número al inicio o antes del tipo de equipo (evitando confundir con "24 bocas" o "3 años")
     let quantity = 1;
     const qtyBeforeKeyword = seg.match(/(?:^|\bcot[ií]zame\s+|\bnecesito\s+|\brequiero\s+|\bson\s+)(\d{1,3})\s+(?:switch|equipo|ap\b|access|router|firewall|unidad|chasis|ws-|c9|mr|mx|ms|isr|cbs)/i);
     const qtyLeading = seg.match(/^\s*(?:[-*•]\s*)?(\d{1,3})\s*(?:x\b|unid(?:ades)?|equipos?|pcs?)?\s+/i);
@@ -342,38 +449,22 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
       quantity = Number(qtyBeforeKeyword[1]) || 1;
     } else if (qtyLeading && ![8, 16, 24, 48].includes(Number(qtyLeading[1]))) {
       quantity = Number(qtyLeading[1]) || 1;
-    } else if (qtyLeading && [8, 16, 24, 48].includes(Number(qtyLeading[1])) && !/^\s*\d+\s*(?:bocas|puertos|ports)/i.test(seg)) {
-      quantity = Number(qtyLeading[1]) || 1;
     }
 
-    // 1. ¿Menciona algún SKU explícito?
     const skuMatches = Array.from(seg.matchAll(skuRegex));
     if (skuMatches.length > 0) {
       for (const m of skuMatches) {
         const rawSku = m[1].toUpperCase().trim();
         const eolInfo = EOL_CATALOG_2026[rawSku];
         const learned = learnedSkus[rawSku];
-
-        const isEol = eolInfo
-          ? eolInfo.status === 'eos_eol_active'
-          : learned
-            ? learned.isEol
-            : false;
-
-        const suggestedSku = eolInfo
-          ? eolInfo.replacementSku
-          : learned?.replacementSku || rawSku;
-
+        const isEol = eolInfo ? eolInfo.status === 'eos_eol_active' : learned ? learned.isEol : false;
+        const suggestedSku = eolInfo ? eolInfo.replacementSku : learned?.replacementSku || rawSku;
         const isPoe = /P|FP|POE/i.test(suggestedSku) && !/24T|48T/i.test(suggestedSku);
         const ports: 8 | 16 | 24 | 48 | undefined = suggestedSku.includes('48')
           ? 48
           : suggestedSku.includes('24')
             ? 24
-            : suggestedSku.includes('16')
-              ? 16
-              : suggestedSku.includes('8')
-                ? 8
-                : undefined;
+            : undefined;
 
         extractedItems.push({
           id: `item-${Date.now()}-${idx}-${rawSku}`,
@@ -389,9 +480,7 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
                 ? 'router'
                 : suggestedSku.startsWith('FPR') || suggestedSku.startsWith('ASA') || suggestedSku.startsWith('MX')
                   ? 'firewall'
-                  : suggestedSku.startsWith('GLC') || suggestedSku.startsWith('SFP')
-                    ? 'accessory'
-                    : 'switch',
+                  : 'switch',
           ports,
           isPoe,
           uplinkType: suggestedSku.includes('4X') ? '10G' : '1G',
@@ -406,38 +495,30 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
       return;
     }
 
-    // 2. Inferencia por lenguaje natural (sin SKU explícito)
     const mentionsSwitch = /\bswitch(?:es)?\b|\bbocas\b|\bpuertos\b|\bcatalyst\b/i.test(seg);
     const mentionsAp = /\b(?:ap|aps|access\s*points?|wifi|wi-fi|inal[aá]mbric[oa]|meraki\s+mr)\b/i.test(seg);
     const mentionsRouter = /\brouter(?:s)?\b|\bisr\b|\bwan\b|\bsucursal\b/i.test(seg);
     const mentionsFirewall = /\bfirewall(?:s)?\b|\bfirepower\b|\bngfw\b|\bmeraki\s+mx\b/i.test(seg);
 
     if (mentionsSwitch) {
-      const ports: 8 | 16 | 24 | 48 = /\b48\s*(?:bocas|puertos|ports|p\b|t\b)/i.test(seg)
-        ? 48
-        : /\b16\s*(?:bocas|puertos|ports)/i.test(seg)
-          ? 16
-          : /\b8\s*(?:bocas|puertos|ports)/i.test(seg)
-            ? 8
-            : 24;
-
+      const ports: 8 | 16 | 24 | 48 = /\b48\s*(?:bocas|puertos|ports|p\b|t\b)/i.test(seg) ? 48 : 24;
       const explicitlyNoPoe = /\bsin\s+poe\b|\bdata\s+only\b|\bsolo\s+datos\b/i.test(seg);
-      const isPoe = explicitlyNoPoe ? false : /\bpoe\+?\b|\bfull\s*poe\b/i.test(seg) || true;
+      const isPoe = explicitlyNoPoe ? false : true;
       const isFullPoe = /\bfull\s*poe\b|\b740w\b|\bfp\b/i.test(seg);
       const is10G = /\b10\s*g\b|\bsfp\+\b|\b4x\b/i.test(seg);
-      const is9300 = /\b9300\b|\bcore\b|\bcapa\s*3\s*avanzad/i.test(seg);
+      const is9300 = /\b9300\b|\bcore\b/i.test(seg);
       const isSmb = /\bsmb\b|\becon[oó]mico\b|\bc1200\b|\bc1300\b|\bcbs\b/i.test(seg);
 
+      const tierCode = licenseTier === 'Advantage' ? 'A' : 'E';
       let suggestedSku = '';
       if (isSmb) {
         suggestedSku = `C1300-${ports}${isPoe ? 'P' : 'T'}-${is10G ? '4X' : '4G'}`;
       } else if (is9300) {
-        suggestedSku = `C9300-${ports}${isPoe ? 'P' : 'T'}-${licenseTier === 'Advantage' ? 'A' : 'E'}`;
+        suggestedSku = `C9300-${ports}${isPoe ? 'P' : 'T'}-${tierCode}`;
       } else {
         const poeCode = !isPoe ? 'T' : isFullPoe && ports === 48 ? 'FP' : 'P';
         const uplinkCode = is10G ? '4X' : '4G';
-        const tierCode = licenseTier === 'Advantage' ? 'A' : 'E';
-        suggestedSku = `C9200L-${ports === 48 ? 48 : 24}${poeCode}-${uplinkCode}-${tierCode}`;
+        suggestedSku = `C9200L-${ports}${poeCode}-${uplinkCode}-${tierCode}`;
       }
 
       extractedItems.push({
@@ -459,10 +540,9 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
       });
     } else if (mentionsAp) {
       const isWifi6E = /\b6e\b|\b9164\b|\b9166\b/i.test(seg);
-      const suggestedSku = isWifi6E ? 'CW9164I-MR' : 'MR46-HW';
       extractedItems.push({
         id: `item-${Date.now()}-${idx}-ap`,
-        suggestedActiveSku: suggestedSku,
+        suggestedActiveSku: isWifi6E ? 'CW9164I-MR' : 'MR46-HW',
         isEol2026: false,
         officialCiscoUrl: 'https://meraki.cisco.com/product/wi-fi/indoor-access-points/mr46/',
         deviceType: 'access_point',
@@ -499,42 +579,74 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
   };
 
   segments.forEach((seg, idx) => processSegment(seg, idx));
-
-  // Si no detectó en segmentos individuales, evaluar el bloque entero
-  if (extractedItems.length === 0) {
-    processSegment(cleanText, 0);
-  }
+  if (extractedItems.length === 0) processSegment(cleanText, 0);
 
   return {
     clientName: 'Cliente',
     items: extractedItems,
-    providerUsed: 'Motor Local Determinista Cisco (0 Tokens)',
+    providerUsed: 'Motor Local Determinista Cisco',
   };
 }
 
 /**
- * Enriquecimiento post-inferencia:
- * 1. Verifica contra EOL_CATALOG_2026 que no se reemplace un modelo vigente en 2026.
- * 2. Guarda cualquier SKU nuevo descubierto por la IA en la base dinámica auto-aprendizaje.
+ * Normaliza SKUs de chasis Cisco devueltos por la IA para garantizar que calcen
+ * con el catálogo oficial de Cisco CCW y activen sus sub-líneas Madre-Hijo.
  */
+export function normalizeParentChassisSku(
+  sku: string,
+  tier: 'Essentials' | 'Advantage' = 'Essentials'
+): string {
+  const clean = (sku || '').trim().toUpperCase();
+  if (!clean) return '';
+  const tierCode = tier === 'Advantage' ? 'A' : 'E';
+
+  // Si la IA devolvió ej. "C9200L-24P-4G" o "C9200L-48P-4X" sin el "-E" o "-A" final:
+  if (/^C9200L?-\d{2}(?:FP|P|T|PXG)-(?:4G|4X|2Y|8X|12X)$/i.test(clean)) {
+    return `${clean}-${tierCode}`;
+  }
+  // Si la IA devolvió "C9200-24P" o "C9300-24P" o "C9300-48P" sin "-E"/"-A":
+  if (/^C9[23]00-\d{2}(?:FP|P|T|U|UXM|PF)$/i.test(clean)) {
+    return `${clean}-${tierCode}`;
+  }
+  // Si la IA devolvió "C9300L-24P-4X" sin "-E"/"-A":
+  if (/^C9300L-\d{2}(?:PF|P|T)-(?:4G|4X)$/i.test(clean)) {
+    return `${clean}-${tierCode}`;
+  }
+  // Si es Meraki MR36/MR46/MR56/MX67/MX68 sin "-HW":
+  if (/^(?:MR[3456]\d|MX[6789]\d|MS[1234]\d{2}-[0-9A-Z]+)$/i.test(clean) && !clean.endsWith('-HW')) {
+    return `${clean}-HW`;
+  }
+  // Si es Firepower FPR1010/1120/1140/1150/2110/2120/2130/2140 sin "-NGFW-K9":
+  if (/^FPR(?:1010|1120|1140|1150|2110|2120|2130|2140)$/i.test(clean)) {
+    return `${clean}-NGFW-K9`;
+  }
+
+  return clean;
+}
+
+function isLooksLikeRealCiscoSku(str: string): boolean {
+  const s = (str || '').trim().toUpperCase();
+  if (!s || s.includes(' ')) return false;
+  return /^(?:WS-C|C9[23456]00|C1[0123]00|C8[235]00|ISR\d|ASR\d|FPR\d|ASA\d|MR\d|MS\d|MX\d|CW\d|CBS\d|N9K|SFP-|GLC-|PWR-|CAB-)/i.test(s);
+}
+
 function postProcessExtractedResult(result: ExtractedRequirementResult): ExtractedRequirementResult {
   const processedItems = (result.items || []).map((item, idx) => {
+    const tier: 'Essentials' | 'Advantage' =
+      item.licenseTier === 'Advantage' ? 'Advantage' : 'Essentials';
     const rawSku = (item.rawMentionedSku || '').trim().toUpperCase();
-    let suggested = (item.suggestedActiveSku || '').trim().toUpperCase();
+    let suggested = normalizeParentChassisSku(item.suggestedActiveSku || '', tier);
 
-    // Si hay SKU mencionado en nuestro catálogo verificado EOL 2026:
     if (rawSku && EOL_CATALOG_2026[rawSku]) {
       const entry = EOL_CATALOG_2026[rawSku];
-      suggested = entry.replacementSku;
+      suggested = normalizeParentChassisSku(entry.replacementSku, tier);
       item.isEol2026 = entry.status === 'eos_eol_active';
       item.eolReason = entry.eolNote;
       item.officialCiscoUrl = item.officialCiscoUrl || entry.officialCiscoDocUrl;
-    } else if (rawSku && !item.isEol2026) {
-      // Si el modelo NO está en EOL 2026 (sigue vigente), respetamos el modelo original solicitado
-      suggested = rawSku;
+    } else if (!suggested && isLooksLikeRealCiscoSku(rawSku)) {
+      suggested = normalizeParentChassisSku(rawSku, tier);
     }
 
-    // Auto-aprender el SKU en nuestra base dinámica local si la IA trajo información nueva
     const targetToLearn = suggested || rawSku;
     if (targetToLearn) {
       const familyGuess: CiscoProductFamily =
@@ -560,6 +672,7 @@ function postProcessExtractedResult(result: ExtractedRequirementResult): Extract
         family: familyGuess,
         isEol: false,
         officialUrl: item.officialCiscoUrl,
+        defaultSubSkus: Array.isArray(item.aiSubItems) && item.aiSubItems.length > 0 ? item.aiSubItems : undefined,
         updatedAt: new Date().toISOString(),
       });
     }
@@ -569,7 +682,7 @@ function postProcessExtractedResult(result: ExtractedRequirementResult): Extract
       id: item.id || `item-${Date.now()}-${idx}`,
       suggestedActiveSku: suggested,
       quantity: item.quantity && item.quantity > 0 ? item.quantity : 1,
-      licenseTier: item.licenseTier || 'Essentials',
+      licenseTier: tier,
       termYears: item.termYears && item.termYears > 0 ? item.termYears : 3,
     };
   });
@@ -580,10 +693,6 @@ function postProcessExtractedResult(result: ExtractedRequirementResult): Extract
   };
 }
 
-/**
- * Función principal de extracción inteligente con rotación automática de API Keys
- * y fallback determinista local sin interrupción del servicio.
- */
 export async function extractBOMRequirementsFromInput(
   input: { text?: string; imageBase64?: string; mimeType?: string },
   explicitApiKey?: string
@@ -591,7 +700,6 @@ export async function extractBOMRequirementsFromInput(
   const settings = loadAiSettings();
   const rotatedKeysLog: string[] = [];
 
-  // Construir lista priorizada de API Keys activas
   const candidateKeys: ApiKeyEntry[] = [];
   if (explicitApiKey && explicitApiKey.trim()) {
     candidateKeys.push({
@@ -599,7 +707,7 @@ export async function extractBOMRequirementsFromInput(
       provider: 'gemini',
       label: 'API Key Directa',
       apiKey: explicitApiKey.trim(),
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.5-flash',
       enabled: true,
     });
   }
@@ -610,7 +718,7 @@ export async function extractBOMRequirementsFromInput(
     }
   }
 
-  // Probar cada API Key activa en orden; si una agota tokens (429) o falla, rotar a la siguiente
+  // Prioridad #1: Consultar proveedores de IA en orden (Gemini -> OpenRouter -> Groq -> DeepSeek)
   for (const keyEntry of candidateKeys) {
     try {
       let result: ExtractedRequirementResult;
@@ -623,7 +731,7 @@ export async function extractBOMRequirementsFromInput(
       if (result && Array.isArray(result.items) && result.items.length > 0) {
         markApiKeyStatus(keyEntry.id, 'ok');
         const finalResult = postProcessExtractedResult(result);
-        finalResult.providerUsed = `${keyEntry.provider.toUpperCase()} (${keyEntry.model})`;
+        finalResult.providerUsed = result.providerUsed || `${keyEntry.provider.toUpperCase()} (${keyEntry.model})`;
         finalResult.keyLabelUsed = keyEntry.label;
         finalResult.rotatedKeysLog = rotatedKeysLog;
         return finalResult;
@@ -643,27 +751,22 @@ export async function extractBOMRequirementsFromInput(
       );
       rotatedKeysLog.push(
         `[${keyEntry.label} - ${keyEntry.provider}]: ${
-          isQuota ? 'Tokens/Cuota agotada (429) -> Rotando a siguiente API...' : `Error (${errMsg.slice(0, 80)}) -> Rotando...`
+          isQuota ? 'Tokens agotados (429) -> Rotando a siguiente API...' : `Aviso (${errMsg.slice(0, 90)}) -> Rotando...`
         }`
       );
     }
   }
 
-  // Fallback automático al Motor Determinista Local si no hay keys activas o todas agotaron tokens
-  if (settings.autoFallbackToLocal || candidateKeys.length === 0) {
-    if (input.text && input.text.trim()) {
-      const localRes = postProcessExtractedResult(extractWithLocalDeterministicEngine(input.text));
-      localRes.rotatedKeysLog = rotatedKeysLog;
-      if (rotatedKeysLog.length > 0) {
-        localRes.providerUsed = 'Motor Local Determinista Cisco (Activado por rotación tras agotarse tokens API)';
-      }
-      return localRes;
-    }
+  // Si el usuario tiene habilitado el fallback local para texto
+  if (settings.autoFallbackToLocal && input.text && input.text.trim()) {
+    const localRes = postProcessExtractedResult(extractWithLocalDeterministicEngine(input.text));
+    localRes.rotatedKeysLog = rotatedKeysLog;
+    return localRes;
   }
 
   throw new Error(
     rotatedKeysLog.length > 0
-      ? `Todas las API Keys configuradas fallaron o agotaron sus tokens:\n${rotatedKeysLog.join('\n')}`
-      : 'No hay una API Key válida para procesar imágenes sin texto. Configura una API Key (Gemini, Groq o OpenRouter) en el botón "Configurar APIs / Rotación".'
+      ? `No se pudo completar el análisis con las APIs configuradas:\n${rotatedKeysLog.join('\n')}`
+      : 'No hay ninguna API Key activa en el pool. Revisa el botón "APIs & Rotación".'
   );
 }
