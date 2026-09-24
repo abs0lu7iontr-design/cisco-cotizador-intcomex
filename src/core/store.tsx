@@ -23,6 +23,9 @@ import {
   SharedSkuOverrideRecord,
   getSharedSkuRules,
   publishSharedSkuRules,
+  ParamProfileRecord,
+  resolveActiveParams,
+  extractPartnerFromFilenameOrHeader,
 } from '../modules/cloud';
 import {
   executeSafeMiningAudit,
@@ -56,6 +59,12 @@ interface CiscoAutomatedState {
 
   // Quoter Parameters
   params: QuoteParameters;
+
+  // Partner Parameter Profile
+  detectedPartner: string;
+  setDetectedPartner: (partner: string) => void;
+  activePartnerProfile: ParamProfileRecord | null;
+  setActivePartnerProfile: (profile: ParamProfileRecord | null) => void;
 
   // Active Estimate Dataset
   rawWorkbookBuffer: ArrayBuffer | null;
@@ -144,6 +153,8 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
 
   // Business Parameters (v2.1 defaults)
   const [params, setParams] = useState<QuoteParameters>(DEFAULT_PARAMS);
+  const [detectedPartner, setDetectedPartner] = useState<string>('');
+  const [activePartnerProfile, setActivePartnerProfile] = useState<ParamProfileRecord | null>(null);
 
   // Dataset State
   const [rawWorkbookBuffer, setRawWorkbookBuffer] = useState<ArrayBuffer | null>(null);
@@ -394,6 +405,16 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         // 3. Parse initial structure to match existing persistent SKU overrides
         const { result: rawResult } = await parseEstimateWorkbook(safeBuffer.slice(0), DEFAULT_PARAMS, fileName, {});
 
+        // 3.1. Extraer el Partner a partir del nombre del archivo o encabezado
+        const partner = extractPartnerFromFilenameOrHeader(fileName, rawResult?.headerInfo?.companyName);
+        setDetectedPartner(partner);
+
+        // 3.2. Resolver parámetros comerciales activos (Partner específico -> Global -> Fábrica 7/6/5)
+        const { params: resolvedParams, appliedProfile } = await resolveActiveParams(partner);
+        setActivePartnerProfile(appliedProfile);
+
+        const activeInitialParams = resolvedParams;
+
         if (rawResult?.detectedAudit?.isRecalculated) {
           setIsRecalculated(true);
           setDetectedAudit(rawResult.detectedAudit);
@@ -402,6 +423,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           setIsRecalculated(false);
           setDetectedAudit(null);
           setIsDetectedAuditModalOpen(false);
+          setParams(resolvedParams);
         }
 
         const matchedOverrides: Record<number, OverrideRuleType> = {};
@@ -416,8 +438,13 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
 
         setCustomOverrideMap(matchedOverrides);
 
-        if (Object.keys(matchedOverrides).length > 0) {
-          await recompute(safeBuffer.slice(0), DEFAULT_PARAMS, fileName, matchedOverrides, {});
+        const hasCustomParams =
+          activeInitialParams.internacionPct !== DEFAULT_PARAMS.internacionPct ||
+          activeInitialParams.arancelPct !== DEFAULT_PARAMS.arancelPct ||
+          activeInitialParams.margenPct !== DEFAULT_PARAMS.margenPct;
+
+        if (Object.keys(matchedOverrides).length > 0 || hasCustomParams) {
+          await recompute(safeBuffer.slice(0), activeInitialParams, fileName, matchedOverrides, {});
         } else {
           setProcessedResult(rawResult);
         }
@@ -962,6 +989,8 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     setIsMiningAlertModalOpen(false);
     setErrorMessage(null);
     setParams(DEFAULT_PARAMS);
+    setDetectedPartner('');
+    setActivePartnerProfile(null);
   }, []);
 
   const logout = useCallback(async () => {
@@ -981,6 +1010,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       currentUser,
       currentView,
       params,
+      detectedPartner,
+      setDetectedPartner,
+      activePartnerProfile,
+      setActivePartnerProfile,
       rawWorkbookBuffer,
       currentFileName,
       processedResult,

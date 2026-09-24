@@ -63,6 +63,8 @@ function AppContent() {
     setCurrentView,
     params,
     setParams,
+    detectedPartner,
+    activePartnerProfile,
     rawWorkbookBuffer,
     currentFileName,
     processedResult,
@@ -567,6 +569,8 @@ function AppContent() {
                           items={processedResult.items}
                           overrides={customOverrideMap}
                           currentTotal={processedResult.calculatedProductTotal}
+                          detectedPartner={detectedPartner}
+                          activeProfile={activePartnerProfile}
                         />
                       </div>
                     )}

@@ -6,3 +6,4 @@ export * from './types';
 export * from './firebaseConfig';
 export * from './firestoreService';
 export * from './FirebaseConfigModal';
+export * from './partnerParamsService';
