@@ -452,49 +452,111 @@ class DesktopBridge:
             print(f"[DesktopAPI Error - get_bo_skus]: {e}")
             return {}
 
+    # -------------------------------------------------------------------------
+    # 5.2 PARTNER & GLOBAL PARAMETER PROFILES PERSISTENCE
+    # -------------------------------------------------------------------------
+    def _get_partner_profiles_filepaths(self):
+        paths = []
+        try:
+            user_home = os.path.expanduser("~")
+            config_dir = os.path.join(user_home, ".cotizador_intcomex")
+            os.makedirs(config_dir, exist_ok=True)
+            paths.append(os.path.join(config_dir, "partner_profiles.json"))
+        except Exception:
+            pass
+
+        try:
+            exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+            paths.append(os.path.join(exe_dir, "partner_profiles.json"))
+            paths.append(os.path.join(os.getcwd(), "partner_profiles.json"))
+        except Exception:
+            pass
+
+        return list(dict.fromkeys(paths))
+
+    def save_partner_profiles(self, profiles_json: str):
+        """Saves Partner and Global CCW parameter profiles persistently to disk."""
+        try:
+            data = json.loads(profiles_json) if isinstance(profiles_json, str) else profiles_json
+            if not isinstance(data, dict):
+                return {"success": False, "error": "Invalid profiles payload"}
+
+            for path in self._get_partner_profiles_filepaths():
+                try:
+                    with open(path, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2, ensure_ascii=False)
+                except Exception as e:
+                    print(f"Warning writing partner profiles to {path}: {e}")
+
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_partner_profiles(self):
+        """Loads Partner and Global CCW parameter profiles from disk."""
+        try:
+            merged = {}
+            for path in self._get_partner_profiles_filepaths():
+                if os.path.exists(path):
+                    try:
+                        with open(path, "r", encoding="utf-8") as f:
+                            file_data = json.load(f)
+                            if isinstance(file_data, dict):
+                                merged.update(file_data)
+                    except Exception:
+                        pass
+            return {"success": True, "profiles": merged}
+        except Exception as e:
+            return {"success": False, "error": str(e), "profiles": {}}
 
 
 def get_index_html_path() -> str:
     """
     Locates the absolute path to dist/index.html across all execution modes:
-      - PyInstaller onefile (_MEIPASS)
+      - Direct source python execution / fresh local build
       - PyInstaller onedir (_internal)
-      - Direct source python execution
+      - PyInstaller onefile (_MEIPASS)
+    If both an external dist/index.html and a bundled _MEIPASS/dist/index.html exist,
+    prefers whichever file has the most recent modification timestamp.
     """
     exe_dir = os.path.dirname(os.path.abspath(sys.executable))
     script_dir = os.path.dirname(os.path.abspath(__file__))
     cwd = os.getcwd()
 
-    candidate_paths = []
+    external_candidates = [
+        os.path.join(exe_dir, "dist", "index.html"),
+        os.path.join(exe_dir, "..", "dist", "index.html"),
+        os.path.join(script_dir, "..", "dist", "index.html"),
+        os.path.join(cwd, "dist", "index.html"),
+        os.path.join(exe_dir, "_internal", "dist", "index.html"),
+        os.path.join(exe_dir, "_internal", "index.html"),
+        os.path.join(exe_dir, "index.html"),
+        os.path.join(cwd, "index.html"),
+    ]
 
-    # 1. PyInstaller _MEIPASS (onefile mode)
+    bundled_candidates = []
     if hasattr(sys, '_MEIPASS'):
-        candidate_paths += [
+        bundled_candidates += [
             os.path.join(sys._MEIPASS, "dist", "index.html"),
             os.path.join(sys._MEIPASS, "index.html"),
         ]
 
-    # 2. PyInstaller onedir: files land in _internal/ next to the exe
-    candidate_paths += [
-        os.path.join(exe_dir, "_internal", "dist", "index.html"),
-        os.path.join(exe_dir, "_internal", "index.html"),
-        os.path.join(exe_dir, "dist", "index.html"),
-        os.path.join(exe_dir, "index.html"),
-    ]
+    existing_external = [os.path.abspath(p) for p in external_candidates if os.path.exists(os.path.abspath(p))]
+    existing_bundled = [os.path.abspath(p) for p in bundled_candidates if os.path.exists(os.path.abspath(p))]
 
-    # 3. Development mode: running from source tree
-    candidate_paths += [
-        os.path.join(script_dir, "..", "dist", "index.html"),
-        os.path.join(cwd, "dist", "index.html"),
-        os.path.join(cwd, "index.html"),
-    ]
+    if existing_external and existing_bundled:
+        best_ext = max(existing_external, key=lambda p: os.path.getmtime(p))
+        best_bun = max(existing_bundled, key=lambda p: os.path.getmtime(p))
+        return best_ext if os.path.getmtime(best_ext) >= os.path.getmtime(best_bun) else best_bun
 
-    for path in candidate_paths:
-        resolved = os.path.abspath(path)
-        if os.path.exists(resolved):
-            return resolved
+    if existing_external:
+        return max(existing_external, key=lambda p: os.path.getmtime(p))
 
-    return os.path.abspath(candidate_paths[0])
+    if existing_bundled:
+        return existing_bundled[0]
+
+    fallback = bundled_candidates[0] if bundled_candidates else external_candidates[0]
+    return os.path.abspath(fallback)
 
 def launch_desktop_app():
     """Launches the PyWebView desktop application with full dist/index.html UI."""

@@ -50,7 +50,12 @@ export function getLocalProfilesCache(): Record<string, ParamProfileRecord> {
  */
 export function saveLocalProfilesCache(cache: Record<string, ParamProfileRecord>) {
   try {
-    localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, JSON.stringify(cache));
+    const raw = JSON.stringify(cache);
+    localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, raw);
+    const pyApi = typeof window !== 'undefined' ? (window as any).pywebview?.api : null;
+    if (pyApi && typeof pyApi.save_partner_profiles === 'function') {
+      Promise.resolve(pyApi.save_partner_profiles(raw)).catch(() => {});
+    }
   } catch (err) {
     console.warn('[PartnerParamsService] Error en localStorage de perfiles:', err);
   }
@@ -227,6 +232,17 @@ export async function resolveActiveParams(partnerName?: string): Promise<{
   source: 'partner_custom' | 'global_custom' | 'factory_default';
 }> {
   const cache = getLocalProfilesCache();
+
+  // Si estamos en Desktop App, sincronizar perfiles desde disco nativo
+  try {
+    const pyApi = typeof window !== 'undefined' ? (window as any).pywebview?.api : null;
+    if (pyApi && typeof pyApi.get_partner_profiles === 'function') {
+      const diskRes = await pyApi.get_partner_profiles();
+      if (diskRes && diskRes.success && diskRes.profiles && typeof diskRes.profiles === 'object') {
+        Object.assign(cache, diskRes.profiles);
+      }
+    }
+  } catch (_) {}
 
   // 1. Buscar perfil del Partner específico
   const cleanPartner = (partnerName || '').trim();

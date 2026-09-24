@@ -41,6 +41,9 @@ class FileProcessor:
             client = parts[1].strip() or "Cliente"
             return (True, partner, client, "")
         else:
+            alt_parts = [p.strip() for p in re.split(r'[_.\s-]+', name_without_ext) if p.strip()]
+            if len(alt_parts) >= 2 and not re.match(r'^(estimate|cotizacion|cisco|deal|bom|\d+)$', alt_parts[0], re.IGNORECASE):
+                return (True, alt_parts[0], alt_parts[1], "")
             # Forgiving default for single-word filenames (e.g. CiscoDealBOM.xls)
             partner = "Intcomex"
             client = name_without_ext.strip() or "General"
