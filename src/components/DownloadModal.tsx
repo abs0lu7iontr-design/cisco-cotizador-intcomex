@@ -37,6 +37,7 @@ interface DownloadModalProps {
   promoNetPrices?: Record<number, number>;
   headerInfo?: EstimateHeaderInfo;
   isRecalculated?: boolean;
+  isOnlyLicensing?: boolean;
 }
 
 export function DownloadModal({
@@ -53,6 +54,7 @@ export function DownloadModal({
   promoNetPrices,
   headerInfo,
   isRecalculated,
+  isOnlyLicensing,
 }: DownloadModalProps) {
   const isDesktop = Boolean((window as any).pywebview?.api);
 
@@ -65,7 +67,7 @@ export function DownloadModal({
     const activeParams = currentParams || params;
     const isRecalc = Boolean(
       isRecalculated ||
-      (activeParams && (activeParams.internacionPct !== 7.0 || activeParams.margenPct !== 5.0)) ||
+      (activeParams && ((!isOnlyLicensing && activeParams.internacionPct !== 7.0) || activeParams.margenPct !== 5.0)) ||
       (customOverrides && Object.keys(customOverrides).length > 0)
     );
 
@@ -73,7 +75,7 @@ export function DownloadModal({
     if (!mName && !defaultModel && defaultFilename) {
       const cleanBase = defaultFilename.replace(/\.[^/.]+$/, '');
       const parts = cleanBase.split(/[_.\s-]+/);
-      if (parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|\d+)$/i)) {
+      if (parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|i\d+m\d+|\d+)$/i)) {
         tech = parts[2];
       }
     }
@@ -87,6 +89,7 @@ export function DownloadModal({
       internacionPct: activeParams?.internacionPct ?? 7.0,
       marginPct: activeParams?.margenPct ?? 5.0,
       isRecalculated: isRecalc,
+      isOnlyLicensing,
     });
   };
 
@@ -123,6 +126,7 @@ export function DownloadModal({
     headerInfo?.estimateId,
     headerInfo?.dealId,
     isRecalculated,
+    isOnlyLicensing,
   ]);
 
   // Reset modal state completely every time the modal opens (no cache between files)

@@ -23,7 +23,7 @@ import {
   Edit2,
 } from 'lucide-react';
 import { QuoteParameters, OverrideRuleType } from '../core/types';
-import { solveGoalSeekParameters, GoalSeekResult } from '../core/calculations';
+import { solveGoalSeekParameters, GoalSeekResult, isPureLicensingQuote } from '../core/calculations';
 import {
   saveParamProfile,
   deleteParamProfile,
@@ -87,6 +87,8 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
   React.useEffect(() => {
     setCurrentActiveProfile(activeProfile || null);
   }, [activeProfile]);
+
+  const isOnlyLicensing = useMemo(() => isPureLicensingQuote(items as any), [items]);
 
   const effectivePartner = (customPartnerInput.trim() || detectedPartner || 'Partner General').trim();
 
@@ -263,9 +265,16 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
               className="w-14 bg-slate-950 border border-slate-800 rounded-xl p-1.5 text-center font-mono text-xs text-white"
             />
           </div>
-          <p className="text-[10px] text-slate-500">
-            Aplica sobre hardware tangible. <em>Intangibles exentos (0%)</em>.
-          </p>
+          {isOnlyLicensing ? (
+            <div className="p-1.5 bg-amber-500/10 border border-amber-500/25 rounded-lg text-[10px] text-amber-300 flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
+              <span>Cotización 100% Licencias / Intangibles (Internación 0% no aplicable).</span>
+            </div>
+          ) : (
+            <p className="text-[10px] text-slate-500">
+              Aplica sobre hardware tangible. <em>Intangibles exentos (0%)</em>.
+            </p>
+          )}
         </div>
 
         {/* Arancel */}

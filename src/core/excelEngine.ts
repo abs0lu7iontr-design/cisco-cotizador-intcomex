@@ -23,7 +23,7 @@ import {
   normalizeOverrideRule,
 } from './calculations';
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../lib/intcomexLogoBase64';
-import { generateQuotationFileName } from './exportUtils';
+import { generateQuotationFileName, isPureLicensingQuote } from './exportUtils';
 import { parseEstimateWithHierarchy, ProcessedEstimateLine } from '../modules/estimate';
 
 function getCellString(cell: ExcelJS.Cell | null | undefined): string {
@@ -650,9 +650,11 @@ export async function parseEstimateWorkbook(
     ? roundedOriginalTotal
     : roundedProductTotal;
 
+  const isOnlyLicensing = isPureLicensingQuote(items);
+
   const isRecalc = Boolean(
     isPreviouslyProcessed ||
-    (params && (params.internacionPct !== 7.0 || params.margenPct !== 5.0)) ||
+    (params && ((!isOnlyLicensing && params.internacionPct !== 7.0) || params.margenPct !== 5.0)) ||
     (overrides && Object.keys(overrides).length > 0)
   );
 
@@ -660,7 +662,7 @@ export async function parseEstimateWorkbook(
   const parts = cleanBase.split(/[_.\s-]+/);
   const partnerFromName = parts[0] && !parts[0].match(/^(estimate|\d+)$/i) ? parts[0] : 'Intcomex';
   const clientFromName = parts[1] && !parts[1].match(/^(estimate|\d+)$/i) ? parts[1] : 'Cliente';
-  const techFromName = parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|\d+)$/i) ? parts[2] : 'Cisco';
+  const techFromName = parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|i\d+m\d+|\d+)$/i) ? parts[2] : 'Cisco';
 
   const outputFileName = generateQuotationFileName({
     partner: headerInfo?.companyName || partnerFromName,
@@ -671,6 +673,7 @@ export async function parseEstimateWorkbook(
     internacionPct: params.internacionPct,
     marginPct: params.margenPct,
     isRecalculated: isRecalc,
+    isOnlyLicensing,
   });
 
   const result: ProcessedEstimateResult = {
@@ -1249,8 +1252,10 @@ export async function generateOptimizedWorkbook(
   const modifiedBuffer =
     buf instanceof ArrayBuffer ? buf : (new Uint8Array(buf).buffer as ArrayBuffer);
 
+  const isOnlyLicensing = isPureLicensingQuote(items);
+
   const isRecalculated = Boolean(
-    (params.internacionPct !== 7.0 || params.margenPct !== 5.0) ||
+    ((!isOnlyLicensing && params.internacionPct !== 7.0) || params.margenPct !== 5.0) ||
     (overrides && Object.keys(overrides).length > 0)
   );
 
@@ -1258,7 +1263,7 @@ export async function generateOptimizedWorkbook(
   const parts = cleanBase.split(/[_.\s-]+/);
   const partnerFromName = parts[0] && !parts[0].match(/^(estimate|\d+)$/i) ? parts[0] : 'Intcomex';
   const clientFromName = parts[1] && !parts[1].match(/^(estimate|\d+)$/i) ? parts[1] : 'Cliente';
-  const techFromName = parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|\d+)$/i) ? parts[2] : 'Cisco';
+  const techFromName = parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|i\d+m\d+|\d+)$/i) ? parts[2] : 'Cisco';
 
   const outputFileName = generateQuotationFileName({
     partner: headerInfo?.companyName || partnerFromName,
@@ -1269,6 +1274,7 @@ export async function generateOptimizedWorkbook(
     internacionPct: params.internacionPct,
     marginPct: params.margenPct,
     isRecalculated,
+    isOnlyLicensing,
   });
 
   const result: ProcessedEstimateResult = {

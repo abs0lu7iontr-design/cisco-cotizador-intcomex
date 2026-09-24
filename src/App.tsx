@@ -19,6 +19,7 @@ import { ExcelSheetPreview } from './components/ExcelSheetPreview';
 import { QuickCalculator } from './components/QuickCalculator';
 import { RulesExplanationModal } from './components/RulesExplanationModal';
 import { DownloadModal } from './components/DownloadModal';
+import { isPureLicensingQuote } from './core/exportUtils';
 import { PriorAuditDetectedModal } from './components/PriorAuditDetectedModal';
 import {
   MiningAuditModal,
@@ -276,7 +277,7 @@ function AppContent() {
       if (parts.length >= 2 && parts[1] && !parts[1].match(/^(estimate|\d+)$/i)) {
         client = parts[1].trim();
       }
-      if (parts.length >= 3 && parts[2] && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|\d+)$/i)) {
+      if (parts.length >= 3 && parts[2] && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|i\d+m\d+|\d+)$/i)) {
         model = parts[2].trim();
       }
     }
@@ -404,28 +405,32 @@ function AppContent() {
       />
 
       {/* Structured Dual Download Modal (Web & Desktop) */}
-      {processedResult?.workbookBuffer && (
-        <DownloadModal
-          isOpen={isDownloadModalOpen}
-          onClose={() => setIsDownloadModalOpen(false)}
-          defaultFilename={processedResult.fileName || 'Cotizacion_Cisco_CALC.xlsx'}
-          defaultPartner={defaultPartner}
-          defaultClient={defaultClient}
-          defaultModel={defaultModel}
-          workbookBuffer={processedResult.workbookBuffer}
-          rawWorkbookBuffer={rawWorkbookBuffer}
-          params={params}
-          customOverrides={customOverrideMap}
-          promoNetPrices={fastTrackPromoMap}
-          headerInfo={processedResult.headerInfo}
-          isRecalculated={
-            isRecalculated ||
-            params.internacionPct !== 7.0 ||
-            params.margenPct !== 5.0 ||
-            Object.keys(customOverrideMap).length > 0
-          }
-        />
-      )}
+      {processedResult?.workbookBuffer && (() => {
+        const isOnlyLicensing = processedResult.items ? isPureLicensingQuote(processedResult.items) : false;
+        return (
+          <DownloadModal
+            isOpen={isDownloadModalOpen}
+            onClose={() => setIsDownloadModalOpen(false)}
+            defaultFilename={processedResult.fileName || 'Cotizacion_Cisco_CALC.xlsx'}
+            defaultPartner={defaultPartner}
+            defaultClient={defaultClient}
+            defaultModel={defaultModel}
+            workbookBuffer={processedResult.workbookBuffer}
+            rawWorkbookBuffer={rawWorkbookBuffer}
+            params={params}
+            customOverrides={customOverrideMap}
+            promoNetPrices={fastTrackPromoMap}
+            headerInfo={processedResult.headerInfo}
+            isOnlyLicensing={isOnlyLicensing}
+            isRecalculated={
+              isRecalculated ||
+              (!isOnlyLicensing && params.internacionPct !== 7.0) ||
+              params.margenPct !== 5.0 ||
+              Object.keys(customOverrideMap).length > 0
+            }
+          />
+        );
+      })()}
 
       {/* Collapsible Navigation Sidebar */}
       <Sidebar

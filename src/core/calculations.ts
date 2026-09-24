@@ -3,7 +3,9 @@
 // ============================================================================
 
 import { QuoteParameters, OverrideRuleType, ProcessedEstimateResult } from './types';
-import { generateQuotationFileName } from './exportUtils';
+import { generateQuotationFileName, isPureLicensingQuote } from './exportUtils';
+
+export { isPureLicensingQuote };
 
 /**
  * Redondeo financiero estricto. Previene el error IEEE 754 de Javascript.
@@ -705,8 +707,10 @@ export function recalculateEstimateResult(
     ? roundedOriginalTotal
     : roundedCalculatedTotal;
 
+  const isOnlyLicensing = isPureLicensingQuote(newItems);
+
   const isRecalc = Boolean(
-    (params && (params.internacionPct !== 7.0 || params.margenPct !== 5.0)) ||
+    (params && ((!isOnlyLicensing && params.internacionPct !== 7.0) || params.margenPct !== 5.0)) ||
     (overrides && Object.keys(overrides).length > 0)
   );
 
@@ -714,7 +718,7 @@ export function recalculateEstimateResult(
   const parts = cleanBase.split(/[_.\s-]+/);
   const partnerFromName = parts[0] && !parts[0].match(/^(estimate|\d+)$/i) ? parts[0] : 'Intcomex';
   const clientFromName = parts[1] && !parts[1].match(/^(estimate|\d+)$/i) ? parts[1] : 'Cliente';
-  const techFromName = parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|\d+)$/i) ? parts[2] : 'Cisco';
+  const techFromName = parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|i\d+m\d+|\d+)$/i) ? parts[2] : 'Cisco';
 
   const newFileName = generateQuotationFileName({
     partner: currentResult.headerInfo?.companyName || partnerFromName,
@@ -725,6 +729,7 @@ export function recalculateEstimateResult(
     internacionPct: params.internacionPct,
     marginPct: params.margenPct,
     isRecalculated: isRecalc,
+    isOnlyLicensing,
   });
 
   return {
