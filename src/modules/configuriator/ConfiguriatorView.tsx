@@ -47,6 +47,12 @@ import {
   syncAiSettingsFromDesktopBridge,
 } from './aiProviderManager';
 import { getLearnedCiscoSkus, EOL_CATALOG_2026 } from './catalogRules';
+import {
+  CiscoApiStatusModal,
+  resolvePoeBudgetFromSku,
+  checkPsirtForProduct,
+  PsirtAdvisory,
+} from '../ciscoApi';
 
 export const ConfiguriatorView: React.FC = () => {
   // Entrada de lenguaje natural e imagen (Ctrl+V o Drag & Drop)
@@ -68,6 +74,9 @@ export const ConfiguriatorView: React.FC = () => {
   // Configuración Multi-API y Rotación de Tokens
   const [aiSettings, setAiSettings] = useState<AiConfigSettings>(() => loadAiSettings());
   const [isApiModalOpen, setIsApiModalOpen] = useState<boolean>(false);
+  const [isCiscoSuiteModalOpen, setIsCiscoSuiteModalOpen] = useState<boolean>(false);
+  const [psirtByIndex, setPsirtByIndex] = useState<Record<number, PsirtAdvisory[]>>({});
+  const [loadingPsirtIndex, setLoadingPsirtIndex] = useState<number | null>(null);
   const [newProvider, setNewProvider] = useState<Exclude<AiProviderId, 'local_deterministic'>>('gemini');
   const [newKeyLabel, setNewKeyLabel] = useState<string>('');
   const [newKeyValue, setNewKeyValue] = useState<string>('');
@@ -79,6 +88,16 @@ export const ConfiguriatorView: React.FC = () => {
   const [manualQtyInput, setManualQtyInput] = useState<number>(1);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleAuditPsirtForItem = async (idx: number, sku: string) => {
+    setLoadingPsirtIndex(idx);
+    try {
+      const advisories = await checkPsirtForProduct(sku, 3);
+      setPsirtByIndex((prev) => ({ ...prev, [idx]: advisories }));
+    } finally {
+      setLoadingPsirtIndex(null);
+    }
+  };
 
   // Sincronizar configuración de IA con el puente Desktop (.exe) al montar
   useEffect(() => {
@@ -371,7 +390,16 @@ export const ConfiguriatorView: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <button
+            onClick={() => setIsCiscoSuiteModalOpen(true)}
+            className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition-all cursor-pointer shadow-sm"
+            title="Ver las 7 APIs Oficiales de Cisco (OAuth2 M2M, PSIRT, Datafoundation-POE, CX Cloud)"
+          >
+            <ShieldCheck className="w-4 h-4 text-cyan-400" />
+            <span>Cisco APIs (7 Activas)</span>
+          </button>
+
           <button
             onClick={() => setIsApiModalOpen(true)}
             className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-indigo-300 border border-indigo-500/40 text-xs font-bold transition-all cursor-pointer shadow-sm"
@@ -742,6 +770,9 @@ export const ConfiguriatorView: React.FC = () => {
                 {extractionResult.items.map((item, idx) => {
                   const parentRow = assembledRows.find((r) => r.parentIndex === idx && r.isParent);
                   const childRows = assembledRows.filter((r) => r.parentIndex === idx && !r.isParent);
+                  const activeSku = parentRow?.partNumber || item.suggestedActiveSku || '';
+                  const poeInfo = resolvePoeBudgetFromSku(activeSku);
+                  const itemAdvisories = psirtByIndex[idx] || [];
                   const hasEolAlternative = Boolean(
                     item.rawMentionedSku &&
                       item.suggestedActiveSku &&
@@ -760,7 +791,7 @@ export const ConfiguriatorView: React.FC = () => {
                               MADRE #{idx + 1} (Chasis)
                             </span>
                             <span className="font-mono text-sm font-black text-white">
-                              {parentRow?.partNumber || item.suggestedActiveSku}
+                              {activeSku}
                             </span>
 
                             {/* Badge EOL vs Vigente 2026 */}
@@ -771,6 +802,19 @@ export const ConfiguriatorView: React.FC = () => {
                             ) : (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-600/40">
                                 Vigente 2026
+                              </span>
+                            )}
+
+                            {/* Badge Datafoundation-POE Oficial */}
+                            {poeInfo.poeSupported && (
+                              <span
+                                className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/70 text-amber-300 border border-amber-700/50 flex items-center gap-1"
+                                title={poeInfo.notes || poeInfo.poeClass}
+                              >
+                                <Zap className="w-3 h-3 text-amber-400" />
+                                <span>
+                                  PoE: {poeInfo.maxWatts}W ({poeInfo.standard})
+                                </span>
                               </span>
                             )}
 
@@ -803,8 +847,21 @@ export const ConfiguriatorView: React.FC = () => {
                           )}
                         </div>
 
-                        {/* Botón alternar SKU original vs Reemplazo EOL y botón eliminar */}
-                        <div className="flex items-center gap-2">
+                        {/* Botón PSIRT, alternar SKU original vs Reemplazo EOL y botón eliminar */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => handleAuditPsirtForItem(idx, activeSku)}
+                            disabled={loadingPsirtIndex === idx}
+                            className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-[11px] font-bold text-cyan-300 border border-cyan-700/50 flex items-center gap-1 cursor-pointer"
+                            title="Consultar vulnerabilidades y CVEs en vivo en Cisco PSIRT openVuln API v2"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>
+                              {loadingPsirtIndex === idx ? 'Consultando PSIRT...' : 'Auditar PSIRT'}
+                            </span>
+                          </button>
+
                           {hasEolAlternative && (
                             <button
                               type="button"
@@ -830,6 +887,67 @@ export const ConfiguriatorView: React.FC = () => {
                           </button>
                         </div>
                       </div>
+
+                      {/* Resultados de Auditoría Cisco PSIRT openVuln API v2 */}
+                      {itemAdvisories.length > 0 && (
+                        <div className="p-2.5 rounded-xl bg-slate-900/90 border border-cyan-800/50 space-y-1.5">
+                          <div className="flex items-center justify-between text-[10px] font-bold text-cyan-300 uppercase">
+                            <span>
+                              🛡️ Cisco PSIRT openVuln API v2 ({itemAdvisories.length} boletines oficiales)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPsirtByIndex((prev) => {
+                                  const next = { ...prev };
+                                  delete next[idx];
+                                  return next;
+                                })
+                              }
+                              className="text-slate-400 hover:text-white cursor-pointer"
+                            >
+                              Ocultar
+                            </button>
+                          </div>
+                          {itemAdvisories.map((adv) => (
+                            <div
+                              key={adv.advisoryId}
+                              className="flex items-center justify-between gap-2 text-[11px] bg-slate-950 px-2.5 py-1.5 rounded-lg border border-slate-800"
+                            >
+                              <div className="truncate">
+                                <span
+                                  className={`mr-2 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                    adv.sir === 'Critical'
+                                      ? 'bg-rose-950 text-rose-300'
+                                      : adv.sir === 'High'
+                                        ? 'bg-amber-950 text-amber-300'
+                                        : 'bg-indigo-950 text-indigo-300'
+                                  }`}
+                                >
+                                  {adv.sir}
+                                </span>
+                                <span className="text-slate-200 font-medium">{adv.advisoryTitle}</span>
+                                {adv.cves.length > 0 && (
+                                  <span className="ml-2 font-mono text-[10px] text-slate-400">
+                                    ({adv.cves.slice(0, 2).join(', ')})
+                                  </span>
+                                )}
+                              </div>
+                              {adv.publicationUrl && (
+                                <a
+                                  href={adv.publicationUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[10px] text-cyan-300 hover:underline shrink-0 flex items-center gap-1"
+                                >
+                                  <span>Ver</span>
+                                  <ExternalLink className="w-3 h-3" />
+                                </a>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
                       {/* Controles rápidos de configuración de preventa */}
                       <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-900 text-xs">
@@ -1238,6 +1356,12 @@ export const ConfiguriatorView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modal de Estado y Pruebas de las 7 APIs Oficiales de Cisco */}
+      <CiscoApiStatusModal
+        isOpen={isCiscoSuiteModalOpen}
+        onClose={() => setIsCiscoSuiteModalOpen(false)}
+      />
     </div>
   );
 };

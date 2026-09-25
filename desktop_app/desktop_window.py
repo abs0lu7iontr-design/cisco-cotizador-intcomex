@@ -564,6 +564,101 @@ class DesktopBridge:
         except Exception as e:
             return {"success": False, "error": str(e), "config": None}
 
+    # -------------------------------------------------------------------------
+    # 7. CISCO DEVELOPER API SUITE (OAUTH2 M2M & APIX GATEWAY BRIDGE)
+    # -------------------------------------------------------------------------
+    def get_cisco_token(
+        self,
+        client_id: str,
+        client_secret: str,
+        auth_url: str = "https://id.cisco.com/oauth2/default/v1/token",
+    ):
+        """Executes Server-to-Server OAuth2 Client Credentials request against Cisco Okta ID."""
+        import urllib.request
+        import urllib.parse
+        import urllib.error
+
+        try:
+            target_url = (auth_url or "https://id.cisco.com/oauth2/default/v1/token").strip()
+            payload = urllib.parse.urlencode(
+                {
+                    "grant_type": "client_credentials",
+                    "client_id": (client_id or "").strip(),
+                    "client_secret": (client_secret or "").strip(),
+                }
+            ).encode("utf-8")
+
+            req = urllib.request.Request(
+                target_url,
+                data=payload,
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Accept": "application/json",
+                    "User-Agent": "CiscoAutomated-Desktop/3.3",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw_body = resp.read().decode("utf-8", errors="ignore")
+                return json.loads(raw_body)
+        except urllib.error.HTTPError as he:
+            err_body = he.read().decode("utf-8", errors="ignore")
+            return {"error": f"HTTP {he.code}", "error_description": err_body}
+        except Exception as e:
+            return {"error": "bridge_exception", "error_description": str(e)}
+
+    def call_cisco_api(self, url: str, token: str, method: str = "GET"):
+        """Calls https://apix.cisco.com endpoints natively from Python without browser CORS restrictions."""
+        import urllib.request
+        import urllib.error
+        import time
+
+        start_ts = time.time()
+        try:
+            req = urllib.request.Request(
+                url.strip(),
+                headers={
+                    "Authorization": f"Bearer {token.strip()}",
+                    "Accept": "application/json",
+                    "User-Agent": "CiscoAutomated-Desktop/3.3",
+                },
+                method=(method or "GET").upper(),
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw_body = resp.read().decode("utf-8", errors="ignore")
+                latency_ms = int((time.time() - start_ts) * 1000)
+                try:
+                    parsed = json.loads(raw_body)
+                except Exception:
+                    parsed = {"raw": raw_body}
+                return {
+                    "success": True,
+                    "httpStatus": resp.status,
+                    "latencyMs": latency_ms,
+                    "data": parsed,
+                }
+        except urllib.error.HTTPError as he:
+            err_body = he.read().decode("utf-8", errors="ignore")
+            latency_ms = int((time.time() - start_ts) * 1000)
+            try:
+                parsed = json.loads(err_body)
+            except Exception:
+                parsed = {"raw": err_body}
+            return {
+                "success": False,
+                "httpStatus": he.code,
+                "latencyMs": latency_ms,
+                "data": parsed,
+            }
+        except Exception as e:
+            latency_ms = int((time.time() - start_ts) * 1000)
+            return {
+                "success": False,
+                "httpStatus": 0,
+                "latencyMs": latency_ms,
+                "error": str(e),
+            }
+
 
 def get_index_html_path() -> str:
     """

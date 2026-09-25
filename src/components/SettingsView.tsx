@@ -10,6 +10,7 @@ import {
   Bot,
   KeyRound,
   Trash2,
+  ShieldCheck,
 } from 'lucide-react';
 import { APP_THEMES, getSavedThemeId } from '../core/themeEngine';
 import {
@@ -21,6 +22,7 @@ import {
   addApiKeyToPool,
   syncAiSettingsFromDesktopBridge,
 } from '../modules/configuriator';
+import { CiscoApiStatusModal, getCiscoConfig } from '../modules/ciscoApi';
 
 interface SettingsViewProps {
   onOpenThemes?: () => void;
@@ -31,6 +33,13 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
   const [supabaseKey, setSupabaseKey] = useState('');
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
+  const [isCiscoModalOpen, setIsCiscoModalOpen] = useState(false);
+
+  const ciscoCfg = getCiscoConfig();
+  const maskedCiscoKey =
+    ciscoCfg.clientId.length > 8
+      ? `${ciscoCfg.clientId.slice(0, 4)}...${ciscoCfg.clientId.slice(-4)}`
+      : ciscoCfg.clientId;
 
   // ConfigurIAtor AI Multi-Provider Pool State
   const [aiSettings, setAiSettings] = useState<AiConfigSettings>(() => loadAiSettings());
@@ -285,6 +294,41 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Cisco Developer APIs (7 Servicios Vinculados) */}
+      <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center space-x-2.5 text-cyan-400 font-bold text-xs uppercase tracking-wider">
+            <ShieldCheck className="w-4 h-4" />
+            <span>Cisco Developer APIs (7 Servicios Vinculados)</span>
+          </div>
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-cyan-950 text-cyan-300 border border-cyan-700/40">
+            Key: {maskedCiscoKey} &bull; OAuth2 M2M Activo
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-400">
+          Conectividad OAuth2 M2M (<code className="text-cyan-300">apix.cisco.com</code>) con Cisco
+          PSIRT openVuln API, Datafoundation-POE, HelloCommerce y servicios CX Cloud V2
+          (Inventory, Contracts, Alerts y Customer).
+        </p>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setIsCiscoModalOpen(true)}
+            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-800 text-xs font-bold transition-all cursor-pointer flex items-center gap-2"
+          >
+            <ShieldCheck className="w-4 h-4 text-cyan-400" />
+            <span>Ver Estado y Probar Conexión Cisco API</span>
+          </button>
+        </div>
+
+        <CiscoApiStatusModal
+          isOpen={isCiscoModalOpen}
+          onClose={() => setIsCiscoModalOpen(false)}
+        />
       </div>
 
       {/* Storage Settings */}
