@@ -62,11 +62,12 @@ export const PROVIDER_META: Record<
 > = {
   gemini: {
     name: 'Google Gemini (Oficial Multimodal + Cisco.com)',
-    badge: 'Prioridad #1 (Texto + Screenshot)',
-    defaultModel: 'gemini-3.5-flash',
+    badge: 'Prioridad #1 (3.7 Flash Texto / 3.6-3.8 Visión)',
+    defaultModel: 'gemini-3.7-flash',
     models: [
-      { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash (Recomendado Estable + Visión)', supportsVision: true },
-      { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash (Última Generación 2026)', supportsVision: true },
+      { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash (Prioridad #1 Lenguaje Natural • Estable)', supportsVision: false },
+      { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash (Prioridad #1 Imágenes / Visión + Texto)', supportsVision: true },
+      { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash (Última Generación 2026 + Visión)', supportsVision: true },
       { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash Lite (Ultra Rápido + Alta Cuota)', supportsVision: true },
       { id: 'gemini-flash-lite-latest', label: 'Gemini Flash Lite Latest (Fallback Rápido)', supportsVision: true },
     ],
@@ -120,9 +121,9 @@ export function getDefaultAiSettings(): AiConfigSettings {
     initialKeys.push({
       id: 'key-gemini-primary',
       provider: 'gemini',
-      label: 'Google Gemini Principal (Multimodal)',
+      label: 'Google Gemini Principal (3.7 / 3.6 Flash)',
       apiKey: defaultGeminiKey,
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.7-flash',
       enabled: true,
       lastStatus: 'ok',
     });
@@ -149,8 +150,8 @@ export function getDefaultAiSettings(): AiConfigSettings {
 }
 
 /**
- * Normaliza y repara automáticamente claves antiguas o modelos deprecados (ej. gemini-2.5-flash -> gemini-3.5-flash
- * o Provisioning Key de OpenRouter -> Inference Key activa).
+ * Normaliza y repara automáticamente claves antiguas o modelos deprecados/con timeout
+ * (ej. gemini-3.5-flash / gemini-2.5-flash -> gemini-3.7-flash)
  */
 function sanitizeAndMigrateSettings(rawSettings: AiConfigSettings): AiConfigSettings {
   const defaults = getDefaultAiSettings();
@@ -165,9 +166,15 @@ function sanitizeAndMigrateSettings(rawSettings: AiConfigSettings): AiConfigSett
     let model = k.model;
     let apiKeyToUse = cleanKey;
 
-    // 1. Si una key de Gemini tenía el modelo deprecado gemini-2.5-flash o 2.0-flash, actualizar a gemini-3.5-flash
-    if (k.provider === 'gemini' && (model === 'gemini-2.5-flash' || model === 'gemini-2.0-flash' || !model)) {
-      model = 'gemini-3.5-flash';
+    // 1. Si una key de Gemini tenía gemini-3.5-flash, gemini-2.5-flash o gemini-2.0-flash, actualizar a gemini-3.7-flash
+    if (
+      k.provider === 'gemini' &&
+      (model === 'gemini-3.5-flash' ||
+        model === 'gemini-2.5-flash' ||
+        model === 'gemini-2.0-flash' ||
+        !model)
+    ) {
+      model = 'gemini-3.7-flash';
     }
 
     // 2. Si el usuario había pegado la Provisioning Key de OpenRouter (que daba 401 User not found),
@@ -191,9 +198,9 @@ function sanitizeAndMigrateSettings(rawSettings: AiConfigSettings): AiConfigSett
     migratedKeys.unshift({
       id: 'key-gemini-primary',
       provider: 'gemini',
-      label: 'Google Gemini Principal (Multimodal)',
+      label: 'Google Gemini Principal (3.7 / 3.6 Flash)',
       apiKey: defaultGeminiKey,
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.7-flash',
       enabled: true,
       lastStatus: 'ok',
     });

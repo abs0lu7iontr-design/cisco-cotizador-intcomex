@@ -14,6 +14,8 @@ export type CiscoProductFamily =
   | 'catalyst8000'
   | 'meraki_mr'
   | 'meraki_ms'
+  | 'meraki_ms130'
+  | 'meraki_ms225'
   | 'meraki_mx'
   | 'catalyst_wireless'
   | 'firewall_fpr'
@@ -21,6 +23,13 @@ export type CiscoProductFamily =
   | 'generic';
 
 export type EolLifecycleStatus = 'eos_eol_active' | 'active_with_newer_gen' | 'current_2026';
+
+export interface EolAlternative {
+  recommendedSku: string;
+  title: string;
+  description: string;
+  type: 'direct_equivalent' | 'cost_effective' | 'catalyst_alternative';
+}
 
 export interface EolMappingEntry {
   legacySku: string;
@@ -45,6 +54,7 @@ export interface SubItemConfig {
 }
 
 export interface ChassisConfigOptions {
+  selectedModel?: string;
   licenseTier?: 'Essentials' | 'Advantage';
   termYears?: number; // 1, 3, 5, 7
   isPoe?: boolean;
@@ -79,10 +89,10 @@ export const EOL_CATALOG_2026: Record<string, EolMappingEntry> = {
   },
   'WS-C2960X-48FPS-L': {
     legacySku: 'WS-C2960X-48FPS-L',
-    replacementSku: 'C9200L-48P-4G-E',
+    replacementSku: 'C9200L-48FP-4G-E',
     status: 'eos_eol_active',
     eosYear: 2021,
-    eolNote: 'End-of-Sale oficial Cisco. Reemplazo directo: Catalyst 9200L 48P PoE+ 4x1G.',
+    eolNote: 'End-of-Sale oficial Cisco. Reemplazo directo: Catalyst 9200L 48P Full PoE+ (740W) 4x1G.',
     canKeepOriginal: false,
     officialCiscoDocUrl: 'https://www.cisco.com/c/en/us/products/switches/catalyst-9200-series-switches/index.html',
   },
@@ -120,10 +130,10 @@ export const EOL_CATALOG_2026: Record<string, EolMappingEntry> = {
   },
   'WS-C2960X-48FPD-L': {
     legacySku: 'WS-C2960X-48FPD-L',
-    replacementSku: 'C9200L-48P-4X-E',
+    replacementSku: 'C9200L-48FP-4X-E',
     status: 'eos_eol_active',
     eosYear: 2021,
-    eolNote: 'End-of-Sale oficial Cisco. Reemplazo directo: Catalyst 9200L 48P PoE+ 4x10G SFP+.',
+    eolNote: 'End-of-Sale oficial Cisco. Reemplazo directo: Catalyst 9200L 48P Full PoE+ (740W) 4x10G SFP+.',
     canKeepOriginal: false,
   },
   'WS-C2960X-48TD-L': {
@@ -342,7 +352,269 @@ export const EOL_CATALOG_2026: Record<string, EolMappingEntry> = {
     eolNote: 'Meraki MR52-HW End-of-Sale. Reemplazo directo Wi-Fi 6: MR56-HW.',
     canKeepOriginal: false,
   },
-  // Firewalls ASA -> Secure Firewall
+  // --- Switches Meraki MS120 / MS210 / MS220 (End-of-Sale -> MS225 / MS130-SWITCHES / Catalyst 9200L) ---
+  'MS210-48FP': {
+    legacySku: 'MS210-48FP',
+    replacementSku: 'MS225-48FP-HW',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS210-48FP (740W PoE+) End-of-Sale. Reemplazo equivalente 740W: MS225-48FP-HW | Opción Cloud 370W: MS130-48P (bajo MS130-SWITCHES) | Alternativa Catalyst: C9200L-48FP-4G-E.',
+    canKeepOriginal: false,
+    officialCiscoDocUrl: 'https://documentation.meraki.com/MS/MS_Overview_and_Specifications/MS130_Datasheet',
+  },
+  'MS210-48FP-HW': {
+    legacySku: 'MS210-48FP-HW',
+    replacementSku: 'MS225-48FP-HW',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS210-48FP-HW (740W PoE+) End-of-Sale. Reemplazo equivalente 740W: MS225-48FP-HW | Opción Cloud 370W: MS130-48P (bajo MS130-SWITCHES) | Alternativa Catalyst: C9200L-48FP-4G-E.',
+    canKeepOriginal: false,
+    officialCiscoDocUrl: 'https://documentation.meraki.com/MS/MS_Overview_and_Specifications/MS130_Datasheet',
+  },
+  'MS210-48LP': {
+    legacySku: 'MS210-48LP',
+    replacementSku: 'MS130-SWITCHES:MS130-48P',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS210-48LP (370W PoE+) End-of-Sale. Reemplazo Cloud: MS130-48P (Madre MS130-SWITCHES) o MS225-48LP-HW con Stacking físico.',
+    canKeepOriginal: false,
+    officialCiscoDocUrl: 'https://documentation.meraki.com/MS/MS_Overview_and_Specifications/MS130_Datasheet',
+  },
+  'MS210-48LP-HW': {
+    legacySku: 'MS210-48LP-HW',
+    replacementSku: 'MS130-SWITCHES:MS130-48P',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS210-48LP-HW (370W PoE+) End-of-Sale. Reemplazo Cloud: MS130-48P (Madre MS130-SWITCHES) o MS225-48LP-HW.',
+    canKeepOriginal: false,
+  },
+  'MS210-48': {
+    legacySku: 'MS210-48',
+    replacementSku: 'MS130-SWITCHES:MS130-48',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS210-48 End-of-Sale. Reemplazo Cloud: MS130-48 (Madre MS130-SWITCHES) o MS225-48-HW.',
+    canKeepOriginal: false,
+  },
+  'MS210-48-HW': {
+    legacySku: 'MS210-48-HW',
+    replacementSku: 'MS130-SWITCHES:MS130-48',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS210-48-HW End-of-Sale. Reemplazo Cloud: MS130-48 (Madre MS130-SWITCHES) o MS225-48-HW.',
+    canKeepOriginal: false,
+  },
+  'MS210-24P': {
+    legacySku: 'MS210-24P',
+    replacementSku: 'MS130-SWITCHES:MS130-24P',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS210-24P End-of-Sale. Reemplazo Cloud: MS130-24P (Madre MS130-SWITCHES) o MS225-24P-HW con Stacking físico.',
+    canKeepOriginal: false,
+    officialCiscoDocUrl: 'https://documentation.meraki.com/MS/MS_Overview_and_Specifications/MS130_Datasheet',
+  },
+  'MS210-24P-HW': {
+    legacySku: 'MS210-24P-HW',
+    replacementSku: 'MS130-SWITCHES:MS130-24P',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS210-24P-HW End-of-Sale. Reemplazo Cloud: MS130-24P (Madre MS130-SWITCHES) o MS225-24P-HW.',
+    canKeepOriginal: false,
+  },
+  'MS210-24': {
+    legacySku: 'MS210-24',
+    replacementSku: 'MS130-SWITCHES:MS130-24',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS210-24 End-of-Sale. Reemplazo Cloud: MS130-24 (Madre MS130-SWITCHES) o MS225-24-HW.',
+    canKeepOriginal: false,
+  },
+  'MS210-24-HW': {
+    legacySku: 'MS210-24-HW',
+    replacementSku: 'MS130-SWITCHES:MS130-24',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS210-24-HW End-of-Sale. Reemplazo Cloud: MS130-24 (Madre MS130-SWITCHES) o MS225-24-HW.',
+    canKeepOriginal: false,
+  },
+  'MS120-48FP': {
+    legacySku: 'MS120-48FP',
+    replacementSku: 'MS225-48FP-HW',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-48FP (740W PoE+) End-of-Sale. En MS130 el tope es 370W (MS130-48P); para 740W Full PoE usar MS225-48FP-HW o C9200L-48FP-4G-E.',
+    canKeepOriginal: false,
+  },
+  'MS120-48FP-HW': {
+    legacySku: 'MS120-48FP-HW',
+    replacementSku: 'MS225-48FP-HW',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-48FP-HW (740W PoE+) End-of-Sale. Para 740W usar MS225-48FP-HW o C9200L-48FP-4G-E; para 370W usar MS130-48P.',
+    canKeepOriginal: false,
+  },
+  'MS120-48LP': {
+    legacySku: 'MS120-48LP',
+    replacementSku: 'MS130-SWITCHES:MS130-48P',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-48LP End-of-Sale. Reemplazo directo: MS130-48P (Madre MS130-SWITCHES).',
+    canKeepOriginal: false,
+  },
+  'MS120-48LP-HW': {
+    legacySku: 'MS120-48LP-HW',
+    replacementSku: 'MS130-SWITCHES:MS130-48P',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-48LP-HW End-of-Sale. Reemplazo directo: MS130-48P (Madre MS130-SWITCHES).',
+    canKeepOriginal: false,
+  },
+  'MS120-48': {
+    legacySku: 'MS120-48',
+    replacementSku: 'MS130-SWITCHES:MS130-48',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-48 End-of-Sale. Reemplazo directo: MS130-48 (Madre MS130-SWITCHES).',
+    canKeepOriginal: false,
+  },
+  'MS120-48-HW': {
+    legacySku: 'MS120-48-HW',
+    replacementSku: 'MS130-SWITCHES:MS130-48',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-48-HW End-of-Sale. Reemplazo directo: MS130-48 (Madre MS130-SWITCHES).',
+    canKeepOriginal: false,
+  },
+  'MS120-24P': {
+    legacySku: 'MS120-24P',
+    replacementSku: 'MS130-SWITCHES:MS130-24P',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-24P End-of-Sale. Reemplazo directo: MS130-24P (Madre MS130-SWITCHES).',
+    canKeepOriginal: false,
+  },
+  'MS120-24P-HW': {
+    legacySku: 'MS120-24P-HW',
+    replacementSku: 'MS130-SWITCHES:MS130-24P',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-24P-HW End-of-Sale. Reemplazo directo: MS130-24P (Madre MS130-SWITCHES).',
+    canKeepOriginal: false,
+  },
+  'MS120-24': {
+    legacySku: 'MS120-24',
+    replacementSku: 'MS130-SWITCHES:MS130-24',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-24 End-of-Sale. Reemplazo directo: MS130-24 (Madre MS130-SWITCHES).',
+    canKeepOriginal: false,
+  },
+  'MS120-24-HW': {
+    legacySku: 'MS120-24-HW',
+    replacementSku: 'MS130-SWITCHES:MS130-24',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-24-HW End-of-Sale. Reemplazo directo: MS130-24 (Madre MS130-SWITCHES).',
+    canKeepOriginal: false,
+  },
+  'MS120-8FP': {
+    legacySku: 'MS120-8FP',
+    replacementSku: 'MS130-SWITCHES:MS130-8X',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-8FP (124W PoE+) End-of-Sale. Reemplazo 120W PoE+: MS130-8X o MS130-8P (Madre MS130-SWITCHES).',
+    canKeepOriginal: false,
+  },
+  'MS120-8FP-HW': {
+    legacySku: 'MS120-8FP-HW',
+    replacementSku: 'MS130-SWITCHES:MS130-8X',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-8FP-HW End-of-Sale. Reemplazo 120W PoE+: MS130-8X o MS130-8P (Madre MS130-SWITCHES).',
+    canKeepOriginal: false,
+  },
+  'MS120-8LP': {
+    legacySku: 'MS120-8LP',
+    replacementSku: 'MS130-SWITCHES:MS130-8P',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-8LP (67W PoE) End-of-Sale. Reemplazo directo: MS130-8P (Madre MS130-SWITCHES).',
+    canKeepOriginal: false,
+  },
+  'MS120-8LP-HW': {
+    legacySku: 'MS120-8LP-HW',
+    replacementSku: 'MS130-SWITCHES:MS130-8P',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-8LP-HW End-of-Sale. Reemplazo directo: MS130-8P (Madre MS130-SWITCHES).',
+    canKeepOriginal: false,
+  },
+  'MS120-8': {
+    legacySku: 'MS120-8',
+    replacementSku: 'MS130-SWITCHES:MS130-8',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-8 End-of-Sale. Reemplazo directo: MS130-8 (Madre MS130-SWITCHES).',
+    canKeepOriginal: false,
+  },
+  'MS120-8-HW': {
+    legacySku: 'MS120-8-HW',
+    replacementSku: 'MS130-SWITCHES:MS130-8',
+    status: 'eos_eol_active',
+    eosYear: 2024,
+    eolNote: 'Meraki MS120-8-HW End-of-Sale. Reemplazo directo: MS130-8 (Madre MS130-SWITCHES).',
+    canKeepOriginal: false,
+  },
+
+  // --- Firewalls Meraki MX64 / MX65 / MX84 / ASA -> MX67 / MX68 / MX85 / Secure Firewall ---
+  'MX64': {
+    legacySku: 'MX64',
+    replacementSku: 'MX67-HW',
+    status: 'eos_eol_active',
+    eosYear: 2022,
+    eolNote: 'Meraki MX64 End-of-Sale. Reemplazo directo: MX67-HW.',
+    canKeepOriginal: false,
+  },
+  'MX64-HW': {
+    legacySku: 'MX64-HW',
+    replacementSku: 'MX67-HW',
+    status: 'eos_eol_active',
+    eosYear: 2022,
+    eolNote: 'Meraki MX64-HW End-of-Sale. Reemplazo directo: MX67-HW.',
+    canKeepOriginal: false,
+  },
+  'MX65': {
+    legacySku: 'MX65',
+    replacementSku: 'MX68-HW',
+    status: 'eos_eol_active',
+    eosYear: 2022,
+    eolNote: 'Meraki MX65 (con puertos PoE+) End-of-Sale. Reemplazo directo: MX68-HW.',
+    canKeepOriginal: false,
+  },
+  'MX65-HW': {
+    legacySku: 'MX65-HW',
+    replacementSku: 'MX68-HW',
+    status: 'eos_eol_active',
+    eosYear: 2022,
+    eolNote: 'Meraki MX65-HW End-of-Sale. Reemplazo directo: MX68-HW.',
+    canKeepOriginal: false,
+  },
+  'MX84': {
+    legacySku: 'MX84',
+    replacementSku: 'MX85-HW',
+    status: 'eos_eol_active',
+    eosYear: 2022,
+    eolNote: 'Meraki MX84 End-of-Sale. Reemplazo directo: MX85-HW.',
+    canKeepOriginal: false,
+  },
+  'MX84-HW': {
+    legacySku: 'MX84-HW',
+    replacementSku: 'MX85-HW',
+    status: 'eos_eol_active',
+    eosYear: 2022,
+    eolNote: 'Meraki MX84-HW End-of-Sale. Reemplazo directo: MX85-HW.',
+    canKeepOriginal: false,
+  },
   'ASA5506-K9': {
     legacySku: 'ASA5506-K9',
     replacementSku: 'FPR1010-NGFW-K9',
@@ -365,6 +637,227 @@ export const EOL_CATALOG_2026: Record<string, EolMappingEntry> = {
 export const EOL_MAPPING: Record<string, string> = Object.fromEntries(
   Object.entries(EOL_CATALOG_2026).map(([k, v]) => [k, v.replacementSku])
 );
+
+// ============================================================================
+// 1.1 MATRIZ CANÓNICA DE ALTERNATIVAS EOL SELECCIONABLES EN UI (CCW VALIDATED)
+// ============================================================================
+const ALT_MS_48FP: EolAlternative[] = [
+  {
+    recommendedSku: 'MS225-48FP-HW',
+    title: 'Meraki MS225-48FP (Reemplazo Directo 740W + Stack)',
+    description: 'Switch L2 Cloud Managed, 48x GigE Full PoE+ (740W budget) con Stacking físico y 4x 10G SFP+.',
+    type: 'direct_equivalent',
+  },
+  {
+    recommendedSku: 'MS130-SWITCHES:MS130-48P',
+    title: 'Meraki MS130-48P (Opción Acceso Cloud 370W)',
+    description: 'Contenedor Madre MS130-SWITCHES + Hijo MS130-48P (370W PoE+ budget), 4x 10G SFP+. Sin stacking físico.',
+    type: 'cost_effective',
+  },
+  {
+    recommendedSku: 'C9200L-48FP-4G-E',
+    title: 'Cisco Catalyst 9200L-48FP (Enterprise Full PoE 740W)',
+    description: '48 puertos Full PoE+ (740W con fuente 1KW), 4x1G uplinks con Cisco DNA Essentials.',
+    type: 'catalyst_alternative',
+  },
+];
+
+const ALT_MS_48LP: EolAlternative[] = [
+  {
+    recommendedSku: 'MS130-SWITCHES:MS130-48P',
+    title: 'Meraki MS130-48P (Reemplazo Directo Cloud 370W)',
+    description: 'Contenedor Madre MS130-SWITCHES + Hijo MS130-48P, 48x GigE PoE+ (370W), 4x 10G SFP+.',
+    type: 'direct_equivalent',
+  },
+  {
+    recommendedSku: 'MS225-48LP-HW',
+    title: 'Meraki MS225-48LP (Con Stacking Físico 370W)',
+    description: 'Switch L2 Cloud Managed 48x GigE PoE+ (370W) con Stacking físico dedicado.',
+    type: 'direct_equivalent',
+  },
+  {
+    recommendedSku: 'C9200L-48P-4G-E',
+    title: 'Cisco Catalyst 9200L-48P (Enterprise PoE+ 370W)',
+    description: '48 puertos PoE+ (370W), 4x1G uplinks con Cisco DNA Essentials.',
+    type: 'catalyst_alternative',
+  },
+];
+
+const ALT_MS_24P: EolAlternative[] = [
+  {
+    recommendedSku: 'MS130-SWITCHES:MS130-24P',
+    title: 'Meraki MS130-24P (Reemplazo Cloud 370W)',
+    description: 'Contenedor Madre MS130-SWITCHES + Hijo MS130-24P, 24x GigE PoE+ (370W), 4x 10G SFP+.',
+    type: 'direct_equivalent',
+  },
+  {
+    recommendedSku: 'MS225-24P-HW',
+    title: 'Meraki MS225-24P (Con Stacking Físico 370W)',
+    description: 'Switch L2 Cloud Managed 24x GigE PoE+ (370W) con Stacking físico dedicado.',
+    type: 'direct_equivalent',
+  },
+  {
+    recommendedSku: 'C9200L-24P-4G-E',
+    title: 'Cisco Catalyst 9200L-24P (Enterprise PoE+ 370W)',
+    description: '24 puertos PoE+ (370W), 4x1G uplinks con Cisco DNA Essentials.',
+    type: 'catalyst_alternative',
+  },
+];
+
+export const EOL_CANONICAL_MAPPING: Record<string, EolAlternative[]> = {
+  'MS210-48FP': ALT_MS_48FP,
+  'MS210-48FP-HW': ALT_MS_48FP,
+  'MS120-48FP': ALT_MS_48FP,
+  'MS120-48FP-HW': ALT_MS_48FP,
+  'MS220-48FP': ALT_MS_48FP,
+  'MS220-48FP-HW': ALT_MS_48FP,
+
+  'MS210-48LP': ALT_MS_48LP,
+  'MS210-48LP-HW': ALT_MS_48LP,
+  'MS120-48LP': ALT_MS_48LP,
+  'MS120-48LP-HW': ALT_MS_48LP,
+
+  'MS210-24P': ALT_MS_24P,
+  'MS210-24P-HW': ALT_MS_24P,
+  'MS120-24P': ALT_MS_24P,
+  'MS120-24P-HW': ALT_MS_24P,
+  'MS220-24P': ALT_MS_24P,
+  'MS220-24P-HW': ALT_MS_24P,
+
+  'WS-C2960X-24PS-L': [
+    {
+      recommendedSku: 'C9200L-24P-4G-E',
+      title: 'Catalyst 9200L 24P PoE+ (370W • 4x1G)',
+      description: '24 puertos PoE+, 4x1G uplinks con Network & DNA Essentials.',
+      type: 'direct_equivalent',
+    },
+    {
+      recommendedSku: 'C9200L-24P-4X-E',
+      title: 'Catalyst 9200L 24P PoE+ (370W • 4x10G SFP+)',
+      description: '24 puertos PoE+, 4x10G SFP+ uplinks con Network & DNA Essentials.',
+      type: 'direct_equivalent',
+    },
+    {
+      recommendedSku: 'MS130-SWITCHES:MS130-24P',
+      title: 'Meraki MS130-24P (Alternativa Cloud 370W)',
+      description: '24 puertos PoE+ (370W), 4x10G SFP+ uplinks administrado en nube Meraki.',
+      type: 'cost_effective',
+    },
+  ],
+  'WS-C2960X-48FPS-L': [
+    {
+      recommendedSku: 'C9200L-48FP-4G-E',
+      title: 'Catalyst 9200L 48P Full PoE+ (740W • 4x1G)',
+      description: '48 puertos Full PoE+ (740W con fuente 1KW), 4x1G uplinks con Network & DNA Essentials.',
+      type: 'direct_equivalent',
+    },
+    {
+      recommendedSku: 'C9200L-48P-4G-E',
+      title: 'Catalyst 9200L 48P Standard PoE+ (370W • 4x1G)',
+      description: '48 puertos PoE+ (370W), 4x1G uplinks costo-efectivo.',
+      type: 'cost_effective',
+    },
+    {
+      recommendedSku: 'MS225-48FP-HW',
+      title: 'Meraki MS225-48FP (Alternativa Cloud 740W)',
+      description: '48 puertos Full PoE+ (740W) con Stacking físico y gestión Meraki Cloud.',
+      type: 'catalyst_alternative',
+    },
+  ],
+};
+
+/**
+ * Devuelve las alternativas validadas en CCW para un SKU en EOL (si existen)
+ */
+export function getEolAlternatives(rawSku?: string): EolAlternative[] {
+  if (!rawSku) return [];
+  const clean = rawSku.trim().toUpperCase();
+  if (EOL_CANONICAL_MAPPING[clean]) {
+    return EOL_CANONICAL_MAPPING[clean];
+  }
+  const withoutHw = clean.replace(/-HW$/i, '');
+  if (EOL_CANONICAL_MAPPING[withoutHw]) {
+    return EOL_CANONICAL_MAPPING[withoutHw];
+  }
+  return [];
+}
+
+/**
+ * Sanitizador determinista anti-alucinación para cualquier SKU Cisco/Meraki antes de ir a CCW:
+ * - Elimina sufijo ilegal "-HW" en la familia MS130 y CW916x.
+ * - Corrige SKUs inexistentes alucinados (ej. "MS130-48FP-HW" o "MS130-48FP" -> no existe 48FP en MS130).
+ * - Envuelve cualquier modelo suelto MS130-xx dentro de su contenedor Madre obligatorio "MS130-SWITCHES:MS130-xx".
+ */
+export function sanitizeAndValidateCcwSku(rawSku: string): {
+  sanitizedSku: string;
+  inferredLegacyEolSku?: string;
+  correctionReason?: string;
+} {
+  const clean = (rawSku || '').trim().toUpperCase();
+  if (!clean) return { sanitizedSku: '' };
+
+  // Si ya viene en formato contenedor MS130-SWITCHES:MODELO, limpiar el modelo hijo
+  if (clean.startsWith('MS130-SWITCHES:')) {
+    const childRaw = clean.split(':')[1]?.trim().replace(/-HW$/i, '') || 'MS130-24P';
+    const validChild = childRaw.replace(/48FP|48LP/i, '48P').replace(/24FP|24LP/i, '24P').replace(/8FP|8LP/i, '8P');
+    return { sanitizedSku: `MS130-SWITCHES:${validChild}` };
+  }
+
+  // Caso crítico: IA o usuario escribió "MS130-48FP" o "MS130-48FP-HW" (No existe 48FP en MS130)
+  if (/^MS130-48FP(?:-HW)?$/i.test(clean)) {
+    return {
+      sanitizedSku: 'MS225-48FP-HW',
+      inferredLegacyEolSku: 'MS210-48FP',
+      correctionReason:
+        'En CCW no existe el modelo MS130-48FP ni lleva sufijo -HW. Se asignó MS225-48FP-HW (740W Full PoE) y se habilitaron las alternativas MS130-48P (370W) y C9200L-48FP-4G-E.',
+    };
+  }
+
+  // Caso: IA o usuario escribió "MS130-48LP(-HW)" o "MS130-24LP(-HW)" o "MS130-24FP(-HW)"
+  if (/^MS130-48LP(?:-HW)?$/i.test(clean)) {
+    return {
+      sanitizedSku: 'MS130-SWITCHES:MS130-48P',
+      inferredLegacyEolSku: 'MS210-48LP',
+      correctionReason: 'En la serie MS130 el modelo PoE+ de 48 puertas es MS130-48P (bajo contenedor Madre MS130-SWITCHES, sin -HW).',
+    };
+  }
+  if (/^MS130-24(?:FP|LP)(?:-HW)?$/i.test(clean)) {
+    return {
+      sanitizedSku: 'MS130-SWITCHES:MS130-24P',
+      inferredLegacyEolSku: 'MS210-24P',
+      correctionReason: 'En la serie MS130 el modelo PoE+ de 24 puertas es MS130-24P (bajo contenedor Madre MS130-SWITCHES, sin -HW).',
+    };
+  }
+  if (/^MS130-8(?:FP|LP)(?:-HW)?$/i.test(clean)) {
+    return {
+      sanitizedSku: 'MS130-SWITCHES:MS130-8P',
+      inferredLegacyEolSku: 'MS120-8LP',
+      correctionReason: 'En la serie MS130 el modelo compacto PoE+ es MS130-8P / MS130-8X (bajo contenedor Madre MS130-SWITCHES, sin -HW).',
+    };
+  }
+
+  // Cualquier modelo válido de la familia MS130 escrito directamente (con o sin -HW):
+  // MS130-8, MS130-8P, MS130-8X, MS130-12X, MS130-24, MS130-24P, MS130-24X, MS130-48, MS130-48P, MS130-48X, MS130R-8P
+  const ms130Match = clean.match(/^(MS130R?-(?:8|8P|8X|12X|24|24P|24X|48|48P|48X))(?:-HW)?$/i);
+  if (ms130Match) {
+    const baseMs130 = ms130Match[1].toUpperCase();
+    return {
+      sanitizedSku: `MS130-SWITCHES:${baseMs130}`,
+      correctionReason: clean.endsWith('-HW')
+        ? `La serie Meraki MS130 no lleva sufijo -HW en CCW y requiere el contenedor Madre MS130-SWITCHES -> Hijo ${baseMs130}.`
+        : undefined,
+    };
+  }
+
+  // Si es un AP Catalyst Wireless Meraki CW916x con -HW erróneo (ej. CW9164I-MR-HW -> CW9164I-MR)
+  if (/^CW91\d{2}[A-Z]*-MR-HW$/i.test(clean)) {
+    return {
+      sanitizedSku: clean.replace(/-HW$/i, ''),
+    };
+  }
+
+  return { sanitizedSku: clean };
+}
 
 // ============================================================================
 // 2. BASE DE CONOCIMIENTO DINÁMICA AUTO-APRENDIZAJE (LOCALSTORAGE / INDEXEDDB)
@@ -625,7 +1118,127 @@ function buildCatalyst8000Rule(parentSku: string, description: string): ChassisC
   };
 }
 
+/**
+ * Resuelve el SKU oficial de licencia Meraki MS130 en Cisco CCW según documentation.meraki.com:
+ * - Modelos compactos (8, 8P, 8X, 12X, R): LIC-MS130-CMPT-{years}Y (o CMPTA para Advanced)
+ * - Modelos 24 puertas (24, 24P, 24X):     LIC-MS130-24-{years}Y   (o 24A para Advanced)
+ * - Modelos 48 puertas (48, 48P, 48X):     LIC-MS130-48-{years}Y   (o 48A para Advanced)
+ */
+export function resolveMs130LicenseSku(
+  model: string,
+  termYears?: number,
+  licenseTier?: 'Essentials' | 'Advantage'
+): string {
+  const cleanModel = (model || 'MS130-24P').trim().toUpperCase().replace(/-HW$/i, '');
+  const validYears = [1, 3, 5, 7, 10].includes(Number(termYears)) ? Number(termYears) : 3;
+  const advSuffix = licenseTier === 'Advantage' ? 'A' : '';
+
+  if (cleanModel.includes('-48')) {
+    return `LIC-MS130-48${advSuffix}-${validYears}Y`;
+  }
+  if (cleanModel.includes('-24')) {
+    return `LIC-MS130-24${advSuffix}-${validYears}Y`;
+  }
+  return `LIC-MS130-CMPT${advSuffix}-${validYears}Y`;
+}
+
+function buildMerakiMs130Rule(defaultSubModel = 'MS130-24P'): ChassisConfigRule {
+  return {
+    parentSku: 'MS130-SWITCHES',
+    family: 'meraki_ms130',
+    description: 'Cloud-Native Access Switches in Mixed Port Options',
+    officialUrl: 'https://documentation.meraki.com/MS/MS_Overview_and_Specifications/MS130_Datasheet',
+    defaultSubItems: (opts) => {
+      const model = (opts.selectedModel || defaultSubModel).trim().toUpperCase().replace(/-HW$/i, '');
+      const validYears = [1, 3, 5, 7, 10].includes(Number(opts.termYears)) ? Number(opts.termYears) : 3;
+      const termMonths = validYears * 12;
+      const licSku = resolveMs130LicenseSku(model, validYears, opts.licenseTier);
+      const tierLabel = opts.licenseTier === 'Advantage' ? 'Advanced' : 'Enterprise';
+
+      return [
+        {
+          partNumber: model, // Hijo 1 (1.1): Switch físico sin -HW (ej. MS130-48P, MS130-24P, MS130-12X)
+          qtyMultiplier: 1,
+          description: `Meraki ${model} Cloud-Native Switch Hardware`,
+          category: 'network_stack',
+        },
+        {
+          partNumber: 'CAB-ACE', // Hijo 2 (1.2): Cable de poder estándar Chile 250V CEE 7/7
+          qtyMultiplier: 1,
+          description: 'AC Power Cord (Europe, Chile), CEE 7/7',
+          category: 'power_cord',
+        },
+        {
+          partNumber: licSku, // Hijo 3 (1.3): Licencia oficial Meraki MS130 (LIC-MS130-48-3Y / LIC-MS130-24-3Y / LIC-MS130-CMPT-3Y)
+          qtyMultiplier: 1,
+          durationMonths: termMonths,
+          initialTerm: termMonths,
+          billingModel: 'Prepaid Term',
+          description: `Meraki ${model} ${tierLabel} License and Support (${validYears}Y)`,
+          category: 'dna_license',
+        },
+      ];
+    },
+  };
+}
+
+function buildMerakiMs225Rule(parentSku: string, description: string): ChassisConfigRule {
+  const modelBase = parentSku.trim().toUpperCase().replace(/-HW$/i, '');
+  return {
+    parentSku: `${modelBase}-HW`,
+    family: 'meraki_ms225',
+    description,
+    officialUrl: 'https://documentation.meraki.com/MS/MS_Overview_and_Specifications/MS225_Datasheet',
+    defaultSubItems: (opts) => {
+      const validYears = [1, 3, 5, 7, 10].includes(Number(opts.termYears)) ? Number(opts.termYears) : 3;
+      const termMonths = validYears * 12;
+      return [
+        {
+          partNumber: 'CAB-ACE',
+          qtyMultiplier: opts.includeRedundantPsu ? 2 : 1,
+          description: 'AC Power Cord (Europe, Chile), CEE 7/7',
+          category: 'power_cord',
+        },
+        {
+          partNumber: `LIC-${modelBase}-${validYears}YR`,
+          qtyMultiplier: 1,
+          durationMonths: termMonths,
+          initialTerm: termMonths,
+          billingModel: 'Prepaid Term',
+          description: `Meraki ${modelBase} Enterprise License and Support (${validYears}YR)`,
+          category: 'dna_license',
+        },
+      ];
+    },
+  };
+}
+
 export const CHASSIS_RULES: Record<string, ChassisConfigRule> = {
+  // --- Contenedor Madre Meraki MS130 en CCW ---
+  'MS130-SWITCHES': buildMerakiMs130Rule('MS130-24P'),
+
+  // --- Meraki MS225 Series (Con Stacking Físico + Full PoE 740W / 370W) ---
+  'MS225-48FP-HW': buildMerakiMs225Rule(
+    'MS225-48FP-HW',
+    'Meraki MS225-48FP L2 Stck Cld-Mngd 48x GigE 740W PoE Switch'
+  ),
+  'MS225-48LP-HW': buildMerakiMs225Rule(
+    'MS225-48LP-HW',
+    'Meraki MS225-48LP L2 Stck Cld-Mngd 48x GigE 370W PoE Switch'
+  ),
+  'MS225-48-HW': buildMerakiMs225Rule(
+    'MS225-48-HW',
+    'Meraki MS225-48 L2 Stck Cld-Mngd 48x GigE Switch'
+  ),
+  'MS225-24P-HW': buildMerakiMs225Rule(
+    'MS225-24P-HW',
+    'Meraki MS225-24P L2 Stck Cld-Mngd 24x GigE 370W PoE Switch'
+  ),
+  'MS225-24-HW': buildMerakiMs225Rule(
+    'MS225-24-HW',
+    'Meraki MS225-24 L2 Stck Cld-Mngd 24x GigE Switch'
+  ),
+
   // --- Catalyst 9200L 1G Uplinks ---
   'C9200L-24P-4G-E': buildCatalyst9200Rule('C9200L-24P-4G-E', 24, 'P', '4x1G uplink'),
   'C9200L-24P-4G-A': buildCatalyst9200Rule('C9200L-24P-4G-A', 24, 'P', '4x1G uplink'),
@@ -634,6 +1247,7 @@ export const CHASSIS_RULES: Record<string, ChassisConfigRule> = {
   'C9200L-48P-4G-E': buildCatalyst9200Rule('C9200L-48P-4G-E', 48, 'P', '4x1G uplink'),
   'C9200L-48P-4G-A': buildCatalyst9200Rule('C9200L-48P-4G-A', 48, 'P', '4x1G uplink'),
   'C9200L-48FP-4G-E': buildCatalyst9200Rule('C9200L-48FP-4G-E', 48, 'FP', '4x1G uplink'),
+  'C9200L-48FP-4G-A': buildCatalyst9200Rule('C9200L-48FP-4G-A', 48, 'FP', '4x1G uplink'),
   'C9200L-48T-4G-E': buildCatalyst9200Rule('C9200L-48T-4G-E', 48, 'T', '4x1G uplink'),
   'C9200L-48T-4G-A': buildCatalyst9200Rule('C9200L-48T-4G-A', 48, 'T', '4x1G uplink'),
 
@@ -644,6 +1258,7 @@ export const CHASSIS_RULES: Record<string, ChassisConfigRule> = {
   'C9200L-48P-4X-E': buildCatalyst9200Rule('C9200L-48P-4X-E', 48, 'P', '4x10G SFP+ uplink'),
   'C9200L-48P-4X-A': buildCatalyst9200Rule('C9200L-48P-4X-A', 48, 'P', '4x10G SFP+ uplink'),
   'C9200L-48FP-4X-E': buildCatalyst9200Rule('C9200L-48FP-4X-E', 48, 'FP', '4x10G SFP+ uplink'),
+  'C9200L-48FP-4X-A': buildCatalyst9200Rule('C9200L-48FP-4X-A', 48, 'FP', '4x10G SFP+ uplink'),
   'C9200L-48T-4X-E': buildCatalyst9200Rule('C9200L-48T-4X-E', 48, 'T', '4x10G SFP+ uplink'),
 
   // --- Catalyst 9200 Modular ---
@@ -677,15 +1292,36 @@ export const CHASSIS_RULES: Record<string, ChassisConfigRule> = {
 
 /**
  * Resuelve dinámicamente una regla de ensamblaje para cualquier SKU Catalyst/Meraki/Router,
- * incluso si no está explícitamente listado en CHASSIS_RULES (ej. C9200L-24PXG-4X-E, C1200, C1300).
+ * incluyendo el contenedor compuesto "MS130-SWITCHES:MS130-48P" o cualquier modelo MS130/MS225/MS250.
  */
 export function resolveChassisRule(sku: string): ChassisConfigRule | null {
   const cleanSku = sku.trim().toUpperCase();
+
+  // 1. Contenedor compuesto Meraki MS130 ("MS130-SWITCHES:MS130-48P" o similar)
+  if (cleanSku.startsWith('MS130-SWITCHES:')) {
+    const subModel = cleanSku.split(':')[1]?.trim().replace(/-HW$/i, '') || 'MS130-24P';
+    return buildMerakiMs130Rule(subModel);
+  }
+
+  // 2. Modelo Meraki MS130 directo -> envolver en MS130-SWITCHES
+  const directMs130 = cleanSku.match(/^(MS130R?-(?:8|8P|8X|12X|24|24P|24X|48|48P|48X))(?:-HW)?$/i);
+  if (directMs130) {
+    return buildMerakiMs130Rule(directMs130[1].toUpperCase());
+  }
+
+  // 3. Regla exacta en CHASSIS_RULES
   if (CHASSIS_RULES[cleanSku]) {
     return CHASSIS_RULES[cleanSku];
   }
 
-  // Detección dinámica por patrón de familia Catalyst 9200L / 9200
+  // 4. Detección dinámica Meraki MS225 / MS250 / MS350 / MS355 (con o sin -HW)
+  const ms2xxMatch = cleanSku.match(/^(MS(?:225|250|350|355|425)-[0-9A-Z]+?)(?:-HW)?$/i);
+  if (ms2xxMatch) {
+    const baseMs = ms2xxMatch[1].toUpperCase();
+    return buildMerakiMs225Rule(`${baseMs}-HW`, `Meraki ${baseMs} Cloud Managed Switch`);
+  }
+
+  // 5. Detección dinámica por patrón de familia Catalyst 9200L / 9200
   const cat9200Match = cleanSku.match(/^(C9200L?)-(\d{2})(FP|P|T|PXG)-([0-9A-Z]+)?-?(E|A)?$/);
   if (cat9200Match) {
     const isModular = cat9200Match[1] === 'C9200';
@@ -695,7 +1331,7 @@ export function resolveChassisRule(sku: string): ChassisConfigRule | null {
     return buildCatalyst9200Rule(cleanSku, ports, poeType, cat9200Match[4] || 'Uplink', isModular);
   }
 
-  // Detección dinámica por patrón de familia Catalyst 9300 / 9300L
+  // 6. Detección dinámica por patrón de familia Catalyst 9300 / 9300L
   const cat9300Match = cleanSku.match(/^(C9300L?)-(\d{2})(PF|P|T|U|UXM)/);
   if (cat9300Match) {
     const is9300L = cat9300Match[1] === 'C9300L';
@@ -705,7 +1341,7 @@ export function resolveChassisRule(sku: string): ChassisConfigRule | null {
     return buildCatalyst9300Rule(cleanSku, ports, poeType, is9300L);
   }
 
-  // Detección dinámica Catalyst 1200 / 1300 (SMB Switches: llevan cable de poder pero NO requieren DNA)
+  // 7. Detección dinámica Catalyst 1200 / 1300 (SMB Switches: llevan cable de poder pero NO requieren DNA)
   if (cleanSku.startsWith('C1200-') || cleanSku.startsWith('C1300-')) {
     return {
       parentSku: cleanSku,
@@ -725,7 +1361,7 @@ export function resolveChassisRule(sku: string): ChassisConfigRule | null {
     };
   }
 
-  // Detección en base auto-aprendida
+  // 8. Detección en base auto-aprendida
   const learned = getLearnedCiscoSkus()[cleanSku];
   if (learned && learned.defaultSubSkus && learned.defaultSubSkus.length > 0) {
     return {
@@ -748,7 +1384,7 @@ export function resolveMerakiSubLicense(
   options: ChassisConfigOptions
 ): SubItemConfig | null {
   const clean = targetSku.trim().toUpperCase();
-  const years = [1, 3, 5, 7].includes(Number(options.termYears)) ? Number(options.termYears) : 3;
+  const years = [1, 3, 5, 7, 10].includes(Number(options.termYears)) ? Number(options.termYears) : 3;
   const months = years * 12;
   const isAdv = options.licenseTier === 'Advantage';
   const mode = options.merakiLicenseMode || 'subscription';
@@ -774,12 +1410,29 @@ export function resolveMerakiSubLicense(
     };
   }
 
-  // Switches Meraki MS (ej. MS120-24P-HW, MS130-24P-HW, MS225-24P-HW)
+  // Switches Meraki MS130 (LIC-MS130-48-3Y / LIC-MS130-24-3Y / LIC-MS130-CMPT-3Y)
+  if (clean.startsWith('MS130')) {
+    const licSku = resolveMs130LicenseSku(clean, years, options.licenseTier);
+    return {
+      partNumber: licSku,
+      qtyMultiplier: 1,
+      durationMonths: months,
+      initialTerm: months,
+      billingModel: 'Prepaid Term',
+      description: `Meraki ${clean.replace(/-HW$/i, '')} ${isAdv ? 'Advanced' : 'Enterprise'} License and Support (${years}Y)`,
+      category: 'dna_license',
+    };
+  }
+
+  // Switches Meraki MS225 / MS250 / MS350 / MS425 (LIC-MS225-48FP-3YR)
   if (clean.startsWith('MS1') || clean.startsWith('MS2') || clean.startsWith('MS3') || clean.startsWith('MS4')) {
     const modelBase = clean.replace(/-HW$/i, '');
     return {
       partNumber: `LIC-${modelBase}-${years}YR`,
       qtyMultiplier: 1,
+      durationMonths: months,
+      initialTerm: months,
+      billingModel: 'Prepaid Term',
       description: `Meraki ${modelBase} Enterprise License and Support (${years}YR)`,
       category: 'dna_license',
     };
@@ -792,6 +1445,9 @@ export function resolveMerakiSubLicense(
     return {
       partNumber: `LIC-${modelBase}-${secTier}-${years}YR`,
       qtyMultiplier: 1,
+      durationMonths: months,
+      initialTerm: months,
+      billingModel: 'Prepaid Term',
       description: `Meraki ${modelBase} ${isAdv ? 'Advanced Security' : 'Enterprise'} License (${years}YR)`,
       category: 'dna_license',
     };

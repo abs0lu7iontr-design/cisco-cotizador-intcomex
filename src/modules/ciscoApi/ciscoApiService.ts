@@ -415,7 +415,8 @@ export async function checkPsirtForProduct(
  * Consulta especificaciones detalladas de PoE mediante reglas de ingeniería Datafoundation-POE
  */
 export function resolvePoeBudgetFromSku(sku: string): PoeBudgetInfo {
-  const upper = (sku || '').trim().toUpperCase();
+  const rawUpper = (sku || '').trim().toUpperCase();
+  const upper = rawUpper.includes(':') ? rawUpper.split(':')[1].trim() : rawUpper;
 
   // Switches UPOE (802.3bt - 60W por puerto)
   if (/C9[234]00[L]?-(?:24|48)(?:U|UXM|H)/i.test(upper)) {
@@ -435,72 +436,89 @@ export function resolvePoeBudgetFromSku(sku: string): PoeBudgetInfo {
     };
   }
 
-  // Switches 48 bocas Full PoE+ (740W)
+  // Switches 48 bocas Full PoE+ (740W) - Catalyst 9200/9300 y Meraki MS225-48FP / MS250-48FP / MS350-48FP
   if (upper.includes('-48FP') || upper.includes('-48PF') || upper.includes('48FP-')) {
     const is9300 = upper.startsWith('C9300') && !upper.startsWith('C9300L');
+    const isMeraki = upper.startsWith('MS');
     return {
       partNumber: upper,
       poeSupported: true,
       maxWatts: 740,
       poePortsCount: 48,
       maxWattsPerPort: 30,
-      poeClass: 'Class 4 Full PoE+ (30W en 24 bocas / 15.4W en 48 bocas)',
+      poeClass: 'Class 4 Full PoE+ (740W Budget • 30W/port)',
       standard: '802.3at',
-      recommendedDefaultPsu: is9300 ? 'PWR-C1-1100WAC-P' : 'PWR-C5-1KWAC',
-      secondaryPsuSku: is9300 ? 'PWR-C1-1100WAC-P/2' : 'PWR-C5-1KWAC/2',
-      dualPsuMaxWatts: 1440,
-      notes: 'Presupuesto PoE+ completo de 740W con 1 fuente de 1000W/1100W.',
+      recommendedDefaultPsu: isMeraki
+        ? 'Fuente Interna 740W PoE+ Integrada'
+        : is9300
+          ? 'PWR-C1-1100WAC-P'
+          : 'PWR-C5-1KWAC',
+      secondaryPsuSku: isMeraki
+        ? undefined
+        : is9300
+          ? 'PWR-C1-1100WAC-P/2'
+          : 'PWR-C5-1KWAC/2',
+      dualPsuMaxWatts: isMeraki ? undefined : 1440,
+      notes: 'Presupuesto Full PoE+ completo de 740W.',
     };
   }
 
-  // Switches 24P / 48P PoE+ Estándar (370W / 390W)
+  // Switches 24P / 48P / 24X / 48X / 48LP PoE+ Estándar (370W)
   if (
     upper.includes('-24P') ||
     upper.includes('-48P') ||
+    upper.includes('-24X') ||
+    upper.includes('-48X') ||
+    upper.includes('-48LP') ||
     upper.includes('24PS') ||
-    upper.includes('48PS')
+    upper.includes('48PS') ||
+    upper.includes('48LPS')
   ) {
     const is48 = upper.includes('48');
     const is9300 = upper.startsWith('C9300') && !upper.startsWith('C9300L');
     const isC1200 = upper.startsWith('C1200') || upper.startsWith('C1300');
+    const isMeraki = upper.startsWith('MS');
     return {
       partNumber: upper,
       poeSupported: true,
-      maxWatts: isC1200 ? (is48 ? 375 : 195) : is48 ? 370 : 370,
+      maxWatts: isC1200 ? (is48 ? 375 : 195) : 370,
       poePortsCount: is48 ? 48 : 24,
       maxWattsPerPort: 30,
-      poeClass: 'Class 4 PoE+ (30W/port máx)',
+      poeClass: 'Class 4 PoE+ (370W Budget • 30W/port máx)',
       standard: '802.3at',
-      recommendedDefaultPsu: isC1200
-        ? 'Fuente Interna Integrada'
+      recommendedDefaultPsu: isC1200 || isMeraki
+        ? 'Fuente Interna PoE+ Integrada'
         : is9300
           ? 'PWR-C1-715WAC-P'
           : is48
             ? 'PWR-C5-1KWAC'
             : 'PWR-C5-600WAC',
-      secondaryPsuSku: isC1200
+      secondaryPsuSku: isC1200 || isMeraki
         ? undefined
         : is9300
           ? 'PWR-C1-715WAC-P/2'
           : is48
             ? 'PWR-C5-1KWAC/2'
             : 'PWR-C5-600WAC/2',
-      dualPsuMaxWatts: isC1200 ? undefined : is48 ? 1440 : 740,
-      notes: is48
-        ? 'En 48P con alta densidad de APs Wi-Fi 6/6E se sugiere fuente de 1000W o segunda fuente redundante.'
-        : 'Presupuesto PoE+ de 370W ideal para hasta 12 APs 802.3at (30W) o 24 teléfonos IP.',
+      dualPsuMaxWatts: isC1200 || isMeraki ? undefined : is48 ? 1440 : 740,
+      notes: isMeraki
+        ? `Meraki ${upper}: Presupuesto PoE+ de 370W integrado.`
+        : is48
+          ? 'En 48P con alta densidad de APs Wi-Fi 6/6E se sugiere fuente de 1000W o segunda fuente redundante.'
+          : 'Presupuesto PoE+ de 370W ideal para hasta 12 APs 802.3at (30W) o 24 teléfonos IP.',
     };
   }
 
-  // Switches Compactos 8P / 12P
-  if (/-(?:8P|12P|16P)/i.test(upper)) {
+  // Switches Compactos 8P / 8LP / 8FP / 8X / 12X / 12P
+  if (/-(?:8P|8LP|8FP|8X|12X|12P|16P)/i.test(upper)) {
+    const watts = upper.includes('12X') ? 240 : upper.includes('8FP') || upper.includes('8X') ? 120 : 67;
     return {
       partNumber: upper,
       poeSupported: true,
-      maxWatts: upper.includes('8P') ? 67 : 120,
-      poePortsCount: upper.includes('8P') ? 8 : 12,
+      maxWatts: watts,
+      poePortsCount: upper.includes('12') ? 12 : 8,
       maxWattsPerPort: 30,
-      poeClass: 'Class 4 Compact PoE+',
+      poeClass: `Class 4 Compact PoE+ (${watts}W Budget)`,
       standard: '802.3at',
       recommendedDefaultPsu: 'Fuente Interna Integrada',
     };

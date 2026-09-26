@@ -17,6 +17,7 @@ import {
   resolveMerakiSubLicense,
   checkSkuInFastTrackDb,
   normalizeCiscoDnaTermYears,
+  sanitizeAndValidateCcwSku,
   SubItemConfig,
 } from './catalogRules';
 import { FastTrackProduct } from '../fasttrack/types';
@@ -37,6 +38,7 @@ export interface CcwAssembledRow {
   notes: string;
   // Metadatos enriquecidos para vista previa en UI
   rawMentionedSku?: string;
+  resolvedChildModel?: string;
   wasReplacedFromEol?: boolean;
   eolReason?: string;
   officialCiscoUrl?: string;
@@ -44,8 +46,10 @@ export interface CcwAssembledRow {
 }
 
 /**
- * Resuelve el SKU Madre objetivo de un ítem respetando si el modelo sigue vigente en 2026
- * o si el usuario eligió mantener el SKU original, y normaliza sufijos (-E / -A / -HW).
+ * Resuelve el SKU Madre objetivo de un ítem respetando:
+ * 1) Si el ingeniero seleccionó una tarjeta de alternativa EOL en UI (`selectedEolAlternativeSku`).
+ * 2) Si el modelo está en EOL 2026 o fue corregido por `sanitizeAndValidateCcwSku`.
+ * 3) Si es un contenedor Meraki MS130 (`MS130-SWITCHES:MS130-48P`).
  */
 export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
   targetSku: string;
@@ -55,7 +59,21 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
 } {
   const tier = item.licenseTier === 'Advantage' ? 'Advantage' : 'Essentials';
   const rawSku = (item.rawMentionedSku || '').trim().toUpperCase();
-  const suggested = normalizeParentChassisSku(item.suggestedActiveSku || '', tier);
+  const eolEntry = EOL_CATALOG_2026[rawSku] || EOL_CATALOG_2026[rawSku.replace(/-HW$/i, '')];
+
+  // 1. Si el usuario eligió explícitamente una alternativa EOL en las tarjetas interactivas
+  if (item.selectedEolAlternativeSku && !item.keepOriginalSku) {
+    const chosen = normalizeParentChassisSku(item.selectedEolAlternativeSku, tier);
+    return {
+      targetSku: chosen,
+      wasReplacedFromEol: Boolean(rawSku && rawSku !== chosen),
+      eolReason: item.eolReason || eolEntry?.eolNote,
+      officialCiscoUrl: item.officialCiscoUrl || eolEntry?.officialCiscoDocUrl,
+    };
+  }
+
+  const sanitizedSuggested = sanitizeAndValidateCcwSku(item.suggestedActiveSku || '');
+  const suggested = normalizeParentChassisSku(sanitizedSuggested.sanitizedSku || item.suggestedActiveSku || '', tier);
 
   if (item.keepOriginalSku && rawSku) {
     return {
@@ -66,13 +84,27 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
     };
   }
 
-  if (rawSku && EOL_CATALOG_2026[rawSku]) {
-    const entry = EOL_CATALOG_2026[rawSku];
+  // 2. Si el SKU original está en el catálogo EOL 2026
+  if (rawSku && eolEntry) {
+    // Si suggested ya fue cambiado a una alternativa válida distinta del EOL original, respetarlo
+    const isCustomValidAlt =
+      suggested &&
+      suggested !== rawSku &&
+      suggested !== `${rawSku}-HW` &&
+      (suggested.startsWith('MS130-SWITCHES:') ||
+        suggested.startsWith('MS225-') ||
+        suggested.startsWith('C9200') ||
+        suggested.startsWith('C9300'));
+
+    const target = isCustomValidAlt
+      ? suggested
+      : normalizeParentChassisSku(eolEntry.replacementSku, tier);
+
     return {
-      targetSku: normalizeParentChassisSku(entry.replacementSku, tier),
+      targetSku: target,
       wasReplacedFromEol: true,
-      eolReason: entry.eolNote,
-      officialCiscoUrl: entry.officialCiscoDocUrl || item.officialCiscoUrl,
+      eolReason: sanitizedSuggested.correctionReason || item.eolReason || eolEntry.eolNote,
+      officialCiscoUrl: eolEntry.officialCiscoDocUrl || item.officialCiscoUrl,
     };
   }
 
@@ -80,7 +112,7 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
     return {
       targetSku: suggested,
       wasReplacedFromEol: true,
-      eolReason: item.eolReason || `Reemplazo sugerido 2026 para ${rawSku}`,
+      eolReason: sanitizedSuggested.correctionReason || item.eolReason || `Reemplazo sugerido 2026 para ${rawSku}`,
       officialCiscoUrl: item.officialCiscoUrl,
     };
   }
@@ -88,8 +120,10 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
   if (suggested) {
     return {
       targetSku: suggested,
-      wasReplacedFromEol: Boolean(item.isEol2026 && rawSku && rawSku !== suggested),
-      eolReason: item.eolReason,
+      wasReplacedFromEol: Boolean(
+        (item.isEol2026 && rawSku && rawSku !== suggested) || sanitizedSuggested.inferredLegacyEolSku
+      ),
+      eolReason: sanitizedSuggested.correctionReason || item.eolReason,
       officialCiscoUrl: item.officialCiscoUrl,
     };
   }
@@ -278,11 +312,12 @@ export async function buildAssembledCcwRows(
     const qty = item.quantity > 0 ? item.quantity : 1;
     const { targetSku, wasReplacedFromEol, eolReason, officialCiscoUrl } = resolveTargetSkuForItem(item);
 
-    const ftMatch = await checkSkuInFastTrackDb(targetSku);
+    const containerChildModel = targetSku.includes(':') ? targetSku.split(':')[1] : undefined;
+    const ftMatch = await checkSkuInFastTrackDb(containerChildModel || targetSku);
     const rule = resolveChassisRule(targetSku);
 
     if (rule) {
-      // 1. Fila MADRE (Chasis Principal)
+      // 1. Fila MADRE (Chasis Principal o Contenedor Oficial CCW como MS130-SWITCHES)
       rows.push({
         rowId: `row-${idx}-parent`,
         parentIndex: idx,
@@ -298,19 +333,21 @@ export async function buildAssembledCcwRows(
         requestedStartDate: '',
         notes: item.notes || rule.description,
         rawMentionedSku: item.rawMentionedSku,
+        resolvedChildModel: containerChildModel,
         wasReplacedFromEol,
         eolReason,
         officialCiscoUrl: officialCiscoUrl || rule.officialUrl,
         fastTrackInfo: ftMatch,
       });
 
-      // 2. Filas HIJAS consecutivas (Licencia DNA, Fuente PoE, Cable CAB-ACE, Network Stack, Stacking Kit)
+      // 2. Filas HIJAS consecutivas (Hardware MS130 / Licencia DNA o Meraki / Fuente PoE / Cable CAB-ACE / Network Stack)
       const subItems = rule.defaultSubItems({
         licenseTier: item.licenseTier || 'Essentials',
         termYears: item.termYears || 3,
         isPoe: item.isPoe ?? true,
         includeStackingKit: item.includeStacking,
         includeRedundantPsu: item.includeRedundantPsu,
+        selectedModel: containerChildModel,
       });
 
       for (let sIdx = 0; sIdx < subItems.length; sIdx++) {

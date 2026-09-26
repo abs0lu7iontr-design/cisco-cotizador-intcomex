@@ -1,9 +1,10 @@
 // ============================================================================
 // CISCO AUTOMATED v2.1 - AI MULTIMODAL BOM EXTRACTOR & MADRE-HIJO ARCHITECT
-// Prioridad #1: IA Multimodal (Gemini 3.5/3.8 Flash + OpenRouter Vision/DeepSeek).
+// Prioridad #1: IA Multimodal (Gemini 3.7 Flash para texto / 3.6 Flash -> 3.8 Flash
+// para imágenes y cascada ascendente + OpenRouter Vision/DeepSeek).
 // Analiza lenguaje natural y capturas de pantalla (Ctrl+V), estructura siempre
-// la jerarquía Madre-Hijo de Cisco CCW, verifica EOL 2026 en cisco.com y rota
-// automáticamente entre modelos y API Keys.
+// la jerarquía Madre-Hijo de Cisco CCW, evita P/N con EOL o eliminados en CCW
+// y rota automáticamente entre modelos y API Keys.
 // ============================================================================
 
 import {
@@ -16,6 +17,7 @@ import {
   EOL_CATALOG_2026,
   saveLearnedCiscoSku,
   getLearnedCiscoSkus,
+   sanitizeAndValidateCcwSku,
   CiscoProductFamily,
   SubItemConfig,
 } from './catalogRules';
@@ -23,7 +25,8 @@ import {
 export interface ExtractedRequirementItem {
   id?: string;
   rawMentionedSku?: string;
-  suggestedActiveSku?: string; // SKU Madre (Chasis Padre) vigente 2026
+  suggestedActiveSku?: string; // SKU Madre (Chasis Padre / Contenedor CCW) vigente 2026
+  selectedEolAlternativeSku?: string; // Alternativa oficial seleccionada por el ingeniero en UI
   isEol2026?: boolean;         // true solo si está obsoleto/EoS en 2026
   keepOriginalSku?: boolean;
   eolReason?: string;
@@ -55,15 +58,26 @@ export interface ExtractedRequirementResult {
 
 const SYSTEM_INSTRUCTION = `
 Eres el Arquitecto Senior de Preventa Técnica "ConfigurIAtor" de Cisco e Intcomex (Año 2026).
-Tu prioridad absoluta es comprender solicitudes en LENGUAJE NATURAL (correos, chats, requerimientos técnicos) o CAPTURAS DE PANTALLA (tablas, cotizaciones, diagramas, listas de equipos) y transformarlas en una estructura jerárquica **MADRE-HIJO (Parent-Child Assembly)** 100% compatible con Cisco Commerce Workspace (CCW).
+Tu prioridad absoluta es comprender solicitudes en LENGUAJE NATURAL (correos, chats, requerimientos técnicos) o CAPTURAS DE PANTALLA (tablas, cotizaciones, diagramas, listas de equipos) y transformarlas en una estructura jerárquica **MADRE-HIJO (Parent-Child Assembly)** 100% compatible con Cisco Commerce Workspace (CCW), sin entregar jamás Part Numbers con End-of-Sale (EOL) ni SKUs inexistentes.
 
 REGLAS OBLIGATORIAS DE ESTRUCTURA MADRE-HIJO Y PREVENTA CISCO CCW (2026):
 1. INTERPRETACIÓN DE LENGUAJE NATURAL E IMÁGENES:
-   - Analiza con precisión qué pide el cliente aunque esté escrito de forma coloquial (ej. "2 switches de 24 bocas PoE con licencia a 3 años", "necesito equipos para 40 usuarios con Wi-Fi 6 y un router de borde", o una foto/captura de una tabla de equipos).
+   - Analiza con precisión qué pide el cliente aunque esté escrito de forma coloquial (ej. "Cotizar 1 switch Meraki MS210-48FP con licencia por 3 años", "2 switches de 24 bocas PoE con licencia a 3 años", "necesito equipos para 40 usuarios con Wi-Fi 6 y un router de borde", o una foto/captura de una tabla de equipos).
    - Si en la captura de pantalla aparecen SKUs, descripciones o cantidades, extráelos TODOS sin omitir ninguno.
-2. REGLA DE ORO MADRE-HIJO (CHASIS PADRE + COMPONENTES HIJOS):
+2. PROHIBICIÓN ESTRICTA DE ALUCINACIÓN DE SKUs (REGLAS OFICIALES MERAKI & CATALYST EN CCW):
+   - **PROHIBIDO INVENTAR SKUs**: En la familia Meraki **MS130** NO existen modelos terminados en "FP" ni en "-HW" (JAMÁS devuelvas "MS130-48FP", "MS130-48FP-HW", "MS130-24FP-HW" ni "MS130-48P-HW").
+   - Los únicos modelos Meraki MS130 reales en Cisco CCW son: "MS130-8", "MS130-8P", "MS130-8X", "MS130-12X", "MS130-24", "MS130-24P", "MS130-24X", "MS130-48", "MS130-48P", "MS130-48X" (máximo 370W PoE+).
+   - Además, en Cisco CCW todo switch Meraki MS130 se ensambla bajo el contenedor Madre **"MS130-SWITCHES"** (o indícalo como "MS130-SWITCHES:MS130-48P") con sus Hijos:
+     1) Modelo Hardware (SIN "-HW"): ej. "MS130-48P" o "MS130-24P".
+     2) Cable de poder: "CAB-ACE".
+     3) Licencia por familia (con "-3Y", un solo carácter Y): "LIC-MS130-48-3Y", "LIC-MS130-24-3Y" o "LIC-MS130-CMPT-3Y".
+   - Cuando el cliente pide un switch EOL de 740W Full PoE+ como **"MS210-48FP"** o **"MS210-48FP-HW"**:
+     * Pon siempre "rawMentionedSku": "MS210-48FP" y "isEol2026": true.
+     * Su reemplazo técnico exacto 1:1 en Meraki (740W Full PoE+ y apilado físico) es **"MS225-48FP-HW"** con hijos "LIC-MS225-48FP-3YR" y "CAB-ACE".
+     * Si el cliente pide explícitamente Meraki MS130 de 48 puertos PoE (370W), usa "suggestedActiveSku": "MS130-SWITCHES:MS130-48P".
+3. REGLA DE ORO MADRE-HIJO (CHASIS PADRE + COMPONENTES HIJOS):
    - Todo equipo de hardware Cisco en CCW requiere un **SKU MADRE (suggestedActiveSku)** y sus **SUB-SKUs HIJOS (aiSubItems)** para quedar en estado VALID (Verde):
-     * Para Switches Catalyst 9200L/9200 (ej. Madre: "C9200L-24P-4G-E" o "C9200L-48P-4X-E"):
+     * Para Switches Catalyst 9200L/9200 (ej. Madre: "C9200L-24P-4G-E", "C9200L-48P-4X-E" o "C9200L-48FP-4G-E"):
        Hijos obligatorios en "aiSubItems":
        1) Licencia DNA: "C9200L-DNA-E-24-3Y" (o -A- / -48- / -5Y según corresponda), durationMonths=36, initialTerm=36, billingModel="Prepaid Term".
        2) Fuente de poder: "PWR-C5-600WAC" (para 24P), "PWR-C5-1KWAC" (para 48P/48FP) o "PWR-C5-125WAC" (para 24T/48T sin PoE).
@@ -77,18 +91,22 @@ REGLAS OBLIGATORIAS DE ESTRUCTURA MADRE-HIJO Y PREVENTA CISCO CCW (2026):
        3) Cable de poder: "CAB-TA-EU".
        4) Network Stack: "C9300-NW-E-24".
        5) Módulo Uplink (en C9300 modular): "C9300-NM-8X" y cable stack "STACK-T1-50CM".
+     * Para Switches Meraki MS225 (ej. Madre: "MS225-48FP-HW", "MS225-48LP-HW", "MS225-24P-HW"):
+       Hijos en "aiSubItems": Licencia "LIC-MS225-48FP-3YR" (durationMonths=36, initialTerm=36, billingModel="Prepaid Term") y cable "CAB-ACE".
+     * Para Switches Meraki MS130 (ej. Madre: "MS130-SWITCHES:MS130-48P" o "MS130-SWITCHES:MS130-24P"):
+       Hijos en "aiSubItems": Hardware "MS130-48P", cable "CAB-ACE" y licencia "LIC-MS130-48-3Y" (durationMonths=36, initialTerm=36, billingModel="Prepaid Term").
      * Para Switches SMB Catalyst 1200 / 1300 (ej. Madre: "C1300-24P-4G" o "C1200-24P-4G"):
-       Hijos en "aiSubItems": Cable de poder "CAB-C13-CE" (y soporte opcional "CON-SNT-...").
+       Hijos en "aiSubItems": Cable de poder "CAB-C13-CE".
      * Para Routers Catalyst 8200 / 8300 / ISR 1100 (ej. Madre: "C8200-1N-4T" o "C8300-1N1S-4T2X"):
        Hijos en "aiSubItems": Licencia DNA "DNA-C-T0-E-3Y" (durationMonths=36, initialTerm=36, billingModel="Prepaid Term"), fuente y cable "CAB-ACE".
-     * Para Access Points Meraki (ej. Madre: "MR46-HW" o "CW9164I-MR"):
-       Hijos en "aiSubItems": Licencia "LIC-MR-E" (durationMonths=36, initialTerm=36, billingModel="Prepaid Term") o "LIC-ENT-3YR".
+     * Para Access Points Meraki / Wi-Fi 6E (ej. Madre: "MR46-HW" o "CW9164I-MR"):
+       Hijos en "aiSubItems": Licencia "LIC-MR-E" o "LIC-ENT-3YR" (durationMonths=36, initialTerm=36, billingModel="Prepaid Term").
      * Para Firewalls Cisco Secure Firewall / Meraki MX (ej. Madre: "FPR1010-NGFW-K9" o "MX68-HW"):
-       Hijos en "aiSubItems": Licencia de suscripción Threat/Malware/URL ("L-FPR1010T-TMC-3Y" o "LIC-MX68-SEC-3YR", durationMonths=36, initialTerm=36, billingModel="Prepaid Term") y cable "CAB-ACE".
-3. REGLA DE VIGENCIA EOL 2026:
-   - Si el SKU mencionado SIGUE VIGENTE en 2026 (ej. C9200L-24P-4G-E, C9200L-48P-4X-E, C9300-24P-E, C1300-24P-4G, MR46-HW, C8200-1N-4T), pon "isEol2026": false y mantén ese mismo SKU en "suggestedActiveSku".
-   - Si el SKU está en End-of-Sale / EOL en 2026 (ej. WS-C2960X-24PS-L, WS-C2960X-24TS-L, WS-C3850-24P-S, CBS250, CBS350, ISR4321, ISR4331, MR33, MR42), pon "isEol2026": true y coloca su reemplazo oficial 2026 en "suggestedActiveSku".
-4. DEFAULTS DE INGENIERÍA:
+       Hijos en "aiSubItems": Licencia "L-FPR1010T-TMC-3Y" o "LIC-MX68-SEC-3YR" (durationMonths=36, initialTerm=36, billingModel="Prepaid Term") y cable "CAB-ACE".
+4. REGLA DE VIGENCIA EOL 2026:
+   - Si el SKU mencionado SIGUE VIGENTE en 2026 (ej. C9200L-24P-4G-E, C9200L-48P-4X-E, C9300-24P-E, C1300-24P-4G, MR46-HW, MS225-48FP-HW, C8200-1N-4T), pon "isEol2026": false y mantén ese mismo SKU en "suggestedActiveSku".
+   - Si el SKU está en End-of-Sale / EOL en 2026 (ej. MS210-48FP, MS210-24P, MS120-48FP, MS120-24P, WS-C2960X-24PS-L, WS-C2960X-24TS-L, WS-C3850-24P-S, CBS250, CBS350, ISR4321, ISR4331, MR33, MR42, MX64, MX84), pon "isEol2026": true, conserva el SKU original en "rawMentionedSku" (SIN "-HW" de más) y coloca su reemplazo oficial 2026 en "suggestedActiveSku".
+5. DEFAULTS DE INGENIERÍA:
    - Si no indica cantidad: quantity = 1.
    - Si no indica licencia: licenseTier = "Essentials".
    - Si no indica plazo: termYears = 3 (36 meses).
@@ -170,9 +188,12 @@ function parseSafeJsonFromText(rawText: string): ExtractedRequirementResult {
 }
 
 /**
- * Llamada resiliente a Google Gemini con cascada automática de modelos 2026:
- * Si un modelo devuelve 404 (deprecado como 2.5-flash) o 503 (alta demanda temporal en 3.8-flash),
- * prueba inmediatamente el siguiente modelo disponible con la misma API Key.
+ * Llamada resiliente a Google Gemini con cascada inteligente 2026:
+ * - Si es TEXTO (Lenguaje Natural): usa "gemini-3.7-flash" como primera opción (#1),
+ *   y si falla o excede tiempo salta a "gemini-3.6-flash" y hacia arriba ("gemini-3.8-flash").
+ * - Si incluye IMAGEN / CAPTURA DE PANTALLA: usa directamente "gemini-3.6-flash" y hacia arriba
+ *   ("gemini-3.8-flash", "gemini-3.5-flash-lite") ya que 3.7-flash no procesa visión multimodal.
+ * - Incluye AbortController por intento (8.5s) para evitar cuelgues de red.
  */
 async function callGeminiProvider(
   keyEntry: ApiKeyEntry,
@@ -180,22 +201,39 @@ async function callGeminiProvider(
   _useWebGrounding: boolean
 ): Promise<ExtractedRequirementResult> {
   const cleanKey = keyEntry.apiKey.trim();
+  const hasImage = Boolean(input.imageBase64 && input.mimeType);
 
-  // Cascada de modelos Gemini verificados con soporte de Visión + JSON en 2026
-  const modelCascade = Array.from(
-    new Set([
-      keyEntry.model === 'gemini-2.5-flash' ? 'gemini-3.5-flash' : keyEntry.model,
-      'gemini-3.5-flash',
-      'gemini-3.5-flash-lite',
-      'gemini-3.8-flash',
-      'gemini-3.1-flash-lite',
-      'gemini-flash-lite-latest',
-    ].filter(Boolean))
-  );
+  const preferredModel =
+    keyEntry.model === 'gemini-2.5-flash' || keyEntry.model === 'gemini-3.5-flash'
+      ? 'gemini-3.7-flash'
+      : keyEntry.model || 'gemini-3.7-flash';
+
+  // Cascada según si hay imagen adjunta o es solicitud en lenguaje natural (texto)
+  const modelCascade = hasImage
+    ? Array.from(
+        new Set([
+          preferredModel === 'gemini-3.7-flash' ? 'gemini-3.6-flash' : preferredModel,
+          'gemini-3.6-flash',
+          'gemini-3.8-flash',
+          'gemini-3.5-flash-lite',
+          'gemini-flash-lite-latest',
+          'gemini-3.7-flash',
+        ].filter(Boolean))
+      )
+    : Array.from(
+        new Set([
+          preferredModel,
+          'gemini-3.7-flash',
+          'gemini-3.6-flash',
+          'gemini-3.8-flash',
+          'gemini-3.5-flash-lite',
+          'gemini-flash-lite-latest',
+        ].filter(Boolean))
+      );
 
   const userPrompt = input.text?.trim()
-    ? `Analiza la siguiente solicitud comercial en lenguaje natural (y la imagen adjunta si existe). Extrae todos los equipos Cisco y genera su estructura completa Madre-Hijo (suggestedActiveSku + aiSubItems) en JSON:\n\n"${input.text.trim()}"`
-    : `Analiza minuciosamente esta captura de pantalla / imagen. Extrae todos los equipos, SKUs o requerimientos Cisco que aparezcan en la imagen y genera su estructura completa Madre-Hijo (suggestedActiveSku + aiSubItems) en JSON.`;
+    ? `Analiza la siguiente solicitud comercial en lenguaje natural (y la imagen adjunta si existe). Extrae todos los equipos Cisco, reemplaza cualquier SKU en EOL por su equivalente oficial vigente en CCW y genera su estructura completa Madre-Hijo (suggestedActiveSku + aiSubItems) en JSON:\n\n"${input.text.trim()}"`
+    : `Analiza minuciosamente esta captura de pantalla / imagen. Extrae todos los equipos, SKUs o requerimientos Cisco que aparezcan en la imagen, reemplaza cualquier SKU con EOL y genera su estructura completa Madre-Hijo (suggestedActiveSku + aiSubItems) en JSON.`;
 
   const parts: any[] = [];
   if (input.imageBase64 && input.mimeType) {
@@ -211,11 +249,15 @@ async function callGeminiProvider(
   let lastModelError = '';
 
   for (const modelName of modelCascade) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8500);
+
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(cleanKey)}`;
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           systemInstruction: {
             parts: [{ text: SYSTEM_INSTRUCTION }],
@@ -232,15 +274,16 @@ async function callGeminiProvider(
           },
         }),
       });
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const errBody = await res.text().catch(() => '');
         lastModelError = `HTTP ${res.status} (${modelName}): ${errBody.slice(0, 160)}`;
-        // Si es error de autenticación (400 API_KEY_INVALID / 401 / 403), no seguir probando modelos con la misma key
+        // Si es error de autenticación de la API Key (401/403/API_KEY_INVALID), no seguir probando modelos con la misma key
         if (res.status === 401 || res.status === 403 || errBody.includes('API_KEY_INVALID')) {
           throw new Error(lastModelError);
         }
-        // Si es 404 (modelo deprecado) o 503/429 (pico de demanda del modelo específico), probar el siguiente modelo de la cascada
+        // Si es 404, 400 por falta de visión en el modelo, o 503/429 temporal, saltar al siguiente modelo (3.6-flash -> 3.8-flash)
         continue;
       }
 
@@ -258,8 +301,16 @@ async function callGeminiProvider(
         }
       }
     } catch (err: any) {
-      lastModelError = String(err?.message || err);
-      if (lastModelError.includes('API_KEY_INVALID') || lastModelError.includes('HTTP 401') || lastModelError.includes('HTTP 403')) {
+      clearTimeout(timeoutId);
+      const isAbort = err?.name === 'AbortError' || String(err?.message || '').includes('aborted');
+      lastModelError = isAbort
+        ? `Timeout en ${modelName} (>8.5s) -> saltando al siguiente modelo Flash`
+        : String(err?.message || err);
+      if (
+        lastModelError.includes('API_KEY_INVALID') ||
+        lastModelError.includes('HTTP 401') ||
+        lastModelError.includes('HTTP 403')
+      ) {
         throw err;
       }
     }
@@ -287,7 +338,6 @@ async function tryAutoProvisionOpenRouterKey(provisioningKey: string, keyId: str
     const data: any = await createRes.json();
     const newInferenceKey = data?.key;
     if (newInferenceKey && typeof newInferenceKey === 'string') {
-      // Actualizar en el pool local para que quede guardada la Inference Key activa
       const current = loadAiSettings();
       const updated = {
         ...current,
@@ -335,7 +385,6 @@ async function callOpenAiCompatibleProvider(
     ];
   }
 
-  // Si tiene imagen y el modelo elegido en OpenRouter era solo-texto, usar openrouter/auto que soporta visión
   const effectiveModel =
     keyEntry.provider === 'openrouter' && input.imageBase64 && keyEntry.model.includes('deepseek')
       ? 'openrouter/auto'
@@ -369,7 +418,6 @@ async function callOpenAiCompatibleProvider(
 
   let res = await executeRequest(keyEntry.apiKey);
 
-  // Si OpenRouter devuelve 401 User not found porque era una Provisioning Key, auto-aprovisionar Inference Key y reintentar
   if (!res.ok && res.status === 401 && keyEntry.provider === 'openrouter') {
     const provisionedKey = await tryAutoProvisionOpenRouterKey(keyEntry.apiKey, keyEntry.id);
     if (provisionedKey) {
@@ -443,7 +491,7 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
     const includeRedundantPsu = /\bredundante\b|\bdoble\s+fuente\b/i.test(seg);
 
     let quantity = 1;
-    const qtyBeforeKeyword = seg.match(/(?:^|\bcot[ií]zame\s+|\bnecesito\s+|\brequiero\s+|\bson\s+)(\d{1,3})\s+(?:switch|equipo|ap\b|access|router|firewall|unidad|chasis|ws-|c9|mr|mx|ms|isr|cbs)/i);
+    const qtyBeforeKeyword = seg.match(/(?:^|\bcot[ií]zame\s+|\bcotizar\s+|\bnecesito\s+|\brequiero\s+|\bson\s+)(\d{1,3})\s+(?:switch|equipo|ap\b|access|router|firewall|unidad|chasis|ws-|c9|mr|mx|ms|isr|cbs)/i);
     const qtyLeading = seg.match(/^\s*(?:[-*•]\s*)?(\d{1,3})\s*(?:x\b|unid(?:ades)?|equipos?|pcs?)?\s+/i);
     if (qtyBeforeKeyword) {
       quantity = Number(qtyBeforeKeyword[1]) || 1;
@@ -455,10 +503,12 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
     if (skuMatches.length > 0) {
       for (const m of skuMatches) {
         const rawSku = m[1].toUpperCase().trim();
-        const eolInfo = EOL_CATALOG_2026[rawSku];
+        const eolInfo = EOL_CATALOG_2026[rawSku] || EOL_CATALOG_2026[rawSku.replace(/-HW$/i, '')];
         const learned = learnedSkus[rawSku];
         const isEol = eolInfo ? eolInfo.status === 'eos_eol_active' : learned ? learned.isEol : false;
-        const suggestedSku = eolInfo ? eolInfo.replacementSku : learned?.replacementSku || rawSku;
+        const rawSuggested = eolInfo ? eolInfo.replacementSku : learned?.replacementSku || rawSku;
+        const sanitized = sanitizeAndValidateCcwSku(rawSuggested);
+        const suggestedSku = sanitized.sanitizedSku;
         const isPoe = /P|FP|POE/i.test(suggestedSku) && !/24T|48T/i.test(suggestedSku);
         const ports: 8 | 16 | 24 | 48 | undefined = suggestedSku.includes('48')
           ? 48
@@ -468,10 +518,10 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
 
         extractedItems.push({
           id: `item-${Date.now()}-${idx}-${rawSku}`,
-          rawMentionedSku: rawSku,
+          rawMentionedSku: sanitized.inferredLegacyEolSku || rawSku,
           suggestedActiveSku: suggestedSku,
-          isEol2026: isEol,
-          eolReason: eolInfo?.eolNote || learned?.eolNote,
+          isEol2026: isEol || Boolean(sanitized.inferredLegacyEolSku),
+          eolReason: eolInfo?.eolNote || sanitized.correctionReason || learned?.eolNote,
           officialCiscoUrl: eolInfo?.officialCiscoDocUrl || learned?.officialUrl,
           deviceType:
             suggestedSku.startsWith('MR') || suggestedSku.startsWith('CW')
@@ -495,7 +545,7 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
       return;
     }
 
-    const mentionsSwitch = /\bswitch(?:es)?\b|\bbocas\b|\bpuertos\b|\bcatalyst\b/i.test(seg);
+    const mentionsSwitch = /\bswitch(?:es)?\b|\bbocas\b|\bpuertos\b|\bcatalyst\b|\bmeraki\s+ms\b/i.test(seg);
     const mentionsAp = /\b(?:ap|aps|access\s*points?|wifi|wi-fi|inal[aá]mbric[oa]|meraki\s+mr)\b/i.test(seg);
     const mentionsRouter = /\brouter(?:s)?\b|\bisr\b|\bwan\b|\bsucursal\b/i.test(seg);
     const mentionsFirewall = /\bfirewall(?:s)?\b|\bfirepower\b|\bngfw\b|\bmeraki\s+mx\b/i.test(seg);
@@ -508,17 +558,24 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
       const is10G = /\b10\s*g\b|\bsfp\+\b|\b4x\b/i.test(seg);
       const is9300 = /\b9300\b|\bcore\b/i.test(seg);
       const isSmb = /\bsmb\b|\becon[oó]mico\b|\bc1200\b|\bc1300\b|\bcbs\b/i.test(seg);
+      const isMerakiSwitch = /\bmeraki\b|\bms130\b|\bms225\b/i.test(seg);
 
       const tierCode = licenseTier === 'Advantage' ? 'A' : 'E';
       let suggestedSku = '';
-      if (isSmb) {
+      if (isMerakiSwitch) {
+        if (isFullPoe && ports === 48) {
+          suggestedSku = 'MS225-48FP-HW';
+        } else {
+          suggestedSku = `MS130-SWITCHES:MS130-${ports}${isPoe ? (is10G ? 'X' : 'P') : ''}`;
+        }
+      } else if (isSmb) {
         suggestedSku = `C1300-${ports}${isPoe ? 'P' : 'T'}-${is10G ? '4X' : '4G'}`;
       } else if (is9300) {
         suggestedSku = `C9300-${ports}${isPoe ? 'P' : 'T'}-${tierCode}`;
       } else {
         const poeCode = !isPoe ? 'T' : isFullPoe && ports === 48 ? 'FP' : 'P';
-        const uplinkCode = is10G ? '4X' : '4G';
-        suggestedSku = `C9200L-${ports}${poeCode}-${uplinkCode}-${tierCode}`;
+        const uplinkCode = is10G ? '10G' : '4G';
+        suggestedSku = `C9200L-${ports}${poeCode}-${uplinkCode === '10G' ? '4X' : '4G'}-${tierCode}`;
       }
 
       extractedItems.push({
@@ -591,13 +648,23 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
 /**
  * Normaliza SKUs de chasis Cisco devueltos por la IA para garantizar que calcen
  * con el catálogo oficial de Cisco CCW y activen sus sub-líneas Madre-Hijo.
+ * NUNCA agrega "-HW" a Meraki MS130 ni a Catalyst Wireless CW916x.
  */
 export function normalizeParentChassisSku(
   sku: string,
   tier: 'Essentials' | 'Advantage' = 'Essentials'
 ): string {
-  const clean = (sku || '').trim().toUpperCase();
-  if (!clean) return '';
+  const rawClean = (sku || '').trim().toUpperCase();
+  if (!rawClean) return '';
+
+  // 1. Primero pasar por el validador anti-alucinación CCW (MS130-SWITCHES, MS130 sin -HW, MS130-48FP -> MS225-48FP-HW)
+  const sanitized = sanitizeAndValidateCcwSku(rawClean);
+  const clean = sanitized.sanitizedSku;
+
+  if (clean.startsWith('MS130-SWITCHES:') || clean === 'MS130-SWITCHES') {
+    return clean;
+  }
+
   const tierCode = tier === 'Advantage' ? 'A' : 'E';
 
   // Si la IA devolvió ej. "C9200L-24P-4G" o "C9200L-48P-4X" sin el "-E" o "-A" final:
@@ -612,8 +679,11 @@ export function normalizeParentChassisSku(
   if (/^C9300L-\d{2}(?:PF|P|T)-(?:4G|4X)$/i.test(clean)) {
     return `${clean}-${tierCode}`;
   }
-  // Si es Meraki MR36/MR46/MR56/MX67/MX68 sin "-HW":
-  if (/^(?:MR[3456]\d|MX[6789]\d|MS[1234]\d{2}-[0-9A-Z]+)$/i.test(clean) && !clean.endsWith('-HW')) {
+  // Si es Meraki MR36/MR46/MR56/MX67/MX68/MS225/MS250/MS350 (EXCLUYENDO MS130 y CW916x) sin "-HW":
+  if (
+    /^(?:MR[3456]\d|MX[6789]\d|MX10\d|MS(?:210|220|225|250|350|390|410|425)-[0-9A-Z]+)$/i.test(clean) &&
+    !clean.endsWith('-HW')
+  ) {
     return `${clean}-HW`;
   }
   // Si es Firepower FPR1010/1120/1140/1150/2110/2120/2130/2140 sin "-NGFW-K9":
@@ -634,15 +704,38 @@ function postProcessExtractedResult(result: ExtractedRequirementResult): Extract
   const processedItems = (result.items || []).map((item, idx) => {
     const tier: 'Essentials' | 'Advantage' =
       item.licenseTier === 'Advantage' ? 'Advantage' : 'Essentials';
-    const rawSku = (item.rawMentionedSku || '').trim().toUpperCase();
-    let suggested = normalizeParentChassisSku(item.suggestedActiveSku || '', tier);
 
-    if (rawSku && EOL_CATALOG_2026[rawSku]) {
-      const entry = EOL_CATALOG_2026[rawSku];
-      suggested = normalizeParentChassisSku(entry.replacementSku, tier);
-      item.isEol2026 = entry.status === 'eos_eol_active';
-      item.eolReason = entry.eolNote;
-      item.officialCiscoUrl = item.officialCiscoUrl || entry.officialCiscoDocUrl;
+    let rawSku = (item.rawMentionedSku || '').trim().toUpperCase();
+    const rawSanitized = sanitizeAndValidateCcwSku(item.suggestedActiveSku || rawSku);
+
+    // Si la IA alucinó MS130-48FP-HW sin poner rawMentionedSku, rescatar el EOL original (MS210-48FP)
+    if (!rawSku && rawSanitized.inferredLegacyEolSku) {
+      rawSku = rawSanitized.inferredLegacyEolSku;
+    }
+    // Si la IA puso el mismo SKU alucinado en rawMentionedSku (ej. MS130-48FP-HW), corregirlo a MS210-48FP
+    if (/^MS130-(?:48|24)FP(?:-HW)?$/i.test(rawSku) && rawSanitized.inferredLegacyEolSku) {
+      rawSku = rawSanitized.inferredLegacyEolSku;
+    }
+
+    let suggested = normalizeParentChassisSku(rawSanitized.sanitizedSku || item.suggestedActiveSku || '', tier);
+
+    const eolLookup = EOL_CATALOG_2026[rawSku] || EOL_CATALOG_2026[rawSku.replace(/-HW$/i, '')];
+    if (rawSku && eolLookup) {
+      // Si el modelo sugerido por la IA ya es una alternativa válida (ej. MS130-SWITCHES:MS130-48P o MS225-48FP-HW), conservarlo; si no, usar replacementSku oficial
+      const isValidAlternative =
+        suggested.startsWith('MS130-SWITCHES:') ||
+        suggested.startsWith('MS225-') ||
+        suggested.startsWith('C9200') ||
+        suggested.startsWith('C9300');
+      if (!isValidAlternative || suggested === rawSku || suggested === `${rawSku}-HW`) {
+        suggested = normalizeParentChassisSku(eolLookup.replacementSku, tier);
+      }
+      item.isEol2026 = eolLookup.status === 'eos_eol_active';
+      item.eolReason = rawSanitized.correctionReason || eolLookup.eolNote;
+      item.officialCiscoUrl = item.officialCiscoUrl || eolLookup.officialCiscoDocUrl;
+    } else if (rawSanitized.correctionReason) {
+      item.isEol2026 = Boolean(rawSanitized.inferredLegacyEolSku) || item.isEol2026;
+      item.eolReason = rawSanitized.correctionReason;
     } else if (!suggested && isLooksLikeRealCiscoSku(rawSku)) {
       suggested = normalizeParentChassisSku(rawSku, tier);
     }
@@ -660,11 +753,15 @@ function postProcessExtractedResult(result: ExtractedRequirementResult): Extract
                 ? 'catalyst8000'
                 : targetToLearn.startsWith('MR')
                   ? 'meraki_mr'
-                  : targetToLearn.startsWith('MS')
-                    ? 'meraki_ms'
-                    : targetToLearn.startsWith('MX')
-                      ? 'meraki_mx'
-                      : 'generic';
+                  : targetToLearn.startsWith('MS130')
+                    ? 'meraki_ms130'
+                    : targetToLearn.startsWith('MS225')
+                      ? 'meraki_ms225'
+                      : targetToLearn.startsWith('MS')
+                        ? 'meraki_ms'
+                        : targetToLearn.startsWith('MX')
+                          ? 'meraki_mx'
+                          : 'generic';
 
       saveLearnedCiscoSku({
         sku: targetToLearn,
@@ -680,6 +777,7 @@ function postProcessExtractedResult(result: ExtractedRequirementResult): Extract
     return {
       ...item,
       id: item.id || `item-${Date.now()}-${idx}`,
+      rawMentionedSku: rawSku || item.rawMentionedSku,
       suggestedActiveSku: suggested,
       quantity: item.quantity && item.quantity > 0 ? item.quantity : 1,
       licenseTier: tier,
@@ -707,7 +805,7 @@ export async function extractBOMRequirementsFromInput(
       provider: 'gemini',
       label: 'API Key Directa',
       apiKey: explicitApiKey.trim(),
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.7-flash',
       enabled: true,
     });
   }
@@ -718,7 +816,7 @@ export async function extractBOMRequirementsFromInput(
     }
   }
 
-  // Prioridad #1: Consultar proveedores de IA en orden (Gemini -> OpenRouter -> Groq -> DeepSeek)
+  // Prioridad #1: Consultar proveedores de IA en orden (Gemini 3.7/3.6/3.8 Flash -> OpenRouter -> Groq -> DeepSeek)
   for (const keyEntry of candidateKeys) {
     try {
       let result: ExtractedRequirementResult;

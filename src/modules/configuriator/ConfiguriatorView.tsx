@@ -46,7 +46,12 @@ import {
   addApiKeyToPool,
   syncAiSettingsFromDesktopBridge,
 } from './aiProviderManager';
-import { getLearnedCiscoSkus, EOL_CATALOG_2026 } from './catalogRules';
+import {
+  getLearnedCiscoSkus,
+  EOL_CATALOG_2026,
+  getEolAlternatives,
+  sanitizeAndValidateCcwSku,
+} from './catalogRules';
 import {
   CiscoApiStatusModal,
   resolvePoeBudgetFromSku,
@@ -80,7 +85,7 @@ export const ConfiguriatorView: React.FC = () => {
   const [newProvider, setNewProvider] = useState<Exclude<AiProviderId, 'local_deterministic'>>('gemini');
   const [newKeyLabel, setNewKeyLabel] = useState<string>('');
   const [newKeyValue, setNewKeyValue] = useState<string>('');
-  const [newKeyModel, setNewKeyModel] = useState<string>('gemini-3.5-flash');
+  const [newKeyModel, setNewKeyModel] = useState<string>('gemini-3.7-flash');
 
   // Creación de BOM Manual DESACTIVADA por defecto (Prioridad #1 IA)
   const [isManualModeEnabled, setIsManualModeEnabled] = useState<boolean>(false);
@@ -216,7 +221,7 @@ export const ConfiguriatorView: React.FC = () => {
     }
   };
 
-  // Modificar parámetros de un equipo Madre en vivo (Cantidad, Tier, Plazo, Stacking, PSU Redundante, Mantener EOL)
+  // Modificar parámetros de un equipo Madre en vivo (Cantidad, Tier, Plazo, Stacking, PSU Redundante, Alternativa EOL)
   const updateParentItem = (index: number, patch: Partial<ExtractedRequirementItem>) => {
     if (!extractionResult) return;
     const nextItems = extractionResult.items.map((it, idx) => {
@@ -225,6 +230,14 @@ export const ConfiguriatorView: React.FC = () => {
       if (patch.licenseTier && updated.suggestedActiveSku) {
         if (/^(C9200L?|C9300L?)-.*-(E|A)$/i.test(updated.suggestedActiveSku)) {
           updated.suggestedActiveSku = updated.suggestedActiveSku.replace(
+            /-(E|A)$/i,
+            `-${patch.licenseTier === 'Advantage' ? 'A' : 'E'}`
+          );
+        }
+      }
+      if (patch.licenseTier && updated.selectedEolAlternativeSku) {
+        if (/^(C9200L?|C9300L?)-.*-(E|A)$/i.test(updated.selectedEolAlternativeSku)) {
+          updated.selectedEolAlternativeSku = updated.selectedEolAlternativeSku.replace(
             /-(E|A)$/i,
             `-${patch.licenseTier === 'Advantage' ? 'A' : 'E'}`
           );
@@ -251,13 +264,15 @@ export const ConfiguriatorView: React.FC = () => {
     const cleanSku = manualSkuInput.trim().toUpperCase();
     if (!cleanSku) return;
 
-    const eolEntry = EOL_CATALOG_2026[cleanSku];
+    const sanitized = sanitizeAndValidateCcwSku(cleanSku);
+    const effectiveRaw = sanitized.inferredLegacyEolSku || cleanSku;
+    const eolEntry = EOL_CATALOG_2026[effectiveRaw] || EOL_CATALOG_2026[effectiveRaw.replace(/-HW$/i, '')];
     const newItem: ExtractedRequirementItem = {
       id: `manual-${Date.now()}`,
-      rawMentionedSku: cleanSku,
-      suggestedActiveSku: eolEntry ? eolEntry.replacementSku : cleanSku,
-      isEol2026: eolEntry ? eolEntry.status === 'eos_eol_active' : false,
-      eolReason: eolEntry?.eolNote,
+      rawMentionedSku: effectiveRaw,
+      suggestedActiveSku: eolEntry ? eolEntry.replacementSku : sanitized.sanitizedSku,
+      isEol2026: eolEntry ? eolEntry.status === 'eos_eol_active' : Boolean(sanitized.inferredLegacyEolSku),
+      eolReason: sanitized.correctionReason || eolEntry?.eolNote,
       officialCiscoUrl: eolEntry?.officialCiscoDocUrl,
       deviceType:
         cleanSku.startsWith('MR') || cleanSku.startsWith('CW')
@@ -422,7 +437,7 @@ export const ConfiguriatorView: React.FC = () => {
                 ConfigurIAtor &bull; AI BOM Generator (Madre-Hijo CCW)
               </h2>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-950 text-emerald-300 border border-emerald-700/50">
-                Prioridad #1: IA Multimodal (Gemini 3.5/3.8 + OpenRouter)
+                Prioridad #1: Gemini 3.7 Flash (Texto) &bull; 3.6/3.8 Flash (Visión)
               </span>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-950/80 text-cyan-300 border border-cyan-700/40 flex items-center gap-1">
                 <Globe className="w-3 h-3" />
@@ -430,7 +445,7 @@ export const ConfiguriatorView: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Analiza solicitudes en lenguaje natural o capturas de pantalla (Ctrl + V) con IA y estructura automáticamente las filas Madre (Chasis) e Hijos (DNA, Fuente, Cable, Stack).
+              Analiza solicitudes en lenguaje natural o capturas de pantalla (Ctrl + V) con IA y estructura automáticamente las filas Madre (Chasis/Contenedor) e Hijos (Hardware, DNA/Meraki Lic, Fuente, Cable, Stack) sin P/N obsoletos.
             </p>
           </div>
         </div>
@@ -452,7 +467,7 @@ export const ConfiguriatorView: React.FC = () => {
           <div className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 flex items-center gap-2">
             <Cpu className="w-3.5 h-3.5 text-emerald-400" />
             <span>
-              Motores IA: <strong className="text-emerald-300">Gemini 3.5/3.8 + OpenRouter Activos</strong>
+              Motores IA: <strong className="text-emerald-300">Gemini 3.7 &rarr; 3.6 &rarr; 3.8 + OpenRouter</strong>
             </span>
           </div>
         </div>
@@ -469,7 +484,19 @@ export const ConfiguriatorView: React.FC = () => {
             </h3>
 
             {/* Ejemplos rápidos */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() =>
+                  setInputText(
+                    'Cotizar 1 switch Meraki MS210-48FP con licencia por 3 años'
+                  )
+                }
+                className="px-2.5 py-1 rounded-lg bg-amber-950/70 hover:bg-amber-900/80 text-[11px] text-amber-300 border border-amber-700/50 cursor-pointer transition-colors"
+                title="Cargar caso Meraki MS210-48FP (EOL -> MS225-48FP-HW / MS130-SWITCHES)"
+              >
+                Ejemplo MS210-48FP
+              </button>
               <button
                 type="button"
                 onClick={() =>
@@ -533,7 +560,7 @@ export const ConfiguriatorView: React.FC = () => {
               rows={6}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Escribe o pega aquí el correo del cliente en lenguaje natural (ej: 'Mauricio, cotízame 2 switches de 24 bocas PoE Catalyst con licencia por 3 años y 3 APs Wi-Fi 6') o presiona Ctrl + V para analizar solo un pantallazo..."
+              placeholder="Escribe o pega aquí el correo del cliente en lenguaje natural (ej: 'Cotizar 1 switch Meraki MS210-48FP con licencia por 3 años' o '2 switches de 24 bocas PoE Catalyst con licencia por 3 años') o presiona Ctrl + V para analizar un pantallazo..."
               className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 leading-relaxed resize-y"
             />
           </div>
@@ -571,7 +598,7 @@ export const ConfiguriatorView: React.FC = () => {
                   />
                   <div className="text-xs overflow-hidden">
                     <span className="font-bold text-emerald-300 block">
-                      Captura lista para análisis por Visión IA
+                      Captura lista para análisis por Visión IA (Gemini 3.6/3.8 Flash)
                     </span>
                     <span className="text-[11px] text-slate-400">
                       {pastedImage.mimeType} &bull; Puedes enviarla sola o acompañada de texto
@@ -666,7 +693,7 @@ export const ConfiguriatorView: React.FC = () => {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleAddManualItem();
                   }}
-                  placeholder="Ej. C9200L-48P-4X-E o WS-C2960X-24TS-L"
+                  placeholder="Ej. MS210-48FP, MS130-48P o C9200L-48P-4X-E"
                   className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
                 />
                 <input
@@ -762,7 +789,7 @@ export const ConfiguriatorView: React.FC = () => {
                   Esperando instrucciones en lenguaje natural o captura de pantalla (Ctrl + V).
                 </p>
                 <p className="text-[11px] text-slate-500 max-w-md mx-auto">
-                  La IA analizará tu solicitud y armará automáticamente cada equipo <strong>MADRE (Chasis)</strong> junto con sus líneas <strong>HIJO (Licencia DNA, Fuente, Cable de Poder, Network Stack)</strong>.
+                  La IA analizará tu solicitud y armará automáticamente cada equipo <strong>MADRE (Chasis/Contenedor)</strong> junto con sus líneas <strong>HIJO (Hardware, Licencia DNA/Meraki, Fuente, Cable de Poder, Network Stack)</strong>.
                 </p>
               </div>
             ) : (
@@ -771,12 +798,16 @@ export const ConfiguriatorView: React.FC = () => {
                   const parentRow = assembledRows.find((r) => r.parentIndex === idx && r.isParent);
                   const childRows = assembledRows.filter((r) => r.parentIndex === idx && !r.isParent);
                   const activeSku = parentRow?.partNumber || item.suggestedActiveSku || '';
-                  const poeInfo = resolvePoeBudgetFromSku(activeSku);
+                  const effectiveHardwareSku = parentRow?.resolvedChildModel
+                    ? `${activeSku}:${parentRow.resolvedChildModel}`
+                    : activeSku;
+                  const poeInfo = resolvePoeBudgetFromSku(effectiveHardwareSku);
                   const itemAdvisories = psirtByIndex[idx] || [];
+                  const eolAlternatives = getEolAlternatives(item.rawMentionedSku || '');
                   const hasEolAlternative = Boolean(
                     item.rawMentionedSku &&
-                      item.suggestedActiveSku &&
-                      item.rawMentionedSku.toUpperCase() !== item.suggestedActiveSku.toUpperCase()
+                      effectiveHardwareSku &&
+                      item.rawMentionedSku.toUpperCase() !== effectiveHardwareSku.toUpperCase()
                   );
 
                   return (
@@ -788,11 +819,16 @@ export const ConfiguriatorView: React.FC = () => {
                         <div className="space-y-1">
                           <div className="flex items-center flex-wrap gap-2">
                             <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/50 text-[10px] font-black uppercase">
-                              MADRE #{idx + 1} (Chasis)
+                              MADRE #{idx + 1} ({parentRow?.resolvedChildModel ? 'Contenedor CCW' : 'Chasis'})
                             </span>
                             <span className="font-mono text-sm font-black text-white">
                               {activeSku}
                             </span>
+                            {parentRow?.resolvedChildModel && (
+                              <span className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-200 border border-indigo-600/40 font-mono text-xs font-bold">
+                                &rarr; Hijo 1.1: {parentRow.resolvedChildModel}
+                              </span>
+                            )}
 
                             {/* Badge EOL vs Vigente 2026 */}
                             {parentRow?.wasReplacedFromEol ? (
@@ -851,7 +887,9 @@ export const ConfiguriatorView: React.FC = () => {
                         <div className="flex items-center gap-2 flex-wrap">
                           <button
                             type="button"
-                            onClick={() => handleAuditPsirtForItem(idx, activeSku)}
+                            onClick={() =>
+                              handleAuditPsirtForItem(idx, parentRow?.resolvedChildModel || activeSku)
+                            }
                             disabled={loadingPsirtIndex === idx}
                             className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-[11px] font-bold text-cyan-300 border border-cyan-700/50 flex items-center gap-1 cursor-pointer"
                             title="Consultar vulnerabilidades y CVEs en vivo en Cisco PSIRT openVuln API v2"
@@ -872,7 +910,7 @@ export const ConfiguriatorView: React.FC = () => {
                               title="Alternar entre el reemplazo 2026 y el SKU mencionado originalmente"
                             >
                               {item.keepOriginalSku
-                                ? `Usar Reemplazo 2026 (${item.suggestedActiveSku})`
+                                ? `Usar Reemplazo Vigente CCW`
                                 : `Mantener Original (${item.rawMentionedSku})`}
                             </button>
                           )}
@@ -887,6 +925,80 @@ export const ConfiguriatorView: React.FC = () => {
                           </button>
                         </div>
                       </div>
+
+                      {/* Tarjetas Interactivas de Alternativas Oficiales CCW cuando se detecta EOL */}
+                      {eolAlternatives.length > 0 && (
+                        <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-2">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <span className="text-[11px] font-extrabold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                              <span>
+                                EOL Detectado ({item.rawMentionedSku}) &bull; Selecciona Alternativa Oficial Vigente en CCW:
+                              </span>
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              Clic en cualquier opción para re-ensamblar Madre-Hijo en vivo
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            {eolAlternatives.map((alt) => {
+                              const isSelected =
+                                !item.keepOriginalSku &&
+                                (effectiveHardwareSku.toUpperCase() === alt.recommendedSku.toUpperCase() ||
+                                  activeSku.toUpperCase() === alt.recommendedSku.toUpperCase());
+                              const altPoe = resolvePoeBudgetFromSku(alt.recommendedSku);
+                              return (
+                                <button
+                                  key={alt.recommendedSku}
+                                  type="button"
+                                  onClick={() =>
+                                    updateParentItem(idx, {
+                                      selectedEolAlternativeSku: alt.recommendedSku,
+                                      suggestedActiveSku: alt.recommendedSku,
+                                      keepOriginalSku: false,
+                                    })
+                                  }
+                                  className={`text-left p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                                    isSelected
+                                      ? 'bg-emerald-950/50 border-emerald-500/70 shadow-md shadow-emerald-950/40'
+                                      : 'bg-slate-900/80 border-slate-800 hover:border-indigo-500/50'
+                                  }`}
+                                >
+                                  <div>
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className="font-mono text-xs font-black text-white">
+                                        {alt.recommendedSku.includes(':')
+                                          ? alt.recommendedSku.replace(':', ' → ')
+                                          : alt.recommendedSku}
+                                      </span>
+                                      {isSelected && (
+                                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase">
+                                          Activo
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[11px] font-bold text-indigo-300 mt-0.5">
+                                      {alt.title}
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                                      {alt.description}
+                                    </p>
+                                  </div>
+                                  {altPoe.poeSupported && (
+                                    <div className="flex items-center gap-1 text-[10px] font-mono text-amber-300 pt-1 border-t border-slate-800/80">
+                                      <Zap className="w-3 h-3 text-amber-400" />
+                                      <span>
+                                        Budget: {altPoe.maxWatts}W ({altPoe.standard})
+                                      </span>
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Resultados de Auditoría Cisco PSIRT openVuln API v2 */}
                       {itemAdvisories.length > 0 && (
@@ -1168,7 +1280,7 @@ export const ConfiguriatorView: React.FC = () => {
                     Pool de API Keys & Rotación Automática Multi-Proveedor
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Prioridad #1: Google Gemini (3.5/3.8 Flash Multimodal) &rarr; Respaldo #2: OpenRouter (Auto Vision / DeepSeek).
+                    Prioridad #1: Google Gemini (3.7 Flash Texto &rarr; 3.6/3.8 Flash Visión) &rarr; Respaldo #2: OpenRouter (Auto Vision / DeepSeek).
                   </p>
                 </div>
               </div>
