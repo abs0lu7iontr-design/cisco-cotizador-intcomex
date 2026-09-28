@@ -246,10 +246,13 @@ export const ConfiguriatorView: React.FC = () => {
         result.clientName = clientName;
       }
 
-      // Asegurar que respete el estándar de cable seleccionado por el usuario si la IA no detectó uno explícito distinto
+      // Prioridad #1 al cable solicitado por el cliente (en texto o foto/captura);
+      // si el cliente no especificó otro cable, usar el selector por defecto (Norma Chile/Italia CAB-IT)
       result.items = result.items.map((it) => ({
         ...it,
-        powerCordStandard: it.powerCordStandard || defaultPowerCord,
+        powerCordStandard: it.clientRequestedPowerCord
+          ? it.powerCordStandard || 'italy_chile'
+          : defaultPowerCord || 'italy_chile',
       }));
 
       setExtractionResult(result);
@@ -362,6 +365,7 @@ export const ConfiguriatorView: React.FC = () => {
       rawMentionedSku: effectiveRaw,
       suggestedActiveSku: resolvedSku,
       isEol2026: eolEntry ? eolEntry.status === 'eos_eol_active' : Boolean(sanitized.inferredLegacyEolSku),
+      isNonExistentSku: Boolean(sanitized.isNonExistentSku),
       eolReason: sanitized.correctionReason || eolEntry?.eolNote,
       officialCiscoUrl: eolEntry?.officialCiscoDocUrl,
       deviceType:
@@ -767,7 +771,7 @@ export const ConfiguriatorView: React.FC = () => {
                 value={defaultPowerCord}
                 onChange={(e) => handleGlobalPowerCordChange(e.target.value as PowerCordStandard)}
                 className="w-full bg-slate-950 border border-emerald-700/50 rounded-xl px-3 py-2 text-xs text-emerald-200 font-semibold focus:outline-none focus:border-emerald-500"
-                title="En Chile se utiliza por defecto el cable Norma Italiana/Chilena CEI 23-16 (CAB-ACA / CAB-TA-IT / MA-PWR-CORD-IT)"
+                title="En Chile se utiliza por defecto el cable Norma Italiana/Chilena CEI 23-16 (CAB-ACA / CAB-TA-IT / MA-PWR-CORD-IT). Si el cliente pide otro en texto o foto, se prioriza el del cliente."
               >
                 <option value="italy_chile">
                   🇨🇱/🇮🇹 Italia / Norma Chile (CAB-IT: CAB-ACA / CAB-TA-IT) [Defecto]
@@ -777,6 +781,12 @@ export const ConfiguriatorView: React.FC = () => {
                 </option>
                 <option value="schuko_eu">
                   🇪🇺 Schuko Europeo (CAB-ACE / CAB-TA-EU)
+                </option>
+                <option value="nema_us">
+                  🇺🇸 NEMA 5-15P USA / Americano (CAB-AC / CAB-TA-NA)
+                </option>
+                <option value="argentina_iram">
+                  🇦🇷 Argentina IRAM (CAB-ACR / CAB-TA-AR)
                 </option>
               </select>
             </div>
@@ -1054,7 +1064,7 @@ export const ConfiguriatorView: React.FC = () => {
                         : 'Cruce CCW 2026'}
                     </span>
                     <span className="text-[9px] text-slate-400 mt-1 block">
-                      Cable: {defaultPowerCord === 'italy_chile' ? '🇨🇱/🇮🇹 CAB-IT' : defaultPowerCord === 'rack_pdu' ? '🔌 PDU C13-C14' : '🇪🇺 Schuko'}
+                      Cable: {defaultPowerCord === 'italy_chile' ? '🇨🇱/🇮🇹 CAB-IT' : defaultPowerCord === 'rack_pdu' ? '🔌 PDU C13-C14' : defaultPowerCord === 'schuko_eu' ? '🇪🇺 Schuko' : defaultPowerCord === 'nema_us' ? '🇺🇸 NEMA USA' : '🇦🇷 IRAM AR'}
                     </span>
                   </div>
                 </div>
@@ -1148,7 +1158,8 @@ export const ConfiguriatorView: React.FC = () => {
                   const itemAdvisories = psirtByIndex[idx] || [];
                   const eolAlternatives = getEolAlternatives(item.rawMentionedSku || '');
                   const hasEolAlternative = Boolean(
-                    item.rawMentionedSku &&
+                    !item.isNonExistentSku &&
+                      item.rawMentionedSku &&
                       effectiveHardwareSku &&
                       item.rawMentionedSku.toUpperCase() !== effectiveHardwareSku.toUpperCase()
                   );
@@ -1170,7 +1181,7 @@ export const ConfiguriatorView: React.FC = () => {
                     item.deviceType === 'firewall' ||
                     item.deviceType === 'server_ucs';
 
-                  // Detectar si el equipo lleva cable de poder AC seleccionable (CAB-IT / PDU / Schuko)
+                  // Detectar si el equipo lleva cable de poder AC seleccionable (CAB-IT / PDU / Schuko / NEMA / IRAM)
                   const usesPowerCord =
                     !activeSku.startsWith('MR') &&
                     !activeSku.startsWith('CW91') &&
@@ -1179,7 +1190,11 @@ export const ConfiguriatorView: React.FC = () => {
                   return (
                     <div
                       key={item.id || idx}
-                      className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 hover:border-slate-700 space-y-3 transition-all"
+                      className={`p-4 rounded-xl bg-slate-950/90 border space-y-3 transition-all ${
+                        item.isNonExistentSku
+                          ? 'border-rose-600/70 hover:border-rose-500'
+                          : 'border-slate-800 hover:border-slate-700'
+                      }`}
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="space-y-1">
@@ -1196,14 +1211,34 @@ export const ConfiguriatorView: React.FC = () => {
                               </span>
                             )}
 
-                            {/* Badge EOL vs Vigente 2026 */}
-                            {parentRow?.wasReplacedFromEol ? (
+                            {/* Badge Anti-Alucinación (SKU Inexistente) vs EOL vs Vigente 2026 */}
+                            {item.isNonExistentSku ? (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-950 text-rose-200 border border-rose-500/80 flex items-center gap-1">
+                                <span>
+                                  🚫 SKU INEXISTENTE EN CCW ({item.rawMentionedSku}) &bull; Alucinación Bloqueada
+                                </span>
+                              </span>
+                            ) : parentRow?.wasReplacedFromEol ? (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 text-amber-300 border border-amber-600/40 flex items-center gap-1">
                                 <span>Reemplazo EOL 2026 (de {item.rawMentionedSku})</span>
                               </span>
                             ) : (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-600/40">
                                 Vigente 2026
+                              </span>
+                            )}
+
+                            {/* Badge Prioridad #1 cuando el cliente pidió un cable específico en texto o foto */}
+                            {item.clientRequestedPowerCord && (
+                              <span
+                                className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/60 flex items-center gap-1"
+                                title={
+                                  item.clientPowerCordLabel ||
+                                  'Cable de poder solicitado explícitamente por el cliente en lenguaje natural o imagen'
+                                }
+                              >
+                                <Plug className="w-3 h-3 text-emerald-400" />
+                                <span>Cable Solicitado por Cliente (Prioridad #1)</span>
                               </span>
                             )}
 
@@ -1252,7 +1287,13 @@ export const ConfiguriatorView: React.FC = () => {
                           </div>
 
                           {parentRow?.eolReason && (
-                            <p className="text-[11px] text-amber-300/90">↳ {parentRow.eolReason}</p>
+                            <p
+                              className={`text-[11px] font-medium ${
+                                item.isNonExistentSku ? 'text-rose-300' : 'text-amber-300/90'
+                              }`}
+                            >
+                              ↳ {parentRow.eolReason}
+                            </p>
                           )}
                         </div>
 
@@ -1299,14 +1340,30 @@ export const ConfiguriatorView: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Tarjetas Interactivas de Alternativas Oficiales CCW cuando se detecta EOL */}
+                      {/* Tarjetas Interactivas de Alternativas Oficiales CCW cuando se detecta EOL o SKU Inexistente */}
                       {eolAlternatives.length > 0 && (
-                        <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-2">
+                        <div
+                          className={`p-3 rounded-xl border space-y-2 ${
+                            item.isNonExistentSku
+                              ? 'bg-rose-950/30 border-rose-500/50'
+                              : 'bg-amber-950/20 border-amber-500/30'
+                          }`}
+                        >
                           <div className="flex items-center justify-between flex-wrap gap-2">
-                            <span className="text-[11px] font-extrabold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
-                              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                            <span
+                              className={`text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1.5 ${
+                                item.isNonExistentSku ? 'text-rose-300' : 'text-amber-300'
+                              }`}
+                            >
+                              <AlertTriangle
+                                className={`w-3.5 h-3.5 ${
+                                  item.isNonExistentSku ? 'text-rose-400' : 'text-amber-400'
+                                }`}
+                              />
                               <span>
-                                EOL Detectado ({item.rawMentionedSku}) &bull; Selecciona Alternativa Oficial Vigente en CCW:
+                                {item.isNonExistentSku
+                                  ? `SKU Inexistente Bloqueado (${item.rawMentionedSku}) • Selecciona Modelo Oficial Real en Cisco CCW:`
+                                  : `EOL Detectado (${item.rawMentionedSku}) • Selecciona Alternativa Oficial Vigente en CCW:`}
                               </span>
                             </span>
                             <span className="text-[10px] text-slate-400">
@@ -1483,7 +1540,7 @@ export const ConfiguriatorView: React.FC = () => {
                           </select>
                         </div>
 
-                        {/* IDEA 3 MODIFICADA: Selector de Enchufe por equipo (CAB-IT Norma Chile por defecto) */}
+                        {/* IDEA 3 MODIFICADA: Selector de Enchufe por equipo (CAB-IT Norma Chile por defecto o Prioridad #1 al Cliente) */}
                         {usesPowerCord && (
                           <div className="flex items-center space-x-1.5">
                             <span className="text-[11px] text-emerald-400 font-semibold">Cable:</span>
@@ -1492,14 +1549,17 @@ export const ConfiguriatorView: React.FC = () => {
                               onChange={(e) =>
                                 updateParentItem(idx, {
                                   powerCordStandard: e.target.value as PowerCordStandard,
+                                  clientRequestedPowerCord: true,
                                 })
                               }
                               className="bg-slate-900 border border-emerald-700/50 rounded-lg px-2 py-1 text-[11px] text-emerald-200 font-semibold"
-                              title="Cambiar cable de poder Hijo entre Norma Chile/Italia (CAB-IT), Rack PDU (C13-C14) o Schuko"
+                              title="Cambiar cable de poder Hijo entre Norma Chile/Italia (CAB-IT), Rack PDU (C13-C14), Schuko, NEMA USA o Argentina"
                             >
                               <option value="italy_chile">🇨🇱/🇮🇹 CAB-IT (Chile/Italia)</option>
                               <option value="rack_pdu">🔌 PDU (C13-C14 / C15)</option>
                               <option value="schuko_eu">🇪🇺 Schuko (CAB-ACE)</option>
+                              <option value="nema_us">🇺🇸 NEMA USA (CAB-AC / CAB-TA-NA)</option>
+                              <option value="argentina_iram">🇦🇷 IRAM AR (CAB-ACR / CAB-TA-AR)</option>
                             </select>
                           </div>
                         )}

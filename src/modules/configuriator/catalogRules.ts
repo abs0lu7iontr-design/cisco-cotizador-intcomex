@@ -31,8 +31,16 @@ export type CiscoProductFamily =
  * - 'italy_chile' (POR DEFECTO): Enchufe 3 patas en línea CEI 23-50 / Tipo L (CAB-ACA / CAB-TA-IT / CAB-C13-IT / MA-PWR-CORD-IT)
  * - 'rack_pdu': Cable puente para PDU en gabinete rack (CAB-C13-C14-2M / CAB-C15-CBN)
  * - 'schuko_eu': Enchufe Schuko Europeo CEE 7/7 (CAB-ACE / CAB-TA-EU)
+ * - 'nema_us': Enchufe Americano NEMA 5-15P (CAB-AC / CAB-TA-NA / MA-PWR-CORD-US)
+ * - 'argentina_iram': Enchufe Argentino IRAM 2073 (CAB-ACR / CAB-TA-AR)
+ * Si el cliente solicita explícitamente otro cable en lenguaje natural o en una foto/captura, se da PRIORIDAD #1 al solicitado por el cliente.
  */
-export type PowerCordStandard = 'italy_chile' | 'rack_pdu' | 'schuko_eu';
+export type PowerCordStandard =
+  | 'italy_chile'
+  | 'rack_pdu'
+  | 'schuko_eu'
+  | 'nema_us'
+  | 'argentina_iram';
 
 export type EolLifecycleStatus = 'eos_eol_active' | 'active_with_newer_gen' | 'current_2026';
 
@@ -1089,8 +1097,212 @@ export const EOL_CANONICAL_MAPPING: Record<string, EolAlternative[]> = {
   ],
 };
 
+// Patrones oficiales estrictos de familias reales en Cisco Commerce Workspace (CCW)
+const OFFICIAL_CISCO_SKU_PATTERNS: RegExp[] = [
+  // Catalyst 9200 / 9200L / 9200CX
+  /^C9200L-(?:24|48)(?:T|P|FP|PXG)-(?:4G|4X|2Y|8X|12X)(?:-(?:E|A))?$/i,
+  /^C9200-(?:24|48)(?:T|P|PB|PXG)(?:-(?:E|A))?$/i,
+  /^C9200CX-(?:8|12)(?:P|T|UXG)-(?:2X|2G2X)(?:-(?:E|A))?$/i,
+  // Catalyst 9300 / 9300L / 9300X / 9300LM
+  /^C9300-(?:24|48)(?:T|P|U|UXM|S|H|B)(?:-(?:E|A))?$/i,
+  /^C9300L-(?:24|48)(?:T|P|PF|UXG)-(?:4G|4X)(?:-(?:E|A))?$/i,
+  /^C9300X-(?:12|24|48)(?:Y|HX|TX)(?:-(?:E|A))?$/i,
+  /^C9300LM-(?:24|48)(?:U|UX|T)-4Y(?:-(?:E|A))?$/i,
+  // Catalyst 9400 / 9500 / 9600 Core (Solo modelos reales de fibra/chasis; NO existe C9580 ni C9500-24P-4G)
+  /^C94(?:04|07|10)R$/i,
+  /^C9500-(?:12Q|16X|24Q|24Y4C|32C|32QC|40X|48Y4C)(?:-(?:E|A))?$/i,
+  /^C9606R$/i,
+  // Catalyst 1000 / 1200 / 1300 SMB
+  /^C1000-(?:8|16|24|48)(?:T|P|FP)-(?:2G|4G|4X)-L$/i,
+  /^C1[23]00-(?:8|16|24|48)(?:T|P|FP|MGP|X)-(?:2G|4G|4X)$/i,
+  // Meraki MS Switches
+  /^(?:MS130-SWITCHES:)?MS130R?-(?:8|8P|8X|12X|24|24P|24X|48|48P|48X)$/i,
+  /^MS130-SWITCHES$/i,
+  /^MS(?:120|125|150|210|220|225|250|350|355|390)-(?:8|8P|8LP|8FP|24|24P|24X|24U|24UX|48|48LP|48FP|48P|48U|48UX|48X)(?:-HW)?$/i,
+  /^MS(?:410|425|450)-(?:12|16|32)(?:-HW)?$/i,
+  // Meraki MR / Catalyst Wireless CW Access Points
+  /^MR(?:28|30H|33|36|36H|42|44|45|46|46E|52|53|55|56|57|70|74|76|78|84|86)(?:-HW)?$/i,
+  /^CW91(?:62|63|64|66|72|76|78)[A-Z]*-(?:MR|ROW|B|A|E|Z)$/i,
+  /^C91(?:05|15|20|24|30|36)AX[IEW]-[A-Z0-9]+$/i,
+  // Meraki MX / MV
+  /^MX(?:64|64W|65|65W|67|67C|67W|68|68W|68CW|75|84|85|95|100|105|250|450)(?:-HW)?$/i,
+  /^MV(?:2|12|13|22|23|32|33|52|63|72|73|93)[A-Z0-9-]*(?:-HW)?$/i,
+  // Routers Catalyst 8200 / 8300 / 8500 & ISR 1100 / 4000
+  /^C8200L?-1N-4T$/i,
+  /^C8300-(?:1N1S|2N2S)-(?:4T2X|6T)$/i,
+  /^C8500L?-(?:12X|12X4QC|20X6C|4C8X)$/i,
+  /^C11(?:11|21|61)X?-(?:4P|8P)$/i,
+  /^ISR4(?:221|321|331|351|431|451)(?:\/K9|-K9)?$/i,
+  // Industrial Ethernet IE-3100 / IE-3200 / IE-3300 / IE-3400 (y EOL IE-2000/3000/4000)
+  /^IE-(?:2000|3000|3100|3200|3300|3400|4000)-[A-Z0-9-]+$/i,
+  // Servidores Cisco UCS C220 / C240 / C225 / C245 / UCSX
+  /^UCSC-C(?:220|240|225|245)-M(?:5|6|7|8)[A-Z0-9-]*$/i,
+  /^UCSX-(?:210C|410C|9508)-[A-Z0-9-]+$/i,
+  // Switches Data Center Nexus 9000
+  /^N9K-C9[235][0-9]{2,3}[A-Z0-9-]+$/i,
+  // Firewalls Cisco Secure Firewall FPR & ASA
+  /^FPR(?:1010|1120|1140|1150|2110|2120|2130|2140|3105|3110|3120|3130|3140|4110|4115|4125|4145)(?:-NGFW-K9|-ASA-K9)?$/i,
+  /^FPR(?:1210|1220)T-K9$/i,
+  /^ASA55(?:06|08|16|25|45|55)-[A-Z0-9-]+$/i,
+  // Colaboración Teléfonos IP & Video Salas
+  /^DP-98(?:41|51|61|71)-K9$/i,
+  /^CP-(?:7811|7821|7841|7861|8811|8841|8845|8851|8861|8865)-[A-Z0-9-]+$/i,
+  /^CS-(?:BAR-T-C-K9|BARPRO-C-K9|BRD55P-G2-K9|BRD75P-G2-K9|DESKPRO-K9|KIT-K9|KITMINI-K9|KITPLUS-K9)$/i,
+  // Transceivers / Fuentes / Cables / Licencias oficiales
+  /^(?:SFP-10G-SR-S|SFP-10G-LR-S|SFP-10G-SR|SFP-10G-LR|SFP-H10GB-CU[135]M|GLC-SX-MMD|GLC-LH-SMD|GLC-TE|GLC-SX-MM|GLC-LH-SM|GLC-T|MA-SFP-10GB-SR|MA-SFP-1GB-SX)$/i,
+  /^(?:CAB-ACA|CAB-ACE|CAB-TA-IT|CAB-TA-EU|CAB-TA-NA|CAB-TA-AR|CAB-C13-IT|CAB-C13-CE|CAB-C13-C14-2M|CAB-C15-CBN|CAB-AC|CAB-ACR|MA-PWR-CORD-IT|MA-PWR-CORD-EU|MA-PWR-CORD-US|MA-PWR-CORD-AR)$/i,
+  /^(?:PWR-C[156]-[A-Z0-9/-]+|PWR-IE[A-Z0-9=-]+|SD-IE-[A-Z0-9=-]+|C9[23]00L?-STACK-KIT|STACK-T[14]-[A-Z0-9]+|C9300-NM-[A-Z0-9]+)$/i,
+  /^(?:C9[23]00L?-DNA-[EA]-(?:24|48)-[1357]Y|C9[23]00L?-NW-[EA]-(?:24|48)|LIC-[A-Z0-9-]+|L-FPR[A-Z0-9-]+|DNA-[A-Z0-9-]+|CON-SNT[A-Z0-9-]*)$/i,
+];
+
+export interface OfficialSkuValidationResult {
+  isValidOfficialSku: boolean;
+  isNonExistentSku: boolean;
+  isKnownEolSku: boolean;
+  cleanSku: string;
+  recommendedValidSku: string;
+  reason?: string;
+  alternatives: EolAlternative[];
+}
+
 /**
- * Devuelve las alternativas validadas en CCW para un SKU en EOL (si existen)
+ * Validador estricto anti-alucinación contra el catálogo real de Cisco Commerce Workspace (CCW).
+ * Bloquea cualquier SKU inventado por el usuario o por la IA (ej. "C9580-24P-4G-E", "C9999-24P", "MS900-48P")
+ * y devuelve las alternativas reales vigentes en CCW según las características detectadas.
+ */
+export function validateOfficialCiscoSku(rawSku: string): OfficialSkuValidationResult {
+  const clean = (rawSku || '').trim().toUpperCase();
+  if (!clean) {
+    return {
+      isValidOfficialSku: false,
+      isNonExistentSku: true,
+      isKnownEolSku: false,
+      cleanSku: '',
+      recommendedValidSku: 'C9200L-24P-4G-E',
+      reason: 'SKU vacío.',
+      alternatives: [],
+    };
+  }
+
+  // 1. Verificar si está en el catálogo EOL oficial 2026
+  const eolEntry = EOL_CATALOG_2026[clean] || EOL_CATALOG_2026[clean.replace(/-HW$/i, '')];
+  if (eolEntry) {
+    return {
+      isValidOfficialSku: true,
+      isNonExistentSku: false,
+      isKnownEolSku: eolEntry.status === 'eos_eol_active',
+      cleanSku: clean,
+      recommendedValidSku: eolEntry.replacementSku,
+      reason: eolEntry.eolNote,
+      alternatives: EOL_CANONICAL_MAPPING[clean] || EOL_CANONICAL_MAPPING[clean.replace(/-HW$/i, '')] || [],
+    };
+  }
+
+  // 2. Verificar si calza con los patrones oficiales reales de Cisco CCW
+  const matchesOfficialPattern = OFFICIAL_CISCO_SKU_PATTERNS.some((rx) => rx.test(clean));
+  if (matchesOfficialPattern) {
+    return {
+      isValidOfficialSku: true,
+      isNonExistentSku: false,
+      isKnownEolSku: false,
+      cleanSku: clean,
+      recommendedValidSku: clean,
+      alternatives: [],
+    };
+  }
+
+  // 3. Si NO calza con ningún patrón oficial -> ES UN SKU INVENTADO / INEXISTENTE EN CISCO CCW
+  const is48 = clean.includes('48');
+  const isFullPoe = clean.includes('FP');
+  const isNoPoe = /-(?:24|48|8)T\b/i.test(clean);
+  const is10G = clean.includes('4X') || clean.includes('10G') || clean.includes('Y4C');
+  const tierCode = clean.endsWith('-A') ? 'A' : 'E';
+
+  // Caso especial: inventaron un modelo tipo "C9580-..." o "C9500-24P-..."
+  if (/^C9[456789]\d{2}/i.test(clean)) {
+    const recAccess = `C9200L-${is48 ? (isFullPoe ? '48FP' : '48P') : '24P'}-${is10G ? '4X' : '4G'}-${tierCode}`;
+    const rec9300 = `C9300-${is48 ? '48P' : '24P'}-${tierCode}`;
+    const recCore = `C9500-24Y4C-${tierCode}`;
+    return {
+      isValidOfficialSku: false,
+      isNonExistentSku: true,
+      isKnownEolSku: false,
+      cleanSku: clean,
+      recommendedValidSku: recAccess,
+      reason: `🚫 SKU INEXISTENTE EN CISCO CCW: El Part Number "${clean}" NO existe en el catálogo oficial de Cisco (la serie ${clean.split('-')[0]} no existe o no posee puertos de acceso RJ45 PoE). Se bloqueó la alucinación; selecciona el modelo real vigente:`,
+      alternatives: [
+        {
+          recommendedSku: recAccess,
+          title: `Catalyst ${recAccess} (Acceso PoE+ Real Vigente)`,
+          description: `Switch oficial Cisco Catalyst 9200L de ${is48 ? '48' : '24'} puertos PoE+ con uplinks ${is10G ? '4x10G' : '4x1G'}.`,
+          type: 'direct_equivalent',
+        },
+        {
+          recommendedSku: rec9300,
+          title: `Catalyst ${rec9300} (Enterprise Modular Stackable)`,
+          description: `Switch oficial Cisco Catalyst 9300 de ${is48 ? '48' : '24'} puertos PoE+ de alto rendimiento.`,
+          type: 'catalyst_alternative',
+        },
+        {
+          recommendedSku: recCore,
+          title: `Catalyst ${recCore} (Switch Core Fibra 25G/100G)`,
+          description: 'Switch Core oficial de la serie Catalyst 9500 (24 puertos SFP28 10G/25G + 4x 100G QSFP28).',
+          type: 'cost_effective',
+        },
+      ],
+    };
+  }
+
+  // Caso especial: inventaron un modelo Meraki MS inexistente
+  if (clean.startsWith('MS')) {
+    const recMeraki = is48 && isFullPoe
+      ? 'MS225-48FP-HW'
+      : `MS130-SWITCHES:MS130-${is48 ? '48' : '24'}${isNoPoe ? '' : 'P'}`;
+    return {
+      isValidOfficialSku: false,
+      isNonExistentSku: true,
+      isKnownEolSku: false,
+      cleanSku: clean,
+      recommendedValidSku: recMeraki,
+      reason: `🚫 SKU INEXISTENTE EN CISCO CCW: El modelo Meraki "${clean}" NO existe en el catálogo oficial de Cisco CCW. Se bloqueó la alucinación; selecciona el modelo real vigente:`,
+      alternatives: is48 && isFullPoe ? ALT_MS_48FP : is48 ? ALT_MS_48LP : ALT_MS_24P,
+    };
+  }
+
+  // Cualquier otro SKU inventado / desconocido
+  const fallbackValid = `C9200L-${is48 ? (isFullPoe ? '48FP' : '48P') : '24P'}-${is10G ? '4X' : '4G'}-${tierCode}`;
+  return {
+    isValidOfficialSku: false,
+    isNonExistentSku: true,
+    isKnownEolSku: false,
+    cleanSku: clean,
+    recommendedValidSku: fallbackValid,
+    reason: `🚫 SKU INEXISTENTE EN CISCO CCW: El Part Number "${clean}" NO existe en el catálogo oficial de Cisco Commerce Workspace (CCW). Se bloqueó la alucinación; selecciona una alternativa real vigente:`,
+    alternatives: [
+      {
+        recommendedSku: fallbackValid,
+        title: `Catalyst ${fallbackValid} (Equivalente Real Vigente)`,
+        description: 'Switch oficial Cisco Catalyst 9200L 100% ordenable en Cisco CCW.',
+        type: 'direct_equivalent',
+      },
+      {
+        recommendedSku: `C9300-${is48 ? '48P' : '24P'}-${tierCode}`,
+        title: `Catalyst C9300-${is48 ? '48P' : '24P'}-${tierCode} (Línea Enterprise)`,
+        description: 'Switch oficial Cisco Catalyst 9300 modular apilable.',
+        type: 'catalyst_alternative',
+      },
+      {
+        recommendedSku: `MS130-SWITCHES:MS130-${is48 ? '48P' : '24P'}`,
+        title: `Meraki MS130-${is48 ? '48P' : '24P'} (Línea Cloud Managed)`,
+        description: 'Switch oficial Meraki administrado en la nube con 4x 10G SFP+.',
+        type: 'cost_effective',
+      },
+    ],
+  };
+}
+
+/**
+ * Devuelve las alternativas validadas en CCW para un SKU en EOL o para un SKU inexistente/inventado
  */
 export function getEolAlternatives(rawSku?: string): EolAlternative[] {
   if (!rawSku) return [];
@@ -1102,13 +1314,17 @@ export function getEolAlternatives(rawSku?: string): EolAlternative[] {
   if (EOL_CANONICAL_MAPPING[withoutHw]) {
     return EOL_CANONICAL_MAPPING[withoutHw];
   }
+  const validation = validateOfficialCiscoSku(clean);
+  if (validation.isNonExistentSku && validation.alternatives.length > 0) {
+    return validation.alternatives;
+  }
   return [];
 }
 
 /**
  * Sanitizador determinista anti-alucinación para cualquier SKU Cisco/Meraki antes de ir a CCW:
  * - Elimina sufijo ilegal "-HW" en la familia MS130 y CW916x.
- * - Corrige SKUs inexistentes alucinados (ej. "MS130-48FP-HW" o "MS130-48FP" -> no existe 48FP en MS130).
+ * - Corrige SKUs inexistentes alucinados (ej. "MS130-48FP-HW", "C9580-24P-4G-E", "C9999-24P").
  * - Envuelve cualquier modelo suelto MS130-xx dentro de su contenedor Madre obligatorio "MS130-SWITCHES:MS130-xx".
  * - Reemplaza transceivers obsoletos (GLC-SX-MM -> GLC-SX-MMD, GLC-LH-SM -> GLC-LH-SMD, GLC-T -> GLC-TE).
  */
@@ -1116,6 +1332,7 @@ export function sanitizeAndValidateCcwSku(rawSku: string): {
   sanitizedSku: string;
   inferredLegacyEolSku?: string;
   correctionReason?: string;
+  isNonExistentSku?: boolean;
 } {
   const clean = (rawSku || '').trim().toUpperCase();
   if (!clean) return { sanitizedSku: '' };
@@ -1132,8 +1349,9 @@ export function sanitizeAndValidateCcwSku(rawSku: string): {
     return {
       sanitizedSku: 'MS225-48FP-HW',
       inferredLegacyEolSku: 'MS210-48FP',
+      isNonExistentSku: true,
       correctionReason:
-        'En CCW no existe el modelo MS130-48FP ni lleva sufijo -HW. Se asignó MS225-48FP-HW (740W Full PoE) y se habilitaron las alternativas MS130-48P (370W) y C9200L-48FP-4G-E.',
+        '🚫 SKU INEXISTENTE EN CCW: No existe el modelo MS130-48FP ni lleva sufijo -HW. Se asignó MS225-48FP-HW (740W Full PoE) y se habilitaron las alternativas MS130-48P (370W) y C9200L-48FP-4G-E.',
     };
   }
 
@@ -1142,6 +1360,7 @@ export function sanitizeAndValidateCcwSku(rawSku: string): {
     return {
       sanitizedSku: 'MS130-SWITCHES:MS130-48P',
       inferredLegacyEolSku: 'MS210-48LP',
+      isNonExistentSku: true,
       correctionReason: 'En la serie MS130 el modelo PoE+ de 48 puertas es MS130-48P (bajo contenedor Madre MS130-SWITCHES, sin -HW).',
     };
   }
@@ -1149,6 +1368,7 @@ export function sanitizeAndValidateCcwSku(rawSku: string): {
     return {
       sanitizedSku: 'MS130-SWITCHES:MS130-24P',
       inferredLegacyEolSku: 'MS210-24P',
+      isNonExistentSku: true,
       correctionReason: 'En la serie MS130 el modelo PoE+ de 24 puertas es MS130-24P (bajo contenedor Madre MS130-SWITCHES, sin -HW).',
     };
   }
@@ -1156,6 +1376,7 @@ export function sanitizeAndValidateCcwSku(rawSku: string): {
     return {
       sanitizedSku: 'MS130-SWITCHES:MS130-8P',
       inferredLegacyEolSku: 'MS120-8LP',
+      isNonExistentSku: true,
       correctionReason: 'En la serie MS130 el modelo compacto PoE+ es MS130-8P / MS130-8X (bajo contenedor Madre MS130-SWITCHES, sin -HW).',
     };
   }
@@ -1202,6 +1423,17 @@ export function sanitizeAndValidateCcwSku(rawSku: string): {
     };
   }
 
+  // Validación estricta contra SKUs inventados / inexistentes (ej. C9580-24P-4G-E)
+  const officialCheck = validateOfficialCiscoSku(clean);
+  if (officialCheck.isNonExistentSku) {
+    return {
+      sanitizedSku: officialCheck.recommendedValidSku,
+      inferredLegacyEolSku: clean,
+      isNonExistentSku: true,
+      correctionReason: officialCheck.reason,
+    };
+  }
+
   return { sanitizedSku: clean };
 }
 
@@ -1235,10 +1467,15 @@ export function getLearnedCiscoSkus(): Record<string, LearnedCiscoSkuRecord> {
 export function saveLearnedCiscoSku(record: LearnedCiscoSkuRecord): void {
   if (typeof localStorage === 'undefined') return;
   try {
+    const candidate = record.sku.trim().toUpperCase();
+    // NUNCA guardar un SKU inexistente/alucinado en la base de aprendizaje
+    const check = validateOfficialCiscoSku(candidate);
+    if (check.isNonExistentSku) return;
+
     const current = getLearnedCiscoSkus();
-    current[record.sku.trim().toUpperCase()] = {
+    current[candidate] = {
       ...record,
-      sku: record.sku.trim().toUpperCase(),
+      sku: candidate,
       updatedAt: new Date().toISOString(),
     };
     localStorage.setItem(DYNAMIC_SKU_STORAGE_KEY, JSON.stringify(current));
@@ -1264,8 +1501,99 @@ export function normalizeCiscoDnaTermYears(years?: number): {
 }
 
 /**
+ * Detecta con PRIORIDAD #1 si el cliente solicitó explícitamente otro cable de poder
+ * ya sea en lenguaje natural (texto) o dentro de una foto/captura de pantalla (aiSubItems / aiCordStandard).
+ * Si el cliente NO pidió un cable distinto, devuelve 'italy_chile' (CAB-IT: CAB-ACA / CAB-TA-IT / MA-PWR-CORD-IT).
+ */
+export function detectClientRequestedPowerCord(
+  rawText?: string,
+  aiSubItems?: SubItemConfig[],
+  aiCordStandard?: string
+): {
+  standard: PowerCordStandard;
+  explicitlyRequestedByClient: boolean;
+  detectedLabel?: string;
+} {
+  const text = (rawText || '').trim();
+  const subText = Array.isArray(aiSubItems)
+    ? aiSubItems.map((s) => `${s.partNumber || ''} ${s.description || ''}`).join(' ')
+    : '';
+  const combined = `${text} ${subText}`;
+
+  // 1. Revisar si en lenguaje natural o en los SKUs de la captura pidió Rack PDU (C13-C14 / C15)
+  if (
+    /\bpdu\b|\bc13-?c14\b|\bc14-?c15\b|\bcab-c13-c14\b|\bcab-c15-cbn\b|\bjumper\s+cord\b/i.test(
+      combined
+    ) ||
+    aiCordStandard === 'rack_pdu'
+  ) {
+    return {
+      standard: 'rack_pdu',
+      explicitlyRequestedByClient: true,
+      detectedLabel: 'Rack PDU (CAB-C13-C14-2M / CAB-C15-CBN) solicitado por cliente',
+    };
+  }
+
+  // 2. Revisar si pidió NEMA / Americano / USA (CAB-TA-NA / CAB-AC / MA-PWR-CORD-US)
+  if (
+    /\bnema\b|\b5-15p\b|\bamericano\b|\benchufe\s+us(?:a)?\b|\bcable\s+us(?:a)?\b|\bnorma\s+americana\b|\bcab-ta-na\b|\bcab-ac\b|\bcab-9k12a-na\b|\bma-pwr-cord-us\b|\bcab-us\b/i.test(
+      combined
+    ) ||
+    aiCordStandard === 'nema_us'
+  ) {
+    return {
+      standard: 'nema_us',
+      explicitlyRequestedByClient: true,
+      detectedLabel: 'NEMA 5-15P USA/Americano (CAB-AC / CAB-TA-NA) solicitado por cliente',
+    };
+  }
+
+  // 3. Revisar si pidió Argentina / IRAM (CAB-ACR / CAB-TA-AR)
+  if (
+    /\bargentin[oa]\b|\biram\b|\bcab-acr\b|\bcab-ta-ar\b|\bma-pwr-cord-ar\b/i.test(combined) ||
+    aiCordStandard === 'argentina_iram'
+  ) {
+    return {
+      standard: 'argentina_iram',
+      explicitlyRequestedByClient: true,
+      detectedLabel: 'Argentina IRAM (CAB-ACR / CAB-TA-AR) solicitado por cliente',
+    };
+  }
+
+  // 4. Revisar si pidió explícitamente Schuko / Europeo (CAB-ACE / CAB-TA-EU / CEE 7/7) en texto o captura
+  if (
+    /\bschuko\b|\bcee\s*7\/7\b|\bcab-ace\b|\bcab-ta-eu\b|\bcab-c13-ce\b|\bma-pwr-cord-eu\b|\beuropeo\b|\bnorma\s+europea\b/i.test(
+      combined
+    ) ||
+    aiCordStandard === 'schuko_eu'
+  ) {
+    return {
+      standard: 'schuko_eu',
+      explicitlyRequestedByClient: true,
+      detectedLabel: 'Schuko Europeo (CAB-ACE / CAB-TA-EU) solicitado por cliente',
+    };
+  }
+
+  // 5. Revisar si pidió explícitamente Italia / Norma Chile (CAB-ACA / CAB-TA-IT / CAB-IT)
+  if (/\bcab-aca\b|\bcab-ta-it\b|\bcab-c13-it\b|\bma-pwr-cord-it\b|\bcab-it\b|\bitalia\b/i.test(text)) {
+    return {
+      standard: 'italy_chile',
+      explicitlyRequestedByClient: true,
+      detectedLabel: 'Norma Chile / Italia (CAB-IT) solicitado explícitamente por cliente',
+    };
+  }
+
+  // 6. Si no solicitó otro cable distinto -> Por defecto en Chile siempre Norma Italia/Chile (CAB-IT)
+  return {
+    standard: 'italy_chile',
+    explicitlyRequestedByClient: false,
+  };
+}
+
+/**
  * Resuelve el cable de poder oficial en Cisco CCW según la norma seleccionada.
- * POR DEFECTO EN CHILE (Intcomex Chile): 'italy_chile' (CAB-IT: CAB-ACA / CAB-TA-IT / CAB-C13-IT / MA-PWR-CORD-IT).
+ * - Si el cliente solicitó otro cable en texto o captura (PDU, Schuko, NEMA USA, Argentina), se prioriza ese cable.
+ * - POR DEFECTO EN CHILE (Intcomex Chile): 'italy_chile' (CAB-IT: CAB-ACA / CAB-TA-IT / CAB-C13-IT / MA-PWR-CORD-IT).
  */
 export function resolvePowerCordSubItem(
   family: CiscoProductFamily,
@@ -1287,6 +1615,22 @@ export function resolvePowerCordSubItem(
         partNumber: 'CAB-TA-EU',
         qtyMultiplier,
         description: 'Europe AC Type A Power Cable (Schuko CEE 7/7)',
+        category: 'power_cord',
+      };
+    }
+    if (standard === 'nema_us') {
+      return {
+        partNumber: 'CAB-TA-NA',
+        qtyMultiplier,
+        description: 'North America AC Type A Power Cable (NEMA 5-15P)',
+        category: 'power_cord',
+      };
+    }
+    if (standard === 'argentina_iram') {
+      return {
+        partNumber: 'CAB-TA-AR',
+        qtyMultiplier,
+        description: 'Argentina AC Type A Power Cable (IRAM 2073)',
         category: 'power_cord',
       };
     }
@@ -1317,6 +1661,22 @@ export function resolvePowerCordSubItem(
         category: 'power_cord',
       };
     }
+    if (standard === 'nema_us') {
+      return {
+        partNumber: 'CAB-C13-CBN',
+        qtyMultiplier,
+        description: 'Power Cord North America NEMA 5-15P to C13',
+        category: 'power_cord',
+      };
+    }
+    if (standard === 'argentina_iram') {
+      return {
+        partNumber: 'CAB-ACR',
+        qtyMultiplier,
+        description: 'Power Cord Argentina IRAM 2073 to C13',
+        category: 'power_cord',
+      };
+    }
     return {
       partNumber: 'CAB-C13-IT',
       qtyMultiplier,
@@ -1343,6 +1703,22 @@ export function resolvePowerCordSubItem(
         category: 'power_cord',
       };
     }
+    if (standard === 'nema_us') {
+      return {
+        partNumber: 'MA-PWR-CORD-US',
+        qtyMultiplier,
+        description: 'Meraki AC Power Cord for US/NEMA 5-15P',
+        category: 'power_cord',
+      };
+    }
+    if (standard === 'argentina_iram') {
+      return {
+        partNumber: 'MA-PWR-CORD-AR',
+        qtyMultiplier,
+        description: 'Meraki AC Power Cord for Argentina (IRAM)',
+        category: 'power_cord',
+      };
+    }
     return {
       partNumber: 'MA-PWR-CORD-IT',
       qtyMultiplier,
@@ -1365,6 +1741,22 @@ export function resolvePowerCordSubItem(
       partNumber: 'CAB-ACE',
       qtyMultiplier,
       description: 'AC Power Cord (Europe Schuko), CEE 7/7, 1.5M',
+      category: 'power_cord',
+    };
+  }
+  if (standard === 'nema_us') {
+    return {
+      partNumber: 'CAB-AC',
+      qtyMultiplier,
+      description: 'AC Power Cord (North America NEMA 5-15P), 125V 10A, 2.5m',
+      category: 'power_cord',
+    };
+  }
+  if (standard === 'argentina_iram') {
+    return {
+      partNumber: 'CAB-ACR',
+      qtyMultiplier,
+      description: 'AC Power Cord (Argentina IRAM 2073), 10A, 250V, 2.5m',
       category: 'power_cord',
     };
   }

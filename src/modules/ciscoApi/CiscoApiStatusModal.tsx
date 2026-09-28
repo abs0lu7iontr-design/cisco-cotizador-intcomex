@@ -125,16 +125,21 @@ export const CiscoApiStatusModal: React.FC<Props> = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleInspectSku = async () => {
-    const clean = queryInput.trim();
+  const handleInspectSku = async (overrideSku?: string) => {
+    const clean = (overrideSku ?? queryInput).trim();
     if (!clean) return;
+    if (overrideSku) setQueryInput(overrideSku);
     setIsQueryingSku(true);
     setHasSearchedPsirt(true);
     try {
       const poe = resolvePoeBudgetFromSku(clean);
       setSkuPoeResult(poe);
-      const advisories = await checkPsirtForProduct(clean, 4);
-      setSkuPsirtResults(advisories);
+      if (poe.isNonExistentSku) {
+        setSkuPsirtResults([]);
+      } else {
+        const advisories = await checkPsirtForProduct(clean, 4);
+        setSkuPsirtResults(advisories);
+      }
     } finally {
       setIsQueryingSku(false);
     }
@@ -399,7 +404,7 @@ export const CiscoApiStatusModal: React.FC<Props> = ({ isOpen, onClose }) => {
               />
               <button
                 type="button"
-                onClick={handleInspectSku}
+                onClick={() => handleInspectSku()}
                 disabled={isQueryingSku}
                 className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
               >
@@ -408,44 +413,95 @@ export const CiscoApiStatusModal: React.FC<Props> = ({ isOpen, onClose }) => {
               </button>
             </div>
 
-            {/* Resultado Datafoundation-POE */}
+            {/* Resultado Datafoundation-POE / Validador Oficial CCW */}
             {skuPoeResult && (
-              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2.5">
-                  <Zap
-                    className={`w-4 h-4 ${
-                      skuPoeResult.poeSupported ? 'text-amber-400' : 'text-slate-500'
-                    }`}
-                  />
-                  <div>
-                    <span className="font-bold text-white font-mono">
-                      {skuPoeResult.partNumber}
+              <div
+                className={`p-3.5 rounded-xl border text-xs space-y-2.5 ${
+                  skuPoeResult.isNonExistentSku
+                    ? 'bg-rose-950/60 border-rose-700/80'
+                    : 'bg-slate-900/90 border-slate-800'
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    {skuPoeResult.isNonExistentSku ? (
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    ) : (
+                      <Zap
+                        className={`w-4 h-4 shrink-0 mt-0.5 ${
+                          skuPoeResult.poeSupported ? 'text-amber-400' : 'text-slate-500'
+                        }`}
+                      />
+                    )}
+                    <div>
+                      <span className="font-bold text-white font-mono">
+                        {skuPoeResult.partNumber}
+                      </span>
+                      <span className="mx-2 text-slate-600">&bull;</span>
+                      <span
+                        className={
+                          skuPoeResult.isNonExistentSku
+                            ? 'font-black text-rose-300'
+                            : 'text-slate-300'
+                        }
+                      >
+                        {skuPoeResult.poeClass}
+                      </span>
+                      {skuPoeResult.notes && (
+                        <p
+                          className={`text-[11px] mt-1 ${
+                            skuPoeResult.isNonExistentSku ? 'text-rose-200/90' : 'text-slate-400'
+                          }`}
+                        >
+                          {skuPoeResult.notes}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold ${
+                        skuPoeResult.isNonExistentSku
+                          ? 'bg-rose-900/80 text-rose-200 border border-rose-600'
+                          : skuPoeResult.poeSupported
+                            ? 'bg-amber-950/80 text-amber-300 border border-amber-700/50'
+                            : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {skuPoeResult.isNonExistentSku
+                        ? 'SKU NO EXISTE EN CCW'
+                        : skuPoeResult.poeSupported
+                          ? `PoE Budget: ${skuPoeResult.maxWatts}W (${skuPoeResult.standard})`
+                          : 'Sin PoE (0W)'}
                     </span>
-                    <span className="mx-2 text-slate-600">&bull;</span>
-                    <span className="text-slate-300">{skuPoeResult.poeClass}</span>
-                    {skuPoeResult.notes && (
-                      <p className="text-[11px] text-slate-400 mt-0.5">{skuPoeResult.notes}</p>
+                    {skuPoeResult.recommendedDefaultPsu && !skuPoeResult.isNonExistentSku && (
+                      <span className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-mono text-cyan-300">
+                        PSU: {skuPoeResult.recommendedDefaultPsu}
+                      </span>
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold ${
-                      skuPoeResult.poeSupported
-                        ? 'bg-amber-950/80 text-amber-300 border border-amber-700/50'
-                        : 'bg-slate-800 text-slate-400'
-                    }`}
-                  >
-                    {skuPoeResult.poeSupported
-                      ? `PoE Budget: ${skuPoeResult.maxWatts}W (${skuPoeResult.standard})`
-                      : 'Sin PoE (0W)'}
-                  </span>
-                  {skuPoeResult.recommendedDefaultPsu && (
-                    <span className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-mono text-cyan-300">
-                      PSU: {skuPoeResult.recommendedDefaultPsu}
-                    </span>
+
+                {skuPoeResult.isNonExistentSku &&
+                  skuPoeResult.officialAlternatives &&
+                  skuPoeResult.officialAlternatives.length > 0 && (
+                    <div className="pt-2 border-t border-rose-800/60 flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-bold text-rose-200">
+                        Alternativas Oficiales Reales en Cisco CCW:
+                      </span>
+                      {skuPoeResult.officialAlternatives.map((alt) => (
+                        <button
+                          key={alt.recommendedSku}
+                          type="button"
+                          onClick={() => handleInspectSku(alt.recommendedSku)}
+                          className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-emerald-950/70 text-emerald-300 border border-emerald-700/60 text-[11px] font-mono font-bold transition-colors cursor-pointer"
+                          title={alt.description}
+                        >
+                          Usar {alt.recommendedSku}
+                        </button>
+                      ))}
+                    </div>
                   )}
-                </div>
               </div>
             )}
 

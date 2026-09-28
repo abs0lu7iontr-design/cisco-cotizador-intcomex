@@ -48,6 +48,8 @@ export interface CcwAssembledRow {
   rawMentionedSku?: string;
   resolvedChildModel?: string;
   wasReplacedFromEol?: boolean;
+  isNonExistentSku?: boolean;
+  clientRequestedPowerCord?: boolean;
   eolReason?: string;
   officialCiscoUrl?: string;
   fastTrackInfo?: FastTrackProduct | null;
@@ -71,8 +73,8 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
   const rawSku = (item.rawMentionedSku || '').trim().toUpperCase();
   const eolEntry = EOL_CATALOG_2026[rawSku] || EOL_CATALOG_2026[rawSku.replace(/-HW$/i, '')];
 
-  // 1. Si el usuario eligió explícitamente una alternativa EOL en las tarjetas interactivas
-  if (item.selectedEolAlternativeSku && !item.keepOriginalSku) {
+  // 1. Si el usuario eligió explícitamente una alternativa EOL / Oficial en las tarjetas interactivas
+  if (item.selectedEolAlternativeSku && (!item.keepOriginalSku || item.isNonExistentSku)) {
     const chosen = normalizeParentChassisSku(item.selectedEolAlternativeSku, tier);
     return {
       targetSku: chosen,
@@ -85,7 +87,8 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
   const sanitizedSuggested = sanitizeAndValidateCcwSku(item.suggestedActiveSku || '');
   const suggested = normalizeParentChassisSku(sanitizedSuggested.sanitizedSku || item.suggestedActiveSku || '', tier);
 
-  if (item.keepOriginalSku && rawSku) {
+  // Nunca permitir mantener un SKU inventado/inexistente en CCW
+  if (item.keepOriginalSku && rawSku && !item.isNonExistentSku && !sanitizedSuggested.isNonExistentSku) {
     return {
       targetSku: rawSku,
       wasReplacedFromEol: false,
@@ -279,9 +282,9 @@ function resolveFallbackSubItems(
         let pNum = sub.partNumber.trim().toUpperCase();
         let desc = sub.description || `Sub-componente CCW (${pNum})`;
 
-        // Sincronizar cable de poder según el selector Norma Chile/Italia vs PDU vs Schuko
+        // Sincronizar cable de poder según el selector Norma Chile/Italia vs PDU vs Schuko vs NEMA USA vs Argentina
         if (
-          /^(?:CAB-ACA|CAB-ACE|CAB-TA-IT|CAB-TA-EU|CAB-C13-IT|CAB-C13-CE|CAB-C13-C14-2M|CAB-C15-CBN|MA-PWR-CORD-IT|MA-PWR-CORD-EU)$/i.test(
+          /^(?:CAB-ACA|CAB-ACE|CAB-TA-IT|CAB-TA-EU|CAB-TA-NA|CAB-TA-AR|CAB-C13-IT|CAB-C13-CE|CAB-C13-C14-2M|CAB-C15-CBN|CAB-AC|CAB-ACR|MA-PWR-CORD-IT|MA-PWR-CORD-EU|MA-PWR-CORD-US|MA-PWR-CORD-AR)$/i.test(
             pNum
           )
         ) {
@@ -436,6 +439,8 @@ export async function buildAssembledCcwRows(
         rawMentionedSku: item.rawMentionedSku,
         resolvedChildModel: containerChildModel,
         wasReplacedFromEol,
+        isNonExistentSku: Boolean(item.isNonExistentSku),
+        clientRequestedPowerCord: Boolean(item.clientRequestedPowerCord),
         eolReason,
         officialCiscoUrl: officialCiscoUrl || rule.officialUrl,
         fastTrackInfo: ftMatch,
@@ -498,6 +503,8 @@ export async function buildAssembledCcwRows(
         notes: item.notes || `Cisco Hardware (${targetSku})`,
         rawMentionedSku: item.rawMentionedSku,
         wasReplacedFromEol,
+        isNonExistentSku: Boolean(item.isNonExistentSku),
+        clientRequestedPowerCord: Boolean(item.clientRequestedPowerCord),
         eolReason,
         officialCiscoUrl,
         fastTrackInfo: ftMatch,

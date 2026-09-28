@@ -21,6 +21,7 @@ import {
   CiscoApiHealthStatus,
   CiscoSuiteDiagnosticReport,
 } from './types';
+import { validateOfficialCiscoSku } from '../configuriator/catalogRules';
 
 interface GatewayCallResult {
   success: boolean;
@@ -385,6 +386,16 @@ export function mapSkuToPsirtSearchTerm(productOrSku: string): string {
   return clean || 'Catalyst';
 }
 
+const GENERAL_FAMILY_SEARCH_TERMS = new Set([
+  'CATALYST',
+  'MERAKI',
+  'FIREPOWER',
+  'NEXUS',
+  'CISCO IOS XE',
+  'UNIFIED COMPUTING',
+  'CISCO IP PHONE',
+]);
+
 /**
  * Consulta vulnerabilidades conocidas en Cisco PSIRT openVuln API v2 (https://apix.cisco.com)
  */
@@ -393,6 +404,13 @@ export async function checkPsirtForProduct(
   maxResults = 5
 ): Promise<PsirtAdvisory[]> {
   try {
+    const cleanInput = (productNameOrSku || '').trim().toUpperCase();
+    if (!GENERAL_FAMILY_SEARCH_TERMS.has(cleanInput)) {
+      const validation = validateOfficialCiscoSku(cleanInput);
+      if (validation.isNonExistentSku) {
+        return [];
+      }
+    }
     await getCiscoAccessToken();
     const searchTerm = mapSkuToPsirtSearchTerm(productNameOrSku);
     const cleanProduct = encodeURIComponent(searchTerm);
@@ -422,10 +440,34 @@ export async function checkPsirtForProduct(
 
 /**
  * Consulta especificaciones detalladas de PoE mediante reglas de ingeniería Datafoundation-POE
+ * Incluye validación anti-alucinación contra el catálogo real de Cisco CCW.
  */
 export function resolvePoeBudgetFromSku(sku: string): PoeBudgetInfo {
   const rawUpper = (sku || '').trim().toUpperCase();
   const upper = rawUpper.includes(':') ? rawUpper.split(':')[1].trim() : rawUpper;
+
+  // 0. Validación anti-alucinación: si no es un término general de familia y el SKU no existe en Cisco CCW, bloquear
+  if (rawUpper && !GENERAL_FAMILY_SEARCH_TERMS.has(rawUpper)) {
+    const validation = validateOfficialCiscoSku(rawUpper);
+    if (validation.isNonExistentSku) {
+      return {
+        partNumber: rawUpper,
+        poeSupported: false,
+        maxWatts: 0,
+        poePortsCount: 0,
+        maxWattsPerPort: 0,
+        poeClass: '🚫 SKU INEXISTENTE EN CISCO CCW (Alucinación Bloqueada)',
+        standard: 'SKU Inexistente',
+        recommendedDefaultPsu: undefined,
+        notes:
+          validation.reason ||
+          `El Part Number "${rawUpper}" NO existe en el catálogo oficial de Cisco Commerce Workspace (CCW).`,
+        isNonExistentSku: true,
+        recommendedValidSku: validation.recommendedValidSku,
+        officialAlternatives: validation.alternatives,
+      };
+    }
+  }
 
   // Switches Industriales Cisco Catalyst IE-3300 / IE-3400 PoE+ (DIN-Rail)
   if (upper.startsWith('IE-') && upper.includes('8P')) {

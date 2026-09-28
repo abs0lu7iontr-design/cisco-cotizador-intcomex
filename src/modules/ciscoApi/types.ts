@@ -40,11 +40,20 @@ export interface PoeBudgetInfo {
   poePortsCount?: number;
   maxWattsPerPort?: number;
   poeClass?: string;
-  standard?: '802.3af' | '802.3at' | '802.3bt' | 'Universal PoE (UPOE)' | 'No PoE';
+  standard?:
+    | '802.3af'
+    | '802.3at'
+    | '802.3bt'
+    | 'Universal PoE (UPOE)'
+    | 'No PoE'
+    | 'SKU Inexistente';
   recommendedDefaultPsu?: string;
   secondaryPsuSku?: string;
   dualPsuMaxWatts?: number;
   notes?: string;
+  isNonExistentSku?: boolean;
+  recommendedValidSku?: string;
+  officialAlternatives?: { recommendedSku: string; title: string; description: string }[];
 }
 
 export interface CiscoApiHealthStatus {
