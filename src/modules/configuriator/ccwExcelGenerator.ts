@@ -2,6 +2,10 @@
 // CISCO AUTOMATED v2.1 - CCW UPLOAD EXCEL GENERATOR (10-COLUMN MADRE-HIJO)
 // Genera el archivo Excel oficial "UploadExcelTemplate" con hoja "Sheet1" y
 // orden secuencial estricto MADRE -> HIJOS para ensamblado VALID en Cisco CCW.
+// Soporta todo el portafolio Cisco & Meraki (Enterprise, Industrial IE, UCS M7,
+// Nexus DC, Seguridad FPR/MX, Colaboración DP-9800/Room Bar), cable por defecto
+// Norma Chile/Italia (CAB-IT: CAB-ACA / CAB-TA-IT / MA-PWR-CORD-IT), SmartNet
+// (CON-SNT) y transceivers SFP compatibles.
 // ============================================================================
 
 import ExcelJS from 'exceljs';
@@ -15,10 +19,14 @@ import {
   EOL_MAPPING,
   resolveChassisRule,
   resolveMerakiSubLicense,
+  resolvePowerCordSubItem,
+  resolveSmartNetSubItem,
+  estimateReferencePriceUsd,
   checkSkuInFastTrackDb,
   normalizeCiscoDnaTermYears,
   sanitizeAndValidateCcwSku,
   SubItemConfig,
+  PowerCordStandard,
 } from './catalogRules';
 import { FastTrackProduct } from '../fasttrack/types';
 
@@ -43,13 +51,15 @@ export interface CcwAssembledRow {
   eolReason?: string;
   officialCiscoUrl?: string;
   fastTrackInfo?: FastTrackProduct | null;
+  estimatedUnitListUsd?: number;
+  estimatedTotalListUsd?: number;
 }
 
 /**
  * Resuelve el SKU Madre objetivo de un ítem respetando:
  * 1) Si el ingeniero seleccionó una tarjeta de alternativa EOL en UI (`selectedEolAlternativeSku`).
  * 2) Si el modelo está en EOL 2026 o fue corregido por `sanitizeAndValidateCcwSku`.
- * 3) Si es un contenedor Meraki MS130 (`MS130-SWITCHES:MS130-48P`).
+ * 3) Si es un contenedor Meraki MS130 (`MS130-SWITCHES:MS130-48P`) o cualquier línea Cisco vigente.
  */
 export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
   targetSku: string;
@@ -86,7 +96,6 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
 
   // 2. Si el SKU original está en el catálogo EOL 2026
   if (rawSku && eolEntry) {
-    // Si suggested ya fue cambiado a una alternativa válida distinta del EOL original, respetarlo
     const isCustomValidAlt =
       suggested &&
       suggested !== rawSku &&
@@ -94,7 +103,16 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
       (suggested.startsWith('MS130-SWITCHES:') ||
         suggested.startsWith('MS225-') ||
         suggested.startsWith('C9200') ||
-        suggested.startsWith('C9300'));
+        suggested.startsWith('C9300') ||
+        suggested.startsWith('C1200') ||
+        suggested.startsWith('C1300') ||
+        suggested.startsWith('IE-3') ||
+        suggested.startsWith('UCSC-C2') ||
+        suggested.startsWith('N9K-') ||
+        suggested.startsWith('FPR') ||
+        suggested.startsWith('MX') ||
+        suggested.startsWith('DP-98') ||
+        suggested.startsWith('CS-BAR'));
 
     const target = isCustomValidAlt
       ? suggested
@@ -133,6 +151,42 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
       targetSku: normalizeParentChassisSku(rawSku, tier),
       wasReplacedFromEol: false,
       officialCiscoUrl: item.officialCiscoUrl,
+    };
+  }
+
+  if (item.deviceType === 'industrial_switch') {
+    return {
+      targetSku: item.isPoe === false ? 'IE-3300-8T2S-E' : 'IE-3300-8P2S-E',
+      wasReplacedFromEol: false,
+      officialCiscoUrl:
+        'https://www.cisco.com/c/en/us/products/switches/catalyst-ie3300-rugged-series/index.html',
+    };
+  }
+
+  if (item.deviceType === 'server_ucs') {
+    return {
+      targetSku: 'UCSC-C220-M7S',
+      wasReplacedFromEol: false,
+      officialCiscoUrl:
+        'https://www.cisco.com/c/en/us/products/servers-unified-computing/ucs-c220-m7-rack-server/index.html',
+    };
+  }
+
+  if (item.deviceType === 'nexus_dc') {
+    return {
+      targetSku: 'N9K-C93180YC-FX3',
+      wasReplacedFromEol: false,
+      officialCiscoUrl:
+        'https://www.cisco.com/c/en/us/products/switches/nexus-9000-series-switches/index.html',
+    };
+  }
+
+  if (item.deviceType === 'collaboration') {
+    return {
+      targetSku: 'DP-9851-K9',
+      wasReplacedFromEol: false,
+      officialCiscoUrl:
+        'https://www.cisco.com/c/en/us/products/collaboration-endpoints/desk-phone-9800-series/index.html',
     };
   }
 
@@ -183,40 +237,68 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
 /**
  * Garantiza que cualquier equipo Cisco que no esté en CHASSIS_RULES ni Meraki
  * aún tenga sus sub-líneas Hijo (de la IA o de ingeniería por familia) para
- * que NUNCA falle la estructura Madre-Hijo.
+ * que NUNCA falle la estructura Madre-Hijo, respetando Norma Chile/Italia (CAB-IT).
  */
 function resolveFallbackSubItems(
   targetSku: string,
   item: ExtractedRequirementItem,
-  merakiLicenseMode: 'coterm' | 'subscription'
+  merakiLicenseMode: 'coterm' | 'subscription',
+  defaultPowerCordStandard: PowerCordStandard = 'italy_chile'
 ): SubItemConfig[] {
+  const effectiveMerakiMode = item.merakiLicenseMode || merakiLicenseMode;
+  const cordStd = item.powerCordStandard || defaultPowerCordStandard || 'italy_chile';
+
   // 1. Verificar si es Meraki (MR, CW-MR, MS, MX)
   const merakiSub = resolveMerakiSubLicense(targetSku, {
     licenseTier: item.licenseTier || 'Essentials',
     termYears: item.termYears || 3,
-    merakiLicenseMode,
+    merakiLicenseMode: effectiveMerakiMode,
   });
   if (merakiSub) {
-    return [merakiSub];
+    const subs: SubItemConfig[] = [merakiSub];
+    if (targetSku.startsWith('MS') || targetSku.startsWith('MX')) {
+      subs.push(resolvePowerCordSubItem('meraki_ms', cordStd));
+    }
+    return subs;
   }
 
-  // 2. Si la IA ya estructuró los aiSubItems (Hijos), ajustarlos dinámicamente al plazo/tier seleccionado
+  // 2. Si la IA ya estructuró los aiSubItems (Hijos), ajustarlos dinámicamente al plazo/tier/enchufe seleccionado
   if (Array.isArray(item.aiSubItems) && item.aiSubItems.length > 0) {
     const { skuSuffixYear, months } = normalizeCiscoDnaTermYears(item.termYears);
     const tierCode = item.licenseTier === 'Advantage' ? 'A' : 'E';
+    const isC9300 = targetSku.startsWith('C9300');
+    const isC1200Or1300 = targetSku.startsWith('C1200') || targetSku.startsWith('C1300');
+    const resolvedCord = resolvePowerCordSubItem(
+      isC9300 ? 'catalyst9300' : isC1200Or1300 ? 'catalyst1200_1300' : 'catalyst9200',
+      cordStd
+    );
 
-    return item.aiSubItems
+    const mappedSubs: SubItemConfig[] = item.aiSubItems
       .filter((sub) => sub && sub.partNumber && sub.partNumber.trim().toUpperCase() !== targetSku)
       .map((sub) => {
         let pNum = sub.partNumber.trim().toUpperCase();
+        let desc = sub.description || `Sub-componente CCW (${pNum})`;
+
+        // Sincronizar cable de poder según el selector Norma Chile/Italia vs PDU vs Schuko
+        if (
+          /^(?:CAB-ACA|CAB-ACE|CAB-TA-IT|CAB-TA-EU|CAB-C13-IT|CAB-C13-CE|CAB-C13-C14-2M|CAB-C15-CBN|MA-PWR-CORD-IT|MA-PWR-CORD-EU)$/i.test(
+            pNum
+          )
+        ) {
+          pNum = resolvedCord.partNumber;
+          desc = resolvedCord.description;
+        }
+
         const isDnaOrLic =
           pNum.includes('-DNA-') ||
           pNum.startsWith('DNA-') ||
           pNum.startsWith('LIC-') ||
           pNum.startsWith('L-FPR') ||
+          pNum.startsWith('DC-') ||
+          pNum.startsWith('DCN-') ||
+          pNum.startsWith('IE3') ||
           Boolean(sub.durationMonths);
 
-        // Sincronizar tier y años si el usuario cambió los selectores en la UI
         if (pNum.includes('-DNA-')) {
           pNum = pNum
             .replace(/-DNA-(E|A)-/i, `-DNA-${tierCode}-`)
@@ -231,18 +313,32 @@ function resolveFallbackSubItems(
           durationMonths: isDnaOrLic ? months : undefined,
           initialTerm: isDnaOrLic ? months : undefined,
           billingModel: isDnaOrLic ? sub.billingModel || 'Prepaid Term' : undefined,
-          description: sub.description || `Sub-componente CCW (${pNum})`,
+          description: desc,
         };
       });
+
+    if (item.includeSmartNet && !mappedSubs.some((s) => s.partNumber.startsWith('CON-SNT'))) {
+      const sntSub = resolveSmartNetSubItem(targetSku, {
+        licenseTier: item.licenseTier || 'Essentials',
+        termYears: item.termYears || 3,
+        includeSmartNet: true,
+        smartNetLevel: item.smartNetLevel || '8x5xNBD',
+      });
+      if (sntSub) mappedSubs.push(sntSub);
+    }
+
+    return mappedSubs;
   }
 
-  // 3. Fallback universal por tipo de dispositivo para que siempre exista Madre-Hijo
+  // 3. Fallback universal por tipo de dispositivo para que siempre exista Madre-Hijo con cable Norma Chile/Italia
   const { skuSuffixYear, months } = normalizeCiscoDnaTermYears(item.termYears);
   const tierCode = item.licenseTier === 'Advantage' ? 'A' : 'E';
+  const cordItem = resolvePowerCordSubItem('catalyst9200', cordStd);
+  const baseSubs: SubItemConfig[] = [];
 
   if (targetSku.startsWith('FPR') || item.deviceType === 'firewall') {
     const baseFpr = targetSku.split('-')[0] || 'FPR1010';
-    return [
+    baseSubs.push(
       {
         partNumber: `L-${baseFpr}T-TMC-${skuSuffixYear}Y`,
         qtyMultiplier: 1,
@@ -251,16 +347,10 @@ function resolveFallbackSubItems(
         billingModel: 'Prepaid Term',
         description: `Cisco Secure Firewall ${baseFpr} Threat, Malware & URL License (${skuSuffixYear}Y)`,
       },
-      {
-        partNumber: 'CAB-ACE',
-        qtyMultiplier: 1,
-        description: 'AC Power Cord (Europe/Chile), CEE 7/7, 1.5M',
-      },
-    ];
-  }
-
-  if (targetSku.startsWith('CW91') || item.deviceType === 'access_point') {
-    return [
+      cordItem
+    );
+  } else if (targetSku.startsWith('CW91') || item.deviceType === 'access_point') {
+    baseSubs.push(
       {
         partNumber: `DNA-E-${skuSuffixYear}Y`,
         qtyMultiplier: 1,
@@ -273,12 +363,10 @@ function resolveFallbackSubItems(
         partNumber: 'AIR-AP-BRACKET-2',
         qtyMultiplier: 1,
         description: 'Cisco AP Universal Mounting Bracket',
-      },
-    ];
-  }
-
-  if (targetSku.startsWith('ISR') || targetSku.startsWith('C11') || item.deviceType === 'router') {
-    return [
+      }
+    );
+  } else if (targetSku.startsWith('ISR') || targetSku.startsWith('C11') || item.deviceType === 'router') {
+    baseSubs.push(
       {
         partNumber: `DNA-C-T0-${tierCode}-${skuSuffixYear}Y`,
         qtyMultiplier: 1,
@@ -287,15 +375,21 @@ function resolveFallbackSubItems(
         billingModel: 'Prepaid Term',
         description: `Cisco DNA Subscription for Router (${skuSuffixYear}Y)`,
       },
-      {
-        partNumber: 'CAB-ACE',
-        qtyMultiplier: 1,
-        description: 'AC Power Cord (Europe/Chile), CEE 7/7, 1.5M',
-      },
-    ];
+      cordItem
+    );
   }
 
-  return [];
+  if (item.includeSmartNet) {
+    const sntSub = resolveSmartNetSubItem(targetSku, {
+      licenseTier: item.licenseTier || 'Essentials',
+      termYears: item.termYears || 3,
+      includeSmartNet: true,
+      smartNetLevel: item.smartNetLevel || '8x5xNBD',
+    });
+    if (sntSub) baseSubs.push(sntSub);
+  }
+
+  return baseSubs;
 }
 
 /**
@@ -303,7 +397,8 @@ function resolveFallbackSubItems(
  */
 export async function buildAssembledCcwRows(
   req: ExtractedRequirementResult,
-  merakiLicenseMode: 'coterm' | 'subscription' = 'subscription'
+  merakiLicenseMode: 'coterm' | 'subscription' = 'subscription',
+  defaultPowerCordStandard: PowerCordStandard = 'italy_chile'
 ): Promise<CcwAssembledRow[]> {
   const rows: CcwAssembledRow[] = [];
 
@@ -315,8 +410,14 @@ export async function buildAssembledCcwRows(
     const containerChildModel = targetSku.includes(':') ? targetSku.split(':')[1] : undefined;
     const ftMatch = await checkSkuInFastTrackDb(containerChildModel || targetSku);
     const rule = resolveChassisRule(targetSku);
+    const effectiveCordStd = item.powerCordStandard || defaultPowerCordStandard || 'italy_chile';
+    const effectiveMerakiMode = item.merakiLicenseMode || merakiLicenseMode;
 
     if (rule) {
+      const parentUnitUsd =
+        ftMatch?.listPrice ||
+        estimateReferencePriceUsd(containerChildModel ? targetSku : rule.parentSku, true);
+
       // 1. Fila MADRE (Chasis Principal o Contenedor Oficial CCW como MS130-SWITCHES)
       rows.push({
         rowId: `row-${idx}-parent`,
@@ -338,26 +439,34 @@ export async function buildAssembledCcwRows(
         eolReason,
         officialCiscoUrl: officialCiscoUrl || rule.officialUrl,
         fastTrackInfo: ftMatch,
+        estimatedUnitListUsd: parentUnitUsd,
+        estimatedTotalListUsd: parentUnitUsd * qty,
       });
 
-      // 2. Filas HIJAS consecutivas (Hardware MS130 / Licencia DNA o Meraki / Fuente PoE / Cable CAB-ACE / Network Stack)
+      // 2. Filas HIJAS consecutivas (Hardware / Licencia DNA o Meraki / Fuente PoE / Cable CAB-IT / Network Stack / SmartNet)
       const subItems = rule.defaultSubItems({
         licenseTier: item.licenseTier || 'Essentials',
         termYears: item.termYears || 3,
         isPoe: item.isPoe ?? true,
         includeStackingKit: item.includeStacking,
         includeRedundantPsu: item.includeRedundantPsu,
+        includeSmartNet: item.includeSmartNet,
+        smartNetLevel: item.smartNetLevel || '8x5xNBD',
+        powerCordStandard: effectiveCordStd,
+        merakiLicenseMode: effectiveMerakiMode,
         selectedModel: containerChildModel,
       });
 
       for (let sIdx = 0; sIdx < subItems.length; sIdx++) {
         const sub = subItems[sIdx];
+        const childQty = qty * sub.qtyMultiplier;
+        const childUnitUsd = estimateReferencePriceUsd(sub.partNumber, false);
         rows.push({
           rowId: `row-${idx}-sub-${sIdx}`,
           parentIndex: idx,
           isParent: false,
           partNumber: sub.partNumber,
-          quantity: qty * sub.qtyMultiplier,
+          quantity: childQty,
           durationMonths: sub.durationMonths || '',
           listPrice: '',
           discountPct: '',
@@ -366,9 +475,12 @@ export async function buildAssembledCcwRows(
           billingModel: sub.billingModel || '',
           requestedStartDate: '',
           notes: sub.description,
+          estimatedUnitListUsd: childUnitUsd,
+          estimatedTotalListUsd: childUnitUsd * childQty,
         });
       }
     } else {
+      const parentUnitUsd = ftMatch?.listPrice || estimateReferencePriceUsd(targetSku, true);
       // 1. Fila MADRE (Equipo principal)
       rows.push({
         rowId: `row-${idx}-parent`,
@@ -389,18 +501,27 @@ export async function buildAssembledCcwRows(
         eolReason,
         officialCiscoUrl,
         fastTrackInfo: ftMatch,
+        estimatedUnitListUsd: parentUnitUsd,
+        estimatedTotalListUsd: parentUnitUsd * qty,
       });
 
       // 2. Filas HIJAS (Meraki, aiSubItems de la IA o fallback universal por familia)
-      const fallbackSubs = resolveFallbackSubItems(targetSku, item, merakiLicenseMode);
+      const fallbackSubs = resolveFallbackSubItems(
+        targetSku,
+        item,
+        effectiveMerakiMode,
+        effectiveCordStd
+      );
       for (let sIdx = 0; sIdx < fallbackSubs.length; sIdx++) {
         const sub = fallbackSubs[sIdx];
+        const childQty = qty * sub.qtyMultiplier;
+        const childUnitUsd = estimateReferencePriceUsd(sub.partNumber, false);
         rows.push({
           rowId: `row-${idx}-sub-${sIdx}`,
           parentIndex: idx,
           isParent: false,
           partNumber: sub.partNumber,
-          quantity: qty * sub.qtyMultiplier,
+          quantity: childQty,
           durationMonths: sub.durationMonths || '',
           listPrice: '',
           discountPct: '',
@@ -409,6 +530,36 @@ export async function buildAssembledCcwRows(
           billingModel: sub.billingModel || '',
           requestedStartDate: '',
           notes: sub.description,
+          estimatedUnitListUsd: childUnitUsd,
+          estimatedTotalListUsd: childUnitUsd * childQty,
+        });
+      }
+    }
+
+    // 3. Si el ingeniero agregó Transceivers SFP / Fibra / DAC compatibles en este bloque Madre-Hijo
+    if (Array.isArray(item.extraTransceivers) && item.extraTransceivers.length > 0) {
+      for (let tIdx = 0; tIdx < item.extraTransceivers.length; tIdx++) {
+        const tr = item.extraTransceivers[tIdx];
+        if (!tr || !tr.sku) continue;
+        const sanitizedTr = sanitizeAndValidateCcwSku(tr.sku).sanitizedSku;
+        const trQty = (tr.qty > 0 ? tr.qty : 2) * qty;
+        const trUnitUsd = estimateReferencePriceUsd(sanitizedTr, false);
+        rows.push({
+          rowId: `row-${idx}-sfp-${tIdx}`,
+          parentIndex: idx,
+          isParent: false,
+          partNumber: sanitizedTr,
+          quantity: trQty,
+          durationMonths: '',
+          listPrice: '',
+          discountPct: '',
+          initialTerm: '',
+          autoRenewTerm: '',
+          billingModel: '',
+          requestedStartDate: '',
+          notes: `${tr.description || 'Cisco Validated Transceiver Module'} (${tr.qty}x por equipo)`,
+          estimatedUnitListUsd: trUnitUsd,
+          estimatedTotalListUsd: trUnitUsd * trQty,
         });
       }
     }

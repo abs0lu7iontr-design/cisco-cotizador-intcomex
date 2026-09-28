@@ -370,8 +370,17 @@ export function mapSkuToPsirtSearchTerm(productOrSku: string): string {
   if (upper.startsWith('ISR') || upper.startsWith('ASR') || upper.startsWith('C11')) {
     return 'Cisco IOS XE';
   }
-  if (upper.startsWith('CW91') || upper.startsWith('C91')) {
+  if (upper.startsWith('CW91') || upper.startsWith('C91') || upper.startsWith('IE-')) {
     return 'Catalyst';
+  }
+  if (upper.startsWith('UCSC-') || upper.startsWith('UCS-')) {
+    return 'Unified Computing';
+  }
+  if (upper.startsWith('N9K-')) {
+    return 'Nexus';
+  }
+  if (upper.startsWith('DP-98') || upper.startsWith('CP-') || upper.startsWith('CS-')) {
+    return 'Cisco IP Phone';
   }
   return clean || 'Catalyst';
 }
@@ -417,6 +426,21 @@ export async function checkPsirtForProduct(
 export function resolvePoeBudgetFromSku(sku: string): PoeBudgetInfo {
   const rawUpper = (sku || '').trim().toUpperCase();
   const upper = rawUpper.includes(':') ? rawUpper.split(':')[1].trim() : rawUpper;
+
+  // Switches Industriales Cisco Catalyst IE-3300 / IE-3400 PoE+ (DIN-Rail)
+  if (upper.startsWith('IE-') && upper.includes('8P')) {
+    return {
+      partNumber: upper,
+      poeSupported: true,
+      maxWatts: 240,
+      poePortsCount: 8,
+      maxWattsPerPort: 30,
+      poeClass: 'Class 4 Industrial PoE+ (240W con PWR-IE170W-PC-AC=)',
+      standard: '802.3at',
+      recommendedDefaultPsu: 'PWR-IE170W-PC-AC=',
+      notes: 'Switch Industrial Rugged DIN-Rail con 8 puertos PoE+ hasta 240W.',
+    };
+  }
 
   // Switches UPOE (802.3bt - 60W por puerto)
   if (/C9[234]00[L]?-(?:24|48)(?:U|UXM|H)/i.test(upper)) {

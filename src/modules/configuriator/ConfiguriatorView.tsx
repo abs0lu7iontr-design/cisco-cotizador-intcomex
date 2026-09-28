@@ -1,11 +1,18 @@
 // ============================================================================
 // CISCO AUTOMATED v2.1 - CONFIGURIATOR VIEW (AI BOM GENERATOR FOR CISCO CCW)
 // Prioridad #1: IA Multimodal (Lenguaje Natural + Capturas Ctrl+V).
-// Estructura estricta MADRE-HIJO para Cisco CCW, botón Clear BOM y modo manual
-// desactivado por defecto.
+// Soporta 100% del portafolio Cisco & Meraki 2026 (Enterprise, Meraki, Industrial IE,
+// Servidores UCS M7, Nexus DC, Seguridad FPR/MX, Colaboración DP-9800 & Room Bar).
+// Incluye:
+// - Cable de poder por defecto Norma Chile / Italia (CAB-IT: CAB-ACA / CAB-TA-IT / MA-PWR-CORD-IT)
+// - Selector contextual Meraki (Suscripción CCW vs Co-Term) solo en equipos Meraki
+// - Calculadora y Alerta Inteligente de Presupuesto PoE en Vivo
+// - Asistente 1-Clic de Transceivers SFP / Fibra / DAC vigentes 2026 (Cero EOL)
+// - Soporte 1-Clic Cisco SmartNet / SNTC (CON-SNT 8x5xNBD / 24x7x4)
+// - Pre-Cotización Preliminar en USD (Precio Lista Ref. vs Estimado Fast Track)
 // ============================================================================
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Bot,
   Sparkles,
@@ -26,6 +33,10 @@ import {
   Globe,
   Cpu,
   RotateCcw,
+  DollarSign,
+  Plug,
+  Cable,
+  Wrench,
 } from 'lucide-react';
 import {
   extractBOMRequirementsFromInput,
@@ -51,6 +62,8 @@ import {
   EOL_CATALOG_2026,
   getEolAlternatives,
   sanitizeAndValidateCcwSku,
+  COMPATIBLE_TRANSCEIVERS_2026,
+  PowerCordStandard,
 } from './catalogRules';
 import {
   CiscoApiStatusModal,
@@ -74,6 +87,9 @@ export const ConfiguriatorView: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [extractionResult, setExtractionResult] = useState<ExtractedRequirementResult | null>(null);
   const [assembledRows, setAssembledRows] = useState<CcwAssembledRow[]>([]);
+
+  // Por defecto en Chile usamos Norma Italiana / Chilena (CAB-IT: CAB-ACA / CAB-TA-IT / MA-PWR-CORD-IT)
+  const [defaultPowerCord, setDefaultPowerCord] = useState<PowerCordStandard>('italy_chile');
   const [merakiLicenseMode, setMerakiLicenseMode] = useState<'subscription' | 'coterm'>('subscription');
 
   // Configuración Multi-API y Rotación de Tokens
@@ -111,22 +127,40 @@ export const ConfiguriatorView: React.FC = () => {
     });
   }, []);
 
-  // Recalcular filas ensambladas Madre-Hijo cuando cambian los ítems extraídos o el modo Meraki
+  // Recalcular filas ensambladas Madre-Hijo cuando cambian los ítems extraídos, modo Meraki o norma de cable
   const refreshAssembledRows = useCallback(
-    async (currentReq: ExtractedRequirementResult | null, mode: 'subscription' | 'coterm') => {
+    async (
+      currentReq: ExtractedRequirementResult | null,
+      mode: 'subscription' | 'coterm',
+      cordStd: PowerCordStandard
+    ) => {
       if (!currentReq || !currentReq.items.length) {
         setAssembledRows([]);
         return;
       }
-      const rows = await buildAssembledCcwRows(currentReq, mode);
+      const rows = await buildAssembledCcwRows(currentReq, mode, cordStd);
       setAssembledRows(rows);
     },
     []
   );
 
   useEffect(() => {
-    refreshAssembledRows(extractionResult, merakiLicenseMode);
-  }, [extractionResult, merakiLicenseMode, refreshAssembledRows]);
+    refreshAssembledRows(extractionResult, merakiLicenseMode, defaultPowerCord);
+  }, [extractionResult, merakiLicenseMode, defaultPowerCord, refreshAssembledRows]);
+
+  // Cambiar globalmente la norma del cable de poder (Norma Chile/Italia CAB-IT vs Rack PDU vs Schuko)
+  const handleGlobalPowerCordChange = (newCordStd: PowerCordStandard) => {
+    setDefaultPowerCord(newCordStd);
+    if (extractionResult && extractionResult.items.length > 0) {
+      setExtractionResult({
+        ...extractionResult,
+        items: extractionResult.items.map((it) => ({
+          ...it,
+          powerCordStandard: newCordStd,
+        })),
+      });
+    }
+  };
 
   // Pegado de capturas de pantalla con Ctrl + V
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
@@ -181,6 +215,7 @@ export const ConfiguriatorView: React.FC = () => {
     setErrorMsg(null);
     setManualSkuInput('');
     setManualQtyInput(1);
+    setPsirtByIndex({});
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -211,6 +246,12 @@ export const ConfiguriatorView: React.FC = () => {
         result.clientName = clientName;
       }
 
+      // Asegurar que respete el estándar de cable seleccionado por el usuario si la IA no detectó uno explícito distinto
+      result.items = result.items.map((it) => ({
+        ...it,
+        powerCordStandard: it.powerCordStandard || defaultPowerCord,
+      }));
+
       setExtractionResult(result);
       setAiSettings(loadAiSettings());
     } catch (err: any) {
@@ -221,14 +262,14 @@ export const ConfiguriatorView: React.FC = () => {
     }
   };
 
-  // Modificar parámetros de un equipo Madre en vivo (Cantidad, Tier, Plazo, Stacking, PSU Redundante, Alternativa EOL)
+  // Modificar parámetros de un equipo Madre en vivo
   const updateParentItem = (index: number, patch: Partial<ExtractedRequirementItem>) => {
     if (!extractionResult) return;
     const nextItems = extractionResult.items.map((it, idx) => {
       if (idx !== index) return it;
       const updated = { ...it, ...patch };
       if (patch.licenseTier && updated.suggestedActiveSku) {
-        if (/^(C9200L?|C9300L?)-.*-(E|A)$/i.test(updated.suggestedActiveSku)) {
+        if (/^(C9200L?|C9300L?|IE-3[134]00)-.*-(E|A)$/i.test(updated.suggestedActiveSku)) {
           updated.suggestedActiveSku = updated.suggestedActiveSku.replace(
             /-(E|A)$/i,
             `-${patch.licenseTier === 'Advantage' ? 'A' : 'E'}`
@@ -236,7 +277,7 @@ export const ConfiguriatorView: React.FC = () => {
         }
       }
       if (patch.licenseTier && updated.selectedEolAlternativeSku) {
-        if (/^(C9200L?|C9300L?)-.*-(E|A)$/i.test(updated.selectedEolAlternativeSku)) {
+        if (/^(C9200L?|C9300L?|IE-3[134]00)-.*-(E|A)$/i.test(updated.selectedEolAlternativeSku)) {
           updated.selectedEolAlternativeSku = updated.selectedEolAlternativeSku.replace(
             /-(E|A)$/i,
             `-${patch.licenseTier === 'Advantage' ? 'A' : 'E'}`
@@ -248,6 +289,54 @@ export const ConfiguriatorView: React.FC = () => {
     setExtractionResult({
       ...extractionResult,
       items: nextItems,
+    });
+  };
+
+  // Agregar o incrementar un transceiver SFP/Fibra/DAC en un equipo Madre
+  const handleAddTransceiverToItem = (
+    index: number,
+    trSku: string,
+    defaultQty: number,
+    description: string
+  ) => {
+    if (!extractionResult) return;
+    const currentItem = extractionResult.items[index];
+    if (!currentItem) return;
+    const existing = Array.isArray(currentItem.extraTransceivers)
+      ? [...currentItem.extraTransceivers]
+      : [];
+    const foundIdx = existing.findIndex((t) => t.sku === trSku);
+    if (foundIdx >= 0) {
+      existing[foundIdx] = {
+        ...existing[foundIdx],
+        qty: existing[foundIdx].qty + defaultQty,
+      };
+    } else {
+      existing.push({ sku: trSku, qty: defaultQty, description });
+    }
+    updateParentItem(index, { extraTransceivers: existing });
+  };
+
+  const handleRemoveTransceiverFromItem = (index: number, trSku: string) => {
+    if (!extractionResult) return;
+    const currentItem = extractionResult.items[index];
+    if (!currentItem || !Array.isArray(currentItem.extraTransceivers)) return;
+    updateParentItem(index, {
+      extraTransceivers: currentItem.extraTransceivers.filter((t) => t.sku !== trSku),
+    });
+  };
+
+  // Activar/Desactivar SmartNet (CON-SNT) en todo el BOM con 1 clic
+  const handleToggleSmartNetAll = () => {
+    if (!extractionResult || extractionResult.items.length === 0) return;
+    const allHaveSmartNet = extractionResult.items.every((it) => it.includeSmartNet);
+    setExtractionResult({
+      ...extractionResult,
+      items: extractionResult.items.map((it) => ({
+        ...it,
+        includeSmartNet: !allHaveSmartNet,
+        smartNetLevel: it.smartNetLevel || '8x5xNBD',
+      })),
     });
   };
 
@@ -267,24 +356,34 @@ export const ConfiguriatorView: React.FC = () => {
     const sanitized = sanitizeAndValidateCcwSku(cleanSku);
     const effectiveRaw = sanitized.inferredLegacyEolSku || cleanSku;
     const eolEntry = EOL_CATALOG_2026[effectiveRaw] || EOL_CATALOG_2026[effectiveRaw.replace(/-HW$/i, '')];
+    const resolvedSku = eolEntry ? eolEntry.replacementSku : sanitized.sanitizedSku;
     const newItem: ExtractedRequirementItem = {
       id: `manual-${Date.now()}`,
       rawMentionedSku: effectiveRaw,
-      suggestedActiveSku: eolEntry ? eolEntry.replacementSku : sanitized.sanitizedSku,
+      suggestedActiveSku: resolvedSku,
       isEol2026: eolEntry ? eolEntry.status === 'eos_eol_active' : Boolean(sanitized.inferredLegacyEolSku),
       eolReason: sanitized.correctionReason || eolEntry?.eolNote,
       officialCiscoUrl: eolEntry?.officialCiscoDocUrl,
       deviceType:
-        cleanSku.startsWith('MR') || cleanSku.startsWith('CW')
-          ? 'access_point'
-          : cleanSku.startsWith('C8') || cleanSku.startsWith('ISR')
-            ? 'router'
-            : cleanSku.startsWith('FPR') || cleanSku.startsWith('MX')
-              ? 'firewall'
-              : 'switch',
+        resolvedSku.startsWith('IE-')
+          ? 'industrial_switch'
+          : resolvedSku.startsWith('UCSC-')
+            ? 'server_ucs'
+            : resolvedSku.startsWith('N9K-')
+              ? 'nexus_dc'
+              : resolvedSku.startsWith('DP-') || resolvedSku.startsWith('CS-')
+                ? 'collaboration'
+                : resolvedSku.startsWith('MR') || resolvedSku.startsWith('CW')
+                  ? 'access_point'
+                  : resolvedSku.startsWith('C8') || resolvedSku.startsWith('ISR')
+                    ? 'router'
+                    : resolvedSku.startsWith('FPR') || resolvedSku.startsWith('MX')
+                      ? 'firewall'
+                      : 'switch',
       licenseTier: 'Essentials',
       termYears: 3,
       quantity: manualQtyInput > 0 ? manualQtyInput : 1,
+      powerCordStandard: defaultPowerCord,
       notes: `Agregado manualmente (${cleanSku})`,
     };
 
@@ -372,6 +471,126 @@ export const ConfiguriatorView: React.FC = () => {
     setAiSettings(updated);
   };
 
+  // ============================================================================
+  // IDEA 2 & IDEA 6: CÁLCULO EN VIVO DE BALANCE PoE (WATTS) Y PRE-COTIZACIÓN USD
+  // ============================================================================
+  const bomMetrics = useMemo(() => {
+    let totalListUsd = 0;
+    let totalEstimatedNetUsd = 0;
+    let fastTrackCount = 0;
+
+    for (const row of assembledRows) {
+      const rowList = row.estimatedTotalListUsd || 0;
+      totalListUsd += rowList;
+      if (row.isParent && row.fastTrackInfo) {
+        fastTrackCount += 1;
+        const disc = (row.fastTrackInfo.distributorDiscount || 45) / 100;
+        totalEstimatedNetUsd += rowList * (1 - disc);
+      } else {
+        // Descuento referencial promedio de canal en CCW (~40% HW / ~32% Licencias)
+        const stdDisc = row.durationMonths ? 0.32 : 0.40;
+        totalEstimatedNetUsd += rowList * (1 - stdDisc);
+      }
+    }
+
+    // Cálculo de Presupuesto PoE Entregado por Switches vs Demandado por APs / Teléfonos IP / Cámaras
+    let totalPoeSupplyWatts = 0;
+    let totalPoeDemandWatts = 0;
+    let poeSwitchesCount = 0;
+    let firstUpgradeableSwitchIdx: number | null = null;
+    let poweredEndpointsSummary: string[] = [];
+
+    (extractionResult?.items || []).forEach((it, idx) => {
+      const qty = it.quantity > 0 ? it.quantity : 1;
+      const parentRow = assembledRows.find((r) => r.parentIndex === idx && r.isParent);
+      const activeSku = parentRow?.partNumber || it.suggestedActiveSku || '';
+      const effectiveHwSku = parentRow?.resolvedChildModel
+        ? `${activeSku}:${parentRow.resolvedChildModel}`
+        : activeSku;
+      const poeInfo = resolvePoeBudgetFromSku(effectiveHwSku);
+
+      const isPoweredEndpointAp =
+        it.deviceType === 'access_point' ||
+        effectiveHwSku.startsWith('MR') ||
+        effectiveHwSku.startsWith('CW91') ||
+        effectiveHwSku.startsWith('C91');
+
+      if (poeInfo.poeSupported && poeInfo.maxWatts > 0 && !isPoweredEndpointAp) {
+        poeSwitchesCount += qty;
+        const redundantBonus =
+          it.includeRedundantPsu && (activeSku.startsWith('C9200') || activeSku.startsWith('C9300'))
+            ? poeInfo.maxWatts * 0.8
+            : 0;
+        totalPoeSupplyWatts += (poeInfo.maxWatts + redundantBonus) * qty;
+
+        if (
+          firstUpgradeableSwitchIdx === null &&
+          poeInfo.maxWatts <= 370 &&
+          (effectiveHwSku.includes('48P') || effectiveHwSku.includes('24P'))
+        ) {
+          firstUpgradeableSwitchIdx = idx;
+        }
+      }
+
+      // Consumo PoE estimado de equipos alimentados en el BOM
+      if (isPoweredEndpointAp) {
+        const wattsPerAp = effectiveHwSku.includes('9166') || effectiveHwSku.includes('MR56') ? 30 : 25;
+        totalPoeDemandWatts += wattsPerAp * qty;
+        poweredEndpointsSummary.push(`${qty}x AP (${wattsPerAp * qty}W)`);
+      } else if (
+        it.deviceType === 'collaboration' &&
+        (effectiveHwSku.startsWith('DP-98') || effectiveHwSku.startsWith('CP-'))
+      ) {
+        const wattsPerPhone = 12;
+        totalPoeDemandWatts += wattsPerPhone * qty;
+        poweredEndpointsSummary.push(`${qty}x Teléfono IP (${wattsPerPhone * qty}W)`);
+      }
+    });
+
+    const poeUtilizationPct =
+      totalPoeSupplyWatts > 0
+        ? Math.round((totalPoeDemandWatts / totalPoeSupplyWatts) * 100)
+        : totalPoeDemandWatts > 0
+          ? 100
+          : 0;
+
+    return {
+      totalListUsd,
+      totalEstimatedNetUsd,
+      fastTrackCount,
+      totalPoeSupplyWatts: Math.round(totalPoeSupplyWatts),
+      totalPoeDemandWatts: Math.round(totalPoeDemandWatts),
+      poeSwitchesCount,
+      poeUtilizationPct,
+      firstUpgradeableSwitchIdx,
+      poweredEndpointsSummary,
+    };
+  }, [assembledRows, extractionResult]);
+
+  // Acción 1-Clic para subir un switch de 370W a Full PoE 740W cuando la alerta PoE lo sugiere
+  const handleUpgradeSwitchToFullPoe = (idx: number) => {
+    if (!extractionResult) return;
+    const item = extractionResult.items[idx];
+    if (!item) return;
+    const currentSku = (item.selectedEolAlternativeSku || item.suggestedActiveSku || '').toUpperCase();
+    let upgradedSku = currentSku;
+    if (currentSku.startsWith('MS130-SWITCHES:MS130-48')) {
+      upgradedSku = 'MS225-48FP-HW';
+    } else if (currentSku.includes('C9200L-48P-')) {
+      upgradedSku = currentSku.replace('C9200L-48P-', 'C9200L-48FP-');
+    } else if (currentSku.includes('C9200-48P-')) {
+      upgradedSku = currentSku.replace('C9200-48P-', 'C9200-48FP-');
+    } else {
+      updateParentItem(idx, { includeRedundantPsu: true });
+      return;
+    }
+    updateParentItem(idx, {
+      suggestedActiveSku: upgradedSku,
+      selectedEolAlternativeSku: upgradedSku,
+      poeBudget: 'full_poe',
+    });
+  };
+
   const activeKeysCount = aiSettings.keys.filter((k) => k.enabled && k.apiKey.trim()).length;
   const learnedSkusCount =
     Object.keys(getLearnedCiscoSkus()).length + Object.keys(EOL_CATALOG_2026).length;
@@ -389,18 +608,18 @@ export const ConfiguriatorView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-black uppercase tracking-wider text-emerald-300">
-                Regla Crítica de Ensamblado Madre-Hijo Cisco CCW
+                Regla Crítica de Ensamblado Madre-Hijo Cisco CCW &bull; Norma Chile (CAB-IT)
               </span>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
-                Estado VALID (Verde)
+                100% Vigente 2026 &bull; Estado VALID (Verde)
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-200 mt-1 leading-relaxed">
-              Recuerda que en la ventana <strong>'BOM Upload'</strong> de Cisco CCW debes mantener marcada la opción:{' '}
+              En la ventana <strong>'BOM Upload'</strong> de Cisco CCW mantén marcada la opción:{' '}
               <span className="px-2 py-0.5 rounded bg-emerald-900/80 border border-emerald-400/50 text-emerald-200 font-mono font-bold">
                 ☑ Import Lines as assembled configurations
-              </span>{' '}
-              para que los equipos Madre e Hijos queden ensamblados en estado <strong>VALID (Verde)</strong>.
+              </span>
+              . Por defecto se incluye el cable de poder <strong>Norma Chile / Italia (CAB-IT: CAB-ACA / CAB-TA-IT)</strong>.
             </p>
           </div>
         </div>
@@ -434,18 +653,18 @@ export const ConfiguriatorView: React.FC = () => {
           <div>
             <div className="flex items-center gap-2.5 flex-wrap">
               <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">
-                ConfigurIAtor &bull; AI BOM Generator (Madre-Hijo CCW)
+                ConfigurIAtor &bull; Full Cisco &amp; Meraki AI Architect (Madre-Hijo CCW)
               </h2>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-950 text-emerald-300 border border-emerald-700/50">
-                Prioridad #1: Gemini 3.7 Flash (Texto) &bull; 3.6/3.8 Flash (Visión)
+                Gemini 3.7 Flash (Texto) &bull; 3.6/3.8 Flash (Visión)
               </span>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-950/80 text-cyan-300 border border-cyan-700/40 flex items-center gap-1">
                 <Globe className="w-3 h-3" />
-                <span>Cisco.com EOL 2026 ({learnedSkusCount} SKUs)</span>
+                <span>Catálogo Vigente 2026 ({learnedSkusCount} SKUs &bull; Cero EOL)</span>
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Analiza solicitudes en lenguaje natural o capturas de pantalla (Ctrl + V) con IA y estructura automáticamente las filas Madre (Chasis/Contenedor) e Hijos (Hardware, DNA/Meraki Lic, Fuente, Cable, Stack) sin P/N obsoletos.
+              Cotiza Switching Catalyst, Meraki Cloud, Switches Industriales IE, Servidores UCS M7, Data Center Nexus, Seguridad FPR/MX y Colaboración DP-9800/Room Bar con cable <strong>CAB-IT (Norma Chile)</strong> por defecto.
             </p>
           </div>
         </div>
@@ -467,7 +686,7 @@ export const ConfiguriatorView: React.FC = () => {
           <div className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 flex items-center gap-2">
             <Cpu className="w-3.5 h-3.5 text-emerald-400" />
             <span>
-              Motores IA: <strong className="text-emerald-300">Gemini 3.7 &rarr; 3.6 &rarr; 3.8 + OpenRouter</strong>
+              Portafolio: <strong className="text-emerald-300">Catalyst &bull; Meraki &bull; IE &bull; UCS M7 &bull; Nexus &bull; FPR &bull; Colab</strong>
             </span>
           </div>
         </div>
@@ -483,7 +702,7 @@ export const ConfiguriatorView: React.FC = () => {
               <span>1. Solicitud en Lenguaje Natural o Screenshot (IA)</span>
             </h3>
 
-            {/* Ejemplos rápidos */}
+            {/* Ejemplos rápidos para todo el portafolio */}
             <div className="flex items-center gap-1.5 flex-wrap">
               <button
                 type="button"
@@ -492,39 +711,39 @@ export const ConfiguriatorView: React.FC = () => {
                     'Cotizar 1 switch Meraki MS210-48FP con licencia por 3 años'
                   )
                 }
-                className="px-2.5 py-1 rounded-lg bg-amber-950/70 hover:bg-amber-900/80 text-[11px] text-amber-300 border border-amber-700/50 cursor-pointer transition-colors"
+                className="px-2 py-1 rounded-lg bg-amber-950/70 hover:bg-amber-900/80 text-[10px] font-bold text-amber-300 border border-amber-700/50 cursor-pointer transition-colors"
                 title="Cargar caso Meraki MS210-48FP (EOL -> MS225-48FP-HW / MS130-SWITCHES)"
               >
-                Ejemplo MS210-48FP
+                Ej. MS210-48FP
               </button>
               <button
                 type="button"
                 onClick={() =>
                   setInputText(
-                    'Mauricio, cotízame 2 switches de 24 bocas PoE Catalyst con licencia por 3 años'
+                    'Mauricio, cotízame 2 switches de 24 bocas PoE Catalyst con 12 APs Wi-Fi 6 y licencia por 3 años'
                   )
                 }
-                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-indigo-300 border border-slate-700 cursor-pointer transition-colors"
-                title="Cargar caso de prueba oficial"
+                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-indigo-300 border border-slate-700 cursor-pointer transition-colors"
+                title="Cargar caso Switching + Wi-Fi con cálculo PoE en vivo"
               >
-                Ejemplo 24P PoE
+                Ej. 24P + 12 APs
               </button>
               <button
                 type="button"
                 onClick={() =>
                   setInputText(
-                    'Necesito renovar 3 switches WS-C2960X-24PS-L, 1 switch WS-C3850-48P-S con licencia Advantage por 5 años y 4 APs MR42 con licencia a 3 años.'
+                    'Necesito 1 servidor UCS C220-M6S, 2 switches industriales IE-2000-8TC-B PoE para faena minera, 1 firewall ASA5508-X y 10 teléfonos IP CP-7841-K9 por 3 años con SmartNet'
                   )
                 }
-                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] text-cyan-300 border border-slate-700 cursor-pointer transition-colors"
-                title="Cargar caso de migración EOL 2026"
+                className="px-2 py-1 rounded-lg bg-emerald-950/70 hover:bg-emerald-900/80 text-[10px] font-bold text-emerald-300 border border-emerald-700/50 cursor-pointer transition-colors"
+                title="Probar Servidores UCS M7, Switches Industriales IE, Firewall FPR, Colaboración DP-9800 y SmartNet"
               >
-                Ejemplo Migración EOL
+                Ej. UCS + IE + FW + Colab
               </button>
             </div>
           </div>
 
-          {/* Nombre del cliente para el archivo */}
+          {/* Nombre del cliente y Selector de Cable de Poder Norma Chile (CAB-IT por defecto) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
@@ -540,16 +759,25 @@ export const ConfiguriatorView: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                Esquema Licencias Meraki
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-400 mb-1 flex items-center gap-1">
+                <Plug className="w-3 h-3" />
+                <span>Cable de Poder (Por defecto Chile CAB-IT)</span>
               </label>
               <select
-                value={merakiLicenseMode}
-                onChange={(e) => setMerakiLicenseMode(e.target.value as 'subscription' | 'coterm')}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
+                value={defaultPowerCord}
+                onChange={(e) => handleGlobalPowerCordChange(e.target.value as PowerCordStandard)}
+                className="w-full bg-slate-950 border border-emerald-700/50 rounded-xl px-3 py-2 text-xs text-emerald-200 font-semibold focus:outline-none focus:border-emerald-500"
+                title="En Chile se utiliza por defecto el cable Norma Italiana/Chilena CEI 23-16 (CAB-ACA / CAB-TA-IT / MA-PWR-CORD-IT)"
               >
-                <option value="subscription">Suscripción CCW (LIC-MR-E + Duration)</option>
-                <option value="coterm">Co-Termination Clásico (LIC-ENT-3YR)</option>
+                <option value="italy_chile">
+                  🇨🇱/🇮🇹 Italia / Norma Chile (CAB-IT: CAB-ACA / CAB-TA-IT) [Defecto]
+                </option>
+                <option value="rack_pdu">
+                  🔌 Rack PDU Data Center (CAB-C13-C14-2M / CAB-C15-CBN)
+                </option>
+                <option value="schuko_eu">
+                  🇪🇺 Schuko Europeo (CAB-ACE / CAB-TA-EU)
+                </option>
               </select>
             </div>
           </div>
@@ -560,7 +788,7 @@ export const ConfiguriatorView: React.FC = () => {
               rows={6}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Escribe o pega aquí el correo del cliente en lenguaje natural (ej: 'Cotizar 1 switch Meraki MS210-48FP con licencia por 3 años' o '2 switches de 24 bocas PoE Catalyst con licencia por 3 años') o presiona Ctrl + V para analizar un pantallazo..."
+              placeholder="Escribe o pega aquí el requerimiento del cliente en lenguaje natural (ej: 'Cotizar 1 switch Meraki MS210-48FP a 3 años', '2 switches industriales IE PoE, 1 servidor UCS M7 y 15 teléfonos IP') o pega un pantallazo con Ctrl + V..."
               className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 leading-relaxed resize-y"
             />
           </div>
@@ -693,7 +921,7 @@ export const ConfiguriatorView: React.FC = () => {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleAddManualItem();
                   }}
-                  placeholder="Ej. MS210-48FP, MS130-48P o C9200L-48P-4X-E"
+                  placeholder="Ej. IE-3300-8P2S-E, UCSC-C220-M7S, DP-9851-K9 o C9200L-48P-4X-E"
                   className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
                 />
                 <input
@@ -738,7 +966,7 @@ export const ConfiguriatorView: React.FC = () => {
           )}
         </div>
 
-        {/* COLUMNA DERECHA: Estructura Madre-Hijo y Tabla 10 Columnas CCW */}
+        {/* COLUMNA DERECHA: Estructura Madre-Hijo, Calculadora PoE, Pre-Cotización USD y Tabla 10 Columnas CCW */}
         <div className="lg:col-span-7 space-y-5">
           {/* Tarjeta de Equipos Madre e Hijos */}
           <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
@@ -759,21 +987,31 @@ export const ConfiguriatorView: React.FC = () => {
               </div>
 
               {assembledRows.length > 0 && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleToggleSmartNetAll}
+                    className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-indigo-950 text-cyan-300 border border-cyan-700/40 text-xs font-bold transition-all cursor-pointer"
+                    title="Agregar o quitar Soporte Oficial Cisco SmartNet (CON-SNT) en todos los equipos Madre"
+                  >
+                    <Wrench className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>+ SmartNet (CON-SNT) Todo</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleClearAllBom}
-                    className="inline-flex items-center space-x-1.5 px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-rose-950 text-slate-300 hover:text-rose-200 border border-slate-700 text-xs font-bold transition-all cursor-pointer"
+                    className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950 text-slate-300 hover:text-rose-200 border border-slate-700 text-xs font-bold transition-all cursor-pointer"
                     title="Limpiar BOM actual"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Limpiar BOM</span>
+                    <span>Limpiar</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={handleDownloadCcwExcel}
-                    className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
+                    className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-lg shadow-emerald-600/30 transition-all cursor-pointer"
                   >
                     <Download className="w-4 h-4" />
                     <span>Descargar Excel CCW ({assembledRows.length} líneas)</span>
@@ -782,6 +1020,111 @@ export const ConfiguriatorView: React.FC = () => {
               )}
             </div>
 
+            {/* IDEA 6: BANNER DE PRE-COTIZACIÓN PRELIMINAR EN USD + IDEA 2: BALANCE DE POTENCIA PoE EN VIVO */}
+            {assembledRows.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Resumen Financiero Preliminar USD */}
+                <div className="p-3.5 rounded-xl bg-gradient-to-br from-slate-950 to-indigo-950/40 border border-indigo-500/30 flex items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <div className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+                      <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Pre-Cotización Preliminar CCW (Ref. USD)</span>
+                    </div>
+                    <div className="flex items-baseline gap-3 pt-0.5">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Precio Lista Ref.</span>
+                        <span className="font-mono text-sm font-black text-white">
+                          US$ {bomMetrics.totalListUsd.toLocaleString('en-US')}
+                        </span>
+                      </div>
+                      <div className="pl-3 border-l border-slate-800">
+                        <span className="text-[10px] text-emerald-400 font-semibold block">
+                          Est. Partner / Fast Track
+                        </span>
+                        <span className="font-mono text-sm font-black text-emerald-300">
+                          US$ {Math.round(bomMetrics.totalEstimatedNetUsd).toLocaleString('en-US')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <span className="px-2 py-1 rounded-lg bg-emerald-950/90 border border-emerald-700/50 text-[10px] font-bold text-emerald-300 block">
+                      {bomMetrics.fastTrackCount > 0
+                        ? `⚡ ${bomMetrics.fastTrackCount} SKU Fast Track`
+                        : 'Cruce CCW 2026'}
+                    </span>
+                    <span className="text-[9px] text-slate-400 mt-1 block">
+                      Cable: {defaultPowerCord === 'italy_chile' ? '🇨🇱/🇮🇹 CAB-IT' : defaultPowerCord === 'rack_pdu' ? '🔌 PDU C13-C14' : '🇪🇺 Schuko'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Calculadora y Alerta Inteligente de Presupuesto PoE en Vivo */}
+                <div
+                  className={`p-3.5 rounded-xl border flex flex-col justify-between gap-2 ${
+                    bomMetrics.poeUtilizationPct >= 80
+                      ? 'bg-amber-950/30 border-amber-500/50'
+                      : 'bg-slate-950 border-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Calculadora de Presupuesto PoE en Vivo</span>
+                    </span>
+                    <span className="font-mono text-[11px] font-bold text-white">
+                      Demanda: <strong className="text-amber-300">{bomMetrics.totalPoeDemandWatts}W</strong> / Capacidad:{' '}
+                      <strong className="text-emerald-300">{bomMetrics.totalPoeSupplyWatts}W</strong>
+                    </span>
+                  </div>
+
+                  {bomMetrics.totalPoeSupplyWatts > 0 || bomMetrics.totalPoeDemandWatts > 0 ? (
+                    <div className="space-y-1.5">
+                      <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                        <div
+                          className={`h-full transition-all ${
+                            bomMetrics.poeUtilizationPct >= 85
+                              ? 'bg-rose-500'
+                              : bomMetrics.poeUtilizationPct >= 65
+                                ? 'bg-amber-400'
+                                : 'bg-emerald-500'
+                          }`}
+                          style={{ width: `${Math.min(100, Math.max(6, bomMetrics.poeUtilizationPct))}%` }}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 flex-wrap text-[10px]">
+                        <span className="text-slate-400">
+                          {bomMetrics.poweredEndpointsSummary.length > 0
+                            ? `Consumo: ${bomMetrics.poweredEndpointsSummary.join(' + ')}`
+                            : `${bomMetrics.poeSwitchesCount} switch(es) PoE suministrando ${bomMetrics.totalPoeSupplyWatts}W totales`}
+                        </span>
+
+                        {(bomMetrics.poeUtilizationPct >= 75 ||
+                          (bomMetrics.firstUpgradeableSwitchIdx !== null &&
+                            bomMetrics.totalPoeDemandWatts > 300)) &&
+                          bomMetrics.firstUpgradeableSwitchIdx !== null && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUpgradeSwitchToFullPoe(bomMetrics.firstUpgradeableSwitchIdx!)
+                              }
+                              className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/50 font-bold cursor-pointer transition-colors"
+                            >
+                              ⚡ Subir Switch a Full PoE+ (740W) en 1 Clic
+                            </button>
+                          )}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-500">
+                      Agrega switches PoE, Access Points o Teléfonos IP para validar el balance de potencia en Watts.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
             {!extractionResult || extractionResult.items.length === 0 ? (
               <div className="text-center py-12 border border-dashed border-slate-800 rounded-xl bg-slate-950/40 space-y-2">
                 <FileSpreadsheet className="w-10 h-10 text-slate-600 mx-auto" />
@@ -789,7 +1132,7 @@ export const ConfiguriatorView: React.FC = () => {
                   Esperando instrucciones en lenguaje natural o captura de pantalla (Ctrl + V).
                 </p>
                 <p className="text-[11px] text-slate-500 max-w-md mx-auto">
-                  La IA analizará tu solicitud y armará automáticamente cada equipo <strong>MADRE (Chasis/Contenedor)</strong> junto con sus líneas <strong>HIJO (Hardware, Licencia DNA/Meraki, Fuente, Cable de Poder, Network Stack)</strong>.
+                  La IA analizará tu solicitud y armará automáticamente cada equipo <strong>MADRE (Chasis/Contenedor)</strong> junto con sus líneas <strong>HIJO (Hardware, Licencia DNA/Meraki, Fuente, Cable Norma Chile CAB-IT, Stack, SmartNet)</strong>.
                 </p>
               </div>
             ) : (
@@ -809,6 +1152,29 @@ export const ConfiguriatorView: React.FC = () => {
                       effectiveHardwareSku &&
                       item.rawMentionedSku.toUpperCase() !== effectiveHardwareSku.toUpperCase()
                   );
+
+                  // Detectar si este equipo Madre es Meraki para mostrar el selector contextual Suscripción vs Co-Term
+                  const isMerakiItem =
+                    activeSku.startsWith('MR') ||
+                    activeSku.startsWith('MS') ||
+                    activeSku.startsWith('MX') ||
+                    activeSku.startsWith('MV') ||
+                    activeSku.endsWith('-MR');
+
+                  // Detectar si el equipo soporta módulos SFP / Fibra / DAC
+                  const supportsTransceivers =
+                    item.deviceType === 'switch' ||
+                    item.deviceType === 'industrial_switch' ||
+                    item.deviceType === 'nexus_dc' ||
+                    item.deviceType === 'router' ||
+                    item.deviceType === 'firewall' ||
+                    item.deviceType === 'server_ucs';
+
+                  // Detectar si el equipo lleva cable de poder AC seleccionable (CAB-IT / PDU / Schuko)
+                  const usesPowerCord =
+                    !activeSku.startsWith('MR') &&
+                    !activeSku.startsWith('CW91') &&
+                    !activeSku.startsWith('DP-98');
 
                   return (
                     <div
@@ -861,6 +1227,13 @@ export const ConfiguriatorView: React.FC = () => {
                                 <span>
                                   FAST TRACK ({parentRow.fastTrackInfo.distributorDiscount}% Dcto Disti)
                                 </span>
+                              </span>
+                            )}
+
+                            {/* Precio Lista Referencial Unitario */}
+                            {parentRow?.estimatedUnitListUsd && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-900 text-emerald-300 border border-slate-700">
+                                Ref: US$ {parentRow.estimatedUnitListUsd.toLocaleString('en-US')} c/u
                               </span>
                             )}
 
@@ -1061,8 +1434,8 @@ export const ConfiguriatorView: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Controles rápidos de configuración de preventa */}
-                      <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-900 text-xs">
+                      {/* Controles rápidos de configuración de preventa (Cant, Licencia, Plazo, Enchufe CAB-IT/PDU, Meraki Mode, SmartNet) */}
+                      <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-slate-900 text-xs">
                         <div className="flex items-center space-x-1.5">
                           <span className="text-[11px] text-slate-400 font-semibold">Cant:</span>
                           <input
@@ -1074,12 +1447,12 @@ export const ConfiguriatorView: React.FC = () => {
                                 quantity: Math.max(1, Number(e.target.value) || 1),
                               })
                             }
-                            className="w-16 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono text-center"
+                            className="w-14 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono text-center"
                           />
                         </div>
 
                         <div className="flex items-center space-x-1.5">
-                          <span className="text-[11px] text-slate-400 font-semibold">Licencia:</span>
+                          <span className="text-[11px] text-slate-400 font-semibold">Tier:</span>
                           <select
                             value={item.licenseTier || 'Essentials'}
                             onChange={(e) =>
@@ -1087,10 +1460,10 @@ export const ConfiguriatorView: React.FC = () => {
                                 licenseTier: e.target.value as 'Essentials' | 'Advantage',
                               })
                             }
-                            className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white"
+                            className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white"
                           >
-                            <option value="Essentials">DNA / Meraki Essentials</option>
-                            <option value="Advantage">DNA / Meraki Advantage</option>
+                            <option value="Essentials">Essentials</option>
+                            <option value="Advantage">Advantage</option>
                           </select>
                         </div>
 
@@ -1101,18 +1474,59 @@ export const ConfiguriatorView: React.FC = () => {
                             onChange={(e) =>
                               updateParentItem(idx, { termYears: Number(e.target.value) || 3 })
                             }
-                            className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white"
+                            className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white"
                           >
-                            <option value={1}>1 Año (12 Meses)</option>
-                            <option value={3}>3 Años (36 Meses)</option>
-                            <option value={5}>5 Años (60 Meses)</option>
-                            <option value={7}>7 Años (84 Meses)</option>
+                            <option value={1}>1 Año (12M)</option>
+                            <option value={3}>3 Años (36M)</option>
+                            <option value={5}>5 Años (60M)</option>
+                            <option value={7}>7 Años (84M)</option>
                           </select>
                         </div>
 
-                        {item.deviceType === 'switch' && (
+                        {/* IDEA 3 MODIFICADA: Selector de Enchufe por equipo (CAB-IT Norma Chile por defecto) */}
+                        {usesPowerCord && (
+                          <div className="flex items-center space-x-1.5">
+                            <span className="text-[11px] text-emerald-400 font-semibold">Cable:</span>
+                            <select
+                              value={item.powerCordStandard || defaultPowerCord}
+                              onChange={(e) =>
+                                updateParentItem(idx, {
+                                  powerCordStandard: e.target.value as PowerCordStandard,
+                                })
+                              }
+                              className="bg-slate-900 border border-emerald-700/50 rounded-lg px-2 py-1 text-[11px] text-emerald-200 font-semibold"
+                              title="Cambiar cable de poder Hijo entre Norma Chile/Italia (CAB-IT), Rack PDU (C13-C14) o Schuko"
+                            >
+                              <option value="italy_chile">🇨🇱/🇮🇹 CAB-IT (Chile/Italia)</option>
+                              <option value="rack_pdu">🔌 PDU (C13-C14 / C15)</option>
+                              <option value="schuko_eu">🇪🇺 Schuko (CAB-ACE)</option>
+                            </select>
+                          </div>
+                        )}
+
+                        {/* IDEA 1: Selector contextual Meraki (Suscripción CCW vs Co-Term) SOLO cuando el ítem es Meraki */}
+                        {isMerakiItem && (
+                          <div className="flex items-center space-x-1.5">
+                            <span className="text-[11px] text-indigo-300 font-semibold">Meraki Lic:</span>
+                            <select
+                              value={item.merakiLicenseMode || merakiLicenseMode}
+                              onChange={(e) => {
+                                const m = e.target.value as 'subscription' | 'coterm';
+                                setMerakiLicenseMode(m);
+                                updateParentItem(idx, { merakiLicenseMode: m });
+                              }}
+                              className="bg-indigo-950/70 border border-indigo-600/50 rounded-lg px-2 py-1 text-[11px] text-indigo-200 font-semibold"
+                              title="Alternar entre Suscripción CCW (LIC-...-3Y con Duration) y Co-Termination Clásico (-3YR)"
+                            >
+                              <option value="subscription">Suscripción CCW (-3Y)</option>
+                              <option value="coterm">Co-Term Clásico (-3YR)</option>
+                            </select>
+                          </div>
+                        )}
+
+                        {item.deviceType === 'switch' && !isMerakiItem && (
                           <>
-                            <label className="inline-flex items-center space-x-1.5 cursor-pointer select-none text-[11px] text-slate-300">
+                            <label className="inline-flex items-center space-x-1 cursor-pointer select-none text-[11px] text-slate-300">
                               <input
                                 type="checkbox"
                                 checked={Boolean(item.includeStacking)}
@@ -1121,10 +1535,10 @@ export const ConfiguriatorView: React.FC = () => {
                                 }
                                 className="rounded border-slate-700 text-indigo-600 focus:ring-0"
                               />
-                              <span>+ Kit Stacking</span>
+                              <span>+ Stack</span>
                             </label>
 
-                            <label className="inline-flex items-center space-x-1.5 cursor-pointer select-none text-[11px] text-slate-300">
+                            <label className="inline-flex items-center space-x-1 cursor-pointer select-none text-[11px] text-slate-300">
                               <input
                                 type="checkbox"
                                 checked={Boolean(item.includeRedundantPsu)}
@@ -1133,11 +1547,96 @@ export const ConfiguriatorView: React.FC = () => {
                                 }
                                 className="rounded border-slate-700 text-indigo-600 focus:ring-0"
                               />
-                              <span>+ 2da Fuente Redundante</span>
+                              <span>+ 2da PSU</span>
                             </label>
                           </>
                         )}
+
+                        {/* IDEA 5: 1-Clic Soporte Oficial Cisco SmartNet (CON-SNT) */}
+                        {!isMerakiItem && (
+                          <div className="inline-flex items-center gap-1.5 bg-slate-900/90 px-2 py-1 rounded-lg border border-cyan-800/40">
+                            <label className="inline-flex items-center space-x-1 cursor-pointer select-none text-[11px] text-cyan-300 font-semibold">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(item.includeSmartNet)}
+                                onChange={(e) =>
+                                  updateParentItem(idx, { includeSmartNet: e.target.checked })
+                                }
+                                className="rounded border-slate-700 text-cyan-500 focus:ring-0"
+                              />
+                              <span>+ SmartNet</span>
+                            </label>
+                            {item.includeSmartNet && (
+                              <select
+                                value={item.smartNetLevel || '8x5xNBD'}
+                                onChange={(e) =>
+                                  updateParentItem(idx, {
+                                    smartNetLevel: e.target.value as '8x5xNBD' | '24x7x4',
+                                  })
+                                }
+                                className="bg-slate-950 border border-cyan-700/50 rounded px-1.5 py-0.5 text-[10px] text-cyan-200 font-mono"
+                              >
+                                <option value="8x5xNBD">8x5xNBD (CON-SNT)</option>
+                                <option value="24x7x4">24x7x4 (CON-SNTP)</option>
+                              </select>
+                            )}
+                          </div>
+                        )}
                       </div>
+
+                      {/* IDEA 4: Asistente 1-Clic de Transceivers SFP / Fibra / DAC Vigentes 2026 */}
+                      {supportsTransceivers && (
+                        <div className="pt-1.5 flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center flex-wrap gap-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1 mr-1">
+                              <Cable className="w-3 h-3 text-cyan-400" />
+                              <span>+ Transceivers SFP Vigentes 2026:</span>
+                            </span>
+                            {COMPATIBLE_TRANSCEIVERS_2026.slice(0, 6).map((tr) => (
+                              <button
+                                key={tr.sku}
+                                type="button"
+                                onClick={() =>
+                                  handleAddTransceiverToItem(
+                                    idx,
+                                    tr.sku,
+                                    tr.defaultQty,
+                                    tr.description
+                                  )
+                                }
+                                className="px-2 py-0.5 rounded-lg bg-slate-900 hover:bg-indigo-950 text-[10px] font-mono font-bold text-cyan-300 border border-slate-800 hover:border-cyan-600/50 cursor-pointer transition-colors"
+                                title={`Agregar ${tr.defaultQty}x ${tr.sku} (${tr.description}) por equipo`}
+                              >
+                                {tr.label} ({tr.sku})
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Badges de transceivers activos en este equipo */}
+                          {Array.isArray(item.extraTransceivers) && item.extraTransceivers.length > 0 && (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {item.extraTransceivers.map((tr) => (
+                                <span
+                                  key={tr.sku}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-950/90 border border-cyan-500/40 text-[10px] font-mono font-bold text-cyan-200"
+                                >
+                                  <span>
+                                    {tr.qty}x {tr.sku}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveTransceiverFromItem(idx, tr.sku)}
+                                    className="text-cyan-400 hover:text-rose-300 cursor-pointer ml-0.5"
+                                    title="Quitar transceiver"
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Sub-líneas HIJAS ensambladas */}
                       {childRows.length > 0 && (
@@ -1158,7 +1657,7 @@ export const ConfiguriatorView: React.FC = () => {
                                 <span className="font-mono font-bold text-indigo-200 shrink-0">
                                   {sub.partNumber}
                                 </span>
-                                <span className="text-slate-400 truncate max-w-[260px]">
+                                <span className="text-slate-400 truncate max-w-[280px]">
                                   {sub.notes}
                                 </span>
                               </div>
@@ -1167,6 +1666,11 @@ export const ConfiguriatorView: React.FC = () => {
                                 {sub.durationMonths && (
                                   <span className="text-cyan-300">
                                     {sub.durationMonths}M ({sub.billingModel})
+                                  </span>
+                                )}
+                                {sub.estimatedTotalListUsd && (
+                                  <span className="text-slate-400 text-[10px]">
+                                    US$ {sub.estimatedTotalListUsd.toLocaleString('en-US')}
                                   </span>
                                 )}
                               </div>
@@ -1184,7 +1688,7 @@ export const ConfiguriatorView: React.FC = () => {
           {/* Vista Previa Exacta de las 10 Columnas de UploadExcelTemplate (Sheet1) */}
           {assembledRows.length > 0 && (
             <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <h3 className="text-xs font-extrabold uppercase tracking-wider text-cyan-300 flex items-center gap-2">
                   <FileSpreadsheet className="w-4 h-4 text-cyan-400" />
                   <span>
@@ -1205,8 +1709,9 @@ export const ConfiguriatorView: React.FC = () => {
                       <th className="py-2.5 px-3">Part Number</th>
                       <th className="py-2.5 px-3 text-center">Quantity</th>
                       <th className="py-2.5 px-3 text-center">Duration (Mnths)</th>
-                      <th className="py-2.5 px-3 text-center">Initial Term(Months)</th>
+                      <th className="py-2.5 px-3 text-center">Initial Term</th>
                       <th className="py-2.5 px-3">Billing Model</th>
+                      <th className="py-2.5 px-3 text-right">Ref. Lista USD</th>
                       <th className="py-2.5 px-3">Notes</th>
                     </tr>
                   </thead>
@@ -1253,7 +1758,12 @@ export const ConfiguriatorView: React.FC = () => {
                         <td className="py-2 px-3 text-[11px] text-slate-300">
                           {row.billingModel || '-'}
                         </td>
-                        <td className="py-2 px-3 text-[11px] text-slate-400 max-w-[260px] truncate">
+                        <td className="py-2 px-3 text-right font-mono text-[11px] text-emerald-300">
+                          {row.estimatedTotalListUsd
+                            ? `$${row.estimatedTotalListUsd.toLocaleString('en-US')}`
+                            : '-'}
+                        </td>
+                        <td className="py-2 px-3 text-[11px] text-slate-400 max-w-[240px] truncate">
                           {row.notes}
                         </td>
                       </tr>
