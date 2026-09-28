@@ -1,14 +1,104 @@
 rules_version = '2';
 
+// ===============================================================
+// Assumed Data Model (Cisco Automated v2.1 - Intcomex)
+// ===============================================================
+//
+// Architectural Note:
+// This application uses a custom SHA-256 salted RBAC authentication flow
+// backed by the `users` collection and local failsafe cache rather than
+// Firebase Authentication (`request.auth` is null for standard Web/Desktop
+// client operations). Rules below remove any 30-day Test Mode timestamp
+// expiration, enforce collection-level isolation (7 explicit collections),
+// validate payload schemas and field bounds on both create and update,
+// and deny all other paths by default.
+//
+// Collection 1: estimates/{estimateId}
+//   - dealId: string
+//   - estimateId: string
+//   - partnerName: string
+//   - clientFinalName: string
+//   - originalFileName: string
+//   - createdAt: string (ISO 8601)
+//   - creator: map (username, fullName, role, email)
+//   - financialSummary: map
+//   - headerInfo: map
+//   - itemsCount: number
+//   - items: list
+//   - customOverrideMap: map
+//   - fastTrackPromoMap: map (optional)
+//
+// Collection 2: dsv_records/{dsvId}
+//   - dealId: string
+//   - soNumber: string
+//   - poNumber: string
+//   - partnerId: string
+//   - resellerName: string
+//   - endCustomerName: string
+//   - endCustomerAddress: string
+//   - originalFileName: string
+//   - createdAt: string (ISO 8601)
+//   - creator: map
+//   - financialSummary: map
+//   - items: list
+//   - overrides: map
+//
+// Collection 3: users/{userId}
+//   - username: string (required)
+//   - full_name: string
+//   - email: string
+//   - role: string ('admin' | 'pm' | 'user' | 'viewer')
+//   - password_hash: string (SHA-256 salted hash)
+//   - is_active: number (1 or 0)
+//   - created_at: string (ISO 8601)
+//   - last_login: string (optional)
+//   - updated_at: string (optional)
+//
+// Collection 4: shared_sku_rules/{skuId}
+//   - sku: string (required)
+//   - rule: string ('equipo' | 'intangible' | 'arancel' | OverrideRuleType)
+//   - previousType: string (optional)
+//   - note: string (optional)
+//   - author: map (username, fullName, role)
+//   - updatedAt: string (ISO 8601)
+//   - createdAt: string (ISO 8601)
+//
+// Collection 5: partner_custom_params/{paramId}
+//   - id: string
+//   - scope: string ('partner' | 'global')
+//   - partnerName: string
+//   - params: map (internacionPct, arancelPct, margenPct) (required)
+//   - durationType: string ('permanent' | '15_days' | '30_days' | 'end_of_month')
+//   - expiresAt: number or null
+//   - createdAt: string (ISO 8601)
+//   - updatedAt: string (ISO 8601)
+//   - updatedBy: string (optional)
+//
+// Collection 6: partners_xcl/{partnerId}
+//   - resellerName: string (required)
+//   - xclCode: string (required)
+//   - updatedAt: number (optional)
+//
+// Collection 7: cisco_bo_sku_catalog/{skuKey}
+//   - partNumber: string (required)
+//   - basePartNumber: string
+//   - sku: string (required)
+//   - updatedAt: string (ISO 8601)
+//   - updatedBy: string (optional)
+//
+// ===============================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: Verifica si la solicitud proviene de un usuario autenticado
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Helper: Verifica si el usuario tiene rol de 'Administrador' (acceso total)
     function isAdmin() {
       return isAuthenticated() && (
         request.auth.token.role == 'admin' ||
@@ -18,13 +108,81 @@ service cloud.firestore {
       );
     }
 
-    // Helper: Verifica si el usuario es dueño del documento (Owner validation)
     function isDocOwner(docData) {
       return isAuthenticated() && (
-        docData.creator.username == request.auth.token.username ||
-        docData.creator.email == request.auth.token.email ||
+        ('creator' in docData && docData.creator is map && (
+          docData.creator.username == request.auth.token.username ||
+          docData.creator.email == request.auth.token.email
+        )) ||
         docData.userId == request.auth.uid
       );
+    }
+
+    function isValidPayloadSize(data) {
+      return data is map && data.size() > 0 && data.size() < 50;
+    }
+
+    // ===============================================================
+    // Domain Validators (Used in BOTH create and update)
+    // ===============================================================
+
+    function isValidEstimate(data) {
+      return isValidPayloadSize(data) &&
+        ('estimateId' in data || 'dealId' in data || 'items' in data) &&
+        (!('estimateId' in data) || (data.estimateId is string && data.estimateId.size() <= 500)) &&
+        (!('dealId' in data) || (data.dealId is string && data.dealId.size() <= 500));
+    }
+
+    function isValidDsvRecord(data) {
+      return isValidPayloadSize(data) &&
+        ('soNumber' in data || 'dealId' in data || 'items' in data) &&
+        (!('soNumber' in data) || (data.soNumber is string && data.soNumber.size() <= 500)) &&
+        (!('dealId' in data) || (data.dealId is string && data.dealId.size() <= 500));
+    }
+
+    function isValidUser(data) {
+      return isValidPayloadSize(data) &&
+        'username' in data &&
+        data.username is string &&
+        data.username.size() > 0 &&
+        data.username.size() <= 200;
+    }
+
+    function isValidSharedSkuRule(data) {
+      return isValidPayloadSize(data) &&
+        'sku' in data &&
+        data.sku is string &&
+        data.sku.size() > 0 &&
+        data.sku.size() <= 500;
+    }
+
+    function isValidPartnerCustomParam(data) {
+      return isValidPayloadSize(data) &&
+        'params' in data &&
+        data.params is map;
+    }
+
+    function isValidPartnerXcl(data) {
+      return isValidPayloadSize(data) &&
+        'resellerName' in data &&
+        data.resellerName is string &&
+        data.resellerName.size() > 0 &&
+        data.resellerName.size() <= 500 &&
+        'xclCode' in data &&
+        data.xclCode is string &&
+        data.xclCode.size() > 0 &&
+        data.xclCode.size() <= 200;
+    }
+
+    function isValidBoSkuCatalog(data) {
+      return isValidPayloadSize(data) &&
+        'partNumber' in data &&
+        data.partNumber is string &&
+        data.partNumber.size() > 0 &&
+        data.partNumber.size() <= 500 &&
+        'sku' in data &&
+        data.sku is string &&
+        data.sku.size() <= 500;
     }
 
     // ------------------------------------------------------------------------
@@ -32,10 +190,10 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /estimates/{estimateId} {
       allow read: if true;
-      allow create: if isAdmin() || (
-        isAuthenticated() && request.resource.data.creator.username != null
-      ) || true;
-      allow update, delete: if isAdmin() || isDocOwner(resource.data) || !isAuthenticated();
+      allow create: if isValidEstimate(request.resource.data);
+      allow update: if isValidEstimate(request.resource.data) &&
+        (isAdmin() || isDocOwner(resource.data) || !isAuthenticated());
+      allow delete: if isAdmin() || isDocOwner(resource.data) || !isAuthenticated();
     }
 
     // ------------------------------------------------------------------------
@@ -43,8 +201,10 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /dsv_records/{dsvId} {
       allow read: if true;
-      allow create: if isAdmin() || isAuthenticated() || true;
-      allow update, delete: if isAdmin() || isDocOwner(resource.data) || !isAuthenticated();
+      allow create: if isValidDsvRecord(request.resource.data);
+      allow update: if isValidDsvRecord(request.resource.data) &&
+        (isAdmin() || isDocOwner(resource.data) || !isAuthenticated());
+      allow delete: if isAdmin() || isDocOwner(resource.data) || !isAuthenticated();
     }
 
     // ------------------------------------------------------------------------
@@ -52,14 +212,52 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /users/{userId} {
       allow read: if true;
-      allow write: if isAdmin() || !isAuthenticated();
+      allow create, update: if isValidUser(request.resource.data) &&
+        (isAdmin() || !isAuthenticated());
+      allow delete: if isAdmin() || !isAuthenticated();
     }
 
     // ------------------------------------------------------------------------
     // 4. COLECCIÓN SHARED_SKU_RULES (Reglas de Reclasificación de SKUs)
     // ------------------------------------------------------------------------
     match /shared_sku_rules/{skuId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, update: if isValidSharedSkuRule(request.resource.data);
+      allow delete: if isAdmin() || !isAuthenticated();
+    }
+
+    // ------------------------------------------------------------------------
+    // 5. COLECCIÓN PARTNER_CUSTOM_PARAMS (Perfiles de Parámetros Comerciales)
+    // ------------------------------------------------------------------------
+    match /partner_custom_params/{paramId} {
+      allow read: if true;
+      allow create, update: if isValidPartnerCustomParam(request.resource.data);
+      allow delete: if isAdmin() || !isAuthenticated();
+    }
+
+    // ------------------------------------------------------------------------
+    // 6. COLECCIÓN PARTNERS_XCL (Base Global de Códigos XCL de Partners)
+    // ------------------------------------------------------------------------
+    match /partners_xcl/{partnerId} {
+      allow read: if true;
+      allow create, update: if isValidPartnerXcl(request.resource.data);
+      allow delete: if isAdmin() || !isAuthenticated();
+    }
+
+    // ------------------------------------------------------------------------
+    // 7. COLECCIÓN CISCO_BO_SKU_CATALOG (Catálogo Part Number <-> SKU Intcomex)
+    // ------------------------------------------------------------------------
+    match /cisco_bo_sku_catalog/{skuKey} {
+      allow read: if true;
+      allow create, update: if isValidBoSkuCatalog(request.resource.data);
+      allow delete: if isAdmin() || !isAuthenticated();
+    }
+
+    // ------------------------------------------------------------------------
+    // DEFAULT DENY (Bloqueo explícito de cualquier otra colección o ruta)
+    // ------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
