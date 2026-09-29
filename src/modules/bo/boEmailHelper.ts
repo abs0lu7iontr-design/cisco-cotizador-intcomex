@@ -19,11 +19,22 @@ export const formatCLP = (val: number, decimals: number = 2): string => {
 export const formatCL = formatCLP;
 
 /**
+ * Obtiene el saludo dinámico según la hora local del sistema:
+ * - Antes de las 12:00 hrs -> "Buenos días"
+ * - Desde las 12:00 hrs en adelante -> "Buenas tardes"
+ */
+export function getBoTimeBasedGreeting(date: Date = new Date()): string {
+  const hour = date.getHours();
+  return hour < 12 ? 'Buenos días' : 'Buenas tardes';
+}
+
+/**
  * Genera la tabla HTML compatible con el portapapeles de Microsoft Outlook,
  * mostrando siempre 2 decimales obligatorios con formato chileno y fila de Total General.
  */
 export function generateBoHtmlTable(lines: BoLineItem[]): string {
   const activeLines = lines.filter((l) => !l.isExcludedZeroCost && (l.extendedNetPrice > 0 || l.unitNetPrice > 0));
+  const greeting = getBoTimeBasedGreeting();
 
   const rowsHtml = activeLines
     .map(
@@ -43,7 +54,7 @@ export function generateBoHtmlTable(lines: BoLineItem[]): string {
 
   return `
   <p style="font-family: Calibri, sans-serif; font-size: 11pt;">Estimado,</p>
-  <p style="font-family: Calibri, sans-serif; font-size: 11pt;">Buenos días, por favor crear BO.</p>
+  <p style="font-family: Calibri, sans-serif; font-size: 11pt;">${greeting}, por favor crear BO.</p>
   <table style="border-collapse: collapse; width: 100%; max-width: 850px; font-family: Calibri, sans-serif; font-size: 11pt; border: 1px solid #000;">
     <thead>
       <tr style="background-color: #808080; color: #000; font-weight: bold; text-align: center;">

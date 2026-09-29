@@ -3,12 +3,18 @@
 // ============================================================================
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { BoLineItem, partitionBoLinesByCost } from './boTypes';
+import {
+  BoLineItem,
+  partitionBoLinesByCost,
+  detectBodegaFromActiveLines,
+  isBoServiceOrLicense,
+} from './boTypes';
 import {
   DEFAULT_BO_EMAIL_TO,
   DEFAULT_BO_EMAIL_CC,
   formatCLP,
   copyBoTableToClipboard,
+  getBoTimeBasedGreeting,
 } from './boEmailHelper';
 import {
   fetchBoSkuCatalog,
@@ -41,7 +47,6 @@ export const BoRequestModal: React.FC<Props> = ({
   isOpen,
   initialClientName,
   initialLines,
-  assignedBodega,
   onClose,
 }) => {
   const [recipientEmail, setRecipientEmail] = useState(DEFAULT_BO_EMAIL_TO);
@@ -49,6 +54,7 @@ export const BoRequestModal: React.FC<Props> = ({
   const [clientName, setClientName] = useState(initialClientName || 'Cliente');
   const [lines, setLines] = useState<BoLineItem[]>([]);
   const [discardedLines, setDiscardedLines] = useState<BoLineItem[]>([]);
+  const [manualBodega, setManualBodega] = useState<'E1' | 'ED' | null>(null);
   const [isDiscardedExpanded, setIsDiscardedExpanded] = useState<boolean>(true);
   const [copied, setCopied] = useState<boolean>(false);
 
@@ -67,8 +73,12 @@ export const BoRequestModal: React.FC<Props> = ({
     setRecipientEmail(DEFAULT_BO_EMAIL_TO);
     setCcEmail(DEFAULT_BO_EMAIL_CC);
     setCopied(false);
+    setManualBodega(null);
 
     const { activeLines, zeroCostLines } = partitionBoLinesByCost(initialLines);
+    const initialAutoBodega = detectBodegaFromActiveLines(
+      activeLines.length > 0 ? activeLines : initialLines
+    );
 
     // Cargar catálogo de SKUs desde Firestore Cloud + Local Cache
     fetchBoSkuCatalog().then(({ catalog, isCloudConnected }) => {
@@ -77,21 +87,29 @@ export const BoRequestModal: React.FC<Props> = ({
       const count = Object.keys(catalog).length;
       setMemorizedSkuCount(count);
 
-      // Auto-rellenar SKU si no viene definido
+      // Auto-rellenar SKU si no viene definido y sincronizar bodega según líneas activas
       const filledActive = activeLines.map((line) => {
-        if (!line.sku) {
-          const matched = findSkuInCatalog(line.partNumber, catalog);
-          return matched ? { ...line, sku: matched } : line;
-        }
-        return line;
+        const matched = !line.sku ? findSkuInCatalog(line.partNumber, catalog) : line.sku;
+        const isSvcOrLic = isBoServiceOrLicense(line.partNumber, undefined, line.isHardware);
+        return {
+          ...line,
+          sku: matched || line.sku,
+          bodega: initialAutoBodega,
+          isServiceOrLicense: isSvcOrLic,
+          isHardware: !isSvcOrLic,
+        };
       });
 
       const filledDiscarded = zeroCostLines.map((line) => {
-        if (!line.sku) {
-          const matched = findSkuInCatalog(line.partNumber, catalog);
-          return matched ? { ...line, sku: matched } : line;
-        }
-        return line;
+        const matched = !line.sku ? findSkuInCatalog(line.partNumber, catalog) : line.sku;
+        const isSvcOrLic = isBoServiceOrLicense(line.partNumber, undefined, line.isHardware);
+        return {
+          ...line,
+          sku: matched || line.sku,
+          bodega: initialAutoBodega,
+          isServiceOrLicense: isSvcOrLic,
+          isHardware: !isSvcOrLic,
+        };
       });
 
       setLines(filledActive);
@@ -106,14 +124,48 @@ export const BoRequestModal: React.FC<Props> = ({
     return { totalQty, totalExtended };
   }, [lines]);
 
-  const currentBodega = assignedBodega || lines[0]?.bodega || discardedLines[0]?.bodega || 'E1';
+  // Bodega detectada automáticamente a partir de los ítems activos en la Tabla Principal para BO
+  const autoDetectedBodega: 'E1' | 'ED' = useMemo(() => {
+    if (lines.length > 0) {
+      return detectBodegaFromActiveLines(lines);
+    }
+    if (discardedLines.length > 0) {
+      return detectBodegaFromActiveLines(discardedLines);
+    }
+    return 'E1';
+  }, [lines, discardedLines]);
+
+  const currentBodega: 'E1' | 'ED' = manualBodega || autoDetectedBodega;
+
+  // Sincroniza la bodega efectiva en todas las líneas activas y descartadas
+  const syncLinesWithAutoBodega = (nextActive: BoLineItem[], nextDiscarded: BoLineItem[]) => {
+    const nextAutoBodega = detectBodegaFromActiveLines(
+      nextActive.length > 0 ? nextActive : nextDiscarded
+    );
+    setManualBodega(null);
+    setLines(nextActive.map((l) => ({ ...l, bodega: nextAutoBodega })));
+    setDiscardedLines(nextDiscarded.map((l) => ({ ...l, bodega: nextAutoBodega })));
+  };
+
+  // Permite al usuario cambiar manualmente la bodega entre E1 y ED en cualquier momento
+  const handleManualBodegaChange = (targetBodega: 'E1' | 'ED') => {
+    setManualBodega(targetBodega);
+    setLines((prev) => prev.map((l) => ({ ...l, bodega: targetBodega })));
+    setDiscardedLines((prev) => prev.map((l) => ({ ...l, bodega: targetBodega })));
+  };
 
   if (!isOpen) return null;
 
-  // Actualización de Part Number editable en tabla activa
+  // Actualización de Part Number editable en tabla activa (re-evalúa bodega automáticamente)
   const handlePartNumberChange = (index: number, newPn: string) => {
     const updated = [...lines];
-    const item = { ...updated[index], partNumber: newPn };
+    const isSvcOrLic = isBoServiceOrLicense(newPn);
+    const item: BoLineItem = {
+      ...updated[index],
+      partNumber: newPn,
+      isServiceOrLicense: isSvcOrLic,
+      isHardware: !isSvcOrLic,
+    };
 
     // Si no tiene SKU, intentar auto-rellenarlo con el nuevo P/N
     if (!item.sku) {
@@ -123,13 +175,19 @@ export const BoRequestModal: React.FC<Props> = ({
       }
     }
     updated[index] = item;
-    setLines(updated);
+    syncLinesWithAutoBodega(updated, discardedLines);
   };
 
   // Actualización de Part Number editable en tabla de descartados
   const handleDiscardedPartNumberChange = (index: number, newPn: string) => {
     const updated = [...discardedLines];
-    const item = { ...updated[index], partNumber: newPn };
+    const isSvcOrLic = isBoServiceOrLicense(newPn);
+    const item: BoLineItem = {
+      ...updated[index],
+      partNumber: newPn,
+      isServiceOrLicense: isSvcOrLic,
+      isHardware: !isSvcOrLic,
+    };
     if (!item.sku) {
       const matched = findSkuInCatalog(newPn, skuCatalog);
       if (matched) {
@@ -200,24 +258,27 @@ export const BoRequestModal: React.FC<Props> = ({
     statusTimerRef.current = setTimeout(() => setCloudStatus('idle'), 3500);
   };
 
-  // Mover una línea de descartadas a la tabla activa
+  // Mover una línea de descartadas a la tabla activa (recalcula bodega E1/ED inmediatamente)
   const handleAddDiscardedLine = (index: number) => {
     const item = discardedLines[index];
-    setDiscardedLines((prev) => prev.filter((_, i) => i !== index));
-    setLines((prev) => [...prev, item]);
+    const nextDiscarded = discardedLines.filter((_, i) => i !== index);
+    const nextActive = [...lines, item];
+    syncLinesWithAutoBodega(nextActive, nextDiscarded);
   };
 
-  // Mover todas las líneas descartadas a la tabla activa
+  // Mover todas las líneas descartadas a la tabla activa (recalcula bodega E1/ED inmediatamente)
   const handleAddAllDiscarded = () => {
-    setLines((prev) => [...prev, ...discardedLines]);
-    setDiscardedLines([]);
+    const nextActive = [...lines, ...discardedLines];
+    syncLinesWithAutoBodega(nextActive, []);
   };
 
   // Descartar una línea de la tabla activa hacia la sección de descartados
+  // Si solo quedan servicios o licencias en la tabla activa, cambia inmediatamente a ED
   const handleRemoveActiveLine = (index: number) => {
     const item = lines[index];
-    setLines((prev) => prev.filter((_, i) => i !== index));
-    setDiscardedLines((prev) => [...prev, item]);
+    const nextActive = lines.filter((_, i) => i !== index);
+    const nextDiscarded = [...discardedLines, item];
+    syncLinesWithAutoBodega(nextActive, nextDiscarded);
   };
 
   // Copiar tabla HTML al portapapeles y sincronizar SKUs a la nube
@@ -231,18 +292,20 @@ export const BoRequestModal: React.FC<Props> = ({
       batchSaveBoSkuMappings(validItemsToSync);
     }
 
-    const ok = await copyBoTableToClipboard(lines);
+    const linesWithCurrentBodega = lines.map((l) => ({ ...l, bodega: currentBodega }));
+    const ok = await copyBoTableToClipboard(linesWithCurrentBodega);
     if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 3500);
     }
   };
 
-  // Abrir cliente de correo
+  // Abrir cliente de correo con saludo dinámico según la hora ("Buenos días" / "Buenas tardes")
   const handleOpenOutlook = () => {
+    const greeting = getBoTimeBasedGreeting();
     const subject = encodeURIComponent(`RV: Cotización ${clientName.trim()}`);
     const body = encodeURIComponent(
-      'Estimado,\n\nBuenos días, por favor crear BO.\n\n(Pega aquí la tabla copiada usando CTRL+V)\n\nSaludos,'
+      `Estimado,\n\n${greeting}, por favor crear BO.\n\n(Pega aquí la tabla copiada usando CTRL+V)\n\nSaludos,`
     );
     window.location.href = `mailto:${recipientEmail}?cc=${ccEmail}&subject=${subject}&body=${body}`;
   };
@@ -254,7 +317,7 @@ export const BoRequestModal: React.FC<Props> = ({
     const rows = discardedLines
       .map(
         (l) =>
-          `"${l.sku || ''}","${l.partNumber}","${l.bodega}",${l.qty},${formatCLP(l.unitNetPrice, 2)},${formatCLP(l.extendedNetPrice, 2)}`
+          `"${l.sku || ''}","${l.partNumber}","${currentBodega}",${l.qty},${formatCLP(l.unitNetPrice, 2)},${formatCLP(l.extendedNetPrice, 2)}`
       )
       .join('\n');
     const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
@@ -282,9 +345,39 @@ export const BoRequestModal: React.FC<Props> = ({
               <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800">
                 Precios Finales de Venta
               </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800">
-                Bodega: {currentBodega}
-              </span>
+
+              {/* Selector Interactivo + Auto-Detección de Bodega (E1 vs ED) */}
+              <div
+                className="inline-flex items-center gap-1 bg-zinc-900 border border-amber-800/70 rounded-lg px-2 py-0.5 text-[10px] font-mono"
+                title="Cambia automáticamente a ED cuando solo hay licencias/servicios activos, o haz clic para cambiar manualmente entre E1 y ED"
+              >
+                <span className="text-zinc-400">Bodega:</span>
+                <button
+                  type="button"
+                  onClick={() => handleManualBodegaChange('E1')}
+                  className={`px-1.5 py-0.5 rounded font-bold transition-colors cursor-pointer ${
+                    currentBodega === 'E1'
+                      ? 'bg-amber-500/25 text-amber-300 border border-amber-500/50'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  E1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleManualBodegaChange('ED')}
+                  className={`px-1.5 py-0.5 rounded font-bold transition-colors cursor-pointer ${
+                    currentBodega === 'ED'
+                      ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-500/50'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  ED
+                </button>
+                <span className="text-[9px] text-zinc-400 ml-0.5">
+                  ({currentBodega === 'ED' ? 'Licencias/Servicios' : 'Con Equipos'})
+                </span>
+              </div>
 
               {/* Indicador de Estado Cloud Database */}
               <div
@@ -383,9 +476,35 @@ export const BoRequestModal: React.FC<Props> = ({
                 <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
                 Tabla Principal para BO ({lines.length} {lines.length === 1 ? 'ítem con costo' : 'ítems con costo'})
               </span>
-              <span className="text-[11px] text-zinc-400 font-mono">
-                Bodega Asignada: <strong className="text-amber-400 font-bold">{currentBodega}</strong>
-              </span>
+              <div className="flex items-center gap-2 text-[11px] text-zinc-400 font-mono">
+                <span>Bodega Asignada:</span>
+                <div className="inline-flex items-center gap-1 bg-zinc-950 border border-zinc-800 rounded-md p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => handleManualBodegaChange('E1')}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                      currentBodega === 'E1'
+                        ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40'
+                        : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                    title="Bodega E1 (Equipos / Mixto)"
+                  >
+                    E1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleManualBodegaChange('ED')}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                      currentBodega === 'ED'
+                        ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-500/40'
+                        : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                    title="Bodega ED (Solo Licencias o Servicios)"
+                  >
+                    ED
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="overflow-x-auto">
@@ -431,7 +550,20 @@ export const BoRequestModal: React.FC<Props> = ({
                             title="Part Number Cisco (editable, por defecto incluye sufijo -CBN o puedes usar espacio CBN)"
                           />
                         </td>
-                        <td className="p-2 text-center font-bold text-amber-400">{line.bodega}</td>
+                        <td className="p-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleManualBodegaChange(currentBodega === 'E1' ? 'ED' : 'E1')}
+                            className={`px-2 py-0.5 rounded font-bold text-xs border transition-colors cursor-pointer ${
+                              currentBodega === 'ED'
+                                ? 'bg-cyan-950/60 text-cyan-300 border-cyan-700/60 hover:bg-cyan-900/60'
+                                : 'bg-amber-950/60 text-amber-400 border-amber-700/60 hover:bg-amber-900/60'
+                            }`}
+                            title="Clic para cambiar bodega entre E1 y ED"
+                          >
+                            {currentBodega}
+                          </button>
+                        </td>
                         <td className="p-2 text-center">{line.qty}</td>
                         <td className="p-2 text-right text-zinc-300">
                           {formatCLP(line.unitNetPrice, 2)}
@@ -558,7 +690,7 @@ export const BoRequestModal: React.FC<Props> = ({
                                 title="Part Number Cisco (editable)"
                               />
                             </td>
-                            <td className="p-1.5 text-center text-zinc-500">{dLine.bodega}</td>
+                            <td className="p-1.5 text-center text-zinc-500">{currentBodega}</td>
                             <td className="p-1.5 text-center">{dLine.qty}</td>
                             <td className="p-1.5 text-right text-zinc-500">$0,00</td>
                             <td className="p-1.5 text-right text-zinc-500">$0,00</td>
