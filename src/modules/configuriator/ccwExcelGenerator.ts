@@ -55,6 +55,9 @@ export interface CcwAssembledRow {
   fastTrackInfo?: FastTrackProduct | null;
   estimatedUnitListUsd?: number;
   estimatedTotalListUsd?: number;
+  clientDiscountPct?: number;
+  estimatedUnitNetUsd?: number;
+  estimatedTotalNetUsd?: number;
 }
 
 /**
@@ -415,11 +418,19 @@ export async function buildAssembledCcwRows(
     const rule = resolveChassisRule(targetSku);
     const effectiveCordStd = item.powerCordStandard || defaultPowerCordStandard || 'italy_chile';
     const effectiveMerakiMode = item.merakiLicenseMode || merakiLicenseMode;
+    const itemDiscountPct =
+      typeof item.discountPct === 'number' && item.discountPct >= 0 && item.discountPct <= 99
+        ? item.discountPct
+        : item.unitListPriceUsd && item.unitNetPriceUsd && item.unitListPriceUsd > 0
+          ? Number(((1 - item.unitNetPriceUsd / item.unitListPriceUsd) * 100).toFixed(2))
+          : 0;
 
     if (rule) {
       const parentUnitUsd =
+        (item.unitListPriceUsd && item.unitListPriceUsd > 0 ? item.unitListPriceUsd : undefined) ||
         ftMatch?.listPrice ||
         estimateReferencePriceUsd(containerChildModel ? targetSku : rule.parentSku, true);
+      const parentUnitNet = Number((parentUnitUsd * (1 - itemDiscountPct / 100)).toFixed(2));
 
       // 1. Fila MADRE (Chasis Principal o Contenedor Oficial CCW como MS130-SWITCHES)
       rows.push({
@@ -429,8 +440,8 @@ export async function buildAssembledCcwRows(
         partNumber: rule.parentSku,
         quantity: qty,
         durationMonths: '',
-        listPrice: '',
-        discountPct: '',
+        listPrice: item.unitListPriceUsd && item.unitListPriceUsd > 0 ? item.unitListPriceUsd : '',
+        discountPct: itemDiscountPct > 0 ? itemDiscountPct : '',
         initialTerm: '',
         autoRenewTerm: '',
         billingModel: '',
@@ -446,6 +457,9 @@ export async function buildAssembledCcwRows(
         fastTrackInfo: ftMatch,
         estimatedUnitListUsd: parentUnitUsd,
         estimatedTotalListUsd: parentUnitUsd * qty,
+        clientDiscountPct: itemDiscountPct,
+        estimatedUnitNetUsd: parentUnitNet,
+        estimatedTotalNetUsd: parentUnitNet * qty,
       });
 
       // 2. Filas HIJAS consecutivas (Hardware / Licencia DNA o Meraki / Fuente PoE / Cable CAB-IT / Network Stack / SmartNet)
@@ -453,6 +467,7 @@ export async function buildAssembledCcwRows(
         licenseTier: item.licenseTier || 'Essentials',
         termYears: item.termYears || 3,
         isPoe: item.isPoe ?? true,
+        uplinkType: item.uplinkType,
         includeStackingKit: item.includeStacking,
         includeRedundantPsu: item.includeRedundantPsu,
         includeSmartNet: item.includeSmartNet,
@@ -465,7 +480,19 @@ export async function buildAssembledCcwRows(
       for (let sIdx = 0; sIdx < subItems.length; sIdx++) {
         const sub = subItems[sIdx];
         const childQty = qty * sub.qtyMultiplier;
-        const childUnitUsd = estimateReferencePriceUsd(sub.partNumber, false);
+        const aiMatchingSub = Array.isArray(item.aiSubItems)
+          ? item.aiSubItems.find(
+              (a) => (a.partNumber || '').trim().toUpperCase() === sub.partNumber.trim().toUpperCase()
+            )
+          : undefined;
+        const childUnitUsd =
+          (aiMatchingSub?.unitListPriceUsd !== undefined && aiMatchingSub.unitListPriceUsd >= 0
+            ? aiMatchingSub.unitListPriceUsd
+            : undefined) ?? estimateReferencePriceUsd(sub.partNumber, false);
+        const childDiscPct =
+          aiMatchingSub?.discountPct !== undefined ? aiMatchingSub.discountPct : itemDiscountPct;
+        const childUnitNet = Number((childUnitUsd * (1 - childDiscPct / 100)).toFixed(2));
+
         rows.push({
           rowId: `row-${idx}-sub-${sIdx}`,
           parentIndex: idx,
@@ -474,7 +501,7 @@ export async function buildAssembledCcwRows(
           quantity: childQty,
           durationMonths: sub.durationMonths || '',
           listPrice: '',
-          discountPct: '',
+          discountPct: childDiscPct > 0 ? childDiscPct : '',
           initialTerm: sub.initialTerm || '',
           autoRenewTerm: sub.autoRenewTerm || '',
           billingModel: sub.billingModel || '',
@@ -482,10 +509,17 @@ export async function buildAssembledCcwRows(
           notes: sub.description,
           estimatedUnitListUsd: childUnitUsd,
           estimatedTotalListUsd: childUnitUsd * childQty,
+          clientDiscountPct: childDiscPct,
+          estimatedUnitNetUsd: childUnitNet,
+          estimatedTotalNetUsd: childUnitNet * childQty,
         });
       }
     } else {
-      const parentUnitUsd = ftMatch?.listPrice || estimateReferencePriceUsd(targetSku, true);
+      const parentUnitUsd =
+        (item.unitListPriceUsd && item.unitListPriceUsd > 0 ? item.unitListPriceUsd : undefined) ||
+        ftMatch?.listPrice ||
+        estimateReferencePriceUsd(targetSku, true);
+      const parentUnitNet = Number((parentUnitUsd * (1 - itemDiscountPct / 100)).toFixed(2));
       // 1. Fila MADRE (Equipo principal)
       rows.push({
         rowId: `row-${idx}-parent`,
@@ -494,8 +528,8 @@ export async function buildAssembledCcwRows(
         partNumber: targetSku,
         quantity: qty,
         durationMonths: '',
-        listPrice: '',
-        discountPct: '',
+        listPrice: item.unitListPriceUsd && item.unitListPriceUsd > 0 ? item.unitListPriceUsd : '',
+        discountPct: itemDiscountPct > 0 ? itemDiscountPct : '',
         initialTerm: '',
         autoRenewTerm: '',
         billingModel: '',
@@ -510,6 +544,9 @@ export async function buildAssembledCcwRows(
         fastTrackInfo: ftMatch,
         estimatedUnitListUsd: parentUnitUsd,
         estimatedTotalListUsd: parentUnitUsd * qty,
+        clientDiscountPct: itemDiscountPct,
+        estimatedUnitNetUsd: parentUnitNet,
+        estimatedTotalNetUsd: parentUnitNet * qty,
       });
 
       // 2. Filas HIJAS (Meraki, aiSubItems de la IA o fallback universal por familia)
@@ -522,7 +559,13 @@ export async function buildAssembledCcwRows(
       for (let sIdx = 0; sIdx < fallbackSubs.length; sIdx++) {
         const sub = fallbackSubs[sIdx];
         const childQty = qty * sub.qtyMultiplier;
-        const childUnitUsd = estimateReferencePriceUsd(sub.partNumber, false);
+        const childUnitUsd =
+          (sub.unitListPriceUsd !== undefined && sub.unitListPriceUsd >= 0
+            ? sub.unitListPriceUsd
+            : undefined) ?? estimateReferencePriceUsd(sub.partNumber, false);
+        const childDiscPct =
+          sub.discountPct !== undefined ? sub.discountPct : itemDiscountPct;
+        const childUnitNet = Number((childUnitUsd * (1 - childDiscPct / 100)).toFixed(2));
         rows.push({
           rowId: `row-${idx}-sub-${sIdx}`,
           parentIndex: idx,
@@ -531,7 +574,7 @@ export async function buildAssembledCcwRows(
           quantity: childQty,
           durationMonths: sub.durationMonths || '',
           listPrice: '',
-          discountPct: '',
+          discountPct: childDiscPct > 0 ? childDiscPct : '',
           initialTerm: sub.initialTerm || '',
           autoRenewTerm: sub.autoRenewTerm || '',
           billingModel: sub.billingModel || '',
@@ -539,6 +582,9 @@ export async function buildAssembledCcwRows(
           notes: sub.description,
           estimatedUnitListUsd: childUnitUsd,
           estimatedTotalListUsd: childUnitUsd * childQty,
+          clientDiscountPct: childDiscPct,
+          estimatedUnitNetUsd: childUnitNet,
+          estimatedTotalNetUsd: childUnitNet * childQty,
         });
       }
     }
@@ -551,6 +597,7 @@ export async function buildAssembledCcwRows(
         const sanitizedTr = sanitizeAndValidateCcwSku(tr.sku).sanitizedSku;
         const trQty = (tr.qty > 0 ? tr.qty : 2) * qty;
         const trUnitUsd = estimateReferencePriceUsd(sanitizedTr, false);
+        const trUnitNet = Number((trUnitUsd * (1 - itemDiscountPct / 100)).toFixed(2));
         rows.push({
           rowId: `row-${idx}-sfp-${tIdx}`,
           parentIndex: idx,
@@ -559,7 +606,7 @@ export async function buildAssembledCcwRows(
           quantity: trQty,
           durationMonths: '',
           listPrice: '',
-          discountPct: '',
+          discountPct: itemDiscountPct > 0 ? itemDiscountPct : '',
           initialTerm: '',
           autoRenewTerm: '',
           billingModel: '',
@@ -567,6 +614,9 @@ export async function buildAssembledCcwRows(
           notes: `${tr.description || 'Cisco Validated Transceiver Module'} (${tr.qty}x por equipo)`,
           estimatedUnitListUsd: trUnitUsd,
           estimatedTotalListUsd: trUnitUsd * trQty,
+          clientDiscountPct: itemDiscountPct,
+          estimatedUnitNetUsd: trUnitNet,
+          estimatedTotalNetUsd: trUnitNet * trQty,
         });
       }
     }
@@ -609,17 +659,19 @@ export async function generateCcwUploadWorkbook(
   headerRow.font = { bold: true, size: 10 };
 
   for (const r of assembledRows) {
+    // Dejar la columna Notes vacía en el archivo UploadExcelTemplate (.xlsx) para evitar que
+    // Cisco CCW inserte una fila extra de comentario sin precio (Fila 19) al exportar el Estimate.
     worksheet.addRow({
       partNumber: r.partNumber,
       quantity: r.quantity,
       durationMonths: r.durationMonths === '' ? '' : Number(r.durationMonths),
-      listPrice: r.listPrice === '' ? '' : Number(r.listPrice),
+      listPrice: '',
       discountPct: r.discountPct === '' ? '' : Number(r.discountPct),
       initialTerm: r.initialTerm === '' ? '' : Number(r.initialTerm),
       autoRenewTerm: r.autoRenewTerm === '' ? '' : Number(r.autoRenewTerm),
       billingModel: r.billingModel || '',
       requestedStartDate: r.requestedStartDate || '',
-      notes: r.notes || '',
+      notes: '',
     });
   }
 

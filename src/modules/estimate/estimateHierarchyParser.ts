@@ -45,7 +45,7 @@ export function parseEstimateWithHierarchy(rawRows: any[][]): ProcessedEstimateL
     }
 
     // Detectar fila descriptiva de Initial Term asociada al grupo actual
-    const termMatch = fullText.match(/Initial\s+Term\s*-\s*([\d.]+)\s*Months/i);
+    const termMatch = fullText.match(/Initial\s+Term\s*[-:]\s*([\d.]+)\s*Months?/i);
     if (termMatch) {
       const termMonths = Math.round(parseFloat(termMatch[1]));
       if (termMonths > 0) {
@@ -66,7 +66,7 @@ export function parseEstimateWithHierarchy(rawRows: any[][]): ProcessedEstimateL
 
     // Omitir filas de encabezado, notas, vacías o de metadata informativa
     if (!lineNum || !partNumber || lineNum.toLowerCase().includes('line')) continue;
-    if (description.includes('Initial Term -') || partNumber.includes('Initial Term -')) continue;
+    if (/Initial\s+Term\s*[-:]/i.test(description) || /Initial\s+Term\s*[-:]/i.test(partNumber)) continue;
 
     const parsedQty = parseSafeNum(row[8]);
     const qty = parsedQty || (lineNum.endsWith('.0') ? 1 : 0);

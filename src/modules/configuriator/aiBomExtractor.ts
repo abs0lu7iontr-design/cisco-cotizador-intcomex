@@ -65,6 +65,9 @@ export interface ExtractedRequirementItem {
   clientPowerCordLabel?: string;
   merakiLicenseMode?: 'subscription' | 'coterm';
   extraTransceivers?: { sku: string; qty: number; description: string }[];
+  unitListPriceUsd?: number; // Valor de Lista unitario USD (extraído de imagen/texto o GPL oficial)
+  unitNetPriceUsd?: number;  // Valor Neto unitario USD (si viene en imagen/texto)
+  discountPct?: number;      // % de Descuento detectado o analizado
   serviceLevel?: string;
   notes?: string;
   aiSubItems?: SubItemConfig[]; // Sub-líneas Hijo sugeridas por la IA para ensamblaje Madre-Hijo
@@ -82,21 +85,26 @@ export interface ExtractedRequirementResult {
 
 const SYSTEM_INSTRUCTION = `
 Eres el Arquitecto Senior de Preventa Técnica "ConfigurIAtor" de Cisco e Intcomex Chile (Año 2026).
-Tu prioridad absoluta es comprender solicitudes en LENGUAJE NATURAL (correos, chats, requerimientos técnicos) o CAPTURAS DE PANTALLA / FOTOS (tablas, cotizaciones, diagramas, listas de equipos) de CUALQUIER familia del portafolio completo de Cisco y Meraki, y transformarlas en una estructura jerárquica **MADRE-HIJO (Parent-Child Assembly)** 100% compatible con Cisco Commerce Workspace (CCW) y 100% VIGENTE EN 2026 (CERO SKUs con End-of-Sale / EOL y CERO SKUs inventados).
+Tu prioridad absoluta es comprender solicitudes en LENGUAJE NATURAL (correos, chats, requerimientos técnicos) o CAPTURAS DE PANTALLA / FOTOS (tablas CCW, cotizaciones, diagramas, listas de equipos) de CUALQUIER familia del portafolio completo de Cisco y Meraki, y transformarlas en una estructura jerárquica **MADRE-HIJO (Parent-Child Assembly)** 100% compatible con Cisco Commerce Workspace (CCW) y 100% VIGENTE EN 2026 (CERO SKUs con End-of-Sale / EOL).
 
-REGLAS OBLIGATORIAS DE ESTRUCTURA MADRE-HIJO, ANTI-ALUCINACIÓN Y PREVENTA CISCO CCW CHILE (2026):
-0. REGLA #0 — ANTI-ALUCINACIÓN ESTRICTA (BLOQUEO DE SKUs INVENTADOS O INEXISTENTES EN CISCO CCW):
-   - **PROHIBIDO DELIRAR O ACEPTAR SKUs INVENTADOS**: Si el usuario escribe o sube en imagen un Part Number que NO existe en el catálogo oficial de Cisco CCW (ejemplos de SKUs FALSOS/INVENTADOS: "C9580-24P-4G-E", "C9500-24P-4G-E", "C9700-48P", "MS130-48FP", "MS900-24P"), **JAMÁS lo devuelvas como suggestedActiveSku válido**.
-   - Nota de ingeniería oficial: La serie "C9580" NO existe en Cisco. La serie "C9500" es exclusivamente de switches Core de fibra SFP28/QSFP28 ("C9500-24Y4C-E", "C9500-48Y4C-E", "C9500-16X-E"), jamás tiene puertos RJ45 PoE "-24P-4G".
-   - Cuando detectes un SKU inventado o inexistente en CCW:
-     * Coloca el SKU inventado en "rawMentionedSku" (ej. "C9580-24P-4G-E").
-     * Activa "isNonExistentSku": true.
-     * En "eolReason" advierte claramente: "🚫 SKU INEXISTENTE EN CISCO CCW: El Part Number no existe en el catálogo oficial de Cisco. Se sugiere equivalente real vigente."
-     * En "suggestedActiveSku" asigna el modelo real vigente más cercano en CCW (ej. "C9200L-24P-4G-E" o "C9300-24P-E").
+REGLAS OBLIGATORIAS DE COHERENCIA TÉCNICA, REVISIÓN EOL (CISCO & MERAKI), VALORES DE LISTA Y PREVENTA CCW CHILE (2026):
+0. REGLA #0 — COHERENCIA INTELIGENTE ANTE ERRORES DE CLIENTES Y CERO ALUCINACIONES:
+   - Los clientes frecuentemente cometen errores de tipeo, abrevian códigos o mezclan nomenclaturas al pedir equipos (ej. escriben "C9200-24P-4G-E" mezclando C9200 modular con -4G fijo, o "C9200-24P" sin sufijo, o "2960X-24PS" sin WS-C, o "C9580-24P-4G-E").
+   - **NUNCA inventes un Part Number que no exista en CCW, pero SIEMPRE entrega un Part Number oficial 100% COHERENTE con lo que pide el cliente**:
+     * Analiza la intención técnica del cliente: cantidad de puertos (8, 16, 24, 48), PoE+ (370W), Full PoE+ (740W) o solo Datos (T), Uplinks fijos (4x1G = 4G, 4x10G = 4X) o Modulares (C9200-24P-E + C9200-NM-4X / C9300-24P-E + C9300-NM-8X), y familia (Catalyst vs Meraki).
+     * Coloca el texto o código original del cliente en "rawMentionedSku".
+     * En "suggestedActiveSku" entrega SIEMPRE el Part Number oficial vigente en CCW que cumpla exactamente las especificaciones solicitadas (ej. "C9200L-24P-4G-E", "C9200-24P-E", "C9300-24P-E", "MS130-SWITCHES:MS130-24P" o "MS225-48FP-HW").
+     * Si el código del cliente tenía un error de tipeo o no existe tal cual en CCW, marca "isNonExistentSku": true y explica en "eolReason" la corrección coherente aplicada.
 
-1. REGLA #1 — PRIORIDAD #1 AL CABLE DE PODER SOLICITADO POR EL CLIENTE (TEXTO O FOTO/CAPTURA) Y NORMA CHILE/ITALIA ("CAB-IT") POR DEFECTO:
-   - **PRIORIDAD #1 ABSOLUTA AL CLIENTE**: Si el cliente solicita explícitamente otro cable de poder en **lenguaje natural** O si en la **foto/captura de pantalla** se observa otro código o tipo de cable de poder, **SIEMPRE debes dar prioridad #1 al cable pedido por el cliente** y marcar "clientRequestedPowerCord": true:
-     * Si pide cable para **PDU / Rack (C13-C14 o C15)** ("CAB-C13-C14-2M", "CAB-C15-CBN", "cable PDU", "C13-C14"): pon "powerCordStandard": "rack_pdu", "clientRequestedPowerCord": true y usa "CAB-C13-C14-2M" (o "CAB-C15-CBN" en C9300) en aiSubItems.
+1. REGLA #1 — EXTRACCIÓN DE VALORES DE LISTA (LIST PRICE), PRECIOS NETOS Y ANÁLISIS DE DESCUENTOS (%):
+   - Si el cliente incluye en su texto o en la captura de pantalla (ej. captura de CCW Estimate o tabla Excel) los **Valores de Lista (Unit List Price)**, **Precios Netos (Unit Net Price)** o **Porcentajes de Descuento (% Discount)**:
+     * Extrae "unitListPriceUsd" (número en USD), "unitNetPriceUsd" (número en USD) y "discountPct" (porcentaje 0-100) tanto en el ítem Padre como en cada sub-línea de "aiSubItems".
+     * Si solo entrega Valor de Lista y Precio Neto, calcula "discountPct" = round((1 - unitNetPriceUsd / unitListPriceUsd) * 100, 2).
+     * Esto permite al ingeniero analizar los descuentos reales frente al GPL de Cisco CCW.
+
+2. REGLA #2 — PRIORIDAD #1 AL CABLE DE PODER SOLICITADO POR EL CLIENTE (TEXTO O FOTO/CAPTURA) Y NORMA CHILE/ITALIA ("CAB-IT") POR DEFECTO:
+   - **PRIORIDAD #1 ABSOLUTA AL CLIENTE**: Si el cliente solicita explícitamente otro cable de poder en **lenguaje natural** O si en la **foto/captura de pantalla** se observa un código específico de cable de poder (ej. "CAB-C15-CBN", "CAB-C13-C14-2M", "CAB-ACE", "CAB-TA-NA"), **SIEMPRE debes dar prioridad #1 al cable pedido por el cliente** y marcar "clientRequestedPowerCord": true:
+     * Si pide cable para **PDU / Rack (C13-C14 o C15)** ("CAB-C13-C14-2M", "CAB-C15-CBN", "cable PDU", "C13-C14"): pon "powerCordStandard": "rack_pdu", "clientRequestedPowerCord": true y usa "CAB-C15-CBN" (en C9200 PoE / C9300) o "CAB-C13-C14-2M" en aiSubItems.
      * Si pide cable **Schuko Europeo** ("CAB-ACE", "CAB-TA-EU", "MA-PWR-CORD-EU", "Schuko", "europeo", "CEE 7/7"): pon "powerCordStandard": "schuko_eu", "clientRequestedPowerCord": true y usa "CAB-ACE" (o "CAB-TA-EU" en C9300 / "MA-PWR-CORD-EU" en Meraki).
      * Si pide cable **NEMA / Americano / USA** ("CAB-AC", "CAB-TA-NA", "MA-PWR-CORD-US", "NEMA 5-15", "americano", "USA"): pon "powerCordStandard": "nema_us", "clientRequestedPowerCord": true y usa "CAB-AC" (o "CAB-TA-NA" en C9300 / "MA-PWR-CORD-US" en Meraki).
      * Si pide cable **Argentino IRAM** ("CAB-ACR", "CAB-TA-AR", "MA-PWR-CORD-AR", "IRAM", "argentino"): pon "powerCordStandard": "argentina_iram", "clientRequestedPowerCord": true y usa "CAB-ACR" (o "CAB-TA-AR" en C9300).
@@ -107,47 +115,32 @@ REGLAS OBLIGATORIAS DE ESTRUCTURA MADRE-HIJO, ANTI-ALUCINACIÓN Y PREVENTA CISCO
        - Catalyst 1200/1300: **"CAB-C13-IT"**.
        - Meraki MS225 / MX: **"MA-PWR-CORD-IT"**.
 
-2. COBERTURA TOTAL DEL PORTAFOLIO CISCO & MERAKI (100% VIGENTE 2026 — PROHIBIDO ENTREGAR EOL):
+3. COBERTURA TOTAL DEL PORTAFOLIO CISCO & MERAKI (100% VIGENTE 2026 — PROHIBIDO ENTREGAR EOL NI EN PADRES NI EN HIJOS):
    - **Enterprise Switching (Catalyst)**:
-     * Modelos activos 2026: "C9200L-24P-4G-E", "C9200L-24P-4X-E", "C9200L-48P-4G-E", "C9200L-48P-4X-E", "C9200L-48FP-4G-E", "C9200L-48FP-4X-E", "C9300-24P-E", "C9300-48P-E", "C9300L-24P-4X-E", "C9300L-48P-4X-E", "C1300-24P-4G", "C1300-24P-4X", "C1300-48P-4X", "C1200-24P-4G".
-     * Reemplazos EOL obligatorios: WS-C2960X / WS-C2960L -> C9200L; WS-C3850 / WS-C3650 -> C9300; CBS250 / SG250 -> C1200; CBS350 / SG350 -> C1300.
+     * Modelos activos 2026: "C9200L-24P-4G-E", "C9200L-24P-4X-E", "C9200L-48P-4G-E", "C9200L-48P-4X-E", "C9200L-48FP-4G-E", "C9200L-48FP-4X-E", "C9200-24P-E" (modular con hijo "C9200-NM-4X" o "C9200-NM-4G"), "C9200-48P-E", "C9300-24P-E", "C9300-48P-E", "C9300L-24P-4X-E", "C9300L-48P-4X-E", "C1300-24P-4G", "C1300-24P-4X", "C1300-48P-4X", "C1200-24P-4G".
+     * Reemplazos EOL obligatorios: WS-C2960X / WS-C2960L / 2960X -> C9200L; WS-C3850 / WS-C3650 / 3850 -> C9300; CBS250 / SG250 -> C1200; CBS350 / SG350 -> C1300.
    - **Meraki Cloud Switching, Wi-Fi, SD-WAN & Cámaras**:
-     * **PROHIBIDO INVENTAR SKUs EN MS130**: En la familia Meraki **MS130** NO existen modelos terminados en "FP" ni en "-HW" (JAMÁS devuelvas "MS130-48FP", "MS130-48FP-HW" ni "MS130-48P-HW"). Los únicos modelos MS130 reales son: "MS130-8", "MS130-8P", "MS130-8X", "MS130-12X", "MS130-24", "MS130-24P", "MS130-24X", "MS130-48", "MS130-48P", "MS130-48X" (máx. 370W PoE+), ensamblados siempre bajo el contenedor Madre **"MS130-SWITCHES:MS130-48P"** con hijos "MS130-48P", cable de poder según regla #1 y "LIC-MS130-48-3Y".
-     * Si el cliente pide un switch EOL de 740W Full PoE+ como **"MS210-48FP"**, pon "rawMentionedSku": "MS210-48FP", "isEol2026": true y "suggestedActiveSku": "MS225-48FP-HW" (con hijos "LIC-MS225-48FP-3YR" y cable de poder según regla #1).
+     * En la familia Meraki **MS130** NO existen modelos terminados en "FP" ni en "-HW". Los únicos modelos MS130 reales son: "MS130-8", "MS130-8P", "MS130-8X", "MS130-12X", "MS130-24", "MS130-24P", "MS130-24X", "MS130-48", "MS130-48P", "MS130-48X" (máx. 370W PoE+), ensamblados siempre bajo el contenedor Madre **"MS130-SWITCHES:MS130-48P"** con hijos "MS130-48P", cable de poder según regla #2 y "LIC-MS130-48-3Y".
+     * Si el cliente pide un switch EOL de 740W Full PoE+ como **"MS210-48FP"** o **"MS120-48FP"**, pon "rawMentionedSku": "MS210-48FP", "isEol2026": true y "suggestedActiveSku": "MS225-48FP-HW" (con hijos "LIC-MS225-48FP-3YR" y cable de poder según regla #2).
      * Wi-Fi vigente 2026: "MR36-HW", "MR46-HW", "CW9162I-MR", "CW9164I-MR", "CW9166I-MR" (con hijo "LIC-MR-E" o "LIC-ENT-3YR"). Reemplaza MR33/MR42/MR52 EOL.
      * Firewalls Meraki MX vigentes 2026: "MX67-HW", "MX68-HW", "MX75-HW", "MX85-HW", "MX95-HW". Reemplaza MX64/MX65/MX84/MX100 EOL.
    - **Switches Industriales Cisco Industrial Ethernet (IE — Minería, Subestaciones, Plantas)**:
-     * Modelos activos 2026 (deviceType: "industrial_switch"): **"IE-3100-8T2C-E"**, **"IE-3300-8T2S-E"**, **"IE-3300-8P2S-E"** (PoE+), **"IE-3400-8P2S-E"** (Full PoE+), **"IE-3400-8T2S-E"**.
-     * Reemplazos EOL obligatorios: IE-2000 -> "IE-3100-8T2C-E"; IE-3000 -> "IE-3300-8T2S-E"; IE-4000 -> "IE-3400-8P2S-E".
-     * Hijos obligatorios en aiSubItems: Licencia DNA Industrial ("IE3300-DNA-E-3Y" / "IE3400-DNA-E-3Y", durationMonths=36, initialTerm=36, billingModel="Prepaid Term"), Fuente DIN-Rail ("PWR-IE170W-PC-AC=" para PoE o "PWR-IE50W-AC=" sin PoE), Cable de poder según regla #1 y Memoria SD "SD-IE-4GB=".
+     * Modelos activos 2026 (deviceType: "industrial_switch"): **"IE-3100-8T2C-E"**, **"IE-3300-8T2S-E"**, **"IE-3300-8P2S-E"** (PoE+), **"IE-3400-8P2S-E"** (Full PoE+), **"IE-3400-8T2S-E"**. Reemplaza IE-2000/3000/4000 EOL.
    - **Servidores Data Center Cisco UCS M7 (deviceType: "server_ucs")**:
-     * Modelos activos 2026: **"UCSC-C220-M7S"** (Rack 1RU) y **"UCSC-C240-M7S"** (Rack 2RU).
-     * Reemplazos EOL obligatorios: UCSC-C220-M5SX / UCSC-C220-M6S -> "UCSC-C220-M7S"; UCSC-C240-M5SX / UCSC-C240-M6S -> "UCSC-C240-M7S".
-     * Hijos obligatorios en aiSubItems: Licencia Intersight ("DC-MGT-SAAS-EST-3Y", durationMonths=36, initialTerm=36, billingModel="Prepaid Term"), CPU Xeon Gen 5 ("UCS-CPU-I4510"), 2x RAM DDR5 ("UCS-MRX32G1RE3", qtyMultiplier=2), Controladora RAID ("UCSC-RAID-M7"), 2x SSD Enterprise ("UCS-SD960GM3X-EP", qtyMultiplier=2), TPM 2.0 ("UCSX-TPM-OPT-002"), Rieles ("UCSC-RAIL-M7"), Fuente ("UCSC-PSU1-1050W") y Cable de poder según regla #1.
+     * Modelos activos 2026: **"UCSC-C220-M7S"** (Rack 1RU) y **"UCSC-C240-M7S"** (Rack 2RU). Reemplaza M5/M6 EOL.
    - **Data Center Switching Cisco Nexus 9000 (deviceType: "nexus_dc")**:
-     * Modelos activos 2026: **"N9K-C93180YC-FX3"** (48p 10/25G SFP28 + 6p 40/100G QSFP28) y **"N9K-C9336C-FX2"**.
-     * Reemplazos EOL obligatorios: N9K-C93180YC-EX / N9K-C93180YC-FX -> "N9K-C93180YC-FX3".
-     * Hijos en aiSubItems: Suscripción DCN ("DCN-E-C93180-3Y", durationMonths=36, initialTerm=36, billingModel="Prepaid Term"), 2x Fuentes ("NXA-PAC-650W-PI", qtyMultiplier=2), 2x Cables de poder según regla #1 (qtyMultiplier=2), 4x Ventiladores ("NXA-FAN-30CFM-F", qtyMultiplier=4) y Kit Rieles ("N9K-C9300-ACK").
+     * Modelos activos 2026: **"N9K-C93180YC-FX3"** y **"N9K-C93108TC-FX3P"**. Reemplaza EX/FX EOL.
    - **Seguridad Cisco Secure Firewall FPR (deviceType: "firewall")**:
-     * Modelos activos 2026: **"FPR1010-NGFW-K9"** (Desktop), **"FPR1120-NGFW-K9"** (1RU Branch), **"FPR1140-NGFW-K9"**, **"FPR1210T-K9"**, **"FPR3110-NGFW-K9"** (Reemplazo oficial de la serie FPR2100).
-     * Reemplazos EOL obligatorios: ASA5506-X -> "FPR1010-NGFW-K9"; ASA5508-X / ASA5516-X -> "FPR1120-NGFW-K9"; FPR2110 / FPR2120 -> "FPR3110-NGFW-K9".
-     * Hijos en aiSubItems: Suscripción Threat Defense TMC ("L-FPR1010T-TMC-3Y" / "L-FPR1120T-TMC-3Y" / "L-FPR3110T-TMC-3Y", durationMonths=36, initialTerm=36, billingModel="Prepaid Term"), Software base y Cable de poder según regla #1.
+     * Modelos activos 2026: **"FPR1010-NGFW-K9"**, **"FPR1120-NGFW-K9"**, **"FPR1140-NGFW-K9"**, **"FPR1210T-K9"**, **"FPR3110-NGFW-K9"**. Reemplaza ASA5500 y FPR2100 EOL.
    - **Colaboración: Teléfonos IP Cisco Desk Phone 9800 & Barras de Video Webex Room Bar (deviceType: "collaboration")**:
-     * Modelos activos 2026: Teléfonos IP **"DP-9841-K9"**, **"DP-9851-K9"**, **"DP-9861-K9"**, **"DP-9871-K9"**; Video Colaboración **"CS-BAR-T-C-K9"** (Cisco Room Bar), **"CS-BARPRO-C-K9"** (Cisco Room Bar Pro), **"CS-BRD55P-G2-K9"** (Board Pro 55 G2).
-     * Reemplazos EOL obligatorios: CP-7821-K9 / CP-7841-K9 -> "DP-9841-K9"; CP-8841-K9 / CP-8851-K9 -> "DP-9851-K9"; CP-8861-K9 / CP-8865-K9 -> "DP-9861-K9"; CS-KIT-K9 / CS-KITMINI-K9 -> "CS-BAR-T-C-K9"; CS-KITPLUS-K9 -> "CS-BARPRO-C-K9".
-     * Hijos en aiSubItems: Para teléfonos DP-98xx incluye "LIC-CE-USER-3Y" (durationMonths=36, initialTerm=36, billingModel="Prepaid Term"); para Room Bar incluye "L-ROOM-RM-3Y" y cable de poder según regla #1.
+     * Modelos activos 2026: **"DP-9841-K9"**, **"DP-9851-K9"**, **"DP-9861-K9"**, **"DP-9871-K9"**, **"CS-BAR-T-C-K9"**, **"CS-BARPRO-C-K9"**, **"CS-BRD55P-G2-K9"**. Reemplaza CP-78xx/88xx y CS-KIT EOL.
    - **Transceivers / Módulos SFP y Fibra Óptica Vigentes 2026**:
-     * PROHIBIDO entregar "GLC-SX-MM" (EOL -> usar **"GLC-SX-MMD"**), "GLC-LH-SM" (EOL -> usar **"GLC-LH-SMD"**), "GLC-T" (EOL -> usar **"GLC-TE"**). Para 10G usa **"SFP-10G-SR-S"**, **"SFP-10G-LR-S"** o DAC **"SFP-H10GB-CU1M"** / **"SFP-H10GB-CU3M"**. Si el cliente pide módulos SFP junto con un switch, agrégalos en "extraTransceivers": [{ "sku": "SFP-10G-SR-S", "qty": 2, "description": "10GBASE-SR SFP+ Module" }].
+     * PROHIBIDO entregar "GLC-SX-MM" (EOL -> usar **"GLC-SX-MMD"**), "GLC-LH-SM" (EOL -> usar **"GLC-LH-SMD"**), "GLC-T" (EOL -> usar **"GLC-TE"**). Para 10G usa **"SFP-10G-SR-S"**, **"SFP-10G-LR-S"** o DAC **"SFP-H10GB-CU1M"**.
 
-3. DETECCIÓN DE SMARTNET Y ESQUEMA MERAKI:
-   - Si el cliente menciona "SmartNet", "SNTC", "CON-SNT", "soporte 8x5xNBD" o "24x7x4", activa "includeSmartNet": true y "smartNetLevel": "8x5xNBD" (o "24x7x4").
+4. DETECCIÓN DE SMARTNET, STACKING Y ESQUEMA MERAKI:
+   - Si el cliente menciona o la imagen muestra "SmartNet", "SNTC", "CON-SNT", "soporte 8x5xNBD" o "24x7x4", activa "includeSmartNet": true y "smartNetLevel": "8x5xNBD" (o "24x7x4").
+   - Si el cliente menciona o la imagen muestra "STACK-KIT", "C9200-STACK-KIT", "C9200L-STACK-KIT", "STACK-T4" o "apilable", activa "includeStacking": true.
    - Si el cliente menciona en Meraki "Co-Term" o "Co-Termination", pon "merakiLicenseMode": "coterm"; por defecto usa "merakiLicenseMode": "subscription".
-
-4. DEFAULTS DE INGENIERÍA:
-   - Si no indica cantidad: quantity = 1.
-   - Si no indica licencia: licenseTier = "Essentials".
-   - Si no indica plazo: termYears = 3 (36 meses).
-   - Si el cliente pide un cable específico en texto o foto: respeta ese cable con Prioridad #1 ("clientRequestedPowerCord": true). Si NO pide un cable específico: usa por defecto "powerCordStandard": "italy_chile" (Cable Italia/Norma Chile CAB-IT: CAB-ACA / CAB-TA-IT / MA-PWR-CORD-IT).
 
 Devuelve ESTRICTAMENTE un JSON válido con esta estructura exacta (sin bloques markdown adicionales):
 {
@@ -176,6 +169,8 @@ Devuelve ESTRICTAMENTE un JSON válido con esta estructura exacta (sin bloques m
       "powerCordStandard": "italy_chile",
       "clientRequestedPowerCord": false,
       "merakiLicenseMode": "subscription",
+      "unitListPriceUsd": 2690,
+      "discountPct": 0,
       "extraTransceivers": [],
       "notes": "Descripción clara del equipo Madre",
       "aiSubItems": [
@@ -185,21 +180,25 @@ Devuelve ESTRICTAMENTE un JSON válido con esta estructura exacta (sin bloques m
           "durationMonths": 36,
           "initialTerm": 36,
           "billingModel": "Prepaid Term",
+          "unitListPriceUsd": 1068.93,
           "description": "C9200L Cisco DNA Essentials, 24-Port, 3 Year Term"
         },
         {
           "partNumber": "PWR-C5-600WAC",
           "qtyMultiplier": 1,
+          "unitListPriceUsd": 0,
           "description": "600W AC Config 5 Power Supply"
         },
         {
           "partNumber": "CAB-ACA",
           "qtyMultiplier": 1,
+          "unitListPriceUsd": 0,
           "description": "AC Power Cord (Italy/Chile CAB-IT), 10A, CEI 23-16, 2.5m"
         },
         {
           "partNumber": "C9200L-NW-E-24",
           "qtyMultiplier": 1,
+          "unitListPriceUsd": 0,
           "description": "C9200L Network Essentials, 24-Port"
         }
       ]
@@ -509,7 +508,7 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
   const extractedItems: ExtractedRequirementItem[] = [];
   const learnedSkus = getLearnedCiscoSkus();
   const skuRegex =
-    /\b(WS-C[A-Z0-9-]+|C[189]\d{3}[A-Z0-9-]*|CBS[23]50-[A-Z0-9-]+|ISR4[0-9]{3}[A-Z0-9/-]*|MR\d{2,3}[A-Z0-9-]*|CW91[0-9]{2}[A-Z0-9-]*|MS\d{3}-[A-Z0-9-]+|MX\d{2,3}[A-Z0-9-]*|FPR\d{4}[A-Z0-9-]*|ASA55[0-9]{2}-[A-Z0-9-]+|IE-\d{4}-[A-Z0-9-]+|UCSC-C\d{3}-M\d[A-Z0-9-]*|N9K-C[A-Z0-9-]+|CP-[78][80-9]{3}-[A-Z0-9-]+|DP-98\d{2}-K9|CS-(?:KIT|BAR|BRD)[A-Z0-9-]*|GLC-[A-Z0-9-]+|SFP-[A-Z0-9-]+)\b/gi;
+    /\b(WS-C[A-Z0-9-]+|(?:C2960X|2960X|C3850|3850|C3650|3650)-[A-Z0-9-]+|C[189]\d{3}[A-Z0-9-]*|CBS[23]50-[A-Z0-9-]+|ISR4[0-9]{3}[A-Z0-9/-]*|MR\d{2,3}[A-Z0-9-]*|CW91[0-9]{2}[A-Z0-9-]*|MS\d{3}-[A-Z0-9-]+|MX\d{2,3}[A-Z0-9-]*|FPR\d{4}[A-Z0-9-]*|ASA55[0-9]{2}-[A-Z0-9-]+|IE-\d{4}-[A-Z0-9-]+|UCSC-C\d{3}-M\d[A-Z0-9-]*|N9K-C[A-Z0-9-]+|CP-[78][80-9]{3}-[A-Z0-9-]+|DP-98\d{2}-K9|CS-(?:KIT|BAR|BRD)[A-Z0-9-]*|GLC-[A-Z0-9-]+|SFP-[A-Z0-9-]+)\b/gi;
 
   const inferDeviceTypeFromSku = (sku: string): ExtractedRequirementItem['deviceType'] => {
     const s = sku.toUpperCase();
@@ -535,9 +534,32 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
       if (m >= 12) termYears = Math.round(m / 12);
     }
 
+    // Detectar Valores de Lista (List Price / GPL) y Descuentos (%) si el cliente los entrega en su solicitud
+    let unitListPriceUsd: number | undefined;
+    const listPriceMatch = seg.match(
+      /(?:lista|list\s*price|gpl|valor\s+lista|precio\s+lista|usd|\$)\s*:?\s*\$?\s*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{1,2})?|[0-9]{3,6}(?:\.[0-9]{1,2})?)/i
+    );
+    if (listPriceMatch) {
+      const parsedPrice = Number(listPriceMatch[1].replace(/,/g, ''));
+      if (parsedPrice > 20 && parsedPrice < 500000) {
+        unitListPriceUsd = parsedPrice;
+      }
+    }
+
+    let discountPct: number | undefined;
+    const discountMatch = seg.match(
+      /(?:desc(?:uento)?|disc(?:ount)?|dcto)\s*(?:de\s*)?:?\s*(\d{1,2}(?:\.\d{1,2})?)\s*%|(\d{1,2}(?:\.\d{1,2})?)\s*%\s*(?:de\s*)?(?:desc(?:uento)?|disc(?:ount)?|dcto)/i
+    );
+    if (discountMatch) {
+      const parsedDisc = Number(discountMatch[1] || discountMatch[2]);
+      if (parsedDisc >= 0 && parsedDisc <= 99) {
+        discountPct = parsedDisc;
+      }
+    }
+
     const licenseTier: 'Essentials' | 'Advantage' =
       /\badvantage\b|\bdna-a\b|\bnw-a\b/i.test(seg) ? 'Advantage' : 'Essentials';
-    const includeStacking = /\bstack(?:ing|eable|s)?\b|\bapilad[oa]s?\b/i.test(seg);
+    const includeStacking = /\bstack(?:ing|eable|s|-kit)?\b|\bapilad[oa]s?\b/i.test(seg);
     const includeRedundantPsu = /\bredundante\b|\bdoble\s+fuente\b/i.test(seg);
     const includeSmartNet = /\bsmartnet\b|\bsntc\b|\bcon-snt\b|\b8x5xnbd\b|\b24x7x4\b/i.test(seg);
     const smartNetLevel: '8x5xNBD' | '24x7x4' = /\b24x7/i.test(seg) ? '24x7x4' : '8x5xNBD';
@@ -565,14 +587,20 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
       for (const m of skuMatches) {
         const rawSku = m[1].toUpperCase().trim();
         const officialValidation = validateOfficialCiscoSku(rawSku);
-        const eolInfo = EOL_CATALOG_2026[rawSku] || EOL_CATALOG_2026[rawSku.replace(/-HW$/i, '')];
+        const eolInfo =
+          EOL_CATALOG_2026[rawSku] ||
+          EOL_CATALOG_2026[rawSku.replace(/-HW$/i, '')] ||
+          (officialValidation.cleanSku ? EOL_CATALOG_2026[officialValidation.cleanSku] : undefined);
         const learned = !officialValidation.isNonExistentSku ? learnedSkus[rawSku] : undefined;
-        const isEol = eolInfo ? eolInfo.status === 'eos_eol_active' : learned ? learned.isEol : false;
-        const rawSuggested = officialValidation.isNonExistentSku
-          ? officialValidation.recommendedValidSku
-          : eolInfo
-            ? eolInfo.replacementSku
-            : learned?.replacementSku || rawSku;
+        const isEol =
+          officialValidation.isKnownEolSku ||
+          (eolInfo ? eolInfo.status === 'eos_eol_active' : learned ? learned.isEol : false);
+        const rawSuggested =
+          officialValidation.isNonExistentSku || officialValidation.isKnownEolSku
+            ? officialValidation.recommendedValidSku
+            : eolInfo
+              ? eolInfo.replacementSku
+              : learned?.replacementSku || officialValidation.recommendedValidSku || rawSku;
         const sanitized = sanitizeAndValidateCcwSku(rawSuggested);
         const suggestedSku = sanitized.sanitizedSku;
         const isNonExistentSku = Boolean(
@@ -589,7 +617,7 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
 
         extractedItems.push({
           id: `item-${Date.now()}-${idx}-${rawSku}`,
-          rawMentionedSku: sanitized.inferredLegacyEolSku || rawSku,
+          rawMentionedSku: sanitized.inferredLegacyEolSku || officialValidation.cleanSku || rawSku,
           suggestedActiveSku: suggestedSku,
           isEol2026: isEol || Boolean(sanitized.inferredLegacyEolSku),
           isNonExistentSku,
@@ -614,6 +642,8 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
           clientRequestedPowerCord,
           clientPowerCordLabel,
           merakiLicenseMode,
+          unitListPriceUsd,
+          discountPct,
           notes: seg.slice(0, 120),
         });
       }
@@ -870,15 +900,50 @@ function isLooksLikeRealCiscoSku(str: string): boolean {
   return /^(?:WS-C|C9[23456]00|C1[0123]00|C8[235]00|ISR\d|ASR\d|FPR\d|ASA\d|MR\d|MS\d|MX\d|CW\d|CBS\d|IE-\d|UCSC-|N9K-|DP-98|CP-[78]|CS-|SFP-|GLC-|PWR-|CAB-)/i.test(s);
 }
 
-function postProcessExtractedResult(
+function extractClientPricingFromText(text: string): {
+  unitListPriceUsd?: number;
+  discountPct?: number;
+} {
+  if (!text) return {};
+  let unitListPriceUsd: number | undefined;
+  const listPriceMatch = text.match(
+    /(?:lista|list\s*price|gpl|valor\s+lista|precio\s+lista|usd|\$)\s*:?\s*\$?\s*([0-9]{1,3}(?:,[0-9]{3})+(?:\.[0-9]{1,2})?|[0-9]{3,6}(?:\.[0-9]{1,2})?)/i
+  );
+  if (listPriceMatch) {
+    const parsedPrice = Number(listPriceMatch[1].replace(/,/g, ''));
+    if (parsedPrice > 20 && parsedPrice < 500000) {
+      unitListPriceUsd = parsedPrice;
+    }
+  }
+
+  let discountPct: number | undefined;
+  const discountMatch = text.match(
+    /(?:desc(?:uento)?|disc(?:ount)?|dcto)\s*(?:de\s*)?:?\s*(\d{1,2}(?:\.\d{1,2})?)\s*%?|(\d{1,2}(?:\.\d{1,2})?)\s*%\s*(?:de\s*)?(?:desc(?:uento)?|disc(?:ount)?|dcto)/i
+  );
+  if (discountMatch) {
+    const parsedDisc = Number(discountMatch[1] || discountMatch[2]);
+    if (parsedDisc >= 0 && parsedDisc <= 99) {
+      discountPct = parsedDisc;
+    }
+  }
+  return { unitListPriceUsd, discountPct };
+}
+
+export function postProcessExtractedResult(
   result: ExtractedRequirementResult,
   rawInputText?: string
 ): ExtractedRequirementResult {
+  // Dividir el texto original por líneas para asociar contexto específico a cada ítem
+  const inputLines = (rawInputText || '')
+    .split(/\r?\n|;/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
   // Detectar si el usuario escribió algún SKU inventado/inexistente directamente en el texto original
   const rawInputFakeSkus: string[] = [];
   if (rawInputText) {
     const tokenRegex =
-      /\b(WS-C[A-Z0-9-]+|C[189]\d{3}-[A-Z0-9-]+|MS\d{3}-[A-Z0-9-]+|MR\d{2,3}[A-Z0-9-]*|MX\d{2,3}[A-Z0-9-]*|FPR\d{4}[A-Z0-9-]*|IE-\d{4}-[A-Z0-9-]+|UCSC-C\d{3}-[A-Z0-9-]+|N9K-C[A-Z0-9-]+)\b/gi;
+      /\b(WS-C[A-Z0-9-]+|C[189]\d{3}L?-[A-Z0-9-]+|MS\d{3}-[A-Z0-9-]+|MR\d{2,3}[A-Z0-9-]*|MX\d{2,3}[A-Z0-9-]*|FPR\d{4}[A-Z0-9-]*|IE-\d{4}-[A-Z0-9-]+|UCSC-C\d{3}-[A-Z0-9-]+|N9K-C[A-Z0-9-]+)\b/gi;
     for (const m of rawInputText.matchAll(tokenRegex)) {
       const candidate = m[1].toUpperCase().trim();
       const check = validateOfficialCiscoSku(candidate);
@@ -891,8 +956,21 @@ function postProcessExtractedResult(
   const processedItems = (result.items || []).map((item, idx) => {
     const tier: 'Essentials' | 'Advantage' =
       item.licenseTier === 'Advantage' ? 'Advantage' : 'Essentials';
+    const tierSuffix = tier === 'Advantage' ? 'A' : 'E';
+    const lineContext = inputLines[idx] || '';
+    const itemContext = `${lineContext} ${item.rawMentionedSku || ''} ${item.notes || ''}`;
 
+    // Limpiar rawMentionedSku si el LLM incluyó texto descriptivo junto al código (ej: "C9200-24P MODULAR CON UPLINKS 10G")
     let rawSku = (item.rawMentionedSku || '').trim().toUpperCase();
+    if (rawSku.includes(' ')) {
+      const tokenMatch = rawSku.match(
+        /\b(WS-C[A-Z0-9-]+|C[189]\d{3}L?-[A-Z0-9-]+|C[189]\d{3}L?|MS\d{3}-[A-Z0-9-]+|MR\d{2,3}[A-Z0-9-]*|MX\d{2,3}[A-Z0-9-]*|FPR\d{4}[A-Z0-9-]*|IE-\d{4}-[A-Z0-9-]+|UCSC-C\d{3}-[A-Z0-9-]+|N9K-C[A-Z0-9-]+)\b/i
+      );
+      if (tokenMatch) {
+        rawSku = tokenMatch[1].toUpperCase();
+      }
+    }
+
     if (!rawSku && rawInputFakeSkus[idx]) {
       rawSku = rawInputFakeSkus[idx];
     } else if (!rawSku && rawInputFakeSkus.length === 1 && idx === 0) {
@@ -904,7 +982,11 @@ function postProcessExtractedResult(
       ? validateOfficialCiscoSku(item.suggestedActiveSku)
       : null;
 
-    const rawSanitized = sanitizeAndValidateCcwSku(item.suggestedActiveSku || rawSku);
+    const rawSanitized = sanitizeAndValidateCcwSku(
+      rawCheck?.wasCorrectedFromClientTypo
+        ? rawCheck.recommendedValidSku
+        : item.suggestedActiveSku || rawSku
+    );
 
     if (!rawSku && rawSanitized.inferredLegacyEolSku) {
       rawSku = rawSanitized.inferredLegacyEolSku;
@@ -913,17 +995,44 @@ function postProcessExtractedResult(
       rawSku = rawSanitized.inferredLegacyEolSku;
     }
 
-    let isNonExistentSku = Boolean(
-      item.isNonExistentSku ||
-        rawSanitized.isNonExistentSku ||
-        rawCheck?.isNonExistentSku ||
-        suggestedCheck?.isNonExistentSku
+    let wasCorrectedFromClientTypo = Boolean(
+      item.wasCorrectedFromClientTypo ||
+        rawCheck?.wasCorrectedFromClientTypo ||
+        rawSanitized.wasCorrectedFromClientTypo ||
+        suggestedCheck?.wasCorrectedFromClientTypo
     );
 
+    // Si fue reconciliado coherentemente desde un error/typo de cliente, NO es una alucinación bloqueada
+    let isNonExistentSku = wasCorrectedFromClientTypo
+      ? false
+      : Boolean(
+          rawCheck?.isNonExistentSku ||
+            rawSanitized.isNonExistentSku ||
+            suggestedCheck?.isNonExistentSku
+        );
+
     let suggested = normalizeParentChassisSku(
-      rawSanitized.sanitizedSku || item.suggestedActiveSku || '',
+      rawCheck?.wasCorrectedFromClientTypo
+        ? rawCheck.recommendedValidSku
+        : rawSanitized.sanitizedSku || item.suggestedActiveSku || '',
       tier
     );
+
+    // Si el contexto del cliente en esa línea pide explícitamente C9200 modular (sin -4G/-4X o diciendo "modular" / "NM-4X")
+    if (
+      (/\bmodular\b|nm-4x|nm-4g/i.test(lineContext) || /^c9200-(?:24|48)[pt](?:-[ea])?$/i.test(rawSku)) &&
+      suggested.startsWith('C9200L-')
+    ) {
+      const portsNum = suggested.includes('48') ? '48' : '24';
+      const poeChar = suggested.includes(`${portsNum}P`) ? 'P' : 'T';
+      suggested = `C9200-${portsNum}${poeChar}-${tierSuffix}`;
+    }
+
+    let coherentCorrectionNote =
+      item.coherentCorrectionNote ||
+      (wasCorrectedFromClientTypo
+        ? rawCheck?.reason || rawSanitized.correctionReason
+        : undefined);
 
     if (isNonExistentSku) {
       const badSku =
@@ -959,6 +1068,9 @@ function postProcessExtractedResult(
         item.isEol2026 = eolLookup.status === 'eos_eol_active';
         item.eolReason = rawSanitized.correctionReason || eolLookup.eolNote;
         item.officialCiscoUrl = item.officialCiscoUrl || eolLookup.officialCiscoDocUrl;
+      } else if (wasCorrectedFromClientTypo) {
+        item.isEol2026 = false;
+        item.eolReason = coherentCorrectionNote;
       } else if (rawSanitized.correctionReason) {
         item.isEol2026 = Boolean(rawSanitized.inferredLegacyEolSku) || item.isEol2026;
         item.eolReason = rawSanitized.correctionReason;
@@ -997,18 +1109,36 @@ function postProcessExtractedResult(
                                 ? 'meraki_mx'
                                 : 'generic';
 
-    // Prioridad #1 al cable de poder solicitado por el cliente (en texto o en foto/captura);
-    // si no especifica ninguno, usar por defecto Norma Chile / Italia ('italy_chile' -> CAB-IT)
+    // Prioridad #1 al cable de poder solicitado por el cliente en su línea específica
     const cordDetection = detectClientRequestedPowerCord(
-      `${rawInputText || ''} ${item.notes || ''}`,
+      lineContext || `${item.notes || ''}`,
       item.aiSubItems,
-      item.powerCordStandard
+      lineContext ? undefined : item.powerCordStandard
     );
     const powerCordStandard: PowerCordStandard = cordDetection.standard;
-    const clientRequestedPowerCord = Boolean(
-      item.clientRequestedPowerCord || cordDetection.explicitlyRequestedByClient
+    const clientRequestedPowerCord = Boolean(cordDetection.explicitlyRequestedByClient);
+    const clientPowerCordLabel = cordDetection.detectedLabel;
+
+    // Detectar uplink 10G, stacking, SmartNet y precios de lista/descuento desde el contexto de la línea si el LLM los omitió
+    const uplinkType: '1G' | '10G' | 'Modular' | undefined =
+      /10g|4x|sfp\+|nm-4x/i.test(itemContext)
+        ? '10G'
+        : item.uplinkType || (/modular/i.test(itemContext) ? 'Modular' : undefined);
+    const includeStacking = Boolean(
+      item.includeStacking || /stack|apilamiento|apilable/i.test(itemContext)
     );
-    const clientPowerCordLabel = item.clientPowerCordLabel || cordDetection.detectedLabel;
+    const includeSmartNet = Boolean(
+      item.includeSmartNet || /smartnet|con-snt|soporte cisco|8x5xnbd|24x7/i.test(itemContext)
+    );
+    const parsedPricing = extractClientPricingFromText(lineContext);
+    const unitListPriceUsd =
+      typeof item.unitListPriceUsd === 'number' && item.unitListPriceUsd > 0
+        ? item.unitListPriceUsd
+        : parsedPricing.unitListPriceUsd;
+    const discountPct =
+      typeof item.discountPct === 'number' && item.discountPct > 0
+        ? item.discountPct
+        : parsedPricing.discountPct;
 
     // Normalizar cualquier sub-item de cable de poder o transceiver obsoleto devuelto por la IA
     const normalizedAiSubs = Array.isArray(item.aiSubItems)
@@ -1059,7 +1189,14 @@ function postProcessExtractedResult(
       rawMentionedSku: rawSku || item.rawMentionedSku,
       suggestedActiveSku: suggested,
       isNonExistentSku,
+      wasCorrectedFromClientTypo,
+      coherentCorrectionNote,
       quantity: item.quantity && item.quantity > 0 ? item.quantity : 1,
+      uplinkType,
+      includeStacking,
+      includeSmartNet,
+      unitListPriceUsd,
+      discountPct,
       licenseTier: tier,
       termYears: item.termYears && item.termYears > 0 ? item.termYears : 3,
       powerCordStandard,

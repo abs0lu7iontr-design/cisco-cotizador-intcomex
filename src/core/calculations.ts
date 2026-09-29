@@ -239,7 +239,7 @@ export function extractInitialTermMonths(...textCandidates: Array<string | undef
   for (const text of textCandidates) {
     if (!text) continue;
     const match =
-      text.match(/Initial\s*Term\s*-\s*(\d+(?:\.\d+)?)\s*Month/i) ||
+      text.match(/Initial\s*Term\s*[-:]\s*(\d+(?:\.\d+)?)\s*Month/i) ||
       text.match(/(\d+(?:\.\d+)?)\s*Months?/i);
     if (match && match[1]) {
       const parsed = parseInt(match[1], 10);

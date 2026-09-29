@@ -70,6 +70,9 @@ export interface SubItemConfig {
   billingModel?: string;
   description: string;
   isOptional?: boolean;
+  unitListPriceUsd?: number; // Precio Lista unitario extraído de solicitud/captura o catálogo GPL
+  unitNetPriceUsd?: number;  // Precio Neto unitario extraído de solicitud/captura
+  discountPct?: number;      // % Descuento extraído o simulado
   category?:
     | 'dna_license'
     | 'power_supply'
@@ -87,11 +90,13 @@ export interface ChassisConfigOptions {
   licenseTier?: 'Essentials' | 'Advantage';
   termYears?: number; // 1, 3, 5, 7
   isPoe?: boolean;
+  uplinkType?: '1G' | '10G' | 'SFP+';
   includeStackingKit?: boolean;
   includeRedundantPsu?: boolean;
   includeSmartNet?: boolean;
   smartNetLevel?: '8x5xNBD' | '24x7x4';
   powerCordStandard?: PowerCordStandard; // Default: 'italy_chile' (CAB-IT)
+  explicitPowerCordSku?: string;         // Si el cliente pidió explícitamente un código como CAB-C15-CBN
   merakiLicenseMode?: 'coterm' | 'subscription';
 }
 
@@ -1150,15 +1155,176 @@ const OFFICIAL_CISCO_SKU_PATTERNS: RegExp[] = [
   /^CS-(?:BAR-T-C-K9|BARPRO-C-K9|BRD55P-G2-K9|BRD75P-G2-K9|DESKPRO-K9|KIT-K9|KITMINI-K9|KITPLUS-K9)$/i,
   // Transceivers / Fuentes / Cables / Licencias oficiales
   /^(?:SFP-10G-SR-S|SFP-10G-LR-S|SFP-10G-SR|SFP-10G-LR|SFP-H10GB-CU[135]M|GLC-SX-MMD|GLC-LH-SMD|GLC-TE|GLC-SX-MM|GLC-LH-SM|GLC-T|MA-SFP-10GB-SR|MA-SFP-1GB-SX)$/i,
-  /^(?:CAB-ACA|CAB-ACE|CAB-TA-IT|CAB-TA-EU|CAB-TA-NA|CAB-TA-AR|CAB-C13-IT|CAB-C13-CE|CAB-C13-C14-2M|CAB-C15-CBN|CAB-AC|CAB-ACR|MA-PWR-CORD-IT|MA-PWR-CORD-EU|MA-PWR-CORD-US|MA-PWR-CORD-AR)$/i,
-  /^(?:PWR-C[156]-[A-Z0-9/-]+|PWR-IE[A-Z0-9=-]+|SD-IE-[A-Z0-9=-]+|C9[23]00L?-STACK-KIT|STACK-T[14]-[A-Z0-9]+|C9300-NM-[A-Z0-9]+)$/i,
+  /^(?:CAB-ACA|CAB-ACE|CAB-TA-IT|CAB-TA-EU|CAB-TA-NA|CAB-TA-AR|CAB-C13-IT|CAB-C13-CE|CAB-C13-CBN|CAB-C13-C14-2M|CAB-C15-CBN|CAB-AC|CAB-ACR|MA-PWR-CORD-IT|MA-PWR-CORD-EU|MA-PWR-CORD-US|MA-PWR-CORD-AR)$/i,
+  /^(?:PWR-C[156]-[A-Z0-9/-]+|PWR-IE[A-Z0-9=-]+|SD-IE-[A-Z0-9=-]+|C9[23]00L?-STACK-KIT|STACK-T[14]-[A-Z0-9]+|C9[23]00-NM-[A-Z0-9]+)$/i,
   /^(?:C9[23]00L?-DNA-[EA]-(?:24|48)-[1357]Y|C9[23]00L?-NW-[EA]-(?:24|48)|LIC-[A-Z0-9-]+|L-FPR[A-Z0-9-]+|DNA-[A-Z0-9-]+|CON-SNT[A-Z0-9-]*)$/i,
 ];
+
+/**
+ * Mapa de corrección coherente para errores de tipeo frecuentes, SKUs incompletos o nomenclatura cruzada del cliente.
+ * Convierte la solicitud con error del cliente en el Part Number oficial vigente en CCW manteniendo 100% coherencia técnica.
+ */
+const CLIENT_TYPO_COHERENT_MAP: Record<
+  string,
+  {
+    targetSku: string;
+    inferredEolSku?: string;
+    reason: string;
+    alternatives?: EolAlternative[];
+  }
+> = {
+  // Nomenclatura cruzada C9200 (modular) escrito con uplinks fijos -4G / -4X de C9200L
+  'C9200-24P-4G-E': {
+    targetSku: 'C9200L-24P-4G-E',
+    reason: 'Corrección coherente CCW: Los uplinks fijos 4x1G corresponden a C9200L-24P-4G-E (o C9200-24P-E modular con C9200-NM-4G).',
+    alternatives: [
+      {
+        recommendedSku: 'C9200L-24P-4G-E',
+        title: 'Catalyst 9200L-24P-4G-E (Uplinks Fijos 4x1G)',
+        description: 'Switch 24P PoE+ (370W) con 4x1G SFP fijos y DNA Essentials.',
+        type: 'direct_equivalent',
+      },
+      {
+        recommendedSku: 'C9200-24P-E',
+        title: 'Catalyst 9200-24P-E (Chasis Modular + C9200-NM-4X/4G)',
+        description: 'Switch 24P PoE+ modular con ranura de uplink intercambiable.',
+        type: 'catalyst_alternative',
+      },
+    ],
+  },
+  'C9200-24P-4X-E': {
+    targetSku: 'C9200L-24P-4X-E',
+    reason: 'Corrección coherente CCW: Los uplinks fijos 4x10G corresponden a C9200L-24P-4X-E (o C9200-24P-E modular con C9200-NM-4X).',
+    alternatives: [
+      {
+        recommendedSku: 'C9200L-24P-4X-E',
+        title: 'Catalyst 9200L-24P-4X-E (Uplinks Fijos 4x10G)',
+        description: 'Switch 24P PoE+ (370W) con 4x10G SFP+ fijos y DNA Essentials.',
+        type: 'direct_equivalent',
+      },
+      {
+        recommendedSku: 'C9200-24P-E',
+        title: 'Catalyst 9200-24P-E (Modular + C9200-NM-4X)',
+        description: 'Switch 24P PoE+ modular con módulo C9200-NM-4X incluido.',
+        type: 'catalyst_alternative',
+      },
+    ],
+  },
+  'C9200-48P-4G-E': {
+    targetSku: 'C9200L-48P-4G-E',
+    reason: 'Corrección coherente CCW: Los uplinks fijos 4x1G en 48P corresponden a C9200L-48P-4G-E (o C9200-48P-E modular).',
+  },
+  'C9200-48P-4X-E': {
+    targetSku: 'C9200L-48P-4X-E',
+    reason: 'Corrección coherente CCW: Los uplinks fijos 4x10G en 48P corresponden a C9200L-48P-4X-E (o C9200-48P-E modular).',
+  },
+  'C9200-48FP-4G-E': {
+    targetSku: 'C9200L-48FP-4G-E',
+    reason: 'Corrección coherente CCW: El modelo 48 puertas Full PoE 740W con 4x1G es C9200L-48FP-4G-E.',
+  },
+  'C9200-48FP-4X-E': {
+    targetSku: 'C9200L-48FP-4X-E',
+    reason: 'Corrección coherente CCW: El modelo 48 puertas Full PoE 740W con 4x10G es C9200L-48FP-4X-E.',
+  },
+  // SKUs incompletos de clientes sin sufijo de licencia o uplink
+  'C9200-24P': {
+    targetSku: 'C9200-24P-E',
+    reason: 'SKU completado con licencia oficial Network Essentials: C9200-24P-E (incluye módulo C9200-NM-4X).',
+  },
+  'C9200-48P': {
+    targetSku: 'C9200-48P-E',
+    reason: 'SKU completado con licencia oficial Network Essentials: C9200-48P-E (incluye módulo C9200-NM-4X).',
+  },
+  'C9200-24T': {
+    targetSku: 'C9200-24T-E',
+    reason: 'SKU completado con licencia oficial Network Essentials: C9200-24T-E.',
+  },
+  'C9200-48T': {
+    targetSku: 'C9200-48T-E',
+    reason: 'SKU completado con licencia oficial Network Essentials: C9200-48T-E.',
+  },
+  'C9200L-24P': {
+    targetSku: 'C9200L-24P-4G-E',
+    reason: 'SKU incompleto normalizado a C9200L-24P-4G-E (disponible también en 10G: C9200L-24P-4X-E).',
+  },
+  'C9200L-48P': {
+    targetSku: 'C9200L-48P-4G-E',
+    reason: 'SKU incompleto normalizado a C9200L-48P-4G-E (disponible también en 10G: C9200L-48P-4X-E).',
+  },
+  'C9200L-48FP': {
+    targetSku: 'C9200L-48FP-4G-E',
+    reason: 'SKU incompleto normalizado a C9200L-48FP-4G-E (740W Full PoE+).',
+  },
+  'C9200L-24T': {
+    targetSku: 'C9200L-24T-4G-E',
+    reason: 'SKU incompleto normalizado a C9200L-24T-4G-E.',
+  },
+  'C9200L-48T': {
+    targetSku: 'C9200L-48T-4G-E',
+    reason: 'SKU incompleto normalizado a C9200L-48T-4G-E.',
+  },
+  'C9300-24P': {
+    targetSku: 'C9300-24P-E',
+    reason: 'SKU incompleto normalizado a C9300-24P-E.',
+  },
+  'C9300-48P': {
+    targetSku: 'C9300-48P-E',
+    reason: 'SKU incompleto normalizado a C9300-48P-E.',
+  },
+  'C9300L-24P': {
+    targetSku: 'C9300L-24P-4X-E',
+    reason: 'SKU incompleto normalizado a C9300L-24P-4X-E.',
+  },
+  'C9300L-48P': {
+    targetSku: 'C9300L-48P-4X-E',
+    reason: 'SKU incompleto normalizado a C9300L-48P-4X-E.',
+  },
+  'C9300-24P-4X-E': {
+    targetSku: 'C9300L-24P-4X-E',
+    reason: 'Corrección coherente CCW: El modelo 9300 con uplinks fijos 4x10G es C9300L-24P-4X-E (o C9300-24P-E con C9300-NM-8X).',
+  },
+  'C9300-48P-4X-E': {
+    targetSku: 'C9300L-48P-4X-E',
+    reason: 'Corrección coherente CCW: El modelo 9300 con uplinks fijos 4x10G es C9300L-48P-4X-E (o C9300-48P-E con C9300-NM-8X).',
+  },
+  // Abreviaciones EOL frecuentes de clientes (sin prefijo WS-C)
+  '2960X-24PS-L': {
+    targetSku: 'C9200L-24P-4G-E',
+    inferredEolSku: 'WS-C2960X-24PS-L',
+    reason: 'Catalyst 2960-X (WS-C2960X-24PS-L) está en End-of-Life. Migrado coherentemente a Catalyst C9200L-24P-4G-E.',
+  },
+  'C2960X-24PS-L': {
+    targetSku: 'C9200L-24P-4G-E',
+    inferredEolSku: 'WS-C2960X-24PS-L',
+    reason: 'Catalyst 2960-X (WS-C2960X-24PS-L) está en End-of-Life. Migrado coherentemente a Catalyst C9200L-24P-4G-E.',
+  },
+  '2960X-48FPS-L': {
+    targetSku: 'C9200L-48FP-4G-E',
+    inferredEolSku: 'WS-C2960X-48FPS-L',
+    reason: 'Catalyst 2960-X (WS-C2960X-48FPS-L) está en End-of-Life. Migrado coherentemente a Catalyst C9200L-48FP-4G-E (740W).',
+  },
+  '2960X-48LPS-L': {
+    targetSku: 'C9200L-48P-4G-E',
+    inferredEolSku: 'WS-C2960X-48LPS-L',
+    reason: 'Catalyst 2960-X (WS-C2960X-48LPS-L) está en End-of-Life. Migrado coherentemente a Catalyst C9200L-48P-4G-E (370W).',
+  },
+  '3850-24P': {
+    targetSku: 'C9300-24P-E',
+    inferredEolSku: 'WS-C3850-24P-S',
+    reason: 'Catalyst 3850 24P está en End-of-Life. Migrado coherentemente a su reemplazo oficial C9300-24P-E.',
+  },
+  '3850-48P': {
+    targetSku: 'C9300-48P-E',
+    inferredEolSku: 'WS-C3850-48P-S',
+    reason: 'Catalyst 3850 48P está en End-of-Life. Migrado coherentemente a su reemplazo oficial C9300-48P-E.',
+  },
+};
 
 export interface OfficialSkuValidationResult {
   isValidOfficialSku: boolean;
   isNonExistentSku: boolean;
   isKnownEolSku: boolean;
+  wasCorrectedFromClientTypo?: boolean;
   cleanSku: string;
   recommendedValidSku: string;
   reason?: string;
@@ -1166,9 +1332,9 @@ export interface OfficialSkuValidationResult {
 }
 
 /**
- * Validador estricto anti-alucinación contra el catálogo real de Cisco Commerce Workspace (CCW).
- * Bloquea cualquier SKU inventado por el usuario o por la IA (ej. "C9580-24P-4G-E", "C9999-24P", "MS900-48P")
- * y devuelve las alternativas reales vigentes en CCW según las características detectadas.
+ * Validador y reconciliador inteligente contra el catálogo real de Cisco Commerce Workspace (CCW).
+ * - Si el cliente comete un error de tipeo o envía un SKU incompleto/abreviado o con error (ej. "C9200-24P-4G-E", "C9200-24P", "C9580-24P-4G-E"),
+ *   analiza las especificaciones pedidas (puertos, PoE, uplinks, familia Cisco o Meraki) y entrega un Part Number 100% coherente y vigente (no EOL).
  */
 export function validateOfficialCiscoSku(rawSku: string): OfficialSkuValidationResult {
   const clean = (rawSku || '').trim().toUpperCase();
@@ -1184,8 +1350,29 @@ export function validateOfficialCiscoSku(rawSku: string): OfficialSkuValidationR
     };
   }
 
-  // 1. Verificar si está en el catálogo EOL oficial 2026
-  const eolEntry = EOL_CATALOG_2026[clean] || EOL_CATALOG_2026[clean.replace(/-HW$/i, '')];
+  // 0. Verificar si está en el mapa de reconciliación coherente de errores frecuentes de clientes
+  const typoEntry = CLIENT_TYPO_COHERENT_MAP[clean];
+  if (typoEntry) {
+    const isEol = Boolean(typoEntry.inferredEolSku);
+    return {
+      isValidOfficialSku: !isEol,
+      isNonExistentSku: false,
+      isKnownEolSku: isEol,
+      wasCorrectedFromClientTypo: !isEol,
+      cleanSku: typoEntry.inferredEolSku || clean,
+      recommendedValidSku: typoEntry.targetSku,
+      reason: typoEntry.reason,
+      alternatives:
+        typoEntry.alternatives ||
+        (typoEntry.inferredEolSku ? EOL_CANONICAL_MAPPING[typoEntry.inferredEolSku] || [] : []),
+    };
+  }
+
+  // 1. Verificar si está en el catálogo EOL oficial 2026 (con o sin sufijo -HW / =)
+  const eolEntry =
+    EOL_CATALOG_2026[clean] ||
+    EOL_CATALOG_2026[clean.replace(/-HW$/i, '')] ||
+    EOL_CATALOG_2026[clean.replace(/=$/, '')];
   if (eolEntry) {
     return {
       isValidOfficialSku: true,
@@ -1194,11 +1381,29 @@ export function validateOfficialCiscoSku(rawSku: string): OfficialSkuValidationR
       cleanSku: clean,
       recommendedValidSku: eolEntry.replacementSku,
       reason: eolEntry.eolNote,
-      alternatives: EOL_CANONICAL_MAPPING[clean] || EOL_CANONICAL_MAPPING[clean.replace(/-HW$/i, '')] || [],
+      alternatives:
+        EOL_CANONICAL_MAPPING[clean] ||
+        EOL_CANONICAL_MAPPING[clean.replace(/-HW$/i, '')] ||
+        [],
     };
   }
 
-  // 2. Verificar si calza con los patrones oficiales reales de Cisco CCW
+  // 2. Verificar si es un SKU Catalyst 9200L/9300L al que solo le faltó el sufijo "-E"
+  if (/^C9[23]00L?-(?:24|48)(?:T|P|FP|PF)-(?:4G|4X)$/i.test(clean)) {
+    const withE = `${clean}-E`;
+    return {
+      isValidOfficialSku: true,
+      isNonExistentSku: false,
+      isKnownEolSku: false,
+      wasCorrectedFromClientTypo: true,
+      cleanSku: withE,
+      recommendedValidSku: withE,
+      reason: `Se normalizó el SKU agregando el sufijo de licenciamiento oficial (${withE}).`,
+      alternatives: [],
+    };
+  }
+
+  // 3. Verificar si calza con los patrones oficiales reales de Cisco CCW
   const matchesOfficialPattern = OFFICIAL_CISCO_SKU_PATTERNS.some((rx) => rx.test(clean));
   if (matchesOfficialPattern) {
     return {
@@ -1211,36 +1416,47 @@ export function validateOfficialCiscoSku(rawSku: string): OfficialSkuValidationR
     };
   }
 
-  // 3. Si NO calza con ningún patrón oficial -> ES UN SKU INVENTADO / INEXISTENTE EN CISCO CCW
+  // 4. Si NO calza con ningún patrón oficial -> Analizar intención técnica del cliente (puertos, PoE, uplinks, familia)
+  // para entregar un Part Number 100% coherente y vigente en CCW
   const is48 = clean.includes('48');
-  const isFullPoe = clean.includes('FP');
-  const isNoPoe = /-(?:24|48|8)T\b/i.test(clean);
-  const is10G = clean.includes('4X') || clean.includes('10G') || clean.includes('Y4C');
+  const is8 = /\b8[PTX]|\b08[PTX]|-8[PTX]/i.test(clean);
+  const isFullPoe = clean.includes('FP') || clean.includes('740W');
+  const isNoPoe = /-(?:24|48|8|16)T\b/i.test(clean);
+  const is10G = clean.includes('4X') || clean.includes('10G') || clean.includes('Y4C') || clean.includes('8X');
   const tierCode = clean.endsWith('-A') ? 'A' : 'E';
+  const portNum = is48 ? '48' : '24';
+  const poeCode = isNoPoe ? 'T' : isFullPoe && is48 ? 'FP' : 'P';
 
-  // Caso especial: inventaron un modelo tipo "C9580-..." o "C9500-24P-..."
-  if (/^C9[456789]\d{2}/i.test(clean)) {
-    const recAccess = `C9200L-${is48 ? (isFullPoe ? '48FP' : '48P') : '24P'}-${is10G ? '4X' : '4G'}-${tierCode}`;
-    const rec9300 = `C9300-${is48 ? '48P' : '24P'}-${tierCode}`;
+  // Caso A: Error de tipeo o modelo inventado en serie Catalyst 9xxx (ej. "C9580-24P-4G-E", "C9250-24P", "C9500-24P-4G")
+  if (/^C9\d{2,3}/i.test(clean)) {
+    const recAccessFixed = `C9200L-${portNum}${poeCode}-${is10G ? '4X' : '4G'}-${tierCode}`;
+    const recAccessModular = `C9200-${portNum}${isNoPoe ? 'T' : 'P'}-${tierCode}`;
+    const rec9300 = `C9300-${portNum}${isNoPoe ? 'T' : 'P'}-${tierCode}`;
     const recCore = `C9500-24Y4C-${tierCode}`;
     return {
       isValidOfficialSku: false,
       isNonExistentSku: true,
       isKnownEolSku: false,
       cleanSku: clean,
-      recommendedValidSku: recAccess,
-      reason: `🚫 SKU INEXISTENTE EN CISCO CCW: El Part Number "${clean}" NO existe en el catálogo oficial de Cisco (la serie ${clean.split('-')[0]} no existe o no posee puertos de acceso RJ45 PoE). Se bloqueó la alucinación; selecciona el modelo real vigente:`,
+      recommendedValidSku: recAccessFixed,
+      reason: `⚠️ Corrección Coherente CCW: El código "${clean}" presenta un error de tipeo o no existe en el catálogo oficial de Cisco. Según las características solicitadas (${portNum} puertos ${isNoPoe ? 'Datos' : isFullPoe ? 'Full PoE+ 740W' : 'PoE+ 370W'}, uplinks ${is10G ? '10G' : '1G'}), se asignó el Part Number oficial vigente ${recAccessFixed}:`,
       alternatives: [
         {
-          recommendedSku: recAccess,
-          title: `Catalyst ${recAccess} (Acceso PoE+ Real Vigente)`,
-          description: `Switch oficial Cisco Catalyst 9200L de ${is48 ? '48' : '24'} puertos PoE+ con uplinks ${is10G ? '4x10G' : '4x1G'}.`,
+          recommendedSku: recAccessFixed,
+          title: `Catalyst ${recAccessFixed} (Equivalente Coherente Fijo)`,
+          description: `Switch oficial Cisco Catalyst 9200L de ${portNum} puertos ${isNoPoe ? 'Data' : 'PoE+'} con uplinks ${is10G ? '4x10G SFP+' : '4x1G SFP'}.`,
           type: 'direct_equivalent',
         },
         {
+          recommendedSku: recAccessModular,
+          title: `Catalyst ${recAccessModular} (Equivalente Modular + C9200-NM-4X)`,
+          description: `Switch oficial Cisco Catalyst 9200 modular de ${portNum} puertos ${isNoPoe ? 'Data' : 'PoE+'} con módulo de uplink intercambiable.`,
+          type: 'catalyst_alternative',
+        },
+        {
           recommendedSku: rec9300,
-          title: `Catalyst ${rec9300} (Enterprise Modular Stackable)`,
-          description: `Switch oficial Cisco Catalyst 9300 de ${is48 ? '48' : '24'} puertos PoE+ de alto rendimiento.`,
+          title: `Catalyst ${rec9300} (Enterprise Stackable)`,
+          description: `Switch oficial Cisco Catalyst 9300 de ${portNum} puertos de alto rendimiento.`,
           type: 'catalyst_alternative',
         },
         {
@@ -1253,47 +1469,83 @@ export function validateOfficialCiscoSku(rawSku: string): OfficialSkuValidationR
     };
   }
 
-  // Caso especial: inventaron un modelo Meraki MS inexistente
+  // Caso B: Error de tipeo o modelo EOL en serie Meraki MS
   if (clean.startsWith('MS')) {
     const recMeraki = is48 && isFullPoe
       ? 'MS225-48FP-HW'
-      : `MS130-SWITCHES:MS130-${is48 ? '48' : '24'}${isNoPoe ? '' : 'P'}`;
+      : is8
+        ? `MS130-SWITCHES:MS130-8${isNoPoe ? '' : 'P'}`
+        : `MS130-SWITCHES:MS130-${portNum}${isNoPoe ? '' : 'P'}`;
     return {
       isValidOfficialSku: false,
       isNonExistentSku: true,
       isKnownEolSku: false,
       cleanSku: clean,
       recommendedValidSku: recMeraki,
-      reason: `🚫 SKU INEXISTENTE EN CISCO CCW: El modelo Meraki "${clean}" NO existe en el catálogo oficial de Cisco CCW. Se bloqueó la alucinación; selecciona el modelo real vigente:`,
+      reason: `⚠️ Corrección Coherente Meraki CCW: El código "${clean}" presenta un error o está descontinuado. Según las especificaciones (${is8 ? '8' : portNum} puertos ${isNoPoe ? 'Data' : isFullPoe ? 'Full PoE 740W' : 'PoE+'}), se asignó el Part Number oficial vigente ${recMeraki}:`,
       alternatives: is48 && isFullPoe ? ALT_MS_48FP : is48 ? ALT_MS_48LP : ALT_MS_24P,
     };
   }
 
-  // Cualquier otro SKU inventado / desconocido
-  const fallbackValid = `C9200L-${is48 ? (isFullPoe ? '48FP' : '48P') : '24P'}-${is10G ? '4X' : '4G'}-${tierCode}`;
+  // Caso C: Error de tipeo o modelo antiguo en Access Points Meraki MR / Catalyst CW
+  if (clean.startsWith('MR') || clean.startsWith('CW') || clean.startsWith('AIR-')) {
+    const isHighDensity = clean.includes('4') || clean.includes('5') || clean.includes('6');
+    const recAp = isHighDensity ? 'MR46-HW' : 'MR36-HW';
+    return {
+      isValidOfficialSku: false,
+      isNonExistentSku: true,
+      isKnownEolSku: true,
+      cleanSku: clean,
+      recommendedValidSku: recAp,
+      reason: `⚠️ Corrección Coherente Wireless CCW: El modelo "${clean}" está en EOL o presenta un error de tipeo. Se asignó el Access Point Wi-Fi 6 vigente ${recAp} (alternativa Wi-Fi 6E: CW9164I-MR):`,
+      alternatives: [
+        {
+          recommendedSku: recAp,
+          title: `Meraki ${recAp} (Wi-Fi 6 Vigente)`,
+          description: 'Access Point Cloud Managed Wi-Fi 6 100% vigente en CCW.',
+          type: 'direct_equivalent',
+        },
+        {
+          recommendedSku: 'CW9164I-MR',
+          title: 'Catalyst Wireless CW9164I-MR (Wi-Fi 6E Tri-Band)',
+          description: 'Access Point Wi-Fi 6E de nueva generación gestionable en Meraki Cloud.',
+          type: 'catalyst_alternative',
+        },
+      ],
+    };
+  }
+
+  // Caso D: Cualquier otro SKU con error de tipeo -> Reconciliar coherentemente según puertos/PoE
+  const fallbackValid = `C9200L-${portNum}${poeCode}-${is10G ? '4X' : '4G'}-${tierCode}`;
   return {
     isValidOfficialSku: false,
     isNonExistentSku: true,
     isKnownEolSku: false,
     cleanSku: clean,
     recommendedValidSku: fallbackValid,
-    reason: `🚫 SKU INEXISTENTE EN CISCO CCW: El Part Number "${clean}" NO existe en el catálogo oficial de Cisco Commerce Workspace (CCW). Se bloqueó la alucinación; selecciona una alternativa real vigente:`,
+    reason: `⚠️ Corrección Coherente CCW: El Part Number "${clean}" no existe exactamente en Cisco CCW o tiene un error de escritura. Se reconcilió con el modelo oficial vigente más cercano (${fallbackValid}):`,
     alternatives: [
       {
         recommendedSku: fallbackValid,
-        title: `Catalyst ${fallbackValid} (Equivalente Real Vigente)`,
+        title: `Catalyst ${fallbackValid} (Equivalente Coherente Vigente)`,
         description: 'Switch oficial Cisco Catalyst 9200L 100% ordenable en Cisco CCW.',
         type: 'direct_equivalent',
       },
       {
-        recommendedSku: `C9300-${is48 ? '48P' : '24P'}-${tierCode}`,
-        title: `Catalyst C9300-${is48 ? '48P' : '24P'}-${tierCode} (Línea Enterprise)`,
+        recommendedSku: `C9200-${portNum}${isNoPoe ? 'T' : 'P'}-${tierCode}`,
+        title: `Catalyst C9200-${portNum}${isNoPoe ? 'T' : 'P'}-${tierCode} (Chasis Modular)`,
+        description: 'Switch oficial Cisco Catalyst 9200 modular con C9200-NM-4X.',
+        type: 'catalyst_alternative',
+      },
+      {
+        recommendedSku: `C9300-${portNum}${isNoPoe ? 'T' : 'P'}-${tierCode}`,
+        title: `Catalyst C9300-${portNum}${isNoPoe ? 'T' : 'P'}-${tierCode} (Línea Enterprise)`,
         description: 'Switch oficial Cisco Catalyst 9300 modular apilable.',
         type: 'catalyst_alternative',
       },
       {
-        recommendedSku: `MS130-SWITCHES:MS130-${is48 ? '48P' : '24P'}`,
-        title: `Meraki MS130-${is48 ? '48P' : '24P'} (Línea Cloud Managed)`,
+        recommendedSku: `MS130-SWITCHES:MS130-${portNum}${isNoPoe ? '' : 'P'}`,
+        title: `Meraki MS130-${portNum}${isNoPoe ? '' : 'P'} (Línea Cloud Managed)`,
         description: 'Switch oficial Meraki administrado en la nube con 4x 10G SFP+.',
         type: 'cost_effective',
       },
@@ -1302,11 +1554,14 @@ export function validateOfficialCiscoSku(rawSku: string): OfficialSkuValidationR
 }
 
 /**
- * Devuelve las alternativas validadas en CCW para un SKU en EOL o para un SKU inexistente/inventado
+ * Devuelve las alternativas validadas en CCW para un SKU en EOL o para un SKU con error/reconciliado
  */
 export function getEolAlternatives(rawSku?: string): EolAlternative[] {
   if (!rawSku) return [];
   const clean = rawSku.trim().toUpperCase();
+  if (CLIENT_TYPO_COHERENT_MAP[clean]?.alternatives) {
+    return CLIENT_TYPO_COHERENT_MAP[clean].alternatives!;
+  }
   if (EOL_CANONICAL_MAPPING[clean]) {
     return EOL_CANONICAL_MAPPING[clean];
   }
@@ -1315,18 +1570,18 @@ export function getEolAlternatives(rawSku?: string): EolAlternative[] {
     return EOL_CANONICAL_MAPPING[withoutHw];
   }
   const validation = validateOfficialCiscoSku(clean);
-  if (validation.isNonExistentSku && validation.alternatives.length > 0) {
+  if ((validation.isNonExistentSku || validation.alternatives.length > 0) && validation.alternatives.length > 0) {
     return validation.alternatives;
   }
   return [];
 }
 
 /**
- * Sanitizador determinista anti-alucinación para cualquier SKU Cisco/Meraki antes de ir a CCW:
- * - Elimina sufijo ilegal "-HW" en la familia MS130 y CW916x.
- * - Corrige SKUs inexistentes alucinados (ej. "MS130-48FP-HW", "C9580-24P-4G-E", "C9999-24P").
+ * Sanitizador y reconciliador determinista para cualquier SKU Cisco/Meraki antes de ir a CCW:
+ * - Corrige errores de tipeo del cliente manteniendo coherencia técnica (puertos, PoE, uplinks, familia).
+ * - Elimina sufijo ilegal "-HW" en la familia MS130 y CW916x, y agrega "-HW" donde es obligatorio (MR36-HW, MX67-HW, MS225-24P-HW).
  * - Envuelve cualquier modelo suelto MS130-xx dentro de su contenedor Madre obligatorio "MS130-SWITCHES:MS130-xx".
- * - Reemplaza transceivers obsoletos (GLC-SX-MM -> GLC-SX-MMD, GLC-LH-SM -> GLC-LH-SMD, GLC-T -> GLC-TE).
+ * - Reemplaza transceivers y equipos EOL por sus equivalentes vigentes 2026.
  */
 export function sanitizeAndValidateCcwSku(rawSku: string): {
   sanitizedSku: string;
@@ -1336,6 +1591,17 @@ export function sanitizeAndValidateCcwSku(rawSku: string): {
 } {
   const clean = (rawSku || '').trim().toUpperCase();
   if (!clean) return { sanitizedSku: '' };
+
+  // 0. Revisar si coincide con un error frecuente o SKU incompleto del cliente en CLIENT_TYPO_COHERENT_MAP
+  const typoMatch = CLIENT_TYPO_COHERENT_MAP[clean];
+  if (typoMatch) {
+    return {
+      sanitizedSku: typoMatch.targetSku,
+      inferredLegacyEolSku: typoMatch.inferredEolSku || clean,
+      isNonExistentSku: !typoMatch.inferredEolSku,
+      correctionReason: typoMatch.reason,
+    };
+  }
 
   // Si ya viene en formato contenedor MS130-SWITCHES:MODELO, limpiar el modelo hijo
   if (clean.startsWith('MS130-SWITCHES:')) {
@@ -1351,7 +1617,7 @@ export function sanitizeAndValidateCcwSku(rawSku: string): {
       inferredLegacyEolSku: 'MS210-48FP',
       isNonExistentSku: true,
       correctionReason:
-        '🚫 SKU INEXISTENTE EN CCW: No existe el modelo MS130-48FP ni lleva sufijo -HW. Se asignó MS225-48FP-HW (740W Full PoE) y se habilitaron las alternativas MS130-48P (370W) y C9200L-48FP-4G-E.',
+        '⚠️ Corrección Coherente CCW: No existe el modelo MS130-48FP (el tope de la serie MS130 es 370W en MS130-48P). Para respetar los 740W Full PoE solicitados se asignó MS225-48FP-HW (y se habilitaron las alternativas MS130-48P y C9200L-48FP-4G-E).',
     };
   }
 
@@ -1393,6 +1659,14 @@ export function sanitizeAndValidateCcwSku(rawSku: string): {
     };
   }
 
+  // Si es un modelo Meraki vigente MR / MX / MS225 escrito sin "-HW" (ej. "MR36" -> "MR36-HW", "MX67" -> "MX67-HW", "MS225-24P" -> "MS225-24P-HW")
+  if (/^(?:MR(?:28|36|36H|44|46|46E|56|57|76|78|86)|MX(?:67|67C|67W|68|68W|68CW|75|85|95|105|250|450)|MS(?:225|250|350|355)-(?:24|24P|24X|48|48LP|48FP))$/i.test(clean)) {
+    return {
+      sanitizedSku: `${clean}-HW`,
+      correctionReason: `Se normalizó el Part Number Meraki al formato oficial de hardware en CCW (${clean}-HW).`,
+    };
+  }
+
   // Si es un AP Catalyst Wireless Meraki CW916x con -HW erróneo (ej. CW9164I-MR-HW -> CW9164I-MR)
   if (/^CW91\d{2}[A-Z]*-MR-HW$/i.test(clean)) {
     return {
@@ -1423,8 +1697,15 @@ export function sanitizeAndValidateCcwSku(rawSku: string): {
     };
   }
 
-  // Validación estricta contra SKUs inventados / inexistentes (ej. C9580-24P-4G-E)
+  // Validación y reconciliación inteligente contra SKUs con errores de tipeo o EOL
   const officialCheck = validateOfficialCiscoSku(clean);
+  if (officialCheck.isKnownEolSku) {
+    return {
+      sanitizedSku: officialCheck.recommendedValidSku,
+      inferredLegacyEolSku: clean,
+      correctionReason: officialCheck.reason,
+    };
+  }
   if (officialCheck.isNonExistentSku) {
     return {
       sanitizedSku: officialCheck.recommendedValidSku,
@@ -1434,7 +1715,7 @@ export function sanitizeAndValidateCcwSku(rawSku: string): {
     };
   }
 
-  return { sanitizedSku: clean };
+  return { sanitizedSku: officialCheck.cleanSku || clean };
 }
 
 // ============================================================================
@@ -1727,8 +2008,16 @@ export function resolvePowerCordSubItem(
     };
   }
 
-  // 4. Estándar General Cisco C13 (Catalyst 9200/9200L, MS130-SWITCHES, C8200/8300, Firepower, UCS, Nexus, IE, Collab)
+  // 4. Estándar General Cisco (Catalyst 9200/9200L, MS130-SWITCHES, C8200/8300, Firepower, UCS, Nexus, IE, Collab)
   if (standard === 'rack_pdu') {
+    if (family === 'catalyst9200') {
+      return {
+        partNumber: 'CAB-C15-CBN',
+        qtyMultiplier,
+        description: 'Cabinet Jumper Power Cord, 250 VAC 13A, C14-C15 Connectors (Rack PDU)',
+        category: 'power_cord',
+      };
+    }
     return {
       partNumber: 'CAB-C13-C14-2M',
       qtyMultiplier,
@@ -1791,6 +2080,12 @@ export function resolveSmartNetSubItem(
 
   // Mapa canónico de SKUs SmartNet más comunes en CCW
   const sntMap: Record<string, string> = {
+    'C9200-24P-E': `${sntPrefix}-C920024P`,
+    'C9200-24P-A': `${sntPrefix}-C920024A`,
+    'C9200-48P-E': `${sntPrefix}-C920048P`,
+    'C9200-48P-A': `${sntPrefix}-C920048A`,
+    'C9200-24T-E': `${sntPrefix}-C920024T`,
+    'C9200-48T-E': `${sntPrefix}-C920048T`,
     'C9200L-24P-4G-E': `${sntPrefix}-C920L24P`,
     'C9200L-24P-4X-E': `${sntPrefix}-C920L24X`,
     'C9200L-48P-4G-E': `${sntPrefix}-C920L48P`,
@@ -1968,6 +2263,19 @@ function buildCatalyst9200Rule(
           category: 'network_stack',
         },
       ];
+
+      // Si es un chasis Catalyst 9200 Modular (ej. C9200-24P-E, C9200-48P-E), agregar módulo de uplink oficial (C9200-NM-4X o C9200-NM-4G)
+      if (isModular9200) {
+        const use1G = opts.uplinkType === '1G';
+        items.push({
+          partNumber: use1G ? 'C9200-NM-4G' : 'C9200-NM-4X',
+          qtyMultiplier: 1,
+          description: use1G
+            ? 'Catalyst 9200 4 x 1G Network Module'
+            : 'Catalyst 9200 4 x 10G Network Module',
+          category: 'uplink_module',
+        });
+      }
 
       if (opts.includeStackingKit) {
         items.push({
@@ -2780,18 +3088,20 @@ export function resolveMerakiSubLicense(
 }
 
 /**
- * Estimador referencial de Precio Lista (USD) para pre-cotización instantánea antes de subir a CCW
+ * Estimador referencial de Precio Lista GPL (USD) calibrado con Cisco Commerce Workspace (CCW) 2026
  */
 export function estimateReferencePriceUsd(partNumber: string, isParent: boolean): number {
   const clean = (partNumber || '').trim().toUpperCase();
   if (!clean || clean === 'MS130-SWITCHES') return 0; // Contenedor lógico $0 en CCW (el precio va en el hijo MS130-xx)
 
-  // Cables de poder ($0 - $50 incluidos/bajo costo en configuración CCW)
+  // Cables de poder ($0 incluidos en configuración de chasis CCW)
   if (clean.startsWith('CAB-') || clean.startsWith('MA-PWR-CORD')) return 0;
-  // Network Stack incluido en chasis ($0 en CCW)
-  if (clean.includes('-NW-')) return 0;
+  // Network Stack y cables internos de stack incluidos en kit ($0 en CCW)
+  if (clean.includes('-NW-') || clean === 'STACK-T4-50CM' || clean === 'STACK-T1-50CM') return 0;
+  // Contenedores padres de suscripción DNA sin sufijo de años ($0 en CCW)
+  if (/^C9[23]00L?-DNA-[EA]-(?:24|48)$/i.test(clean)) return 0;
 
-  // Catálogo referencial GPL aproximado (USD)
+  // Catálogo oficial referencial GPL CCW 2026 (USD)
   const refPrices: Record<string, number> = {
     // Meraki MS130 / MS225
     'MS130-8': 645,
@@ -2807,6 +3117,20 @@ export function estimateReferencePriceUsd(partNumber: string, isParent: boolean)
     'MS225-24P-HW': 4150,
     'MS225-48LP-HW': 6120,
     'MS225-48FP-HW': 7290,
+    // Catalyst 9200 Modular (Calibrado con Estimate Oficial CCW MF168965528OJ)
+    'C9200-24P-E': 5041.72,
+    'C9200-24P-A': 6450.0,
+    'C9200-48P-E': 8650.0,
+    'C9200-48P-A': 10490.0,
+    'C9200-24T-E': 3890.0,
+    'C9200-48T-E': 6490.0,
+    'C9200-NM-4X': 2557.27,
+    'C9200-NM-4G': 715.0,
+    'C9200-STACK-KIT': 1636.65,
+    'C9200L-STACK-KIT': 1195.0,
+    'CON-SNT-C920024P': 1501.5,
+    'C9200-DNA-E-24-3Y': 1068.93,
+    'C9200L-DNA-E-24-3Y': 1068.93,
     // Catalyst 9200L / 9300
     'C9200L-24T-4G-E': 1995,
     'C9200L-24P-4G-E': 2690,
@@ -2820,6 +3144,7 @@ export function estimateReferencePriceUsd(partNumber: string, isParent: boolean)
     'C9300-48P-E': 9450,
     'C9300L-24P-4X-E': 4950,
     'C9300L-48P-4X-E': 7950,
+    'C9300-NM-8X': 2850,
     // Industrial IE / UCS / Nexus / Security / Collab
     'IE-3100-8T2C-E': 1890,
     'IE-3300-8T2S-E': 2650,
@@ -2855,6 +3180,9 @@ export function estimateReferencePriceUsd(partNumber: string, isParent: boolean)
 
   if (refPrices[clean] !== undefined) return refPrices[clean];
 
+  // En configuraciones de chasis Catalyst 9200/9300, la fuente de poder primaria incluida sin "=" cuesta $0.00 en CCW
+  if (/^PWR-C[156]-/i.test(clean) && !clean.endsWith('=')) return 0;
+
   // Estimación por familia de sub-componentes
   if (clean.startsWith('LIC-MS130-48')) return 1150;
   if (clean.startsWith('LIC-MS130-24')) return 690;
@@ -2864,15 +3192,15 @@ export function estimateReferencePriceUsd(partNumber: string, isParent: boolean)
   if (clean.startsWith('LIC-MS225-24')) return 890;
   if (clean.startsWith('LIC-MR-') || clean.startsWith('LIC-ENT-')) return 450;
   if (clean.startsWith('LIC-MX')) return 1450;
-  if (clean.includes('-DNA-E-24')) return 980;
+  if (clean.includes('-DNA-E-24')) return 1068.93;
   if (clean.includes('-DNA-E-48')) return 1850;
   if (clean.includes('-DNA-A-24')) return 2150;
   if (clean.includes('-DNA-A-48')) return 3950;
   if (clean.startsWith('DNA-C-T0')) return 1250;
   if (clean.startsWith('L-FPR')) return 1650;
-  if (clean.startsWith('CON-SNT')) return 650;
+  if (clean.startsWith('CON-SNT')) return 1150;
   if (clean.startsWith('PWR-')) return 450;
-  if (clean.includes('STACK')) return 890;
+  if (clean.includes('STACK')) return 1195;
   if (clean.startsWith('SFP-10G')) return 685;
   if (clean.startsWith('GLC-')) return 395;
 

@@ -91,6 +91,8 @@ export const ConfiguriatorView: React.FC = () => {
   // Por defecto en Chile usamos Norma Italiana / Chilena (CAB-IT: CAB-ACA / CAB-TA-IT / MA-PWR-CORD-IT)
   const [defaultPowerCord, setDefaultPowerCord] = useState<PowerCordStandard>('italy_chile');
   const [merakiLicenseMode, setMerakiLicenseMode] = useState<'subscription' | 'coterm'>('subscription');
+  // Analizador interactivo de Descuento CCW (%) sobre Valores de Lista (GPL)
+  const [globalDiscountPct, setGlobalDiscountPct] = useState<number>(43);
 
   // Configuración Multi-API y Rotación de Tokens
   const [aiSettings, setAiSettings] = useState<AiConfigSettings>(() => loadAiSettings());
@@ -98,6 +100,7 @@ export const ConfiguriatorView: React.FC = () => {
   const [isCiscoSuiteModalOpen, setIsCiscoSuiteModalOpen] = useState<boolean>(false);
   const [psirtByIndex, setPsirtByIndex] = useState<Record<number, PsirtAdvisory[]>>({});
   const [loadingPsirtIndex, setLoadingPsirtIndex] = useState<number | null>(null);
+  const [isAuditingAllApis, setIsAuditingAllApis] = useState<boolean>(false);
   const [newProvider, setNewProvider] = useState<Exclude<AiProviderId, 'local_deterministic'>>('gemini');
   const [newKeyLabel, setNewKeyLabel] = useState<string>('');
   const [newKeyValue, setNewKeyValue] = useState<string>('');
@@ -117,6 +120,29 @@ export const ConfiguriatorView: React.FC = () => {
       setPsirtByIndex((prev) => ({ ...prev, [idx]: advisories }));
     } finally {
       setLoadingPsirtIndex(null);
+    }
+  };
+
+  const handleAuditAllCiscoApis = async () => {
+    if (!extractionResult || extractionResult.items.length === 0) return;
+    setIsAuditingAllApis(true);
+    try {
+      const nextMap: Record<number, PsirtAdvisory[]> = {};
+      for (let i = 0; i < extractionResult.items.length; i++) {
+        const parentRow = assembledRows.find((r) => r.parentIndex === i && r.isParent);
+        const skuToAudit =
+          parentRow?.resolvedChildModel ||
+          parentRow?.partNumber ||
+          extractionResult.items[i].suggestedActiveSku ||
+          '';
+        if (skuToAudit) {
+          const adv = await checkPsirtForProduct(skuToAudit, 3);
+          nextMap[i] = adv;
+        }
+      }
+      setPsirtByIndex(nextMap);
+    } finally {
+      setIsAuditingAllApis(false);
     }
   };
 
@@ -476,26 +502,43 @@ export const ConfiguriatorView: React.FC = () => {
   };
 
   // ============================================================================
-  // IDEA 2 & IDEA 6: CÁLCULO EN VIVO DE BALANCE PoE (WATTS) Y PRE-COTIZACIÓN USD
+  // IDEA 2 & IDEA 6: CÁLCULO EN VIVO DE BALANCE PoE (WATTS), VALORES DE LISTA Y DESCUENTOS CCW (%)
   // ============================================================================
   const bomMetrics = useMemo(() => {
     let totalListUsd = 0;
     let totalEstimatedNetUsd = 0;
     let fastTrackCount = 0;
+    let eolMigratedCount = 0;
+    let coherentCorrectedCount = 0;
+
+    (extractionResult?.items || []).forEach((it) => {
+      if (it.isNonExistentSku) coherentCorrectedCount += 1;
+      else if (it.isEol2026) eolMigratedCount += 1;
+    });
 
     for (const row of assembledRows) {
       const rowList = row.estimatedTotalListUsd || 0;
       totalListUsd += rowList;
-      if (row.isParent && row.fastTrackInfo) {
+      if (typeof row.clientDiscountPct === 'number' && row.clientDiscountPct > 0) {
+        totalEstimatedNetUsd += rowList * (1 - row.clientDiscountPct / 100);
+        if (row.isParent && row.fastTrackInfo) fastTrackCount += 1;
+      } else if (row.isParent && row.fastTrackInfo) {
         fastTrackCount += 1;
-        const disc = (row.fastTrackInfo.distributorDiscount || 45) / 100;
+        const disc = (row.fastTrackInfo.distributorDiscount || globalDiscountPct || 45) / 100;
         totalEstimatedNetUsd += rowList * (1 - disc);
       } else {
-        // Descuento referencial promedio de canal en CCW (~40% HW / ~32% Licencias)
-        const stdDisc = row.durationMonths ? 0.32 : 0.40;
-        totalEstimatedNetUsd += rowList * (1 - stdDisc);
+        // Usar el descuento del analizador interactivo CCW (en CON-SNT SmartNet el descuento típico en CCW es ~22.65%)
+        const isSupport = row.partNumber.startsWith('CON-');
+        const effectivePct = isSupport
+          ? Math.min(globalDiscountPct, 22.65)
+          : globalDiscountPct;
+        totalEstimatedNetUsd += rowList * (1 - effectivePct / 100);
       }
     }
+
+    const totalSavingsUsd = Math.max(0, totalListUsd - totalEstimatedNetUsd);
+    const effectiveAvgDiscountPct =
+      totalListUsd > 0 ? Number(((totalSavingsUsd / totalListUsd) * 100).toFixed(2)) : 0;
 
     // Cálculo de Presupuesto PoE Entregado por Switches vs Demandado por APs / Teléfonos IP / Cámaras
     let totalPoeSupplyWatts = 0;
@@ -561,7 +604,11 @@ export const ConfiguriatorView: React.FC = () => {
     return {
       totalListUsd,
       totalEstimatedNetUsd,
+      totalSavingsUsd,
+      effectiveAvgDiscountPct,
       fastTrackCount,
+      eolMigratedCount,
+      coherentCorrectedCount,
       totalPoeSupplyWatts: Math.round(totalPoeSupplyWatts),
       totalPoeDemandWatts: Math.round(totalPoeDemandWatts),
       poeSwitchesCount,
@@ -569,7 +616,7 @@ export const ConfiguriatorView: React.FC = () => {
       firstUpgradeableSwitchIdx,
       poweredEndpointsSummary,
     };
-  }, [assembledRows, extractionResult]);
+  }, [assembledRows, extractionResult, globalDiscountPct]);
 
   // Acción 1-Clic para subir un switch de 370W a Full PoE 740W cuando la alerta PoE lo sugiere
   const handleUpgradeSwitchToFullPoe = (idx: number) => {
@@ -1000,6 +1047,19 @@ export const ConfiguriatorView: React.FC = () => {
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
+                    onClick={handleAuditAllCiscoApis}
+                    disabled={isAuditingAllApis}
+                    className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-indigo-950/90 hover:bg-indigo-900 text-indigo-200 border border-indigo-600/50 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                    title="Auditar todos los equipos Madre en 1 clic contra las APIs de Cisco (EOL Cisco/Meraki, PSIRT y Datafoundation-POE)"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>
+                      {isAuditingAllApis ? 'Auditando APIs Cisco...' : 'Auditar Todo (Cisco APIs)'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
                     onClick={handleToggleSmartNetAll}
                     className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-indigo-950 text-cyan-300 border border-cyan-700/40 text-xs font-bold transition-all cursor-pointer"
                     title="Agregar o quitar Soporte Oficial Cisco SmartNet (CON-SNT) en todos los equipos Madre"
@@ -1030,41 +1090,116 @@ export const ConfiguriatorView: React.FC = () => {
               )}
             </div>
 
-            {/* IDEA 6: BANNER DE PRE-COTIZACIÓN PRELIMINAR EN USD + IDEA 2: BALANCE DE POTENCIA PoE EN VIVO */}
+            {/* IDEA 6 MEJORADA: ANALIZADOR DE VALORES DE LISTA (GPL), DESCUENTOS CCW (%) Y PRESUPUESTO PoE */}
             {assembledRows.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* Resumen Financiero Preliminar USD */}
-                <div className="p-3.5 rounded-xl bg-gradient-to-br from-slate-950 to-indigo-950/40 border border-indigo-500/30 flex items-center justify-between gap-3">
-                  <div className="space-y-0.5">
-                    <div className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
-                      <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Pre-Cotización Preliminar CCW (Ref. USD)</span>
+                {/* Resumen Financiero Preliminar USD + Simulador de Descuento CCW */}
+                <div className="p-3.5 rounded-xl bg-gradient-to-br from-slate-950 to-indigo-950/40 border border-indigo-500/30 flex flex-col justify-between gap-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-0.5">
+                      <div className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+                        <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Analizador de Valores de Lista (GPL) y Descuentos CCW</span>
+                      </div>
+                      <div className="flex flex-wrap items-baseline gap-3 pt-1">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block">Total Lista (GPL)</span>
+                          <span className="font-mono text-sm font-black text-white">
+                            US${' '}
+                            {bomMetrics.totalListUsd.toLocaleString('en-US', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+                        <div className="pl-3 border-l border-slate-800">
+                          <span className="text-[10px] text-emerald-400 font-semibold block">
+                            Neto Est. ({bomMetrics.effectiveAvgDiscountPct.toFixed(1)}% Dcto Prom.)
+                          </span>
+                          <span className="font-mono text-sm font-black text-emerald-300">
+                            US${' '}
+                            {bomMetrics.totalEstimatedNetUsd.toLocaleString('en-US', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+                        <div className="pl-3 border-l border-slate-800">
+                          <span className="text-[10px] text-cyan-300 font-semibold block">
+                            Ahorro Total Dcto.
+                          </span>
+                          <span className="font-mono text-xs font-black text-cyan-200">
+                            -US${' '}
+                            {bomMetrics.totalSavingsUsd.toLocaleString('en-US', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-baseline gap-3 pt-0.5">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Precio Lista Ref.</span>
-                        <span className="font-mono text-sm font-black text-white">
-                          US$ {bomMetrics.totalListUsd.toLocaleString('en-US')}
+
+                    <div className="text-right shrink-0 space-y-1">
+                      <span className="px-2 py-0.5 rounded-lg bg-emerald-950/90 border border-emerald-700/50 text-[10px] font-bold text-emerald-300 block">
+                        {bomMetrics.fastTrackCount > 0
+                          ? `⚡ ${bomMetrics.fastTrackCount} SKU Fast Track`
+                          : 'Precios GPL CCW 2026'}
+                      </span>
+                      {(bomMetrics.eolMigratedCount > 0 || bomMetrics.coherentCorrectedCount > 0) && (
+                        <span className="px-2 py-0.5 rounded-lg bg-amber-950/80 border border-amber-600/50 text-[9px] font-bold text-amber-200 block">
+                          🛡️ {bomMetrics.eolMigratedCount} EOL / {bomMetrics.coherentCorrectedCount} Coherentes
                         </span>
-                      </div>
-                      <div className="pl-3 border-l border-slate-800">
-                        <span className="text-[10px] text-emerald-400 font-semibold block">
-                          Est. Partner / Fast Track
-                        </span>
-                        <span className="font-mono text-sm font-black text-emerald-300">
-                          US$ {Math.round(bomMetrics.totalEstimatedNetUsd).toLocaleString('en-US')}
-                        </span>
-                      </div>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <span className="px-2 py-1 rounded-lg bg-emerald-950/90 border border-emerald-700/50 text-[10px] font-bold text-emerald-300 block">
-                      {bomMetrics.fastTrackCount > 0
-                        ? `⚡ ${bomMetrics.fastTrackCount} SKU Fast Track`
-                        : 'Cruce CCW 2026'}
-                    </span>
-                    <span className="text-[9px] text-slate-400 mt-1 block">
-                      Cable: {defaultPowerCord === 'italy_chile' ? '🇨🇱/🇮🇹 CAB-IT' : defaultPowerCord === 'rack_pdu' ? '🔌 PDU C13-C14' : defaultPowerCord === 'schuko_eu' ? '🇪🇺 Schuko' : defaultPowerCord === 'nema_us' ? '🇺🇸 NEMA USA' : '🇦🇷 IRAM AR'}
+
+                  {/* Barra inferior: Simulador de % Descuento Global Partner/Deal Reg + Norma Cable */}
+                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between flex-wrap gap-2 text-[11px]">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-300 font-semibold">
+                        Simular Dcto. Global Deal/Partner:
+                      </span>
+                      <div className="inline-flex items-center bg-slate-900 border border-indigo-500/40 rounded-lg px-2 py-0.5">
+                        <input
+                          type="number"
+                          min={0}
+                          max={95}
+                          step={0.5}
+                          placeholder="Auto (38%)"
+                          value={globalDiscountPct === '' ? '' : globalDiscountPct}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === '') {
+                              setGlobalDiscountPct('');
+                            } else {
+                              setGlobalDiscountPct(Math.min(95, Math.max(0, Number(val))));
+                            }
+                          }}
+                          className="w-20 bg-transparent text-emerald-300 font-mono font-bold text-xs focus:outline-none text-right"
+                        />
+                        <span className="text-slate-400 font-mono ml-1">%</span>
+                      </div>
+                      {globalDiscountPct !== '' && (
+                        <button
+                          type="button"
+                          onClick={() => setGlobalDiscountPct('')}
+                          className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+                        >
+                          Restaurar Auto
+                        </button>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-slate-400">
+                      Cable:{' '}
+                      {defaultPowerCord === 'italy_chile'
+                        ? '🇨🇱/🇮🇹 CAB-IT'
+                        : defaultPowerCord === 'rack_pdu'
+                          ? '🔌 PDU C13-C14/C15'
+                          : defaultPowerCord === 'schuko_eu'
+                            ? '🇪🇺 Schuko'
+                            : defaultPowerCord === 'nema_us'
+                              ? '🇺🇸 NEMA USA'
+                              : '🇦🇷 IRAM AR'}
                     </span>
                   </div>
                 </div>
@@ -1211,7 +1346,7 @@ export const ConfiguriatorView: React.FC = () => {
                               </span>
                             )}
 
-                            {/* Badge Anti-Alucinación (SKU Inexistente) vs EOL vs Vigente 2026 */}
+                            {/* Badge Anti-Alucinación (SKU Inexistente) vs Reconciliación Coherente vs EOL vs Vigente 2026 */}
                             {item.isNonExistentSku ? (
                               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-950 text-rose-200 border border-rose-500/80 flex items-center gap-1">
                                 <span>
@@ -1221,6 +1356,19 @@ export const ConfiguriatorView: React.FC = () => {
                             ) : parentRow?.wasReplacedFromEol ? (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 text-amber-300 border border-amber-600/40 flex items-center gap-1">
                                 <span>Reemplazo EOL 2026 (de {item.rawMentionedSku})</span>
+                              </span>
+                            ) : item.wasCorrectedFromClientTypo ? (
+                              <span
+                                className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-500/60 flex items-center gap-1"
+                                title={
+                                  item.coherentCorrectionNote ||
+                                  `Reconciliado coherentemente desde ${item.rawMentionedSku}`
+                                }
+                              >
+                                <Sparkles className="w-3 h-3 text-emerald-400" />
+                                <span>
+                                  P/N Coherente Validado CCW (de {item.rawMentionedSku})
+                                </span>
                               </span>
                             ) : (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-600/40">
@@ -1642,6 +1790,52 @@ export const ConfiguriatorView: React.FC = () => {
                             )}
                           </div>
                         )}
+
+                        {/* Analizador por Línea: Valor de Lista Unitario USD y % Descuento */}
+                        <div className="inline-flex items-center gap-2 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-indigo-700/40">
+                          <span className="text-[10px] text-indigo-300 font-bold">Lista USD:</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            placeholder={String(parentRow?.estimatedUnitListUsd || 0)}
+                            value={
+                              typeof item.unitListPriceUsd === 'number' && item.unitListPriceUsd > 0
+                                ? item.unitListPriceUsd
+                                : ''
+                            }
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateParentItem(idx, {
+                                unitListPriceUsd: val === '' ? undefined : Math.max(0, Number(val)),
+                              });
+                            }}
+                            className="w-20 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-[11px] text-white font-mono text-right"
+                            title="Ingresar o ajustar el Valor de Lista Unitario (GPL USD) si viene en la cotización del cliente"
+                          />
+                          <span className="text-[10px] text-emerald-300 font-bold ml-1">Dcto %:</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={95}
+                            step={0.5}
+                            placeholder={String(parentRow?.clientDiscountPct ?? 38)}
+                            value={
+                              typeof item.discountPct === 'number' && item.discountPct >= 0
+                                ? item.discountPct
+                                : ''
+                            }
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              updateParentItem(idx, {
+                                discountPct:
+                                  val === '' ? undefined : Math.min(95, Math.max(0, Number(val))),
+                              });
+                            }}
+                            className="w-14 bg-slate-950 border border-emerald-700/50 rounded px-1.5 py-0.5 text-[11px] text-emerald-300 font-mono text-right"
+                            title="Porcentaje de descuento CCW o del cliente para analizar el Neto Estimado"
+                          />
+                        </div>
                       </div>
 
                       {/* IDEA 4: Asistente 1-Clic de Transceivers SFP / Fibra / DAC Vigentes 2026 */}
@@ -1728,11 +1922,26 @@ export const ConfiguriatorView: React.FC = () => {
                                     {sub.durationMonths}M ({sub.billingModel})
                                   </span>
                                 )}
-                                {sub.estimatedTotalListUsd && (
-                                  <span className="text-slate-400 text-[10px]">
-                                    US$ {sub.estimatedTotalListUsd.toLocaleString('en-US')}
-                                  </span>
-                                )}
+                                {typeof sub.estimatedTotalListUsd === 'number' &&
+                                  sub.estimatedTotalListUsd > 0 && (
+                                    <span className="text-slate-300 text-[10px]">
+                                      Lista: US${' '}
+                                      {sub.estimatedTotalListUsd.toLocaleString('en-US', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}
+                                    </span>
+                                  )}
+                                {typeof sub.estimatedTotalNetUsd === 'number' &&
+                                  sub.estimatedTotalNetUsd > 0 && (
+                                    <span className="text-emerald-300 text-[10px] font-bold">
+                                      Neto ({sub.clientDiscountPct ?? 38}%): US${' '}
+                                      {sub.estimatedTotalNetUsd.toLocaleString('en-US', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}
+                                    </span>
+                                  )}
                               </div>
                             </div>
                           ))}
@@ -1772,7 +1981,9 @@ export const ConfiguriatorView: React.FC = () => {
                       <th className="py-2.5 px-3 text-center">Initial Term</th>
                       <th className="py-2.5 px-3">Billing Model</th>
                       <th className="py-2.5 px-3 text-right">Ref. Lista USD</th>
-                      <th className="py-2.5 px-3">Notes</th>
+                      <th className="py-2.5 px-3 text-center">% Dcto</th>
+                      <th className="py-2.5 px-3 text-right">Neto Est. USD</th>
+                      <th className="py-2.5 px-3">Descripción / Reconciliación</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/70">
@@ -1818,10 +2029,29 @@ export const ConfiguriatorView: React.FC = () => {
                         <td className="py-2 px-3 text-[11px] text-slate-300">
                           {row.billingModel || '-'}
                         </td>
-                        <td className="py-2 px-3 text-right font-mono text-[11px] text-emerald-300">
-                          {row.estimatedTotalListUsd
-                            ? `$${row.estimatedTotalListUsd.toLocaleString('en-US')}`
-                            : '-'}
+                        <td className="py-2 px-3 text-right font-mono text-[11px] text-slate-200">
+                          {typeof row.estimatedTotalListUsd === 'number' &&
+                          row.estimatedTotalListUsd > 0
+                            ? `$${row.estimatedTotalListUsd.toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}`
+                            : '$0.00'}
+                        </td>
+                        <td className="py-2 px-3 text-center font-mono text-[11px] text-amber-300">
+                          {typeof row.estimatedTotalListUsd === 'number' &&
+                          row.estimatedTotalListUsd > 0
+                            ? `${(row.clientDiscountPct ?? 38).toFixed(1)}%`
+                            : '0%'}
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-[11px] text-emerald-300 font-bold">
+                          {typeof row.estimatedTotalNetUsd === 'number' &&
+                          row.estimatedTotalNetUsd > 0
+                            ? `$${row.estimatedTotalNetUsd.toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}`
+                            : '$0.00'}
                         </td>
                         <td className="py-2 px-3 text-[11px] text-slate-400 max-w-[240px] truncate">
                           {row.notes}

@@ -155,7 +155,39 @@ function detectColumnMapping(worksheet: ExcelJS.Worksheet, headerRowIndex: numbe
 }
 
 /**
- * Detects if a row is a footer, disclaimer note, or total row (e.g. 'Validez de la Oferta', 'Product Total', etc.)
+ * Reads cell string only if the cell is NOT a slave cell of a horizontal merge from an earlier column.
+ * In CCW Estimates, Group/Note rows (like Row 19) often merge B19:L19, which otherwise causes ExcelJS
+ * to repeat the column B text across Description, List Price, Qty, Net Price, and Extended Price.
+ */
+function getDistinctColumnString(
+  worksheet: ExcelJS.Worksheet,
+  rowNumber: number,
+  colNumber: number
+): string {
+  const cell = worksheet.getCell(rowNumber, colNumber);
+  if (!cell) return '';
+  if (cell.isMerged && cell.master && cell.master.col !== colNumber) {
+    return '';
+  }
+  return getCellString(cell);
+}
+
+function getDistinctColumnNumeric(
+  worksheet: ExcelJS.Worksheet,
+  rowNumber: number,
+  colNumber: number
+): number {
+  const cell = worksheet.getCell(rowNumber, colNumber);
+  if (!cell) return 0;
+  if (cell.isMerged && cell.master && cell.master.col !== colNumber) {
+    return 0;
+  }
+  return parseNumericValue(cell.value);
+}
+
+/**
+ * Detects if a row is a footer, legal disclaimer note, or bottom total row
+ * (e.g. 'Validez de la Oferta', 'Product Total', 'Service Total', 'Total Price', etc.)
  */
 export function isFooterOrNoteRow(lineStr: string, partStr: string, descStr: string): boolean {
   const lineLower = (lineStr || '').toLowerCase().trim();
@@ -163,30 +195,28 @@ export function isFooterOrNoteRow(lineStr: string, partStr: string, descStr: str
   const descLower = (descStr || '').toLowerCase().trim();
   const combined = `${lineLower} ${partLower} ${descLower}`;
 
+  // If the row has a valid CCW numeric line number (e.g. "1.0", "1.1", "2.0"), it is never a footer row
+  if (/^\d+(\.\d+)*$/.test(lineLower)) {
+    return false;
+  }
+
   const stopKeywords = [
     'validez de la oferta',
     'validez de oferta',
-    'validez',
-    'esta cotización',
-    'esta cotizacion',
-    'plazo de entrega',
+    'esta cotización tiene una validez',
+    'esta cotizacion tiene una validez',
+    'plazo de entrega:',
     'tiempo final de despacho',
-    'tiempo de espera',
     'mayor tiempo de espera',
     'valid through',
-    'validity',
     'fob point',
-    'fob',
-    'notes',
-    'nota:',
-    'notas',
-    'observaciones',
-    'aclaraciones',
     'terminos y condiciones',
     'términos y condiciones',
     'terms and conditions',
     'terms & conditions',
     'product total',
+    'service total',
+    'subscription total',
     'total price',
     'price total',
     'grand total',
@@ -195,8 +225,8 @@ export function isFooterOrNoteRow(lineStr: string, partStr: string, descStr: str
     'total cotización',
     'total cotizacion',
     'total neto',
-    'días corridos',
-    'dias corridos',
+    'días corridos a contar',
+    'dias corridos a contar',
     'fecha de emisión',
     'fecha de emision',
   ];
@@ -207,25 +237,94 @@ export function isFooterOrNoteRow(lineStr: string, partStr: string, descStr: str
 
   if (
     partLower.startsWith('validez') ||
-    partLower.startsWith('esta ') ||
-    partLower.includes('cotización') ||
-    partLower.includes('cotizacion') ||
-    partLower.startsWith('total') ||
-    partLower.includes('días corridos') ||
-    partLower.includes('dias corridos')
-  ) {
-    return true;
-  }
-
-  if (
-    partStr.trim().split(/\s+/).length > 3 &&
-    (partLower.includes(' de ') || partLower.includes(' la ') || partLower.includes(' el '))
+    partLower.startsWith('product total') ||
+    partLower.startsWith('service total') ||
+    partLower.startsWith('subscription total') ||
+    partLower.startsWith('total price') ||
+    partLower.startsWith('price total') ||
+    partLower.startsWith('grand total') ||
+    partLower === 'total' ||
+    partLower.startsWith('total:') ||
+    partLower.startsWith('total ')
   ) {
     return true;
   }
 
   return false;
 }
+
+/**
+ * Detects if a row is a CCW subscription billing term metadata row
+ * (e.g. "Initial Term: 36.00 Months | Auto Renewal Term: 0 Months | Billing Model: Prepaid")
+ */
+export function isSubscriptionBillingInfoRow(partStr: string, descStr: string): boolean {
+  const combined = `${partStr || ''} ${descStr || ''}`.toLowerCase();
+  return (
+    combined.includes('initial term') ||
+    combined.includes('auto renewal term') ||
+    combined.includes('auto-renewal term') ||
+    combined.includes('billing model')
+  );
+}
+
+/**
+ * Detects if a row in a CCW Estimate (such as Row 19 right below the table header, or a group banner row)
+ * is an equipment description, group header, or user note without values that should be skipped (`continue`),
+ * preventing it from being added as a $0.00 cell/row or prematurely stopping the parser.
+ */
+export function isEquipmentDescriptionOrGroupRow(
+  worksheet: ExcelJS.Worksheet,
+  rowNumber: number,
+  colMap: ColumnMapping,
+  lineStr: string,
+  partStr: string,
+  descStr: string,
+  unitListPrice: number,
+  rawNetCiscoUnit: number,
+  rawExtCost: number
+): boolean {
+  const cleanLine = (lineStr || '').trim();
+  const cleanPart = (partStr || '').trim();
+  const cleanDesc = (descStr || '').trim();
+
+  // Never skip true subscription billing info rows ("Initial Term...")
+  if (isSubscriptionBillingInfoRow(cleanPart, cleanDesc)) {
+    return false;
+  }
+
+  const hasValidLineNumber = /^\d+(\.\d+)*$/.test(cleanLine);
+  const hasZeroPrices = unitListPrice === 0 && rawNetCiscoUnit === 0 && rawExtCost === 0;
+
+  // Case 1: Horizontal merge across Part Number (or Line Number) and price columns (classic CCW Row 19 banner)
+  const partCell = worksheet.getCell(rowNumber, colMap.colPart);
+  const netCell = worksheet.getCell(rowNumber, colMap.colNet);
+  const listCell = worksheet.getCell(rowNumber, colMap.colList);
+  if (
+    !hasValidLineNumber &&
+    partCell?.isMerged &&
+    partCell.master &&
+    ((netCell?.isMerged && netCell.master?.address === partCell.master.address) ||
+      (listCell?.isMerged && listCell.master?.address === partCell.master.address))
+  ) {
+    return true;
+  }
+
+  // Case 2: Row has NO valid CCW line number (Col A is empty or non-numeric) and has $0 prices
+  // In CCW, every actual hardware/software/service line has a Line Number (1.0, 1.0.1, 1.1, 2.0, etc.).
+  // Any unnumbered row with $0 price (that isn't an "Initial Term" row) is a Group Name or Equipment Description note.
+  if (!hasValidLineNumber && hasZeroPrices) {
+    return true;
+  }
+
+  // Case 3: Part Number column contains a natural-language sentence/description (3+ words) with $0 prices
+  // Valid Cisco/Meraki SKUs never contain 3+ space-separated words.
+  if (cleanPart.split(/\s+/).length >= 3 && hasZeroPrices) {
+    return true;
+  }
+
+  return false;
+}
+
 
 /**
  * ULTRA-FAST PARSER: Reads Excel buffer in milliseconds without heavy writeBuffer operations.
@@ -336,22 +435,43 @@ export async function parseEstimateWorkbook(
   for (let r = headerRowIndex + 1; r <= worksheet.rowCount; r++) {
     const lineNum = getCellString(worksheet.getCell(r, colMap.colLine));
     const partNum = getCellString(worksheet.getCell(r, colMap.colPart));
-    const desc = getCellString(worksheet.getCell(r, colMap.colDesc));
+    const desc = getDistinctColumnString(worksheet, r, colMap.colDesc);
     if (!lineNum && !partNum && !desc) continue;
+    if (isFooterOrNoteRow(lineNum, partNum, desc)) break;
+
+    const unitList = getDistinctColumnNumeric(worksheet, r, colMap.colList);
+    const unitNet = getDistinctColumnNumeric(worksheet, r, colMap.colNet);
+    const extNet = getDistinctColumnNumeric(worksheet, r, colMap.colExt);
+
+    if (
+      isEquipmentDescriptionOrGroupRow(
+        worksheet,
+        r,
+        colMap,
+        lineNum,
+        partNum,
+        desc,
+        unitList,
+        unitNet,
+        extNet
+      )
+    ) {
+      continue;
+    }
 
     const rowArr: any[] = [];
     rowArr[0] = lineNum;
     rowArr[1] = partNum;
-    rowArr[2] = getCellString(worksheet.getCell(r, colMap.colSmart));
+    rowArr[2] = getDistinctColumnString(worksheet, r, colMap.colSmart);
     rowArr[3] = desc;
-    rowArr[4] = getCellString(worksheet.getCell(r, colMap.colDur));
+    rowArr[4] = getDistinctColumnString(worksheet, r, colMap.colDur);
     rowArr[5] = worksheet.getCell(r, colMap.colLead).value;
-    rowArr[6] = parseNumericValue(worksheet.getCell(r, colMap.colList).value);
-    rowArr[7] = getCellString(worksheet.getCell(r, colMap.colTerm));
+    rowArr[6] = unitList;
+    rowArr[7] = getDistinctColumnString(worksheet, r, colMap.colTerm);
     rowArr[8] = worksheet.getCell(r, colMap.colQty).value;
-    rowArr[9] = parseNumericValue(worksheet.getCell(r, colMap.colNet).value);
-    rowArr[10] = parseNumericValue(worksheet.getCell(r, colMap.colDisc).value);
-    rowArr[11] = parseNumericValue(worksheet.getCell(r, colMap.colExt).value);
+    rowArr[9] = unitNet;
+    rowArr[10] = getDistinctColumnNumeric(worksheet, r, colMap.colDisc);
+    rowArr[11] = extNet;
     rawRows.push(rowArr);
   }
 
@@ -365,21 +485,47 @@ export async function parseEstimateWorkbook(
   for (let r = headerRowIndex + 1; r <= worksheet.rowCount; r++) {
     const lineNumStr = getCellString(worksheet.getCell(r, colMap.colLine));
     const partNumStr = getCellString(worksheet.getCell(r, colMap.colPart));
-    const description = getCellString(worksheet.getCell(r, colMap.colDesc)) || '';
+    const rawDescStr = getCellString(worksheet.getCell(r, colMap.colDesc)) || '';
+    const description = getDistinctColumnString(worksheet, r, colMap.colDesc) || '';
 
     // Check stop conditions (footer rows / disclaimer notes)
-    if (isFooterOrNoteRow(lineNumStr, partNumStr, description)) {
+    if (isFooterOrNoteRow(lineNumStr, partNumStr, rawDescStr)) {
       break;
     }
 
     // Skip empty separator rows without content
-    if (!lineNumStr && !partNumStr && !description) {
+    if (!lineNumStr && !partNumStr && !rawDescStr) {
+      continue;
+    }
+
+    let unitListPrice = getDistinctColumnNumeric(worksheet, r, colMap.colList);
+    let rawNetCiscoUnit = getDistinctColumnNumeric(worksheet, r, colMap.colNet);
+    const rawExtCost = getDistinctColumnNumeric(worksheet, r, colMap.colExt);
+
+    // Skip CCW equipment description / group header / comment rows (e.g., Row 19 notes without values)
+    if (
+      isEquipmentDescriptionOrGroupRow(
+        worksheet,
+        r,
+        colMap,
+        lineNumStr,
+        partNumStr,
+        description || rawDescStr,
+        unitListPrice,
+        rawNetCiscoUnit,
+        rawExtCost
+      )
+    ) {
       continue;
     }
 
     // 1. Aislamiento de Filas Informativas y Deduplicación de Términos Redundantes
-    if (isInformationalRow(partNumStr, description)) {
-      const cleanDesc = description.trim();
+    if (isInformationalRow(partNumStr, description || rawDescStr)) {
+      const cleanDesc = (
+        isSubscriptionBillingInfoRow(partNumStr, '') && !description
+          ? partNumStr
+          : description || rawDescStr
+      ).trim();
       const isCurrentInitialTerm = cleanDesc.toLowerCase().includes('initial term');
 
       // Deduplication check with previous info row
@@ -411,7 +557,7 @@ export async function parseEstimateWorkbook(
       items.push({
         rowIdx: r,
         lineNumber: lineNumStr || '',
-        partNumber: partNumStr || '',
+        partNumber: '',
         smartAccountMandatory: '-',
         description: cleanDesc,
         serviceDurationMonths: '---',
@@ -435,8 +581,8 @@ export async function parseEstimateWorkbook(
     }
 
     const sku = partNumStr.toUpperCase();
-    const smartAccount = getCellString(worksheet.getCell(r, colMap.colSmart)) || '-';
-    const serviceDuration = getCellString(worksheet.getCell(r, colMap.colDur)) || '---';
+    const smartAccount = getDistinctColumnString(worksheet, r, colMap.colSmart) || '-';
+    const serviceDuration = getDistinctColumnString(worksheet, r, colMap.colDur) || '---';
 
     // NUEVO: Rescate de duración y conversión a estándar "Y"
     let finalDescription = description.trim();
@@ -451,22 +597,20 @@ export async function parseEstimateWorkbook(
     }
 
     const rawLeadTime = worksheet.getCell(r, colMap.colLead).value;
-    const leadTimeNum = parseNumericValue(rawLeadTime);
+    const leadTimeNum = getDistinctColumnNumeric(worksheet, r, colMap.colLead) || parseNumericValue(rawLeadTime);
     const transformedLeadTime = formatLeadTime(leadTimeNum);
 
-    let unitListPrice = parseNumericValue(worksheet.getCell(r, colMap.colList).value);
-    const pricingTerm = getCellString(worksheet.getCell(r, colMap.colTerm)) || '';
+    const pricingTerm = getDistinctColumnString(worksheet, r, colMap.colTerm) || '';
     const rawQtyCell = worksheet.getCell(r, colMap.colQty).value;
-    const qtyStr = getCellString(worksheet.getCell(r, colMap.colQty));
+    const qtyStr = getDistinctColumnString(worksheet, r, colMap.colQty);
     let qty = typeof rawQtyCell === 'number' ? Math.round(rawQtyCell) : parseInt(qtyStr, 10);
     if (isNaN(qty) || qty < 0) qty = 1;
-    let rawNetCiscoUnit = parseNumericValue(worksheet.getCell(r, colMap.colNet).value);
     const hasPromo = Boolean(promoNetPrices && promoNetPrices[r] !== undefined);
     let netCiscoUnit = hasPromo ? promoNetPrices![r] : rawNetCiscoUnit;
 
     let discPct = unitListPrice > 0
       ? Number((((unitListPrice - netCiscoUnit) / unitListPrice) * 100).toFixed(2))
-      : parseNumericValue(worksheet.getCell(r, colMap.colDisc).value);
+      : getDistinctColumnNumeric(worksheet, r, colMap.colDisc);
 
     const hierLine = hierMap.get(lineNumStr);
     const parentGroup = hierLine ? hierLine.parentGroup : '1';
@@ -485,8 +629,6 @@ export async function parseEstimateWorkbook(
       if (snap.mango) detectedDurationMonths = snap.mango;
       if (snap.sandia !== undefined) isPeriodicSubscription = Boolean(snap.sandia);
     }
-
-    const rawExtCost = parseNumericValue(worksheet.getCell(r, colMap.colExt).value);
 
     // Caso Sub-líneas a costo $0.00 (como LIC-MT-E-INCL o contenedores .0 a costo 0)
     if (rawNetCiscoUnit === 0 && rawExtCost === 0) {
