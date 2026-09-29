@@ -272,13 +272,14 @@ export const BoRequestModal: React.FC<Props> = ({
     syncLinesWithAutoBodega(nextActive, []);
   };
 
-  // Descartar una línea de la tabla activa hacia la sección de descartados
+  // Descartar una línea de la tabla activa hacia la sección de descartados (al inicio y conservando su precio)
   // Si solo quedan servicios o licencias en la tabla activa, cambia inmediatamente a ED
   const handleRemoveActiveLine = (index: number) => {
     const item = lines[index];
     const nextActive = lines.filter((_, i) => i !== index);
-    const nextDiscarded = [...discardedLines, item];
+    const nextDiscarded = [item, ...discardedLines];
     syncLinesWithAutoBodega(nextActive, nextDiscarded);
+    setIsDiscardedExpanded(true);
   };
 
   // Copiar tabla HTML al portapapeles y sincronizar SKUs a la nube
@@ -601,10 +602,10 @@ export const BoRequestModal: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* SECCIÓN DE P/N DESCARTADOS ($0 USD) */}
+          {/* SECCIÓN DE P/N DESCARTADOS ($0 USD Y EXCLUIDOS DE LA TABLA PRINCIPAL) */}
           <div className="border border-zinc-800/80 rounded-xl bg-zinc-950/70 overflow-hidden">
             <div className="bg-zinc-900/70 px-3.5 py-2.5 border-b border-zinc-800/80 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setIsDiscardedExpanded(!isDiscardedExpanded)}
@@ -615,11 +616,25 @@ export const BoRequestModal: React.FC<Props> = ({
                   ) : (
                     <ChevronDown className="w-4 h-4 text-zinc-400" />
                   )}
-                  <span>P/N Descartados con Costo $0 USD</span>
+                  <span>
+                    {discardedLines.some((d) => (Number(d.unitNetPrice) || 0) > 0 || (Number(d.extendedNetPrice) || 0) > 0)
+                      ? 'P/N Descartados / Excluidos del BO'
+                      : 'P/N Descartados con Costo $0 USD'}
+                  </span>
                 </button>
                 <span className="text-[10px] bg-zinc-800 text-zinc-400 font-mono px-2 py-0.5 rounded-full border border-zinc-700/60">
                   {discardedLines.length} {discardedLines.length === 1 ? 'línea excluida' : 'líneas excluidas'}
                 </span>
+                {(() => {
+                  const pricedDiscardedCount = discardedLines.filter(
+                    (d) => (Number(d.unitNetPrice) || 0) > 0 || (Number(d.extendedNetPrice) || 0) > 0
+                  ).length;
+                  return pricedDiscardedCount > 0 ? (
+                    <span className="text-[10px] bg-amber-950/70 text-amber-300 font-mono px-2 py-0.5 rounded-full border border-amber-700/60">
+                      {pricedDiscardedCount} {pricedDiscardedCount === 1 ? 'ítem con precio excluido' : 'ítems con precio excluidos'}
+                    </span>
+                  ) : null;
+                })()}
               </div>
 
               {discardedLines.length > 0 && (
@@ -668,45 +683,73 @@ export const BoRequestModal: React.FC<Props> = ({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-800/50 bg-zinc-950/40 font-mono text-[11px]">
-                        {discardedLines.map((dLine, dIdx) => (
-                          <tr key={dIdx} className="hover:bg-zinc-900/60 transition-colors text-zinc-400">
-                            <td className="p-1.5 text-center">
-                              <input
-                                type="text"
-                                value={dLine.sku}
-                                placeholder="Opcional"
-                                onChange={(e) => handleDiscardedSkuChange(dIdx, e.target.value)}
-                                onBlur={() => handleDiscardedSkuBlur(dIdx)}
-                                className="bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-center font-mono text-zinc-400 text-[11px] w-28 focus:border-amber-400 focus:outline-none uppercase"
-                                title="Código SKU Intcomex (se guarda automáticamente en la nube al salir del campo)"
-                              />
-                            </td>
-                            <td className="p-1.5 text-center">
-                              <input
-                                type="text"
-                                value={dLine.partNumber}
-                                onChange={(e) => handleDiscardedPartNumberChange(dIdx, e.target.value)}
-                                className="bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-center font-mono text-zinc-300 text-[11px] w-full max-w-[200px] focus:border-amber-400 focus:outline-none"
-                                title="Part Number Cisco (editable)"
-                              />
-                            </td>
-                            <td className="p-1.5 text-center text-zinc-500">{currentBodega}</td>
-                            <td className="p-1.5 text-center">{dLine.qty}</td>
-                            <td className="p-1.5 text-right text-zinc-500">$0,00</td>
-                            <td className="p-1.5 text-right text-zinc-500">$0,00</td>
-                            <td className="p-1.5 text-center">
-                              <button
-                                type="button"
-                                onClick={() => handleAddDiscardedLine(dIdx)}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-zinc-800 hover:bg-amber-600/30 text-amber-300 border border-zinc-700 hover:border-amber-500/40 rounded transition-colors cursor-pointer"
-                                title="Mover este P/N a la tabla activa de BO"
+                        {discardedLines.map((dLine, dIdx) => {
+                          const hasPrice =
+                            (Number(dLine.unitNetPrice) || 0) > 0 ||
+                            (Number(dLine.extendedNetPrice) || 0) > 0;
+                          return (
+                            <tr
+                              key={dIdx}
+                              className={`transition-colors ${
+                                hasPrice
+                                  ? 'bg-amber-950/20 hover:bg-amber-950/30 text-zinc-200'
+                                  : 'hover:bg-zinc-900/60 text-zinc-400'
+                              }`}
+                            >
+                              <td className="p-1.5 text-center">
+                                <input
+                                  type="text"
+                                  value={dLine.sku}
+                                  placeholder="Opcional"
+                                  onChange={(e) => handleDiscardedSkuChange(dIdx, e.target.value)}
+                                  onBlur={() => handleDiscardedSkuBlur(dIdx)}
+                                  className="bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-center font-mono text-zinc-300 text-[11px] w-28 focus:border-amber-400 focus:outline-none uppercase"
+                                  title="Código SKU Intcomex (se guarda automáticamente en la nube al salir del campo)"
+                                />
+                              </td>
+                              <td className="p-1.5 text-center">
+                                <input
+                                  type="text"
+                                  value={dLine.partNumber}
+                                  onChange={(e) => handleDiscardedPartNumberChange(dIdx, e.target.value)}
+                                  className={`bg-zinc-900 border rounded px-1.5 py-0.5 text-center font-mono text-[11px] w-full max-w-[200px] focus:border-amber-400 focus:outline-none ${
+                                    hasPrice
+                                      ? 'border-amber-700/60 text-amber-200 font-bold'
+                                      : 'border-zinc-800 text-zinc-300'
+                                  }`}
+                                  title="Part Number Cisco (editable)"
+                                />
+                              </td>
+                              <td className="p-1.5 text-center text-zinc-400">{currentBodega}</td>
+                              <td className="p-1.5 text-center">{dLine.qty}</td>
+                              <td
+                                className={`p-1.5 text-right ${
+                                  hasPrice ? 'text-amber-300 font-semibold' : 'text-zinc-500'
+                                }`}
                               >
-                                <Plus className="w-2.5 h-2.5" />
-                                <span>Agregar</span>
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                                ${formatCLP(dLine.unitNetPrice, 2)}
+                              </td>
+                              <td
+                                className={`p-1.5 text-right ${
+                                  hasPrice ? 'text-emerald-400 font-bold' : 'text-zinc-500'
+                                }`}
+                              >
+                                ${formatCLP(dLine.extendedNetPrice, 2)}
+                              </td>
+                              <td className="p-1.5 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddDiscardedLine(dIdx)}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-zinc-800 hover:bg-amber-600/30 text-amber-300 border border-zinc-700 hover:border-amber-500/40 rounded transition-colors cursor-pointer"
+                                  title="Mover este P/N a la tabla activa de BO"
+                                >
+                                  <Plus className="w-2.5 h-2.5" />
+                                  <span>Agregar</span>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
