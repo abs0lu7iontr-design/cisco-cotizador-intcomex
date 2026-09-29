@@ -673,7 +673,17 @@ def get_index_html_path() -> str:
     script_dir = os.path.dirname(os.path.abspath(__file__))
     cwd = os.getcwd()
 
+    user_home = os.path.expanduser("~")
+    workspace_dist = os.path.join(
+        user_home,
+        "antigravity",
+        "Remix-Cotizador-Automático-Cisco---Intcomex",
+        "dist",
+        "index.html",
+    )
+
     external_candidates = [
+        workspace_dist,
         os.path.join(exe_dir, "dist", "index.html"),
         os.path.join(exe_dir, "..", "dist", "index.html"),
         os.path.join(script_dir, "..", "dist", "index.html"),

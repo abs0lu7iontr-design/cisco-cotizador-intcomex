@@ -93,51 +93,74 @@ interface ColumnMapping {
 function detectColumnMapping(worksheet: ExcelJS.Worksheet, headerRowIndex: number): ColumnMapping {
   const row = worksheet.getRow(headerRowIndex);
   const map: ColumnMapping = {
-    colLine: 1,
-    colPart: 2,
-    colSmart: 3,
-    colDesc: 4,
-    colDur: 5,
-    colLead: 6,
-    colList: 7,
-    colTerm: 8,
-    colQty: 9,
-    colNet: 10,
-    colDisc: 11,
-    colExt: 12,
+    colLine: -1,
+    colPart: -1,
+    colSmart: -1,
+    colDesc: -1,
+    colDur: -1,
+    colLead: -1,
+    colList: -1,
+    colTerm: -1,
+    colQty: -1,
+    colNet: -1,
+    colDisc: -1,
+    colExt: -1,
   };
 
   row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
     const text = getCellString(cell).toLowerCase().trim();
-    if (text.includes('line') || text.includes('línea') || text.includes('item')) {
+    if (!text) return;
+
+    if (
+      map.colLine === -1 &&
+      (text.includes('line number') ||
+        text.includes('line #') ||
+        text === 'line' ||
+        text.includes('línea') ||
+        text === 'item')
+    ) {
       map.colLine = colNumber;
-    } else if (text.includes('part') || text.includes('sku') || text.includes('product #')) {
+    } else if (
+      map.colPart === -1 &&
+      (text.includes('part') || text.includes('sku') || text.includes('product #'))
+    ) {
       map.colPart = colNumber;
-    } else if (text.includes('smart account')) {
+    } else if (map.colSmart === -1 && text.includes('smart account')) {
       map.colSmart = colNumber;
-    } else if (text.includes('desc') || text.includes('product desc')) {
+    } else if (map.colDesc === -1 && (text.includes('desc') || text.includes('product desc'))) {
       map.colDesc = colNumber;
-    } else if (text.includes('duration') || text.includes('duración')) {
+    } else if (map.colDur === -1 && (text.includes('duration') || text.includes('duración'))) {
       map.colDur = colNumber;
-    } else if (text.includes('lead') || text.includes('entrega') || text.includes('tiempo')) {
+    } else if (
+      map.colLead === -1 &&
+      (text.includes('lead') || text.includes('entrega') || text.includes('tiempo'))
+    ) {
       map.colLead = colNumber;
-    } else if (text.includes('list') || text.includes('lista')) {
+    } else if (map.colList === -1 && (text.includes('list') || text.includes('lista'))) {
       map.colList = colNumber;
-    } else if (text.includes('term') || text.includes('término')) {
+    } else if (map.colTerm === -1 && (text.includes('term') || text.includes('término'))) {
       map.colTerm = colNumber;
-    } else if (text.includes('qty') || text.includes('cant') || text.includes('quantity')) {
+    } else if (
+      map.colQty === -1 &&
+      (text.includes('qty') || text.includes('cant') || text.includes('quantity'))
+    ) {
       map.colQty = colNumber;
-    } else if (text.includes('disc') || text.includes('descuento') || text.includes('%')) {
+    } else if (
+      map.colDisc === -1 &&
+      (text.includes('disc') || text.includes('descuento') || text.includes('%'))
+    ) {
       map.colDisc = colNumber;
     } else if (
-      text.includes('ext') ||
-      text.includes('extend') ||
-      text.includes('total price') ||
-      text.includes('precio ext') ||
-      text.includes('net total')
+      map.colExt === -1 &&
+      (text.includes('ext') ||
+        text.includes('extend') ||
+        text.includes('total price') ||
+        text.includes('precio ext') ||
+        text.includes('net total'))
     ) {
       map.colExt = colNumber;
     } else if (
+      map.colNet === -1 &&
       (text.includes('unit net') ||
         text.includes('net price') ||
         text.includes('unit price') ||
@@ -151,7 +174,48 @@ function detectColumnMapping(worksheet: ExcelJS.Worksheet, headerRowIndex: numbe
     }
   });
 
-  return map;
+  // Detect if this is an already-exported 7-column Intcomex layout (Line, Part, Desc, Lead, Qty, Unit Net, Ext Net)
+  const isCompact7Col =
+    map.colDesc === 3 &&
+    map.colLead === 4 &&
+    map.colQty === 5 &&
+    map.colNet === 6 &&
+    map.colExt === 7 &&
+    map.colSmart === -1 &&
+    map.colList === -1;
+
+  if (isCompact7Col) {
+    return {
+      colLine: map.colLine !== -1 ? map.colLine : 1,
+      colPart: map.colPart !== -1 ? map.colPart : 2,
+      colSmart: -1,
+      colDesc: 3,
+      colDur: -1,
+      colLead: 4,
+      colList: -1,
+      colTerm: -1,
+      colQty: 5,
+      colNet: 6,
+      colDisc: -1,
+      colExt: 7,
+    };
+  }
+
+  // Standard 12-column CCW defaults for any unmapped columns
+  return {
+    colLine: map.colLine !== -1 ? map.colLine : 1,
+    colPart: map.colPart !== -1 ? map.colPart : 2,
+    colSmart: map.colSmart !== -1 ? map.colSmart : 3,
+    colDesc: map.colDesc !== -1 ? map.colDesc : 4,
+    colDur: map.colDur !== -1 ? map.colDur : 5,
+    colLead: map.colLead !== -1 ? map.colLead : 6,
+    colList: map.colList !== -1 ? map.colList : 7,
+    colTerm: map.colTerm !== -1 ? map.colTerm : 8,
+    colQty: map.colQty !== -1 ? map.colQty : 9,
+    colNet: map.colNet !== -1 ? map.colNet : 10,
+    colDisc: map.colDisc !== -1 ? map.colDisc : 11,
+    colExt: map.colExt !== -1 ? map.colExt : 12,
+  };
 }
 
 /**
@@ -164,11 +228,28 @@ function getDistinctColumnString(
   rowNumber: number,
   colNumber: number
 ): string {
+  if (!colNumber || colNumber <= 0) return '';
   const cell = worksheet.getCell(rowNumber, colNumber);
   if (!cell) return '';
-  if (cell.isMerged && cell.master && cell.master.col !== colNumber) {
+  if (cell.isMerged && cell.master && cell.master.address !== cell.address) {
     return '';
   }
+  return getCellString(cell);
+}
+
+/** CCW may store a displayed line such as 1.0 as a numeric 1 with a number format. */
+function getLineNumberString(worksheet: ExcelJS.Worksheet, rowNumber: number, colNumber: number): string {
+  if (!colNumber || colNumber <= 0) return '';
+  const cell = worksheet.getCell(rowNumber, colNumber);
+  if (!cell || (cell.isMerged && cell.master && cell.master.address !== cell.address)) return '';
+
+  try {
+    const displayed = (cell.text || '').trim();
+    if (/^\d+(\.\d+)*$/.test(displayed)) return displayed;
+  } catch (_) {}
+
+  const value = cell.value;
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return `${value}.0`;
   return getCellString(cell);
 }
 
@@ -177,9 +258,10 @@ function getDistinctColumnNumeric(
   rowNumber: number,
   colNumber: number
 ): number {
+  if (!colNumber || colNumber <= 0) return 0;
   const cell = worksheet.getCell(rowNumber, colNumber);
   if (!cell) return 0;
-  if (cell.isMerged && cell.master && cell.master.col !== colNumber) {
+  if (cell.isMerged && cell.master && cell.master.address !== cell.address) {
     return 0;
   }
   return parseNumericValue(cell.value);
@@ -268,8 +350,8 @@ export function isSubscriptionBillingInfoRow(partStr: string, descStr: string): 
 }
 
 /**
- * Detects if a row in a CCW Estimate (such as Row 19 right below the table header, or a group banner row)
- * is an equipment description, group header, or user note without values that should be skipped (`continue`),
+ * Detects if a row in a CCW Estimate (such as Row 19 right below the table header, or a group/solution banner row)
+ * is an equipment description, group header, or user note without a valid SKU that should be skipped (`continue`),
  * preventing it from being added as a $0.00 cell/row or prematurely stopping the parser.
  */
 export function isEquipmentDescriptionOrGroupRow(
@@ -287,7 +369,7 @@ export function isEquipmentDescriptionOrGroupRow(
   const cleanPart = (partStr || '').trim();
   const cleanDesc = (descStr || '').trim();
 
-  // Never skip true subscription billing info rows ("Initial Term...")
+  // Never skip true subscription billing info rows ("Initial Term - 36.00 Months | Auto Renewal Term...")
   if (isSubscriptionBillingInfoRow(cleanPart, cleanDesc)) {
     return false;
   }
@@ -295,28 +377,27 @@ export function isEquipmentDescriptionOrGroupRow(
   const hasValidLineNumber = /^\d+(\.\d+)*$/.test(cleanLine);
   const hasZeroPrices = unitListPrice === 0 && rawNetCiscoUnit === 0 && rawExtCost === 0;
 
-  // Case 1: Horizontal merge across Part Number (or Line Number) and price columns (classic CCW Row 19 banner)
-  const partCell = worksheet.getCell(rowNumber, colMap.colPart);
-  const netCell = worksheet.getCell(rowNumber, colMap.colNet);
-  const listCell = worksheet.getCell(rowNumber, colMap.colList);
-  if (
-    !hasValidLineNumber &&
-    partCell?.isMerged &&
-    partCell.master &&
-    ((netCell?.isMerged && netCell.master?.address === partCell.master.address) ||
-      (listCell?.isMerged && listCell.master?.address === partCell.master.address))
-  ) {
+  // Rule 1: Every genuine CCW product/software/service row has a hierarchical Line Number (1.0, 1.0.1, 1.1, 2.0, etc.).
+  // Any row inside the table without a valid Line Number (that is not a subscription Initial Term row)
+  // is a Group / Solution Description, custom partner note, or section banner and MUST be skipped via continue.
+  if (!hasValidLineNumber) {
     return true;
   }
 
-  // Case 2: Row has NO valid CCW line number (Col A is empty or non-numeric) and has $0 prices
-  // In CCW, every actual hardware/software/service line has a Line Number (1.0, 1.0.1, 1.1, 2.0, etc.).
-  // Any unnumbered row with $0 price (that isn't an "Initial Term" row) is a Group Name or Equipment Description note.
-  if (!hasValidLineNumber && hasZeroPrices) {
+  // Rule 2: Missing Part Number or abnormally long text (> 45 chars) in Part Number column
+  if (!cleanPart || cleanPart.length > 45) {
     return true;
   }
 
-  // Case 3: Part Number column contains a natural-language sentence/description (3+ words) with $0 prices
+  // Rule 3: Horizontal merge across Part Number and adjacent columns
+  if (colMap.colPart > 0) {
+    const partCell = worksheet.getCell(rowNumber, colMap.colPart);
+    if (partCell?.isMerged && partCell.master && partCell.master.address !== partCell.address) {
+      return true;
+    }
+  }
+
+  // Rule 4: Part Number column contains a natural-language phrase (3+ space-separated words) with $0 prices
   // Valid Cisco/Meraki SKUs never contain 3+ space-separated words.
   if (cleanPart.split(/\s+/).length >= 3 && hasZeroPrices) {
     return true;
@@ -379,29 +460,101 @@ export async function parseEstimateWorkbook(
     throw new Error('El archivo Excel no contiene ninguna hoja de cálculo válida.');
   }
 
-  // 1. Dynamic Header Row Detection
+  // 1. Dynamic Header Row Detection (Requires at least 2 distinct header columns on the same row
+  // so a free-text Deal/Group description above Row 18 containing the word "description" never false-positives)
   let headerRowIndex = -1;
-  for (let r = 1; r <= Math.min(worksheet.rowCount, 40); r++) {
-    for (let c = 1; c <= 6; c++) {
-      const cellVal = getCellString(worksheet.getCell(r, c)).toLowerCase();
-      if (
-        cellVal.includes('line number') ||
-        cellVal.includes('line #') ||
-        (cellVal.includes('part number') && c <= 2) ||
-        (cellVal.includes('description') && c <= 4)
-      ) {
-        headerRowIndex = r;
-        break;
+  for (let r = 1; r <= Math.min(worksheet.rowCount, 45); r++) {
+    let hasLineCol = false;
+    let hasPartCol = false;
+    let hasDescCol = false;
+    let hasPriceOrQtyCol = false;
+    const seenMasterAddresses = new Set<string>();
+
+    for (let c = 1; c <= 14; c++) {
+      const cell = worksheet.getCell(r, c);
+      const masterAddr = cell?.isMerged && cell.master ? cell.master.address : cell.address;
+      if (seenMasterAddresses.has(masterAddr)) continue;
+      seenMasterAddresses.add(masterAddr);
+
+      const cellVal = getCellString(cell).toLowerCase().trim();
+      if (!cellVal || cellVal.length > 45) continue;
+
+      if (cellVal === 'line' || cellVal.includes('line number') || cellVal.includes('line #') || cellVal.includes('línea')) {
+        hasLineCol = true;
+      } else if (cellVal.includes('part number') || cellVal.includes('product #') || cellVal === 'sku' || cellVal === 'item') {
+        hasPartCol = true;
+      } else if (cellVal === 'description' || cellVal.includes('item description') || cellVal.includes('descripción')) {
+        hasDescCol = true;
+      } else if (cellVal.includes('qty') || cellVal.includes('quantity') || cellVal.includes('net price') || cellVal.includes('list price')) {
+        hasPriceOrQtyCol = true;
       }
     }
-    if (headerRowIndex !== -1) break;
+
+    if ((hasLineCol && (hasPartCol || hasDescCol)) || (hasPartCol && hasDescCol && hasPriceOrQtyCol)) {
+      headerRowIndex = r;
+      break;
+    }
   }
   if (headerRowIndex === -1) headerRowIndex = 18;
 
   // 2. Detect Columns
   const colMap = detectColumnMapping(worksheet, headerRowIndex);
 
-  // 3. Extract Metadata from Top Rows
+  // 3. Extract Metadata from Top Rows (Strictly above headerRowIndex so 7-col CALC/RECALC files
+  // with headerRowIndex=13 never read table headers/prices from Row 13/14 as Estimate ID or Deal ID)
+  let detectedEstimateId = '';
+  let detectedDealId = '';
+  let detectedPriceList = '';
+  let detectedDate = '';
+
+  const readLabelAdjacentValue = (r: number, labelCol: number): string => {
+    const labelCell = worksheet.getCell(r, labelCol);
+    const labelMaster = labelCell?.isMerged && labelCell.master ? labelCell.master.address : labelCell.address;
+    for (let c = labelCol + 1; c <= 16; c++) {
+      const candidateCell = worksheet.getCell(r, c);
+      const candidateMaster = candidateCell?.isMerged && candidateCell.master ? candidateCell.master.address : candidateCell.address;
+      if (candidateMaster === labelMaster) continue;
+      const val = getCellString(candidateCell).trim();
+      if (val) return val;
+    }
+    return '';
+  };
+
+  for (let r = 1; r < headerRowIndex; r++) {
+    for (let c = 1; c <= 14; c++) {
+      const rawText = getCellString(worksheet.getCell(r, c)).trim();
+      if (!rawText) continue;
+      const lower = rawText.toLowerCase();
+
+      if (!detectedEstimateId && (lower === 'estimate id' || lower.startsWith('estimate id:') || lower === 'estimate #')) {
+        const inlineVal = rawText.includes(':') ? rawText.split(':').slice(1).join(':').trim() : '';
+        detectedEstimateId = inlineVal || readLabelAdjacentValue(r, c);
+      } else if (!detectedDealId && (lower === 'deal id' || lower.startsWith('deal id:'))) {
+        const inlineVal = rawText.includes(':') ? rawText.split(':').slice(1).join(':').trim() : '';
+        detectedDealId = inlineVal || readLabelAdjacentValue(r, c);
+      } else if (!detectedPriceList && (lower === 'price list' || lower.startsWith('price list:'))) {
+        const inlineVal = rawText.includes(':') ? rawText.split(':').slice(1).join(':').trim() : '';
+        detectedPriceList = inlineVal || readLabelAdjacentValue(r, c);
+      } else if (!detectedDate && (lower.startsWith('date:') || lower.startsWith('created_date') || lower.startsWith('fecha:'))) {
+        detectedDate = rawText;
+      }
+    }
+  }
+
+  // Fallback to classic CCW row 13-15 coordinates ONLY if those rows are strictly above headerRowIndex
+  if (!detectedEstimateId && headerRowIndex > 13) {
+    detectedEstimateId = getCellString(worksheet.getCell(13, 12));
+  }
+  if (!detectedDealId && headerRowIndex > 14) {
+    detectedDealId = getCellString(worksheet.getCell(14, 12));
+  }
+  if (!detectedPriceList && headerRowIndex > 15) {
+    detectedPriceList = getCellString(worksheet.getCell(15, 12));
+  }
+  if (!detectedDate && headerRowIndex > 13) {
+    detectedDate = getCellString(worksheet.getCell(13, 1));
+  }
+
   const headerInfo: EstimateHeaderInfo = {
     customerName: getCellString(worksheet.getCell(3, 1)) || 'Mauricio Skill',
     companyName: getCellString(worksheet.getCell(4, 1)) || 'INTCOMEX CHILE SA',
@@ -409,21 +562,10 @@ export async function parseEstimateWorkbook(
     city: getCellString(worksheet.getCell(6, 1)) || 'SANTIAGO, 0-0',
     country: getCellString(worksheet.getCell(7, 1)) || 'CHILE',
     phone: getCellString(worksheet.getCell(8, 1)) || 'Ph no:+56 223637100',
-    estimateId:
-      getCellString(worksheet.getCell(13, 12)) ||
-      getCellString(worksheet.getCell(13, 7)) ||
-      getCellString(worksheet.getCell(13, colMap.colExt)) ||
-      '011682708571Z',
-    dealId:
-      getCellString(worksheet.getCell(14, 12)) ||
-      getCellString(worksheet.getCell(14, 7)) ||
-      getCellString(worksheet.getCell(14, colMap.colExt)) ||
-      'NA',
-    priceList:
-      getCellString(worksheet.getCell(15, 12)) ||
-      getCellString(worksheet.getCell(15, 7)) ||
-      'Global Price List Latin America Availability (USD)',
-    date: getCellString(worksheet.getCell(13, 1)) || '09-Aug-2026',
+    estimateId: detectedEstimateId || '011682708571Z',
+    dealId: detectedDealId || 'NA',
+    priceList: detectedPriceList || 'Global Price List Latin America Availability (USD)',
+    date: detectedDate || '09-Aug-2026',
   };
 
   const items: EstimateLineItem[] = [];
@@ -439,7 +581,7 @@ export async function parseEstimateWorkbook(
   let firstProductRowIndex = -1;
   let lastProductRowIndex = -1;
   for (let r = headerRowIndex + 1; r <= worksheet.rowCount; r++) {
-    const lineCandidate = getDistinctColumnString(worksheet, r, colMap.colLine).trim();
+    const lineCandidate = getLineNumberString(worksheet, r, colMap.colLine);
     if (/^\d+(\.\d+)*$/.test(lineCandidate)) {
       if (firstProductRowIndex === -1) {
         firstProductRowIndex = r;
@@ -456,8 +598,8 @@ export async function parseEstimateWorkbook(
       continue;
     }
 
-    const lineNum = getDistinctColumnString(worksheet, r, colMap.colLine);
-    const partNum = getCellString(worksheet.getCell(r, colMap.colPart));
+    const lineNum = getLineNumberString(worksheet, r, colMap.colLine);
+    const partNum = getDistinctColumnString(worksheet, r, colMap.colPart);
     const desc = getDistinctColumnString(worksheet, r, colMap.colDesc);
     if (!lineNum && !partNum && !desc) continue;
 
@@ -493,10 +635,10 @@ export async function parseEstimateWorkbook(
     rowArr[2] = getDistinctColumnString(worksheet, r, colMap.colSmart);
     rowArr[3] = desc;
     rowArr[4] = getDistinctColumnString(worksheet, r, colMap.colDur);
-    rowArr[5] = worksheet.getCell(r, colMap.colLead).value;
+    rowArr[5] = colMap.colLead > 0 ? worksheet.getCell(r, colMap.colLead).value : '';
     rowArr[6] = unitList;
     rowArr[7] = getDistinctColumnString(worksheet, r, colMap.colTerm);
-    rowArr[8] = worksheet.getCell(r, colMap.colQty).value;
+    rowArr[8] = colMap.colQty > 0 ? worksheet.getCell(r, colMap.colQty).value : 1;
     rowArr[9] = unitNet;
     rowArr[10] = getDistinctColumnNumeric(worksheet, r, colMap.colDisc);
     rowArr[11] = extNet;
@@ -516,9 +658,9 @@ export async function parseEstimateWorkbook(
       continue;
     }
 
-    const lineNumStr = getDistinctColumnString(worksheet, r, colMap.colLine);
-    const partNumStr = getCellString(worksheet.getCell(r, colMap.colPart));
-    const rawDescStr = getCellString(worksheet.getCell(r, colMap.colDesc)) || '';
+    const lineNumStr = getLineNumberString(worksheet, r, colMap.colLine);
+    const partNumStr = getDistinctColumnString(worksheet, r, colMap.colPart);
+    const rawDescStr = colMap.colDesc > 0 ? getCellString(worksheet.getCell(r, colMap.colDesc)) || '' : '';
     const description = getDistinctColumnString(worksheet, r, colMap.colDesc) || '';
 
     // Check stop conditions (footer rows / disclaimer notes) ONLY after the last numbered product row
@@ -630,12 +772,12 @@ export async function parseEstimateWorkbook(
       }
     }
 
-    const rawLeadTime = worksheet.getCell(r, colMap.colLead).value;
+    const rawLeadTime = colMap.colLead > 0 ? worksheet.getCell(r, colMap.colLead).value : 0;
     const leadTimeNum = getDistinctColumnNumeric(worksheet, r, colMap.colLead) || parseNumericValue(rawLeadTime);
     const transformedLeadTime = formatLeadTime(leadTimeNum);
 
     const pricingTerm = getDistinctColumnString(worksheet, r, colMap.colTerm) || '';
-    const rawQtyCell = worksheet.getCell(r, colMap.colQty).value;
+    const rawQtyCell = colMap.colQty > 0 ? worksheet.getCell(r, colMap.colQty).value : 1;
     const qtyStr = getDistinctColumnString(worksheet, r, colMap.colQty);
     let qty = typeof rawQtyCell === 'number' ? Math.round(rawQtyCell) : parseInt(qtyStr, 10);
     if (isNaN(qty) || qty < 0) qty = 1;
@@ -691,7 +833,7 @@ export async function parseEstimateWorkbook(
         isPeriodicSubscription,
         unitNetPriceCcw: 0,
         extendedNetPriceCcw: 0,
-        months: detectedDurationMonths,
+        months: isPeriodicSubscription ? detectedDurationMonths : 1,
         isIntangible,
         llevaArancel,
         costoInternacion: 0,
@@ -708,13 +850,13 @@ export async function parseEstimateWorkbook(
     let merakiResult: ReturnType<typeof calculateMerakiLicenseCosts> | null = null;
 
     // Look-ahead estrictamente local (solo fila siguiente) para no mezclar licencias
-    const nextDesc1 = getCellString(worksheet.getCell(r + 1, colMap.colDesc));
+    const nextDesc1 = colMap.colDesc > 0 ? getCellString(worksheet.getCell(r + 1, colMap.colDesc)) : '';
 
     if (isPeriodicSubscription || isCloudSubscriptionSku(sku, nextDesc1)) {
       try {
-        const nextPart1 = getCellString(worksheet.getCell(r + 1, colMap.colPart));
-        const nextDesc2 = getCellString(worksheet.getCell(r + 2, colMap.colDesc));
-        const nextPart2 = getCellString(worksheet.getCell(r + 2, colMap.colPart));
+        const nextPart1 = colMap.colPart > 0 ? getCellString(worksheet.getCell(r + 1, colMap.colPart)) : '';
+        const nextDesc2 = colMap.colDesc > 0 ? getCellString(worksheet.getCell(r + 2, colMap.colDesc)) : '';
+        const nextPart2 = colMap.colPart > 0 ? getCellString(worksheet.getCell(r + 2, colMap.colPart)) : '';
 
         // Extrae el número entero de meses truncando el ".00"
         const months = detectedDurationMonths > 1
@@ -774,7 +916,7 @@ export async function parseEstimateWorkbook(
         ...merakiResult,
       });
     } else {
-      const standardDiscount = parseNumericValue(worksheet.getCell(r, colMap.colDisc).value);
+      const standardDiscount = getDistinctColumnNumeric(worksheet, r, colMap.colDisc);
       const baseNetCost = rawNetCiscoUnit > 0
         ? rawNetCiscoUnit
         : (unitListPrice > 0 ? unitListPrice * (1 - (standardDiscount / 100)) : 0);
@@ -805,7 +947,7 @@ export async function parseEstimateWorkbook(
         isPeriodicSubscription: false,
         unitNetPriceCcw: rawNetCiscoUnit,
         extendedNetPriceCcw: rawExtCost,
-        months: detectedDurationMonths,
+        months: 1,
         isFastTrackPromo: hasPromo,
         originalNetCiscoUnit: hasPromo ? rawNetCiscoUnit : undefined,
         fastTrackDiscountPct: hasPromo ? discPct : undefined,

@@ -624,8 +624,11 @@ export function recalculateEstimateResult(
     const override = overrides ? (overrides[rowIdx] ?? (cleanSkuKey ? (overrides as any)[cleanSkuKey] : undefined)) : undefined;
 
     // SaaS / Meraki Cloud Subscription with multi-month duration
-    const isPeriodic = Boolean(item.isPeriodicSubscription || (item.months && item.months > 1));
-    const durationMonths = item.detectedDurationMonths ?? item.months ?? 1;
+    const isPeriodic =
+      item.isPeriodicSubscription !== undefined
+        ? Boolean(item.isPeriodicSubscription)
+        : Boolean(item.months && item.months > 1);
+    const durationMonths = isPeriodic ? (item.detectedDurationMonths ?? item.months ?? 1) : 1;
 
     if (item.realUnitCost === 0 && (item.unitListPrice === 0 || item.netCiscoUnit === 0)) {
       // Sub-línea a costo $0.00 (ej. LIC-MT-E-INCL)
