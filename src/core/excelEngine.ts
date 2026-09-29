@@ -430,14 +430,42 @@ export async function parseEstimateWorkbook(
   let calculatedProductTotal = 0;
   let originalProductTotal = 0;
 
+  // 3.5. Pre-scan Product Row Boundaries (firstProductRowIndex & lastProductRowIndex)
+  // Every genuine Cisco CCW line item has a hierarchical Line Number in Col A (e.g. "1.0", "1.0.1", "1.1", "2.0").
+  // By locating the first and last numbered product rows first:
+  // - Any unnumbered description/banner row BEFORE firstProductRowIndex (such as Row 19) is unconditionally omitted (continue)
+  //   and can NEVER trigger a footer break ($0.00 bug) or be inserted as a $0.00 item.
+  // - No row at or before lastProductRowIndex can ever trigger a premature footer break.
+  let firstProductRowIndex = -1;
+  let lastProductRowIndex = -1;
+  for (let r = headerRowIndex + 1; r <= worksheet.rowCount; r++) {
+    const lineCandidate = getDistinctColumnString(worksheet, r, colMap.colLine).trim();
+    if (/^\d+(\.\d+)*$/.test(lineCandidate)) {
+      if (firstProductRowIndex === -1) {
+        firstProductRowIndex = r;
+      }
+      lastProductRowIndex = r;
+    }
+  }
+
   // 4. Pre-parse rows with Hierarchical Parser (Multi-Block Initial Terms & Subscriptions)
   const rawRows: any[][] = [];
   for (let r = headerRowIndex + 1; r <= worksheet.rowCount; r++) {
-    const lineNum = getCellString(worksheet.getCell(r, colMap.colLine));
+    // Strictly omit any pre-table description/banner rows (such as Row 19 when 1.0 starts at Row 20)
+    if (firstProductRowIndex !== -1 && r < firstProductRowIndex) {
+      continue;
+    }
+
+    const lineNum = getDistinctColumnString(worksheet, r, colMap.colLine);
     const partNum = getCellString(worksheet.getCell(r, colMap.colPart));
     const desc = getDistinctColumnString(worksheet, r, colMap.colDesc);
     if (!lineNum && !partNum && !desc) continue;
-    if (isFooterOrNoteRow(lineNum, partNum, desc)) break;
+
+    // Only allow footer break AFTER the last numbered product row
+    const isPastLastProductRow = lastProductRowIndex === -1 || r > lastProductRowIndex;
+    if (isPastLastProductRow && isFooterOrNoteRow(lineNum, partNum, desc)) {
+      break;
+    }
 
     const unitList = getDistinctColumnNumeric(worksheet, r, colMap.colList);
     const unitNet = getDistinctColumnNumeric(worksheet, r, colMap.colNet);
@@ -483,13 +511,19 @@ export async function parseEstimateWorkbook(
 
   // 5. Extract and calculate line items
   for (let r = headerRowIndex + 1; r <= worksheet.rowCount; r++) {
-    const lineNumStr = getCellString(worksheet.getCell(r, colMap.colLine));
+    // Option A: Strictly omit any pre-table description/comment rows (e.g., Row 19 before 1.0 on Row 20)
+    if (firstProductRowIndex !== -1 && r < firstProductRowIndex) {
+      continue;
+    }
+
+    const lineNumStr = getDistinctColumnString(worksheet, r, colMap.colLine);
     const partNumStr = getCellString(worksheet.getCell(r, colMap.colPart));
     const rawDescStr = getCellString(worksheet.getCell(r, colMap.colDesc)) || '';
     const description = getDistinctColumnString(worksheet, r, colMap.colDesc) || '';
 
-    // Check stop conditions (footer rows / disclaimer notes)
-    if (isFooterOrNoteRow(lineNumStr, partNumStr, rawDescStr)) {
+    // Check stop conditions (footer rows / disclaimer notes) ONLY after the last numbered product row
+    const isPastLastProductRow = lastProductRowIndex === -1 || r > lastProductRowIndex;
+    if (isPastLastProductRow && isFooterOrNoteRow(lineNumStr, partNumStr, rawDescStr)) {
       break;
     }
 
@@ -502,7 +536,7 @@ export async function parseEstimateWorkbook(
     let rawNetCiscoUnit = getDistinctColumnNumeric(worksheet, r, colMap.colNet);
     const rawExtCost = getDistinctColumnNumeric(worksheet, r, colMap.colExt);
 
-    // Skip CCW equipment description / group header / comment rows (e.g., Row 19 notes without values)
+    // Skip CCW equipment description / group header / comment rows (e.g., Row 19 or mid-table group banners without values)
     if (
       isEquipmentDescriptionOrGroupRow(
         worksheet,
