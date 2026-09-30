@@ -804,16 +804,20 @@ export async function generateProposalsComparisonWorkbook(params: {
       });
 
     proposals.forEach((prop) => {
-      const effectiveDisc = pureGplMode ? 0 : prop.bestDiscountPct;
-      const effectiveNetTotal = pureGplMode
-        ? prop.totalSolutionGplUsd
-        : prop.totalEstimatedNetUsd;
-      const effectiveSavings = pureGplMode ? 0 : prop.totalSavingsUsd;
+      const rawDisc = Number(prop.bestDiscountPct ?? prop.estimatedDiscountPct) || 0;
+      const effectiveDisc = pureGplMode ? 0 : rawDisc;
+      const gplSolutionTotal = Number(prop.totalSolutionGplUsd) || 0;
+      const estNetTotal =
+        Number(prop.totalEstimatedNetUsd ?? prop.estimatedTotalNetUsd) || 0;
+      const effectiveNetTotal = pureGplMode ? gplSolutionTotal : estNetTotal;
+      const estSavings = Number(prop.totalSavingsUsd ?? prop.estimatedSavingsUsd) || 0;
+      const effectiveSavings = pureGplMode ? 0 : estSavings;
+      const subList = prop.subItemsSummary || prop.subItemsBreakdown || [];
 
-      const subDetail = prop.subItemsSummary
+      const subDetail = subList
         .map(
           (s) =>
-            `${s.qty}x ${s.partNumber} (GPL: US$${s.totalGplUsd.toLocaleString('en-US', {
+            `${s.qty}x ${s.partNumber} (GPL: US$${(Number(s.totalGplUsd) || 0).toLocaleString('en-US', {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
             })})`
@@ -824,17 +828,19 @@ export async function generateProposalsComparisonWorkbook(params: {
         rank: `Propuesta #${prop.priorityRank}`,
         requestedSku: it.rawMentionedSku || it.suggestedActiveSku || `Ítem #${idx + 1}`,
         recommendedSku: prop.recommendedSku.replace(':', ' → '),
-        strategyTag: `${prop.strategyTag} — ${prop.title}`,
-        compatibilityPct: `${prop.compatibilityPct}%`,
+        strategyTag: `${prop.strategyTag || 'Propuesta Homologada'} — ${prop.title}`,
+        compatibilityPct: `${Number(prop.compatibilityPct) || 100}%`,
         qty,
-        unitChassisGplUsd: prop.unitChassisGplUsd,
-        unitSolutionGplUsd: prop.unitSolutionGplUsd,
-        totalSolutionGplUsd: prop.totalSolutionGplUsd,
+        unitChassisGplUsd: Number(prop.unitChassisGplUsd) || 0,
+        unitSolutionGplUsd: Number(prop.unitSolutionGplUsd) || 0,
+        totalSolutionGplUsd: gplSolutionTotal,
         bestDiscountPct: `${effectiveDisc.toFixed(1)}%`,
-        discountSourceLabel: pureGplMode ? 'Valor GPL Puro (0% Descuento)' : prop.discountSourceLabel,
+        discountSourceLabel: pureGplMode
+          ? 'Valor GPL Puro (0% Descuento)'
+          : prop.discountSourceLabel || prop.promoBadge || 'Deal Reg',
         totalEstimatedNetUsd: effectiveNetTotal,
         totalSavingsUsd: effectiveSavings,
-        priorityScore: prop.priorityScore,
+        priorityScore: Number(prop.priorityScore) || 0,
         subItemsDetail: subDetail,
         description: prop.description,
       });

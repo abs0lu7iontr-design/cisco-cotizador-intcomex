@@ -635,12 +635,18 @@ export const ConfiguriatorView: React.FC = () => {
     ];
 
     proposals.forEach((p) => {
-      const effectiveDisc = isPureGplMode ? 0 : p.bestDiscountPct;
-      const effectiveNet = isPureGplMode ? p.totalSolutionGplUsd : p.totalEstimatedNetUsd;
-      const subsText = p.subItemsSummary
+      const rawDisc = Number(p.bestDiscountPct ?? p.estimatedDiscountPct) || 0;
+      const effectiveDisc = isPureGplMode ? 0 : rawDisc;
+      const gplChassis = Number(p.unitChassisGplUsd) || 0;
+      const gplSolutionUnit = Number(p.unitSolutionGplUsd) || 0;
+      const gplSolutionTotal = Number(p.totalSolutionGplUsd) || 0;
+      const estNetTotal = Number(p.totalEstimatedNetUsd ?? p.estimatedTotalNetUsd) || 0;
+      const effectiveNet = isPureGplMode ? gplSolutionTotal : estNetTotal;
+      const subList = p.subItemsSummary || p.subItemsBreakdown || [];
+      const subsText = subList
         .map(
           (s) =>
-            `${s.qty}x ${s.partNumber} (GPL: US$${s.totalGplUsd.toLocaleString('en-US', {
+            `${s.qty}x ${s.partNumber} (GPL: US$${(Number(s.totalGplUsd) || 0).toLocaleString('en-US', {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
             })})`
@@ -648,12 +654,12 @@ export const ConfiguriatorView: React.FC = () => {
         .join(' + ');
 
       lines.push(
-        `🏆 PROPUESTA #${p.priorityRank} [${p.strategyTag}] — ${p.recommendedSku.replace(':', ' -> ')} (${p.title})`,
-        `   • % Compatibilidad / Homologación: ${p.compatibilityPct}% (${p.compatibilityLabel})`,
-        `   • Valor GPL Chasis Unitario (Sin Descuento): US$ ${p.unitChassisGplUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        `   • Valor GPL Solución Madre-Hijo Unitario (Sin Descuento): US$ ${p.unitSolutionGplUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        `   • Valor GPL Solución Total (${qty}x, Sin Descuento): US$ ${p.totalSolutionGplUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        `   • Mejor Descuento Aplicable: ${effectiveDisc.toFixed(1)}% (${isPureGplMode ? 'Modo GPL Puro 0% Dcto' : p.discountSourceLabel})`,
+        `🏆 PROPUESTA #${p.priorityRank} [${p.strategyTag || 'Propuesta Homologada'}] — ${p.recommendedSku.replace(':', ' -> ')} (${p.title})`,
+        `   • % Compatibilidad / Homologación: ${p.compatibilityPct}% (${p.compatibilityLabel || p.homologationLabel || 'Homologado'})`,
+        `   • Valor GPL Chasis Unitario (Sin Descuento): US$ ${gplChassis.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        `   • Valor GPL Solución Madre-Hijo Unitario (Sin Descuento): US$ ${gplSolutionUnit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        `   • Valor GPL Solución Total (${qty}x, Sin Descuento): US$ ${gplSolutionTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        `   • Mejor Descuento Aplicable: ${effectiveDisc.toFixed(1)}% (${isPureGplMode ? 'Modo GPL Puro 0% Dcto' : p.discountSourceLabel || p.promoBadge || 'Deal Reg'})`,
         `   • Valor Neto Estimado Total: US$ ${effectiveNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         `   • Sub-SKUs Hijos Incluidos: ${subsText}`,
         `   • Detalle Técnico: ${p.description}`,
@@ -685,14 +691,16 @@ export const ConfiguriatorView: React.FC = () => {
         return;
       }
       proposals.forEach((prop, pIdx) => {
+        const rawDisc = Number(prop.bestDiscountPct ?? prop.estimatedDiscountPct) || 0;
+        const gplTotal = Number(prop.totalSolutionGplUsd) || 0;
         expandedItems.push({
           ...baseItem,
           id: `${baseItem.id || 'item'}-prop-${pIdx + 1}-${Date.now()}`,
           selectedEolAlternativeSku: prop.recommendedSku,
           suggestedActiveSku: prop.recommendedSku,
           keepOriginalSku: false,
-          discountPct: isPureGplMode ? 0 : prop.bestDiscountPct,
-          notes: `[Propuesta #${prop.priorityRank} • ${prop.compatibilityPct}% Homologación • GPL Solución US$${prop.totalSolutionGplUsd.toLocaleString('en-US')}] ${prop.title}`,
+          discountPct: isPureGplMode ? 0 : rawDisc,
+          notes: `[Propuesta #${prop.priorityRank} • ${prop.compatibilityPct}% Homologación • GPL Solución US$${gplTotal.toLocaleString('en-US')}] ${prop.title}`,
         });
       });
     });
@@ -816,15 +824,12 @@ export const ConfiguriatorView: React.FC = () => {
         role: currentUser?.role || 'admin',
       },
       financialSummary: {
-        totalListPrice,
         totalNetCisco,
-        totalInternacion,
-        totalArancel,
-        totalCostoIntcomex,
-        totalMargenUsd,
         totalCotizadoIntcomex,
-        effectiveMarginPct:
+        gananciaIntcomexUsd: totalMargenUsd,
+        margenPct:
           totalCotizadoIntcomex > 0 ? (totalMargenUsd / totalCotizadoIntcomex) * 100 : 5,
+        currency: 'USD',
         params: quoterParams || { internacionPct: 7, arancelPct: 6, margenPct: 5 },
       },
       headerInfo: {
@@ -841,6 +846,7 @@ export const ConfiguriatorView: React.FC = () => {
       },
       itemsCount: quoterItems.length,
       items: quoterItems,
+      customOverrideMap: {},
     };
 
     await loadCloudEstimateIntoStore(record);
@@ -2119,11 +2125,21 @@ export const ConfiguriatorView: React.FC = () => {
                                   prop.recommendedSku.toUpperCase() ||
                                   activeSku.toUpperCase() === prop.recommendedSku.toUpperCase());
                               const propPoe = resolvePoeBudgetFromSku(prop.recommendedSku);
-                              const effectiveDisc = isPureGplMode ? 0 : prop.bestDiscountPct;
-                              const effectiveNetTotal = isPureGplMode
-                                ? prop.totalSolutionGplUsd
-                                : prop.totalEstimatedNetUsd;
-                              const effectiveSavings = isPureGplMode ? 0 : prop.totalSavingsUsd;
+                              const rawDisc = Number(prop.bestDiscountPct ?? prop.estimatedDiscountPct) || 0;
+                              const effectiveDisc = isPureGplMode ? 0 : rawDisc;
+                              const gplChassis = Number(prop.unitChassisGplUsd) || 0;
+                              const gplSolutionUnit = Number(prop.unitSolutionGplUsd) || 0;
+                              const gplSolutionTotal = Number(prop.totalSolutionGplUsd) || 0;
+                              const estNetTotal =
+                                Number(prop.totalEstimatedNetUsd ?? prop.estimatedTotalNetUsd) || 0;
+                              const effectiveNetTotal = isPureGplMode ? gplSolutionTotal : estNetTotal;
+                              const estSavings =
+                                Number(prop.totalSavingsUsd ?? prop.estimatedSavingsUsd) || 0;
+                              const effectiveSavings = isPureGplMode ? 0 : estSavings;
+                              const subList = prop.subItemsSummary || prop.subItemsBreakdown || [];
+                              const specsList = Array.isArray(prop.matchedSpecs)
+                                ? prop.matchedSpecs
+                                : [];
 
                               return (
                                 <div
@@ -2133,7 +2149,7 @@ export const ConfiguriatorView: React.FC = () => {
                                       selectedEolAlternativeSku: prop.recommendedSku,
                                       suggestedActiveSku: prop.recommendedSku,
                                       keepOriginalSku: false,
-                                      discountPct: isPureGplMode ? 0 : prop.bestDiscountPct,
+                                      discountPct: isPureGplMode ? 0 : rawDisc,
                                     })
                                   }
                                   className={`text-left p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
@@ -2161,13 +2177,13 @@ export const ConfiguriatorView: React.FC = () => {
                                         </span>
                                         <span
                                           className={`px-2 py-0.5 rounded text-[9px] font-black ${
-                                            prop.compatibilityPct >= 100
+                                            (Number(prop.compatibilityPct) || 0) >= 100
                                               ? 'bg-emerald-950 text-emerald-300 border border-emerald-600/50'
                                               : 'bg-cyan-950 text-cyan-300 border border-cyan-700/50'
                                           }`}
-                                          title={prop.compatibilityLabel}
+                                          title={prop.compatibilityLabel || prop.homologationLabel}
                                         >
-                                          🎯 {prop.compatibilityPct}% Homologación
+                                          🎯 {Number(prop.compatibilityPct) || 100}% Homologación
                                         </span>
                                       </div>
 
@@ -2196,11 +2212,24 @@ export const ConfiguriatorView: React.FC = () => {
                                         {prop.title}
                                       </div>
                                       <div className="text-[9px] font-semibold text-amber-300/90 mt-0.5">
-                                        {prop.strategyTag} &bull; {prop.compatibilityLabel}
+                                        {prop.strategyTag || 'Propuesta Homologada'} &bull;{' '}
+                                        {prop.compatibilityLabel || prop.homologationLabel}
                                       </div>
                                       <p className="text-[10px] text-slate-400 mt-1 leading-snug">
                                         {prop.description}
                                       </p>
+                                      {specsList.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-1.5">
+                                          {specsList.map((spec, spIdx) => (
+                                            <span
+                                              key={`${prop.recommendedSku}-spec-${spIdx}`}
+                                              className="px-1.5 py-0.5 rounded bg-indigo-950/60 border border-indigo-700/40 text-[9px] font-semibold text-indigo-200"
+                                            >
+                                              ✓ {spec}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
                                     </div>
 
                                     {/* CAJA FINANCIERA EXPLÍCITA: VALOR GPL (SIN DESCUENTOS) VS NETO ESTIMADO */}
@@ -2211,7 +2240,7 @@ export const ConfiguriatorView: React.FC = () => {
                                         </span>
                                         <span className="font-bold text-white">
                                           US${' '}
-                                          {prop.unitChassisGplUsd.toLocaleString('en-US', {
+                                          {gplChassis.toLocaleString('en-US', {
                                             minimumFractionDigits: 2,
                                             maximumFractionDigits: 2,
                                           })}
@@ -2224,7 +2253,7 @@ export const ConfiguriatorView: React.FC = () => {
                                         </span>
                                         <span className="font-bold text-amber-300">
                                           US${' '}
-                                          {prop.unitSolutionGplUsd.toLocaleString('en-US', {
+                                          {gplSolutionUnit.toLocaleString('en-US', {
                                             minimumFractionDigits: 2,
                                             maximumFractionDigits: 2,
                                           })}
@@ -2237,7 +2266,7 @@ export const ConfiguriatorView: React.FC = () => {
                                         </span>
                                         <span className="text-xs font-black text-amber-300">
                                           US${' '}
-                                          {prop.totalSolutionGplUsd.toLocaleString('en-US', {
+                                          {gplSolutionTotal.toLocaleString('en-US', {
                                             minimumFractionDigits: 2,
                                             maximumFractionDigits: 2,
                                           })}
@@ -2261,7 +2290,9 @@ export const ConfiguriatorView: React.FC = () => {
 
                                       {!isPureGplMode && effectiveSavings > 0 && (
                                         <div className="flex items-center justify-between text-[9px] text-cyan-300">
-                                          <span className="font-sans">{prop.discountSourceLabel}</span>
+                                          <span className="font-sans">
+                                            {prop.discountSourceLabel || prop.promoBadge}
+                                          </span>
                                           <span>
                                             Ahorro: -US${' '}
                                             {effectiveSavings.toLocaleString('en-US', {
@@ -2274,21 +2305,21 @@ export const ConfiguriatorView: React.FC = () => {
                                     </div>
 
                                     {/* Mini-desglose de Sub-SKUs Hijos incluidos en el Valor GPL de esta propuesta */}
-                                    {prop.subItemsSummary.length > 0 && (
+                                    {subList.length > 0 && (
                                       <div className="space-y-1 pt-0.5">
                                         <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                                          Incluye en Solución Madre-Hijo ({prop.subItemsSummary.length} Hijos):
+                                          Incluye en Solución Madre-Hijo ({subList.length} Hijos):
                                         </div>
                                         <div className="flex flex-wrap gap-1">
-                                          {prop.subItemsSummary.map((subItem, sIdx) => (
+                                          {subList.map((subItem, sIdx) => (
                                             <span
                                               key={`${prop.recommendedSku}-sub-${sIdx}`}
                                               className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-[9px] font-mono text-slate-300"
-                                              title={`${subItem.description} • Valor GPL Sin Descuento: US$ ${subItem.totalGplUsd.toLocaleString('en-US')}`}
+                                              title={`${subItem.description} • Valor GPL Sin Descuento: US$ ${(Number(subItem.totalGplUsd) || 0).toLocaleString('en-US')}`}
                                             >
                                               {subItem.qty}x {subItem.partNumber}
-                                              {subItem.unitGplUsd > 0
-                                                ? ` (GPL $${subItem.unitGplUsd.toLocaleString('en-US')})`
+                                              {(Number(subItem.unitGplUsd) || 0) > 0
+                                                ? ` (GPL $${(Number(subItem.unitGplUsd) || 0).toLocaleString('en-US')})`
                                                 : ' (Inc.)'}
                                             </span>
                                           ))}
@@ -2308,7 +2339,7 @@ export const ConfiguriatorView: React.FC = () => {
                                       </span>
                                     ) : (
                                       <span className="text-slate-400 font-mono">
-                                        Score Prioridad: {prop.priorityScore} pts
+                                        Score Prioridad: {Number(prop.priorityScore) || 0} pts
                                       </span>
                                     )}
 

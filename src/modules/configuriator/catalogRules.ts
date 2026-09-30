@@ -45,10 +45,14 @@ export type PowerCordStandard =
 export type EolLifecycleStatus = 'eos_eol_active' | 'active_with_newer_gen' | 'current_2026';
 
 export type ProposalPrioritySortMode =
-  | 'optimal_priority'   // Mayor % Compatibilidad/Homologación + Mejor % Descuento (Default)
-  | 'compatibility_desc' // Mayor % Compatibilidad/Homologación (100% primero)
-  | 'discount_desc'      // Mejor % Descuento / Fast Track primero
-  | 'gpl_asc';           // Menor Valor GPL (Sin Descuentos) primero
+  | 'optimal_priority'      // Mayor % Compatibilidad/Homologación + Mejor % Descuento (Default)
+  | 'priority_optimal'      // Alias UI: Mayor % Compatibilidad/Homologación + Mejor % Descuento
+  | 'compatibility_desc'    // Mayor % Compatibilidad/Homologación (100% primero)
+  | 'highest_compatibility' // Alias UI: Mayor % Compatibilidad/Homologación (100% primero)
+  | 'discount_desc'         // Mejor % Descuento / Fast Track primero
+  | 'best_discount'         // Alias UI: Mejor % Descuento / Fast Track primero
+  | 'gpl_asc'               // Menor Valor GPL (Sin Descuentos) primero
+  | 'lowest_gpl';           // Alias UI: Menor Valor GPL (Sin Descuentos) primero
 
 export interface HomologatedProposalSubItem {
   partNumber: string;
@@ -76,18 +80,26 @@ export interface HomologatedProposal extends EolAlternative {
   priorityRank: number;
   compatibilityPct: number; // Ej: 100%, 98%, 95%
   homologationLabel: string;
+  compatibilityLabel: string;
+  strategyTag: string;
   matchedSpecs: string[];
   unitChassisGplUsd: number; // Valor GPL unitario del Chasis/Equipo (Sin Descuentos)
   unitSolutionGplUsd: number; // Valor GPL unitario de toda la Solución Madre-Hijo (Sin Descuentos)
   totalSolutionGplUsd: number; // Valor GPL total (Solución Madre-Hijo × Cantidad, Sin Descuentos)
   estimatedDiscountPct: number; // % Descuento aplicable (Fast Track / Promo / Deal Reg)
+  bestDiscountPct: number;      // Alias directo de estimatedDiscountPct
   isFastTrackEligible: boolean;
   promoBadge: string;
+  discountSourceLabel: string;
   estimatedUnitNetUsd: number;
+  unitEstimatedNetUsd: number;
   estimatedTotalNetUsd: number;
+  totalEstimatedNetUsd: number;
   estimatedSavingsUsd: number;
+  totalSavingsUsd: number;
   priorityScore: number;
   subItemsBreakdown: HomologatedProposalSubItem[];
+  subItemsSummary: HomologatedProposalSubItem[];
 }
 
 export interface EolMappingEntry {
@@ -129,7 +141,7 @@ export interface ChassisConfigOptions {
   licenseTier?: 'Essentials' | 'Advantage';
   termYears?: number; // 1, 3, 5, 7
   isPoe?: boolean;
-  uplinkType?: '1G' | '10G' | 'SFP+';
+  uplinkType?: '1G' | '10G' | 'SFP+' | 'Modular';
   includeStackingKit?: boolean;
   includeRedundantPsu?: boolean;
   includeSmartNet?: boolean;
@@ -1627,6 +1639,7 @@ export function sanitizeAndValidateCcwSku(rawSku: string): {
   inferredLegacyEolSku?: string;
   correctionReason?: string;
   isNonExistentSku?: boolean;
+  wasCorrectedFromClientTypo?: boolean;
 } {
   const clean = (rawSku || '').trim().toUpperCase();
   if (!clean) return { sanitizedSku: '' };
@@ -3500,10 +3513,10 @@ export function computeProposalSolutionGpl(
 
 /**
  * Ordena las propuestas homologadas según el modo de prioridad seleccionado:
- * - 'optimal_priority': Prioriza Mayor % de Compatibilidad/Homologación + Mejor % Descuento / Fast Track
- * - 'compatibility_desc': Mayor % de Homologación primero (100% -> menor), desempatando por mejor descuento
- * - 'discount_desc': Mayor % de Descuento primero, desempatando por mayor % de homologación
- * - 'gpl_asc': Menor Valor GPL (Sin Descuento) primero
+ * - 'optimal_priority' | 'priority_optimal': Prioriza Mayor % de Compatibilidad/Homologación + Mejor % Descuento / Fast Track
+ * - 'compatibility_desc' | 'highest_compatibility': Mayor % de Homologación primero (100% -> menor), desempatando por mejor descuento
+ * - 'discount_desc' | 'best_discount': Mayor % de Descuento primero, desempatando por mayor % de homologación
+ * - 'gpl_asc' | 'lowest_gpl': Menor Valor GPL (Sin Descuento) primero
  */
 export function sortHomologatedProposals(
   proposals: HomologatedProposal[],
@@ -3511,29 +3524,38 @@ export function sortHomologatedProposals(
 ): HomologatedProposal[] {
   const copy = [...proposals];
   copy.sort((a, b) => {
-    if (sortMode === 'compatibility_desc') {
-      if (b.compatibilityPct !== a.compatibilityPct) {
-        return b.compatibilityPct - a.compatibilityPct;
+    const aCompat = Number(a.compatibilityPct) || 0;
+    const bCompat = Number(b.compatibilityPct) || 0;
+    const aDisc = Number(a.bestDiscountPct ?? a.estimatedDiscountPct) || 0;
+    const bDisc = Number(b.bestDiscountPct ?? b.estimatedDiscountPct) || 0;
+    const aGpl = Number(a.totalSolutionGplUsd) || 0;
+    const bGpl = Number(b.totalSolutionGplUsd) || 0;
+    const aScore = Number(a.priorityScore) || 0;
+    const bScore = Number(b.priorityScore) || 0;
+
+    if (sortMode === 'compatibility_desc' || sortMode === 'highest_compatibility') {
+      if (bCompat !== aCompat) {
+        return bCompat - aCompat;
       }
-      return b.estimatedDiscountPct - a.estimatedDiscountPct;
+      return bDisc - aDisc;
     }
-    if (sortMode === 'discount_desc') {
-      if (b.estimatedDiscountPct !== a.estimatedDiscountPct) {
-        return b.estimatedDiscountPct - a.estimatedDiscountPct;
+    if (sortMode === 'discount_desc' || sortMode === 'best_discount') {
+      if (bDisc !== aDisc) {
+        return bDisc - aDisc;
       }
-      return b.compatibilityPct - a.compatibilityPct;
+      return bCompat - aCompat;
     }
-    if (sortMode === 'gpl_asc') {
-      if (a.totalSolutionGplUsd !== b.totalSolutionGplUsd) {
-        return a.totalSolutionGplUsd - b.totalSolutionGplUsd;
+    if (sortMode === 'gpl_asc' || sortMode === 'lowest_gpl') {
+      if (aGpl !== bGpl) {
+        return aGpl - bGpl;
       }
-      return b.compatibilityPct - a.compatibilityPct;
+      return bCompat - aCompat;
     }
-    // Default 'optimal_priority': combina % de Homologación y % de Descuento
-    if (b.priorityScore !== a.priorityScore) {
-      return b.priorityScore - a.priorityScore;
+    // Default 'optimal_priority' | 'priority_optimal': combina % de Homologación y % de Descuento
+    if (bScore !== aScore) {
+      return bScore - aScore;
     }
-    return b.compatibilityPct - a.compatibilityPct;
+    return bCompat - aCompat;
   });
 
   return copy.map((p, idx) => ({
@@ -3566,9 +3588,13 @@ export function generateHomologatedProposalsForItem(
     smartNetLevel?: '8x5xNBD' | '24x7x4';
     powerCordStandard?: PowerCordStandard;
     merakiLicenseMode?: 'coterm' | 'subscription';
+    fastTrackDiscountMap?: Record<string, number>;
+    sortMode?: ProposalPrioritySortMode;
   },
-  sortMode: ProposalPrioritySortMode = 'optimal_priority'
+  sortMode?: ProposalPrioritySortMode
 ): HomologatedProposal[] {
+  const effectiveSortMode: ProposalPrioritySortMode =
+    sortMode || params.sortMode || 'optimal_priority';
   const rawSku = (params.rawMentionedSku || '').trim().toUpperCase();
   const activeSku = (params.suggestedActiveSku || '').trim().toUpperCase();
   const primaryRefSku = rawSku || activeSku || 'C9200L-24P-4G-E';
@@ -4361,17 +4387,40 @@ export function generateHomologatedProposalsForItem(
       merakiLicenseMode: params.merakiLicenseMode || 'subscription',
     });
 
+    const upperSeedSku = seed.sku.toUpperCase();
+    const childSeedSku = upperSeedSku.includes(':') ? upperSeedSku.split(':')[1] : upperSeedSku;
+    const uploadedFtDisc =
+      params.fastTrackDiscountMap?.[upperSeedSku] ??
+      params.fastTrackDiscountMap?.[childSeedSku];
+
     const discountRef =
-      REFERENCE_FASTTRACK_DISCOUNTS_2026[seed.sku.toUpperCase()] ||
-      REFERENCE_FASTTRACK_DISCOUNTS_2026[seed.sku.toUpperCase().replace(/-(E|A)$/i, '-E')] || {
+      REFERENCE_FASTTRACK_DISCOUNTS_2026[upperSeedSku] ||
+      REFERENCE_FASTTRACK_DISCOUNTS_2026[childSeedSku] ||
+      REFERENCE_FASTTRACK_DISCOUNTS_2026[upperSeedSku.replace(/-(E|A)$/i, '-E')] || {
         discountPct: seed.customDiscountPct || 44.0,
         isFastTrack: false,
         promoLabel: '🏷️ Descuento Estándar Deal Reg CCW',
       };
 
-    const estimatedDiscountPct = seed.customDiscountPct || discountRef.discountPct;
-    const isFastTrackEligible = discountRef.isFastTrack;
-    const promoBadge = `${discountRef.promoLabel} (${estimatedDiscountPct}% Dcto)`;
+    const estimatedDiscountPct = Number(
+      uploadedFtDisc && uploadedFtDisc > 0
+        ? uploadedFtDisc
+        : seed.customDiscountPct || discountRef.discountPct || 44.0
+    );
+    const isFastTrackEligible = Boolean(
+      (uploadedFtDisc && uploadedFtDisc > 0) || discountRef.isFastTrack
+    );
+    const promoBadge =
+      uploadedFtDisc && uploadedFtDisc > 0
+        ? `⚡ Promo Fast Track Activa (${estimatedDiscountPct}% Dcto)`
+        : `${discountRef.promoLabel} (${estimatedDiscountPct}% Dcto)`;
+
+    const strategyTag =
+      seed.type === 'direct_equivalent'
+        ? '🎯 Equivalente Directo 1:1'
+        : seed.type === 'cost_effective'
+          ? '💰 Optimización Costo / Cloud'
+          : '🚀 Alternativa Superior / Modular';
 
     const estimatedUnitNetUsd = Number(
       (gplInfo.unitSolutionGplUsd * (1 - estimatedDiscountPct / 100)).toFixed(2)
@@ -4397,23 +4446,32 @@ export function generateHomologatedProposalsForItem(
       title: seed.title,
       description: seed.description,
       type: seed.type,
+      strategyTag,
       compatibilityPct: seed.compatibilityPct,
       homologationLabel: seed.homologationLabel,
-      matchedSpecs: seed.matchedSpecs,
+      compatibilityLabel: seed.homologationLabel,
+      matchedSpecs: seed.matchedSpecs || [],
       unitChassisGplUsd: gplInfo.unitChassisGplUsd,
       unitSolutionGplUsd: gplInfo.unitSolutionGplUsd,
       totalSolutionGplUsd: gplInfo.totalSolutionGplUsd,
       estimatedDiscountPct,
+      bestDiscountPct: estimatedDiscountPct,
       isFastTrackEligible,
       promoBadge,
+      discountSourceLabel: promoBadge,
       estimatedUnitNetUsd,
+      unitEstimatedNetUsd: estimatedUnitNetUsd,
       estimatedTotalNetUsd,
+      totalEstimatedNetUsd: estimatedTotalNetUsd,
       estimatedSavingsUsd,
+      totalSavingsUsd: estimatedSavingsUsd,
       priorityScore,
       subItemsBreakdown: gplInfo.subItemsBreakdown,
+      subItemsSummary: gplInfo.subItemsBreakdown,
     };
   });
 
-  return sortHomologatedProposals(builtProposals, sortMode);
+  return sortHomologatedProposals(builtProposals, effectiveSortMode);
 }
+
 

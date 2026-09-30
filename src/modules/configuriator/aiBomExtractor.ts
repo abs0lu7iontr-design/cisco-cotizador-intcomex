@@ -35,6 +35,8 @@ export interface ExtractedRequirementItem {
   selectedEolAlternativeSku?: string; // Alternativa oficial seleccionada por el ingeniero en UI
   isEol2026?: boolean;         // true solo si está obsoleto/EoS en 2026
   isNonExistentSku?: boolean;  // true si el SKU ingresado fue inventado o NO existe en Cisco CCW
+  wasCorrectedFromClientTypo?: boolean;
+  coherentCorrectionNote?: string;
   keepOriginalSku?: boolean;
   eolReason?: string;
   officialCiscoUrl?: string;
@@ -52,7 +54,7 @@ export interface ExtractedRequirementItem {
   ports?: 8 | 16 | 24 | 48;
   isPoe?: boolean;
   poeBudget?: 'standard' | 'full_poe';
-  uplinkType?: '1G' | '10G' | 'SFP+';
+  uplinkType?: '1G' | '10G' | 'SFP+' | 'Modular';
   licenseTier?: 'Essentials' | 'Advantage';
   termYears?: number; // Default: 3
   quantity: number;   // Default: 1
@@ -1120,7 +1122,7 @@ export function postProcessExtractedResult(
     const clientPowerCordLabel = cordDetection.detectedLabel;
 
     // Detectar uplink 10G, stacking, SmartNet y precios de lista/descuento desde el contexto de la línea si el LLM los omitió
-    const uplinkType: '1G' | '10G' | 'Modular' | undefined =
+    const uplinkType: '1G' | '10G' | 'SFP+' | 'Modular' | undefined =
       /10g|4x|sfp\+|nm-4x/i.test(itemContext)
         ? '10G'
         : item.uplinkType || (/modular/i.test(itemContext) ? 'Modular' : undefined);
