@@ -12,6 +12,7 @@ import {
   getDocs,
   deleteDoc,
   query,
+  where,
   orderBy,
   limit,
 } from 'firebase/firestore';
@@ -29,24 +30,134 @@ const ESTIMATES_COLLECTION = 'estimates';
 const DSV_COLLECTION = 'dsv_records';
 
 const LOCAL_ESTIMATES_BACKUP_KEY = 'cisco_cloud_estimates_cache_v2';
+const LOCAL_ESTIMATES_LEGACY_KEY = 'cisco_estimates_history_v2';
+const LOCAL_MIRROR_SYNC_TS_KEY = 'cisco_cloud_estimates_mirror_sync_ts';
 const LOCAL_DSV_BACKUP_KEY = 'cisco_cloud_dsv_cache_v2';
 
 // ----------------------------------------------------------------------------
-// Local Storage Cache Helpers (Failsafe for Offline & Graceful Recovery)
+// Local Storage Cache & Mirror Snapshot Helpers (0ms Instant Load + Failsafe)
 // ----------------------------------------------------------------------------
 function getLocalEstimatesCache(): CloudEstimateRecord[] {
   try {
     const raw = localStorage.getItem(LOCAL_ESTIMATES_BACKUP_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const cloudCache: CloudEstimateRecord[] = raw ? JSON.parse(raw) : [];
+
+    // Bridge any real estimates from local quoter history ('cisco_estimates_history_v2') not yet in cloud cache
+    try {
+      const legacyRaw = localStorage.getItem(LOCAL_ESTIMATES_LEGACY_KEY);
+      if (legacyRaw) {
+        const legacyList: any[] = JSON.parse(legacyRaw);
+        const existingKeys = new Set(
+          cloudCache.map((c) =>
+            c.estimateId && c.estimateId !== 'NA'
+              ? `EST:${c.estimateId.trim().toUpperCase()}`
+              : `FILE:${(c.originalFileName || '').toLowerCase()}`
+          )
+        );
+        let addedAny = false;
+        for (const leg of legacyList) {
+          if (!leg || typeof leg !== 'object') continue;
+          const estId = String(leg.estimate_id_cisco || '').trim();
+          const fName = String(leg.original_filename || '').trim();
+          // Skip demo/sample placeholders
+          if (
+            estId === '011682708571Z' ||
+            estId === '011682994012A' ||
+            fName === 'Intcomex_BancoDeChile_Estimate_2026.xlsx' ||
+            fName === 'Logicalis_Cencosud_Switching_CCW.xlsx'
+          ) {
+            continue;
+          }
+          const key =
+            estId && estId !== 'NA'
+              ? `EST:${estId.toUpperCase()}`
+              : `FILE:${fName.toLowerCase()}`;
+          if (!existingKeys.has(key) && (Number(leg.total_cotizado_intcomex) > 0 || Number(leg.net_cisco_total) > 0)) {
+            existingKeys.add(key);
+            addedAny = true;
+            cloudCache.push({
+              id: `est_${(estId || fName || Date.now().toString()).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 48)}`,
+              dealId: String(leg.deal_id || 'NA'),
+              estimateId: estId || 'NA',
+              partnerName: String(leg.partner_name || 'Intcomex Partner'),
+              clientFinalName: String(leg.client_final_name || 'Cliente Final'),
+              originalFileName: fName || `${estId || 'Estimate'}.xlsx`,
+              createdAt: leg.created_at || new Date().toISOString(),
+              creator: {
+                username: String(leg.username || 'mskill'),
+                fullName: String(leg.username || 'Usuario Intcomex'),
+                role: 'pm',
+              },
+              financialSummary: {
+                totalNetCisco: Number(leg.net_cisco_total) || 0,
+                totalCotizadoIntcomex: Number(leg.total_cotizado_intcomex) || 0,
+                gananciaIntcomexUsd: Number(leg.ganancia_intcomex_usd) || 0,
+                margenPct: 5.0,
+                currency: 'USD',
+                params: { internacionPct: 7.0, arancelPct: 6.0, margenPct: 5.0 },
+              },
+              headerInfo: {
+                customerName: String(leg.client_final_name || 'Cliente Final'),
+                companyName: String(leg.partner_name || 'Intcomex Partner'),
+                address: '',
+                city: 'Santiago',
+                country: 'Chile',
+                phone: '',
+                estimateId: estId || 'NA',
+                dealId: String(leg.deal_id || 'NA'),
+                priceList: 'Global Price List',
+                date: (leg.created_at || new Date().toISOString()).slice(0, 10),
+              },
+              itemsCount: Number(leg.items_count) || 0,
+              items: [],
+              customOverrideMap: {},
+              isRestricted: false,
+              syncedToCloud: false,
+            });
+          }
+        }
+        if (addedAny) {
+          cloudCache.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+          localStorage.setItem(LOCAL_ESTIMATES_BACKUP_KEY, JSON.stringify(cloudCache.slice(0, 300)));
+        }
+      }
+    } catch (_) {}
+
+    return cloudCache;
   } catch (_) {
     return [];
   }
 }
 
-function saveLocalEstimatesCache(list: CloudEstimateRecord[]) {
+function saveLocalEstimatesCache(list: CloudEstimateRecord[], markSyncedNow: boolean = false) {
   try {
-    localStorage.setItem(LOCAL_ESTIMATES_BACKUP_KEY, JSON.stringify(list));
+    localStorage.setItem(LOCAL_ESTIMATES_BACKUP_KEY, JSON.stringify(list.slice(0, 300)));
+    if (markSyncedNow) {
+      localStorage.setItem(LOCAL_MIRROR_SYNC_TS_KEY, new Date().toISOString());
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('cisco-estimates-mirror-updated'));
+    }
   } catch (_) {}
+}
+
+/**
+ * Returns the instantaneous local Mirror Snapshot of Cloud Estimates (0ms latency).
+ * Used by DashboardView and EstimatesHistoryView for immediate rendering before background cloud sync.
+ */
+export function getEstimatesMirrorSnapshot(): CloudEstimateRecord[] {
+  return getLocalEstimatesCache();
+}
+
+/**
+ * Returns the ISO timestamp of the last successful Mirror Snapshot sync with Firebase Firestore.
+ */
+export function getMirrorLastSyncTimestamp(): string | null {
+  try {
+    return localStorage.getItem(LOCAL_MIRROR_SYNC_TS_KEY);
+  } catch (_) {
+    return null;
+  }
 }
 
 function getLocalDsvCache(): CloudDsvRecord[] {
@@ -247,7 +358,8 @@ export async function saveEstimateToCloud(
  * Orders by createdAt descending, deduplicates by Estimate ID, and auto-syncs any pending local estimates to Cloud.
  */
 export async function getCloudEstimates(
-  limitCount: number = 100
+  limitCount: number = 150,
+  sinceIso?: string
 ): Promise<{ success: boolean; data: CloudEstimateRecord[]; error?: string }> {
   try {
     const { db, isReady, error } = getFirestoreInstance();
@@ -262,7 +374,14 @@ export async function getCloudEstimates(
     }
 
     const colRef = collection(db, ESTIMATES_COLLECTION);
-    const q = query(colRef, orderBy('createdAt', 'desc'), limit(limitCount));
+    const q = sinceIso
+      ? query(
+          colRef,
+          where('createdAt', '>=', sinceIso),
+          orderBy('createdAt', 'desc'),
+          limit(limitCount)
+        )
+      : query(colRef, orderBy('createdAt', 'desc'), limit(limitCount));
     const snapshot = await withTimeout(getDocs(q), 8000);
 
     const remoteList: CloudEstimateRecord[] = [];
@@ -312,7 +431,7 @@ export async function getCloudEstimates(
       }
     }
 
-    // Check local cache for any unsynced records and push them to Firestore in background
+    // Check local cache for any unsynced or older cached records and push unsynced ones to Firestore in background
     for (const l of localCache) {
       const key =
         l.estimateId && l.estimateId !== 'NA'
@@ -330,11 +449,13 @@ export async function getCloudEstimates(
         };
         dedupMap.set(key, promoted);
 
-        // Background push to Firestore so all other users can see it too
-        const { id: _omit, ...payload } = promoted;
-        setDoc(doc(db, ESTIMATES_COLLECTION, targetId), sanitizeForFirestore(payload), {
-          merge: true,
-        }).catch(() => {});
+        // Background push to Firestore if it wasn't synced yet
+        if (!l.syncedToCloud) {
+          const { id: _omit, ...payload } = promoted;
+          setDoc(doc(db, ESTIMATES_COLLECTION, targetId), sanitizeForFirestore(payload), {
+            merge: true,
+          }).catch(() => {});
+        }
       }
     }
 
@@ -342,8 +463,8 @@ export async function getCloudEstimates(
       (b.createdAt || '').localeCompare(a.createdAt || '')
     );
 
-    // Update local cache
-    saveLocalEstimatesCache(merged.slice(0, 150));
+    // Update local mirror snapshot cache and timestamp
+    saveLocalEstimatesCache(merged.slice(0, 300), true);
 
     return { success: true, data: merged };
   } catch (err: any) {

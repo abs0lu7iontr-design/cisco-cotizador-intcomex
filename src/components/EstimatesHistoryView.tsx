@@ -10,6 +10,7 @@ import {
   EstimateAccessRequest,
   CloudDsvRecord,
   getCloudEstimates,
+  getEstimatesMirrorSnapshot,
   getCloudDsvs,
   deleteCloudEstimate,
   deleteCloudDsv,
@@ -54,8 +55,10 @@ export function EstimatesHistoryView() {
   // Active Tab: 'estimates' | 'dsv'
   const [activeTab, setActiveTab] = useState<'estimates' | 'dsv'>('estimates');
 
-  // Cloud datasets
-  const [estimates, setEstimates] = useState<CloudEstimateRecord[]>([]);
+  // Cloud datasets initialized from Instant Local Mirror Snapshot (0ms load)
+  const [estimates, setEstimates] = useState<CloudEstimateRecord[]>(() =>
+    getEstimatesMirrorSnapshot()
+  );
   const [dsvRecords, setDsvRecords] = useState<CloudDsvRecord[]>([]);
 
   // Existing + Enhanced Filter States
@@ -71,7 +74,7 @@ export function EstimatesHistoryView() {
   );
 
   // UI state
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<{
     text: string;
     type: 'success' | 'error';
@@ -157,6 +160,13 @@ export function EstimatesHistoryView() {
 
   useEffect(() => {
     fetchAllHistory(false);
+    const handleMirrorUpdate = () => {
+      setEstimates(getEstimatesMirrorSnapshot());
+    };
+    window.addEventListener('cisco-estimates-mirror-updated', handleMirrorUpdate);
+    return () => {
+      window.removeEventListener('cisco-estimates-mirror-updated', handleMirrorUpdate);
+    };
   }, []);
 
   // Format Currency
