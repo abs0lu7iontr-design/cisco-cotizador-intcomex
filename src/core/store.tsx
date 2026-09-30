@@ -141,8 +141,18 @@ interface CiscoAutomatedState {
   cycleRowRule: (rowIdx: number) => Promise<void>;
   clearEstimate: () => void;
   loadCloudEstimateIntoStore: (record: CloudEstimateRecord) => Promise<void>;
-  saveCurrentEstimateToCloud: () => Promise<{ success: boolean; id?: string; error?: string }>;
+  saveCurrentEstimateToCloud: (
+    options?: SaveEstimateCloudOptions
+  ) => Promise<{ success: boolean; id?: string; error?: string }>;
   logout: () => Promise<void>;
+}
+
+export interface SaveEstimateCloudOptions {
+  partnerName?: string;
+  clientFinalName?: string;
+  modelName?: string;
+  originalFileName?: string;
+  isRestricted?: boolean;
 }
 
 const CiscoAutomatedContext = createContext<CiscoAutomatedState | null>(null);
@@ -880,70 +890,123 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     []
   );
 
-  const saveCurrentEstimateToCloud = useCallback(async () => {
-    if (!processedResult) {
-      return { success: false, error: 'No hay ninguna cotización activa para guardar.' };
-    }
+  const saveCurrentEstimateToCloud = useCallback(
+    async (options?: SaveEstimateCloudOptions) => {
+      if (!processedResult) {
+        return { success: false, error: 'No hay ninguna cotización activa para guardar.' };
+      }
 
-    const totalNetCisco = processedResult.items.reduce(
-      (sum, i) => sum + (i.netCiscoUnit || 0) * (i.qty || 1),
-      0
-    );
-    const totalVenta = processedResult.finalTotalPrice || processedResult.calculatedProductTotal || 0;
-    const profit = Math.max(0, totalVenta - totalNetCisco);
+      const totalNetCisco =
+        processedResult.originalProductTotal ||
+        processedResult.items.reduce(
+          (sum, i) =>
+            sum + (i.isInfoRow ? 0 : (i.netCiscoUnit || 0) * (i.qty || 1) * (i.months || 1)),
+          0
+        );
+      const totalVenta =
+        processedResult.finalTotalPrice || processedResult.calculatedProductTotal || 0;
+      const totalCosto = processedResult.items.reduce(
+        (sum, i) =>
+          sum + (i.isInfoRow ? 0 : (i.costoTotalUnitario || 0) * (i.qty || 1) * (i.months || 1)),
+        0
+      );
+      const profit = Math.max(0, totalVenta - (totalCosto > 0 ? totalCosto : totalNetCisco));
 
-    const cloudPayload = {
-      dealId: processedResult.headerInfo.dealId || 'NA',
-      estimateId: processedResult.headerInfo.estimateId || 'NA',
-      partnerName: processedResult.headerInfo.customerName || 'Intcomex Partner',
-      clientFinalName: processedResult.headerInfo.companyName || 'Cliente Final',
-      originalFileName: currentFileName || `${processedResult.headerInfo.estimateId || 'Estimate'}.xlsx`,
-      createdAt: new Date().toISOString(),
-      creator: {
-        username: currentUser?.username || 'anonymous',
-        fullName: currentUser?.full_name || 'Usuario Intcomex',
-        role: currentUser?.role || 'pm',
-        email: currentUser?.email || '',
-      },
-      financialSummary: {
-        totalNetCisco,
-        totalCotizadoIntcomex: totalVenta,
-        gananciaIntcomexUsd: profit,
-        margenPct: params.margenPct,
-        currency: 'USD',
-        params,
-      },
-      headerInfo: processedResult.headerInfo,
-      itemsCount: processedResult.items.length,
+      // Smart fallback partner & client extraction from filename or headerInfo
+      let fallbackPartner =
+        detectedPartner || processedResult.headerInfo.companyName || 'Intcomex Partner';
+      let fallbackClient = processedResult.headerInfo.customerName || 'Cliente Final';
+      if (currentFileName) {
+        const clean = currentFileName.replace(/\.[^/.]+$/, '');
+        const parts = clean.split(/[_.\s-]+/);
+        if (parts.length >= 1 && parts[0] && !parts[0].match(/^(estimate|\d+)$/i)) {
+          fallbackPartner = parts[0].trim();
+        }
+        if (parts.length >= 2 && parts[1] && !parts[1].match(/^(estimate|\d+)$/i)) {
+          fallbackClient = parts[1].trim();
+        }
+      }
+
+      const resolvedPartner = (options?.partnerName || fallbackPartner).trim();
+      const resolvedClient = (options?.clientFinalName || fallbackClient).trim();
+      const resolvedFileName = (
+        options?.originalFileName ||
+        currentFileName ||
+        `${processedResult.headerInfo.estimateId || 'Estimate'}.xlsx`
+      ).trim();
+
+      const cloudPayload: Omit<CloudEstimateRecord, 'id'> = {
+        dealId: processedResult.headerInfo.dealId || 'NA',
+        estimateId: processedResult.headerInfo.estimateId || 'NA',
+        partnerName: resolvedPartner,
+        clientFinalName: resolvedClient,
+        modelName: options?.modelName || undefined,
+        originalFileName: resolvedFileName,
+        createdAt: new Date().toISOString(),
+        isRestricted: options?.isRestricted,
+        creator: {
+          username: currentUser?.username || 'anonymous',
+          fullName: currentUser?.full_name || 'Usuario Intcomex',
+          role: currentUser?.role || 'pm',
+          email: currentUser?.email || '',
+        },
+        financialSummary: {
+          totalNetCisco,
+          totalCotizadoIntcomex: totalVenta,
+          gananciaIntcomexUsd: profit,
+          margenPct: params.margenPct,
+          currency: 'USD',
+          params,
+        },
+        headerInfo: {
+          ...processedResult.headerInfo,
+          companyName: resolvedPartner,
+          customerName: resolvedClient,
+        },
+        itemsCount:
+          processedResult.items.filter((i) => !i.isInfoRow).length ||
+          processedResult.items.length,
+        customOverrideMap,
+        fastTrackPromoMap,
+        items: processedResult.items.map((it) => ({
+          rowIdx: it.rowIdx,
+          lineNumber: it.lineNumber || '',
+          partNumber: it.partNumber || '',
+          description: it.description || '',
+          qty: it.qty || 1,
+          unitListPrice: it.unitListPrice || 0,
+          netCiscoUnit: it.netCiscoUnit || 0,
+          discPct: it.discPct || 0,
+          transformedLeadTime: it.transformedLeadTime || '',
+          overrideType:
+            customOverrideMap[it.rowIdx] ||
+            (it.isIntangible ? 'intangible' : it.llevaArancel ? 'arancel' : 'equipo'),
+          isIntangible: Boolean(it.isIntangible),
+          llevaArancel: Boolean(it.llevaArancel),
+          costoInternacion: it.costoInternacion || 0,
+          costoArancel: it.costoArancel || 0,
+          costoTotalUnitario: it.costoTotalUnitario || 0,
+          precioVentaUnitario: it.precioVentaUnitario || 0,
+          precioVentaExtendido: it.precioVentaExtendido || 0,
+          isFastTrackPromo: Boolean(it.isFastTrackPromo),
+          originalNetCiscoUnit: it.originalNetCiscoUnit || it.netCiscoUnit || 0,
+          fastTrackDiscountPct: it.fastTrackDiscountPct || 0,
+          fastTrackSavings: it.fastTrackSavings || 0,
+        })),
+      };
+
+      return await saveEstimateToCloud(cloudPayload);
+    },
+    [
+      processedResult,
+      detectedPartner,
+      currentFileName,
+      currentUser,
+      params,
       customOverrideMap,
       fastTrackPromoMap,
-      items: processedResult.items.map((it) => ({
-        rowIdx: it.rowIdx,
-        lineNumber: it.lineNumber || '',
-        partNumber: it.partNumber || '',
-        description: it.description || '',
-        qty: it.qty || 1,
-        unitListPrice: it.unitListPrice || 0,
-        netCiscoUnit: it.netCiscoUnit || 0,
-        discPct: it.discPct || 0,
-        transformedLeadTime: it.transformedLeadTime || '',
-        overrideType: customOverrideMap[it.rowIdx] || (it.isIntangible ? 'intangible' : it.llevaArancel ? 'arancel' : 'equipo'),
-        isIntangible: Boolean(it.isIntangible),
-        llevaArancel: Boolean(it.llevaArancel),
-        costoInternacion: it.costoInternacion || 0,
-        costoArancel: it.costoArancel || 0,
-        costoTotalUnitario: it.costoTotalUnitario || 0,
-        precioVentaUnitario: it.precioVentaUnitario || 0,
-        precioVentaExtendido: it.precioVentaExtendido || 0,
-        isFastTrackPromo: Boolean(it.isFastTrackPromo),
-        originalNetCiscoUnit: it.originalNetCiscoUnit || it.netCiscoUnit || 0,
-        fastTrackDiscountPct: it.fastTrackDiscountPct || 0,
-        fastTrackSavings: it.fastTrackSavings || 0,
-      })),
-    };
-
-    return await saveEstimateToCloud(cloudPayload);
-  }, [processedResult, currentFileName, currentUser, params, customOverrideMap, fastTrackPromoMap]);
+    ]
+  );
 
   const loadPriorAuditMargins = useCallback(async () => {
     if (!detectedAudit) return;

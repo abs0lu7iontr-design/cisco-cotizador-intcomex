@@ -56,14 +56,26 @@ export interface CloudEstimateItem {
   fastTrackSavings?: number;
 }
 
+export interface EstimateAccessRequest {
+  username: string;
+  fullName: string;
+  role?: string;
+  requestedAt: string; // ISO 8601 string
+  status: 'pending' | 'approved' | 'rejected';
+  resolvedAt?: string;
+  resolvedBy?: string;
+}
+
 export interface CloudEstimateRecord {
   id?: string;
   dealId: string;
   estimateId: string;
   partnerName: string;
   clientFinalName: string;
+  modelName?: string;
   originalFileName: string;
   createdAt: string; // ISO 8601 string
+  updatedAt?: string; // ISO 8601 string
   creator: CloudCreatorInfo;
   financialSummary: CloudFinancialSummary;
   headerInfo: EstimateHeaderInfo;
@@ -73,6 +85,12 @@ export interface CloudEstimateRecord {
   items: CloudEstimateItem[];
   customOverrideMap: Record<number, OverrideRuleType>;
   fastTrackPromoMap?: Record<number, number>;
+
+  // Visibility & Access Control (Shared by default; manual restriction & permission request flow)
+  isRestricted?: boolean;
+  allowedUsers?: string[];
+  accessRequests?: EstimateAccessRequest[];
+  syncedToCloud?: boolean;
 }
 
 export interface CloudDsvRecord {

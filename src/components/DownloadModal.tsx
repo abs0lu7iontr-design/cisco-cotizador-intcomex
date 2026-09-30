@@ -3,6 +3,7 @@
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import {
   Download,
   FolderOpen,
@@ -17,11 +18,15 @@ import {
   FileText,
   Globe,
   Layers,
+  Lock,
+  Unlock,
+  Cloud,
 } from 'lucide-react';
 import { generateOptimizedWorkbook } from '../core/excelEngine';
 import { QuoteParameters, OverrideRuleType, EstimateHeaderInfo } from '../core/types';
 import { getCcwTimestamp, suggestFileName } from '../core/calculations';
 import { generateQuotationFileName } from '../core/exportUtils';
+import { useCiscoAutomatedStore } from '../core/store';
 
 interface DownloadModalProps {
   isOpen: boolean;
@@ -56,6 +61,7 @@ export function DownloadModal({
   isRecalculated,
   isOnlyLicensing,
 }: DownloadModalProps) {
+  const { saveCurrentEstimateToCloud, processedResult } = useCiscoAutomatedStore();
   const isDesktop = Boolean((window as any).pywebview?.api);
 
   const computeCorporateFilename = (
@@ -100,6 +106,10 @@ export function DownloadModal({
     computeCorporateFilename(defaultPartner, defaultClient, defaultModel, params)
   );
 
+  // Manual restriction toggle (default false = visible to all users)
+  const [isRestricted, setIsRestricted] = useState(false);
+  const [cloudSaveNote, setCloudSaveNote] = useState<string | null>(null);
+
   // Details form is collapsed by default
   const [showDetails, setShowDetails] = useState(false);
 
@@ -136,6 +146,8 @@ export function DownloadModal({
       setErrorMessage(null);
       setIsSaving(false);
       setShowDetails(false);
+      setIsRestricted(false);
+      setCloudSaveNote(null);
       const initialPartner = defaultPartner || headerInfo?.companyName || 'Intcomex';
       const initialClient = defaultClient || headerInfo?.customerName || 'Cliente Final';
       const initialModel = defaultModel || 'Cisco';
@@ -186,7 +198,64 @@ export function DownloadModal({
       );
       return modifiedBuffer;
     }
-    return workbookBuffer;
+    if (workbookBuffer && workbookBuffer.byteLength > 0) {
+      return workbookBuffer;
+    }
+    // Fallback for estimates restored from Cloud History (synthesize clean .xlsx workbook)
+    const wb = XLSX.utils.book_new();
+    const rows: any[][] = [
+      ['CISCO AUTOMATED v2.1 - COTIZACIÓN OFICIAL INTCOMEX'],
+      ['Estimate ID:', headerInfo?.estimateId || 'NA', 'Deal ID:', headerInfo?.dealId || 'NA'],
+      ['Partner / Canal:', partnerName || 'Intcomex', 'Cliente Final:', clientName || 'Cliente Final'],
+      [
+        'Parámetros Aplicados:',
+        `Internación: ${params.internacionPct}% | Arancel: ${params.arancelPct}% | Margen: ${params.margenPct}%`,
+      ],
+      [],
+      [
+        'Line #',
+        'Part Number',
+        'Description',
+        'Qty',
+        'Unit List Price (USD)',
+        'Discount %',
+        'Net Cisco Unit (USD)',
+        'Clasificación',
+        'Venta Unitaria Intcomex (USD)',
+        'Venta Extendida Intcomex (USD)',
+      ],
+    ];
+    for (const it of processedResult?.items || []) {
+      rows.push([
+        it.lineNumber || '',
+        it.partNumber || '',
+        it.description || '',
+        it.qty || 1,
+        it.unitListPrice || 0,
+        it.discPct || 0,
+        it.netCiscoUnit || 0,
+        it.isIntangible ? 'Intangible' : it.llevaArancel ? 'Arancel 6%' : 'Hardware',
+        it.precioVentaUnitario || 0,
+        it.precioVentaExtendido || 0,
+      ]);
+    }
+    rows.push([]);
+    rows.push([
+      '',
+      '',
+      'TOTAL COTIZADO INTCOMEX (USD)',
+      '',
+      '',
+      '',
+      processedResult?.originalProductTotal || 0,
+      '',
+      '',
+      processedResult?.calculatedProductTotal || 0,
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, 'Estimate');
+    const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    return out as ArrayBuffer;
   };
 
   // Traditional browser download fallback (Web environment)
@@ -202,6 +271,28 @@ export function DownloadModal({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  // Automatic Cloud Persistence right after download
+  const persistToCloudAfterDownload = async (cleanFile: string) => {
+    try {
+      const cloudRes = await saveCurrentEstimateToCloud({
+        partnerName: partnerName.trim() || defaultPartner || 'Intcomex',
+        clientFinalName: clientName.trim() || defaultClient || 'Cliente Final',
+        modelName: modelName.trim() || defaultModel || 'Cisco',
+        originalFileName: cleanFile,
+        isRestricted,
+      });
+      if (cloudRes.success) {
+        setCloudSaveNote(
+          isRestricted
+            ? '🔒 Guardado en Historial Cloud con acceso restringido (requiere permiso para ver detalle).'
+            : '☁️ Guardado automáticamente en Historial Cloud (visible para todos los usuarios).'
+        );
+      }
+    } catch (e) {
+      console.warn('Auto cloud save warning:', e);
+    }
   };
 
   // Primary action: save into gravity_storage in Desktop, or standard download in Web
@@ -231,6 +322,7 @@ export function DownloadModal({
           bytesList
         );
         if (res?.success) {
+          await persistToCloudAfterDownload(cleanFile);
           setSaveSuccess({
             filepath: res.filepath,
             folder: res.folder,
@@ -242,6 +334,7 @@ export function DownloadModal({
       } else {
         // Entorno Web (index.html): Standard Browser Download to default "Descargas" folder
         await browserDownload(cleanFile, targetBuffer);
+        await persistToCloudAfterDownload(cleanFile);
         setSaveSuccess({
           message: `Archivo '${cleanFile}' descargado exitosamente en tu carpeta de Descargas.`,
         });
@@ -265,12 +358,14 @@ export function DownloadModal({
         const bytesList = Array.from(new Uint8Array(targetBuffer));
         const res = await (window as any).pywebview.api.download_excel_file(cleanFile, bytesList);
         if (res?.success) {
+          await persistToCloudAfterDownload(cleanFile);
           setSaveSuccess({ filepath: res.filepath, message: `Guardado en: ${res.filepath}` });
         } else if (!res?.cancelled) {
           setErrorMessage(res?.error || 'Error al guardar.');
         }
       } else {
         await browserDownload(cleanFile, targetBuffer);
+        await persistToCloudAfterDownload(cleanFile);
         setSaveSuccess({ message: `Archivo '${cleanFile}' descargado exitosamente.` });
       }
     } catch (err: any) {
@@ -297,7 +392,7 @@ export function DownloadModal({
             </div>
             <div>
               <h2 className="text-sm font-black text-white">Descargar Archivo</h2>
-              <p className="text-[10px] text-slate-400">Exportación optimizada CCW · Intcomex</p>
+              <p className="text-[10px] text-slate-400">Exportación optimizada CCW · Guardado Cloud automático</p>
             </div>
           </div>
           <button
@@ -322,11 +417,23 @@ export function DownloadModal({
             <div className="p-4 bg-emerald-950/40 border border-emerald-500/40 rounded-2xl space-y-3">
               <div className="flex items-center space-x-2 text-emerald-400 font-bold text-sm">
                 <CheckCircle2 className="w-5 h-5 shrink-0" />
-                <span>¡Archivo Exportado!</span>
+                <span>¡Archivo Exportado y Sincronizado!</span>
               </div>
               <p className="text-slate-300 break-words font-mono text-[10px] leading-relaxed">
                 {saveSuccess.message}
               </p>
+              {cloudSaveNote && (
+                <div
+                  className={`p-2.5 rounded-xl border text-[10px] font-semibold flex items-center space-x-2 ${
+                    isRestricted
+                      ? 'bg-amber-950/50 border-amber-600/40 text-amber-300'
+                      : 'bg-cyan-950/50 border-cyan-600/40 text-cyan-300'
+                  }`}
+                >
+                  <Cloud className="w-3.5 h-3.5 shrink-0" />
+                  <span>{cloudSaveNote}</span>
+                </div>
+              )}
               <div className="flex items-center space-x-2 pt-1">
                 {saveSuccess.folder && isDesktop && (
                   <button
@@ -366,13 +473,49 @@ export function DownloadModal({
                 <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-1">
                     <Globe className="w-3 h-3" />
-                    Descarga Web Directa
+                    Descarga Web Directa + Respaldo Cloud
                   </span>
                   <div className="font-mono text-[10px] text-slate-300 break-all leading-tight">
-                    El archivo <strong className="text-amber-300">{getCleanFilename()}</strong> se descargará directamente en tu carpeta de <strong className="text-emerald-400">Descargas</strong>.
+                    El archivo <strong className="text-amber-300">{getCleanFilename()}</strong> se descargará en <strong className="text-emerald-400">Descargas</strong> y se guardará automáticamente en el <strong className="text-cyan-400">Historial de Estimates</strong>.
                   </div>
                 </div>
               )}
+
+              {/* Manual Cloud Visibility / Privacy Toggle */}
+              <div className="p-3 bg-slate-950/90 border border-slate-800 rounded-xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                    <Cloud className="w-3.5 h-3.5" />
+                    Visibilidad en Historial Cloud
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsRestricted((prev) => !prev)}
+                    className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
+                      isRestricted
+                        ? 'bg-amber-950/80 text-amber-300 border-amber-600/50 hover:bg-amber-900/80'
+                        : 'bg-emerald-950/70 text-emerald-300 border-emerald-600/40 hover:bg-emerald-900/70'
+                    }`}
+                  >
+                    {isRestricted ? (
+                      <>
+                        <Lock className="w-3 h-3 text-amber-400" />
+                        <span>Restringido (Con Permiso)</span>
+                      </>
+                    ) : (
+                      <>
+                        <Unlock className="w-3 h-3 text-emerald-400" />
+                        <span>Público (Todo el equipo)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  {isRestricted
+                    ? '🔒 Otros usuarios verán esta cotización en la búsqueda del historial, pero deberán solicitarte permiso para ver los montos o cargarla.'
+                    : '🔓 Cualquier usuario registrado podrá ver y cargar esta cotización desde el Historial de Estimates. Haz clic arriba si deseas restringirla manualmente.'}
+                </p>
+              </div>
 
               {/* Collapsible Details Toggle */}
               <button
@@ -472,7 +615,7 @@ export function DownloadModal({
                   className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold shadow-lg shadow-emerald-600/30 cursor-pointer disabled:opacity-50 flex items-center space-x-1.5 transition-all"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>{isSaving ? 'Exportando...' : 'Descargar Archivo'}</span>
+                  <span>{isSaving ? 'Exportando y Guardando...' : 'Descargar Archivo'}</span>
                 </button>
               </div>
             </>

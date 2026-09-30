@@ -8,6 +8,7 @@ import {
   addDoc,
   setDoc,
   doc,
+  getDoc,
   getDocs,
   deleteDoc,
   query,
@@ -17,6 +18,7 @@ import {
 import { getFirestoreInstance } from './firebaseConfig';
 import {
   CloudEstimateRecord,
+  EstimateAccessRequest,
   CloudDsvRecord,
   CloudUserRecord,
   SharedSkuOverrideRecord,
@@ -91,7 +93,7 @@ export function sanitizeForFirestore<T>(data: T): T {
  */
 export async function withTimeout<T>(
   promise: Promise<T>,
-  ms: number = 2500,
+  ms: number = 6000,
   fallbackError: string = 'Tiempo de espera de Firebase agotado (Timeout)'
 ): Promise<T> {
   let timer: any;
@@ -116,45 +118,125 @@ export async function withTimeout<T>(
 // ----------------------------------------------------------------------------
 
 /**
- * Saves a completed CCW Estimate record to Firestore 'estimates' collection.
- * Preserves financial summary, items array, and customOverrideMap classification state.
+ * Generates a deterministic Firestore Document ID for an Estimate so re-saving
+ * or re-downloading the same Estimate updates it cleanly without creating duplicates.
+ */
+export function buildEstimateDocId(
+  estimateId?: string,
+  dealId?: string,
+  fileName?: string
+): string {
+  const cleanEst = String(estimateId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+  if (cleanEst && cleanEst.toUpperCase() !== 'NA' && cleanEst.toUpperCase() !== 'ESTIMATE') {
+    return `est_${cleanEst}`;
+  }
+  const cleanDeal = String(dealId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+  const cleanFile = String(fileName || '')
+    .trim()
+    .replace(/\.[^/.]+$/, '')
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 48);
+  if (cleanDeal && cleanDeal.toUpperCase() !== 'NA') {
+    return `est_${cleanDeal}_${cleanFile || 'doc'}`;
+  }
+  if (cleanFile) {
+    return `est_file_${cleanFile}`;
+  }
+  return 'est_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+/**
+ * Saves or updates a completed CCW Estimate record in Firestore 'estimates' collection.
+ * Preserves financial summary, items array, customOverrideMap, and privacy/access permissions.
  */
 export async function saveEstimateToCloud(
   record: Omit<CloudEstimateRecord, 'id'>
 ): Promise<{ success: boolean; id?: string; error?: string }> {
+  const docId = buildEstimateDocId(record.estimateId, record.dealId, record.originalFileName);
+  const nowIso = new Date().toISOString();
+
+  // 1. Check existing local record to preserve permissions/requests if updating
+  const localList = getLocalEstimatesCache();
+  const existingLocal = localList.find(
+    (x) =>
+      x.id === docId ||
+      (record.estimateId &&
+        record.estimateId !== 'NA' &&
+        x.estimateId === record.estimateId)
+  );
+
+  const mergedRecord: CloudEstimateRecord = {
+    ...record,
+    id: docId,
+    createdAt: record.createdAt || existingLocal?.createdAt || nowIso,
+    updatedAt: nowIso,
+    isRestricted:
+      record.isRestricted !== undefined
+        ? Boolean(record.isRestricted)
+        : Boolean(existingLocal?.isRestricted ?? false),
+    allowedUsers: record.allowedUsers ?? existingLocal?.allowedUsers ?? [],
+    accessRequests: record.accessRequests ?? existingLocal?.accessRequests ?? [],
+    syncedToCloud: false,
+  };
+
+  // Save immediately to local cache as failsafe
+  const filteredLocal = localList.filter(
+    (x) =>
+      x.id !== docId &&
+      !(record.estimateId && record.estimateId !== 'NA' && x.estimateId === record.estimateId)
+  );
+  saveLocalEstimatesCache([mergedRecord, ...filteredLocal].slice(0, 150));
+
   try {
     const { db, isReady, error } = getFirestoreInstance();
 
-    // 1. Failsafe Local Cache Persistence
-    const localList = getLocalEstimatesCache();
-    const localId = 'cloud-est-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
-    const newRecordWithId: CloudEstimateRecord = { ...record, id: localId };
-    
-    // Unshift to local cache
-    const updatedLocal = [newRecordWithId, ...localList.filter((x) => x.estimateId !== record.estimateId || x.dealId !== record.dealId)];
-    saveLocalEstimatesCache(updatedLocal.slice(0, 100));
-
-    // 2. Cloud Firestore Persistence
     if (!isReady || !db) {
       return {
         success: true,
-        id: localId,
+        id: docId,
         error: error ? `Guardado localmente (Aviso Cloud: ${error})` : undefined,
       };
     }
 
-    const colRef = collection(db, ESTIMATES_COLLECTION);
-    const sanitizedRecord = sanitizeForFirestore({
-      ...record,
-      createdAt: record.createdAt || new Date().toISOString(),
-    });
-    const docRef = await withTimeout(addDoc(colRef, sanitizedRecord), 3000);
+    const docRef = doc(db, ESTIMATES_COLLECTION, docId);
 
-    return { success: true, id: docRef.id };
+    // If not in local cache, check remote doc briefly to preserve remote accessRequests / allowedUsers
+    if (!existingLocal) {
+      try {
+        const existingSnap = await withTimeout(getDoc(docRef), 3500);
+        if (existingSnap.exists()) {
+          const remoteData = existingSnap.data() as Partial<CloudEstimateRecord>;
+          if (record.isRestricted === undefined && remoteData.isRestricted !== undefined) {
+            mergedRecord.isRestricted = Boolean(remoteData.isRestricted);
+          }
+          if (remoteData.allowedUsers && (!mergedRecord.allowedUsers || mergedRecord.allowedUsers.length === 0)) {
+            mergedRecord.allowedUsers = remoteData.allowedUsers;
+          }
+          if (remoteData.accessRequests && (!mergedRecord.accessRequests || mergedRecord.accessRequests.length === 0)) {
+            mergedRecord.accessRequests = remoteData.accessRequests;
+          }
+        }
+      } catch (_) {}
+    }
+
+    const { id: _omitId, ...payloadWithoutId } = {
+      ...mergedRecord,
+      syncedToCloud: true,
+    };
+    const sanitizedRecord = sanitizeForFirestore(payloadWithoutId);
+
+    await withTimeout(setDoc(docRef, sanitizedRecord, { merge: true }), 8000);
+
+    // Mark as synced in local cache
+    const syncedRecord: CloudEstimateRecord = { ...mergedRecord, syncedToCloud: true };
+    saveLocalEstimatesCache([syncedRecord, ...filteredLocal].slice(0, 150));
+
+    return { success: true, id: docId };
   } catch (err: any) {
     console.warn('[Firestore Cloud Warning - saveEstimate]:', err);
     return {
       success: true,
+      id: docId,
       error: `Guardado en almacenamiento local (Aviso Cloud: ${err?.message || 'Offline'})`,
     };
   }
@@ -162,10 +244,10 @@ export async function saveEstimateToCloud(
 
 /**
  * Fetches CCW Estimates from Firestore on-demand using getDocs().
- * Orders by createdAt descending. Merges and deduplicates with local cache.
+ * Orders by createdAt descending, deduplicates by Estimate ID, and auto-syncs any pending local estimates to Cloud.
  */
 export async function getCloudEstimates(
-  limitCount: number = 50
+  limitCount: number = 100
 ): Promise<{ success: boolean; data: CloudEstimateRecord[]; error?: string }> {
   try {
     const { db, isReady, error } = getFirestoreInstance();
@@ -181,7 +263,7 @@ export async function getCloudEstimates(
 
     const colRef = collection(db, ESTIMATES_COLLECTION);
     const q = query(colRef, orderBy('createdAt', 'desc'), limit(limitCount));
-    const snapshot = await withTimeout(getDocs(q), 2500);
+    const snapshot = await withTimeout(getDocs(q), 8000);
 
     const remoteList: CloudEstimateRecord[] = [];
     snapshot.forEach((docSnap) => {
@@ -189,21 +271,83 @@ export async function getCloudEstimates(
       remoteList.push({
         ...data,
         id: docSnap.id,
+        isRestricted: Boolean(data.isRestricted),
+        allowedUsers: Array.isArray(data.allowedUsers) ? data.allowedUsers : [],
+        accessRequests: Array.isArray(data.accessRequests) ? data.accessRequests : [],
+        syncedToCloud: true,
       });
     });
 
-    // Merge remote with local cache (remote takes precedence)
-    const remoteKeys = new Set(remoteList.map((r) => `${r.estimateId}__${r.createdAt}`));
-    const nonDuplicatedLocal = localCache.filter((l) => !remoteKeys.has(`${l.estimateId}__${l.createdAt}`));
-    const merged = [...remoteList, ...nonDuplicatedLocal];
+    // Deduplicate remote list by estimateId (keep newest / deterministic docId first)
+    const dedupMap = new Map<string, CloudEstimateRecord>();
+    for (const r of remoteList) {
+      const key =
+        r.estimateId && r.estimateId !== 'NA'
+          ? `EST:${r.estimateId.trim().toUpperCase()}`
+          : `ID:${r.id}`;
+      const existing = dedupMap.get(key);
+      if (!existing) {
+        dedupMap.set(key, r);
+      } else {
+        // Prefer deterministic docId `est_...` or newer updatedAt/createdAt, while merging accessRequests/allowedUsers
+        const existingTime = existing.updatedAt || existing.createdAt || '';
+        const candidateTime = r.updatedAt || r.createdAt || '';
+        const mergedAllowed = Array.from(
+          new Set([...(existing.allowedUsers || []), ...(r.allowedUsers || [])])
+        );
+        const mergedReqsMap = new Map<string, EstimateAccessRequest>();
+        for (const req of [...(r.accessRequests || []), ...(existing.accessRequests || [])]) {
+          if (req?.username && !mergedReqsMap.has(req.username.toLowerCase())) {
+            mergedReqsMap.set(req.username.toLowerCase(), req);
+          }
+        }
+        const winner = candidateTime > existingTime ? r : existing;
+        dedupMap.set(key, {
+          ...winner,
+          id: existing.id?.startsWith('est_') ? existing.id : r.id?.startsWith('est_') ? r.id : winner.id,
+          isRestricted: Boolean(existing.isRestricted || r.isRestricted),
+          allowedUsers: mergedAllowed,
+          accessRequests: Array.from(mergedReqsMap.values()),
+        });
+      }
+    }
+
+    // Check local cache for any unsynced records and push them to Firestore in background
+    for (const l of localCache) {
+      const key =
+        l.estimateId && l.estimateId !== 'NA'
+          ? `EST:${l.estimateId.trim().toUpperCase()}`
+          : `ID:${l.id}`;
+      if (!dedupMap.has(key)) {
+        const targetId = buildEstimateDocId(l.estimateId, l.dealId, l.originalFileName);
+        const promoted: CloudEstimateRecord = {
+          ...l,
+          id: targetId,
+          isRestricted: Boolean(l.isRestricted),
+          allowedUsers: Array.isArray(l.allowedUsers) ? l.allowedUsers : [],
+          accessRequests: Array.isArray(l.accessRequests) ? l.accessRequests : [],
+          syncedToCloud: true,
+        };
+        dedupMap.set(key, promoted);
+
+        // Background push to Firestore so all other users can see it too
+        const { id: _omit, ...payload } = promoted;
+        setDoc(doc(db, ESTIMATES_COLLECTION, targetId), sanitizeForFirestore(payload), {
+          merge: true,
+        }).catch(() => {});
+      }
+    }
+
+    const merged = Array.from(dedupMap.values()).sort((a, b) =>
+      (b.createdAt || '').localeCompare(a.createdAt || '')
+    );
 
     // Update local cache
-    saveLocalEstimatesCache(merged.slice(0, 100));
+    saveLocalEstimatesCache(merged.slice(0, 150));
 
     return { success: true, data: merged };
   } catch (err: any) {
     console.warn('[Firestore Cloud Warning - getEstimates]:', err);
-    // Return local cache on network failure
     return {
       success: true,
       data: getLocalEstimatesCache(),
@@ -213,21 +357,250 @@ export async function getCloudEstimates(
 }
 
 /**
+ * Toggles manual privacy/restriction on an Estimate (`isRestricted: true | false`).
+ * Even when restricted, the Estimate remains visible in search/history table, requiring permission to open.
+ */
+export async function toggleEstimateRestriction(
+  docId: string,
+  estimateId: string,
+  isRestricted: boolean
+): Promise<{ success: boolean; error?: string }> {
+  const nowIso = new Date().toISOString();
+  try {
+    // 1. Update local cache immediately
+    const localList = getLocalEstimatesCache().map((item) => {
+      if (item.id === docId || (estimateId && estimateId !== 'NA' && item.estimateId === estimateId)) {
+        return { ...item, isRestricted, updatedAt: nowIso };
+      }
+      return item;
+    });
+    saveLocalEstimatesCache(localList);
+
+    // 2. Update Firestore
+    const { db, isReady } = getFirestoreInstance();
+    if (isReady && db) {
+      const targetDocId = docId.startsWith('cloud-est-')
+        ? buildEstimateDocId(estimateId)
+        : docId;
+      const docRef = doc(db, ESTIMATES_COLLECTION, targetDocId);
+      await withTimeout(
+        setDoc(
+          docRef,
+          sanitizeForFirestore({
+            estimateId: estimateId || 'NA',
+            isRestricted,
+            updatedAt: nowIso,
+          }),
+          { merge: true }
+        ),
+        6000
+      );
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.warn('[Firestore Cloud Warning - toggleEstimateRestriction]:', err);
+    return { success: false, error: err?.message || 'Error actualizando visibilidad' };
+  }
+}
+
+/**
+ * Submits a permission request from a user to view/load a restricted Estimate.
+ */
+export async function requestEstimateAccess(
+  docId: string,
+  estimateId: string,
+  requester: { username: string; fullName: string; role?: string }
+): Promise<{ success: boolean; updatedRequests?: EstimateAccessRequest[]; error?: string }> {
+  const nowIso = new Date().toISOString();
+  const normUsername = (requester.username || '').trim().toLowerCase();
+  if (!normUsername) {
+    return { success: false, error: 'Usuario inválido para solicitar permiso.' };
+  }
+
+  try {
+    const localList = getLocalEstimatesCache();
+    const targetRecord = localList.find(
+      (x) => x.id === docId || (estimateId && estimateId !== 'NA' && x.estimateId === estimateId)
+    );
+
+    const existingRequests: EstimateAccessRequest[] = Array.isArray(targetRecord?.accessRequests)
+      ? [...targetRecord!.accessRequests!]
+      : [];
+
+    const newReq: EstimateAccessRequest = {
+      username: requester.username,
+      fullName: requester.fullName || requester.username,
+      role: requester.role || 'pm',
+      requestedAt: nowIso,
+      status: 'pending',
+    };
+
+    const existingIdx = existingRequests.findIndex(
+      (r) => r.username.trim().toLowerCase() === normUsername
+    );
+    if (existingIdx >= 0) {
+      existingRequests[existingIdx] = newReq;
+    } else {
+      existingRequests.push(newReq);
+    }
+
+    // Update local cache
+    const updatedLocal = localList.map((item) => {
+      if (item.id === docId || (estimateId && estimateId !== 'NA' && item.estimateId === estimateId)) {
+        return { ...item, accessRequests: existingRequests, updatedAt: nowIso };
+      }
+      return item;
+    });
+    saveLocalEstimatesCache(updatedLocal);
+
+    // Update Firestore
+    const { db, isReady } = getFirestoreInstance();
+    if (isReady && db) {
+      const targetDocId = docId.startsWith('cloud-est-')
+        ? buildEstimateDocId(estimateId)
+        : docId;
+      const docRef = doc(db, ESTIMATES_COLLECTION, targetDocId);
+      await withTimeout(
+        setDoc(
+          docRef,
+          sanitizeForFirestore({
+            estimateId: estimateId || 'NA',
+            accessRequests: existingRequests,
+            updatedAt: nowIso,
+          }),
+          { merge: true }
+        ),
+        6000
+      );
+    }
+
+    return { success: true, updatedRequests: existingRequests };
+  } catch (err: any) {
+    console.warn('[Firestore Cloud Warning - requestEstimateAccess]:', err);
+    return { success: false, error: err?.message || 'Error enviando solicitud de permiso' };
+  }
+}
+
+/**
+ * Approves or rejects a user's permission request on a restricted Estimate.
+ */
+export async function resolveEstimateAccessRequest(
+  docId: string,
+  estimateId: string,
+  targetUsername: string,
+  approve: boolean,
+  resolverUsername: string
+): Promise<{
+  success: boolean;
+  allowedUsers?: string[];
+  accessRequests?: EstimateAccessRequest[];
+  error?: string;
+}> {
+  const nowIso = new Date().toISOString();
+  const normTarget = (targetUsername || '').trim().toLowerCase();
+
+  try {
+    const localList = getLocalEstimatesCache();
+    const targetRecord = localList.find(
+      (x) => x.id === docId || (estimateId && estimateId !== 'NA' && x.estimateId === estimateId)
+    );
+
+    const currentAllowed = new Set<string>(
+      (targetRecord?.allowedUsers || []).map((u) => u.trim().toLowerCase())
+    );
+    if (approve) {
+      currentAllowed.add(normTarget);
+    } else {
+      currentAllowed.delete(normTarget);
+    }
+    const updatedAllowed = Array.from(currentAllowed);
+
+    const updatedRequests: EstimateAccessRequest[] = (targetRecord?.accessRequests || []).map((req) => {
+      if (req.username.trim().toLowerCase() === normTarget) {
+        return {
+          ...req,
+          status: approve ? 'approved' : 'rejected',
+          resolvedAt: nowIso,
+          resolvedBy: resolverUsername,
+        };
+      }
+      return req;
+    });
+
+    // Update local cache
+    const updatedLocal = localList.map((item) => {
+      if (item.id === docId || (estimateId && estimateId !== 'NA' && item.estimateId === estimateId)) {
+        return {
+          ...item,
+          allowedUsers: updatedAllowed,
+          accessRequests: updatedRequests,
+          updatedAt: nowIso,
+        };
+      }
+      return item;
+    });
+    saveLocalEstimatesCache(updatedLocal);
+
+    // Update Firestore
+    const { db, isReady } = getFirestoreInstance();
+    if (isReady && db) {
+      const targetDocId = docId.startsWith('cloud-est-')
+        ? buildEstimateDocId(estimateId)
+        : docId;
+      const docRef = doc(db, ESTIMATES_COLLECTION, targetDocId);
+      await withTimeout(
+        setDoc(
+          docRef,
+          sanitizeForFirestore({
+            estimateId: estimateId || 'NA',
+            allowedUsers: updatedAllowed,
+            accessRequests: updatedRequests,
+            updatedAt: nowIso,
+          }),
+          { merge: true }
+        ),
+        6000
+      );
+    }
+
+    return {
+      success: true,
+      allowedUsers: updatedAllowed,
+      accessRequests: updatedRequests,
+    };
+  } catch (err: any) {
+    console.warn('[Firestore Cloud Warning - resolveEstimateAccessRequest]:', err);
+    return { success: false, error: err?.message || 'Error resolviendo solicitud de permiso' };
+  }
+}
+
+/**
  * Deletes an estimate document from Firestore and local cache.
  */
 export async function deleteCloudEstimate(
-  docId: string
+  docId: string,
+  estimateId?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     // 1. Remove from local cache
-    const localList = getLocalEstimatesCache().filter((x) => x.id !== docId);
+    const localList = getLocalEstimatesCache().filter(
+      (x) => x.id !== docId && !(estimateId && estimateId !== 'NA' && x.estimateId === estimateId)
+    );
     saveLocalEstimatesCache(localList);
 
     // 2. Remove from Firestore
     const { db, isReady } = getFirestoreInstance();
-    if (isReady && db && !docId.startsWith('cloud-est-')) {
-      const docRef = doc(db, ESTIMATES_COLLECTION, docId);
-      await withTimeout(deleteDoc(docRef), 2000);
+    if (isReady && db) {
+      if (!docId.startsWith('cloud-est-')) {
+        await withTimeout(deleteDoc(doc(db, ESTIMATES_COLLECTION, docId)), 4000);
+      }
+      if (estimateId && estimateId !== 'NA') {
+        const detId = buildEstimateDocId(estimateId);
+        if (detId !== docId) {
+          deleteDoc(doc(db, ESTIMATES_COLLECTION, detId)).catch(() => {});
+        }
+      }
     }
 
     return { success: true };

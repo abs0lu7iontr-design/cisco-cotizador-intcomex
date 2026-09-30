@@ -406,7 +406,7 @@ function AppContent() {
       />
 
       {/* Structured Dual Download Modal (Web & Desktop) */}
-      {processedResult?.workbookBuffer && (() => {
+      {processedResult && (() => {
         const isOnlyLicensing = processedResult.items ? isPureLicensingQuote(processedResult.items) : false;
         return (
           <DownloadModal
@@ -416,7 +416,7 @@ function AppContent() {
             defaultPartner={defaultPartner}
             defaultClient={defaultClient}
             defaultModel={defaultModel}
-            workbookBuffer={processedResult.workbookBuffer}
+            workbookBuffer={processedResult.workbookBuffer || new ArrayBuffer(0)}
             rawWorkbookBuffer={rawWorkbookBuffer}
             params={params}
             customOverrides={customOverrideMap}
