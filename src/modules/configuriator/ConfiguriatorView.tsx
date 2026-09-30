@@ -37,6 +37,11 @@ import {
   Plug,
   Cable,
   Wrench,
+  Award,
+  Copy,
+  Check,
+  ArrowUpDown,
+  Calculator,
 } from 'lucide-react';
 import {
   extractBOMRequirementsFromInput,
@@ -46,6 +51,7 @@ import {
 import {
   buildAssembledCcwRows,
   generateCcwUploadWorkbook,
+  generateProposalsComparisonWorkbook,
   CcwAssembledRow,
 } from './ccwExcelGenerator';
 import {
@@ -60,10 +66,13 @@ import {
 import {
   getLearnedCiscoSkus,
   EOL_CATALOG_2026,
-  getEolAlternatives,
   sanitizeAndValidateCcwSku,
   COMPATIBLE_TRANSCEIVERS_2026,
   PowerCordStandard,
+  HomologatedProposal,
+  ProposalPrioritySortMode,
+  generateHomologatedProposalsForItem,
+  checkSkuInFastTrackDb,
 } from './catalogRules';
 import {
   CiscoApiStatusModal,
@@ -71,8 +80,12 @@ import {
   checkPsirtForProduct,
   PsirtAdvisory,
 } from '../ciscoApi';
+import { useCiscoAutomatedStore } from '../../core/store';
+import { CloudEstimateRecord } from '../cloud';
 
 export const ConfiguriatorView: React.FC = () => {
+  const { loadCloudEstimateIntoStore, params: quoterParams, currentUser } = useCiscoAutomatedStore();
+
   // Entrada de lenguaje natural e imagen (Ctrl+V o Drag & Drop)
   const [inputText, setInputText] = useState<string>('');
   const [clientName, setClientName] = useState<string>('Cliente');
@@ -92,7 +105,17 @@ export const ConfiguriatorView: React.FC = () => {
   const [defaultPowerCord, setDefaultPowerCord] = useState<PowerCordStandard>('italy_chile');
   const [merakiLicenseMode, setMerakiLicenseMode] = useState<'subscription' | 'coterm'>('subscription');
   // Analizador interactivo de Descuento CCW (%) sobre Valores de Lista (GPL)
-  const [globalDiscountPct, setGlobalDiscountPct] = useState<number>(43);
+  const [globalDiscountPct, setGlobalDiscountPct] = useState<number | ''>(43);
+  // Modo Vista Valor GPL Puro (0% Descuento): muestra todos los valores al 100% GPL sin descuentos
+  const [isPureGplMode, setIsPureGplMode] = useState<boolean>(false);
+
+  // Orden de prioridad para las 3+ propuestas homologadas (Mejor Descuento + Mayor % Compatibilidad)
+  const [proposalSortMode, setProposalSortMode] = useState<ProposalPrioritySortMode>('priority_optimal');
+  const [expandedProposalsByIdx, setExpandedProposalsByIdx] = useState<Record<number, boolean>>({});
+  const [fastTrackDiscountMap, setFastTrackDiscountMap] = useState<
+    Record<string, { discountPct: number; listPrice?: number }>
+  >({});
+  const [actionToast, setActionToast] = useState<string | null>(null);
 
   // Configuración Multi-API y Rotación de Tokens
   const [aiSettings, setAiSettings] = useState<AiConfigSettings>(() => loadAiSettings());
@@ -112,6 +135,13 @@ export const ConfiguriatorView: React.FC = () => {
   const [manualQtyInput, setManualQtyInput] = useState<number>(1);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const triggerActionToast = useCallback((msg: string) => {
+    setActionToast(msg);
+    setTimeout(() => {
+      setActionToast((prev) => (prev === msg ? null : prev));
+    }, 4200);
+  }, []);
 
   const handleAuditPsirtForItem = async (idx: number, sku: string) => {
     setLoadingPsirtIndex(idx);
@@ -173,6 +203,53 @@ export const ConfiguriatorView: React.FC = () => {
   useEffect(() => {
     refreshAssembledRows(extractionResult, merakiLicenseMode, defaultPowerCord);
   }, [extractionResult, merakiLicenseMode, defaultPowerCord, refreshAssembledRows]);
+
+  // Cruzar los SKUs de las propuestas homologadas con la base de datos Fast Track para enriquecer descuentos y precios GPL reales
+  useEffect(() => {
+    if (!extractionResult || extractionResult.items.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const candidateSkus = new Set<string>();
+      extractionResult.items.forEach((it) => {
+        const baseProposals = generateHomologatedProposalsForItem({
+          rawMentionedSku: it.rawMentionedSku,
+          suggestedActiveSku: it.suggestedActiveSku,
+          deviceType: it.deviceType,
+          ports: it.ports,
+          isPoe: it.isPoe,
+          poeBudget: it.poeBudget,
+          uplinkType: it.uplinkType,
+          licenseTier: it.licenseTier || 'Essentials',
+          termYears: it.termYears || 3,
+          quantity: it.quantity || 1,
+        });
+        baseProposals.forEach((p) => {
+          const clean = p.recommendedSku.includes(':')
+            ? p.recommendedSku.split(':')[1]
+            : p.recommendedSku;
+          candidateSkus.add(clean.toUpperCase());
+          candidateSkus.add(p.recommendedSku.toUpperCase());
+        });
+      });
+
+      const nextFtMap: Record<string, { discountPct: number; listPrice?: number }> = {};
+      for (const sku of Array.from(candidateSkus)) {
+        const match = await checkSkuInFastTrackDb(sku);
+        if (match) {
+          nextFtMap[sku] = {
+            discountPct: match.distributorDiscount || 48,
+            listPrice: match.listPrice > 0 ? match.listPrice : undefined,
+          };
+        }
+      }
+      if (!cancelled && Object.keys(nextFtMap).length > 0) {
+        setFastTrackDiscountMap((prev) => ({ ...prev, ...nextFtMap }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [extractionResult]);
 
   // Cambiar globalmente la norma del cable de poder (Norma Chile/Italia CAB-IT vs Rack PDU vs Schuko)
   const handleGlobalPowerCordChange = (newCordStd: PowerCordStandard) => {
@@ -460,6 +537,315 @@ export const ConfiguriatorView: React.FC = () => {
     }
   };
 
+  // ============================================================================
+  // GENERACIÓN Y ORDENAMIENTO DE LAS 3+ PROPUESTAS HOMOLOGADAS CON VALOR GPL (SIN DESCUENTO)
+  // ============================================================================
+  const proposalsByItemIdx = useMemo(() => {
+    const map: Record<number, HomologatedProposal[]> = {};
+    if (!extractionResult || !Array.isArray(extractionResult.items)) return map;
+
+    extractionResult.items.forEach((it, idx) => {
+      const qty = it.quantity > 0 ? it.quantity : 1;
+      map[idx] = generateHomologatedProposalsForItem({
+        rawMentionedSku: it.rawMentionedSku,
+        suggestedActiveSku: it.suggestedActiveSku,
+        deviceType: it.deviceType,
+        ports: it.ports,
+        isPoe: it.isPoe,
+        poeBudget: it.poeBudget,
+        uplinkType: it.uplinkType,
+        licenseTier: it.licenseTier || 'Essentials',
+        termYears: it.termYears || 3,
+        quantity: qty,
+        includeStacking: it.includeStacking,
+        includeRedundantPsu: it.includeRedundantPsu,
+        includeSmartNet: it.includeSmartNet,
+        smartNetLevel: it.smartNetLevel || '8x5xNBD',
+        powerCordStandard: it.powerCordStandard || defaultPowerCord || 'italy_chile',
+        merakiLicenseMode: it.merakiLicenseMode || merakiLicenseMode || 'subscription',
+        sortMode: proposalSortMode,
+        fastTrackDiscountMap,
+      });
+    });
+
+    return map;
+  }, [
+    extractionResult,
+    defaultPowerCord,
+    merakiLicenseMode,
+    proposalSortMode,
+    fastTrackDiscountMap,
+  ]);
+
+  // Descargar Excel Comparativo de las 3+ Propuestas con Valor GPL (Sin Descuentos) y Prioridad
+  const handleDownloadProposalsComparisonExcel = async () => {
+    if (!extractionResult || assembledRows.length === 0) return;
+    try {
+      const updatedReq: ExtractedRequirementResult = {
+        ...extractionResult,
+        clientName: clientName || extractionResult.clientName || 'Cliente',
+      };
+      const { buffer, filename } = await generateProposalsComparisonWorkbook({
+        req: updatedReq,
+        proposalsByItemIdx,
+        sortMode: proposalSortMode,
+        assembledRows,
+        pureGplMode: isPureGplMode,
+      });
+
+      const pyApi = typeof window !== 'undefined' ? (window as any).pywebview?.api : null;
+      if (pyApi && typeof pyApi.download_excel_file === 'function') {
+        const byteArray = Array.from(new Uint8Array(buffer));
+        await pyApi.download_excel_file(filename, byteArray);
+        triggerActionToast(`✅ Comparativo 3 Propuestas GPL exportado: ${filename}`);
+        return;
+      }
+
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      triggerActionToast(`✅ Excel Comparativo de 3 Propuestas GPL descargado: ${filename}`);
+    } catch (err: any) {
+      setErrorMsg(`Error generando Comparativo 3 Propuestas GPL: ${err?.message || err}`);
+    }
+  };
+
+  // Copiar resumen ejecutivo de las 3+ propuestas homologadas con Valor GPL (Sin Descuento) al portapapeles
+  const handleCopyProposalsSummary = async (itemIdx: number) => {
+    if (!extractionResult || !extractionResult.items[itemIdx]) return;
+    const item = extractionResult.items[itemIdx];
+    const proposals = proposalsByItemIdx[itemIdx] || [];
+    if (proposals.length === 0) return;
+
+    const qty = item.quantity > 0 ? item.quantity : 1;
+    const requestedLabel = item.rawMentionedSku || item.suggestedActiveSku || 'Equipo Solicitado';
+    const lines: string[] = [
+      `📊 COMPARATIVO DE ${proposals.length} PROPUESTAS HOMOLOGADAS CISCO CCW 2026`,
+      `Cliente / Proyecto: ${clientName || 'Cliente'} | Equipo Solicitado: ${qty}x ${requestedLabel}`,
+      `Criterio de Prioridad: Mejor Descuento + Mayor % de Compatibilidad / Homologación Técnica`,
+      `--------------------------------------------------------------------------------`,
+    ];
+
+    proposals.forEach((p) => {
+      const effectiveDisc = isPureGplMode ? 0 : p.bestDiscountPct;
+      const effectiveNet = isPureGplMode ? p.totalSolutionGplUsd : p.totalEstimatedNetUsd;
+      const subsText = p.subItemsSummary
+        .map(
+          (s) =>
+            `${s.qty}x ${s.partNumber} (GPL: US$${s.totalGplUsd.toLocaleString('en-US', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })})`
+        )
+        .join(' + ');
+
+      lines.push(
+        `🏆 PROPUESTA #${p.priorityRank} [${p.strategyTag}] — ${p.recommendedSku.replace(':', ' -> ')} (${p.title})`,
+        `   • % Compatibilidad / Homologación: ${p.compatibilityPct}% (${p.compatibilityLabel})`,
+        `   • Valor GPL Chasis Unitario (Sin Descuento): US$ ${p.unitChassisGplUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        `   • Valor GPL Solución Madre-Hijo Unitario (Sin Descuento): US$ ${p.unitSolutionGplUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        `   • Valor GPL Solución Total (${qty}x, Sin Descuento): US$ ${p.totalSolutionGplUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        `   • Mejor Descuento Aplicable: ${effectiveDisc.toFixed(1)}% (${isPureGplMode ? 'Modo GPL Puro 0% Dcto' : p.discountSourceLabel})`,
+        `   • Valor Neto Estimado Total: US$ ${effectiveNet.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        `   • Sub-SKUs Hijos Incluidos: ${subsText}`,
+        `   • Detalle Técnico: ${p.description}`,
+        ``
+      );
+    });
+
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      triggerActionToast(
+        `📋 Resumen de las ${proposals.length} propuestas con Valor GPL copiado al portapapeles`
+      );
+    } catch (_) {
+      triggerActionToast('⚠️ No se pudo copiar automáticamente al portapapeles');
+    }
+  };
+
+  // Expandir las 3 propuestas en el BOM CCW al mismo tiempo para compararlas dentro de Cisco CCW
+  const handleLoadAllThreeProposalsIntoBom = (itemIdx: number) => {
+    if (!extractionResult || !extractionResult.items[itemIdx]) return;
+    const baseItem = extractionResult.items[itemIdx];
+    const proposals = (proposalsByItemIdx[itemIdx] || []).slice(0, 3);
+    if (proposals.length === 0) return;
+
+    const expandedItems: ExtractedRequirementItem[] = [];
+    extractionResult.items.forEach((it, idx) => {
+      if (idx !== itemIdx) {
+        expandedItems.push(it);
+        return;
+      }
+      proposals.forEach((prop, pIdx) => {
+        expandedItems.push({
+          ...baseItem,
+          id: `${baseItem.id || 'item'}-prop-${pIdx + 1}-${Date.now()}`,
+          selectedEolAlternativeSku: prop.recommendedSku,
+          suggestedActiveSku: prop.recommendedSku,
+          keepOriginalSku: false,
+          discountPct: isPureGplMode ? 0 : prop.bestDiscountPct,
+          notes: `[Propuesta #${prop.priorityRank} • ${prop.compatibilityPct}% Homologación • GPL Solución US$${prop.totalSolutionGplUsd.toLocaleString('en-US')}] ${prop.title}`,
+        });
+      });
+    });
+
+    setExtractionResult({
+      ...extractionResult,
+      items: expandedItems,
+    });
+    triggerActionToast(
+      `➕ Se cargaron las ${proposals.length} propuestas homologadas como bloques Madre-Hijo en el BOM CCW`
+    );
+  };
+
+  // Enviar el BOM ensamblado (con sus Valores GPL y Descuentos) directamente al Cotizador Intcomex principal
+  const handleSendBomToIntcomexQuoter = async () => {
+    if (!extractionResult || assembledRows.length === 0) return;
+    const effectiveGlobalDisc = isPureGplMode
+      ? 0
+      : typeof globalDiscountPct === 'number'
+        ? globalDiscountPct
+        : 38;
+
+    const internacionRate = (quoterParams?.internacionPct ?? 7.0) / 100;
+    const arancelRate = (quoterParams?.arancelPct ?? 6.0) / 100;
+    const marginRate = (quoterParams?.margenPct ?? 5.0) / 100;
+
+    let parentCounter = 0;
+    let childCounter = 0;
+
+    const quoterItems = assembledRows.map((row, idx) => {
+      if (row.isParent) {
+        parentCounter += 1;
+        childCounter = 0;
+      } else {
+        childCounter += 1;
+      }
+      const lineNumber = row.isParent
+        ? `${parentCounter}.0`
+        : `${parentCounter}.0.${childCounter}`;
+
+      const pNum = (row.partNumber || '').toUpperCase();
+      const isIntangible =
+        Boolean(row.durationMonths) ||
+        pNum.includes('-DNA-') ||
+        pNum.startsWith('DNA-') ||
+        pNum.startsWith('LIC-') ||
+        pNum.startsWith('CON-') ||
+        pNum.startsWith('L-') ||
+        pNum.startsWith('SVS-');
+      const llevaArancel = !isIntangible;
+
+      const unitListGpl = row.estimatedUnitListUsd || 0;
+      const rowDiscPct = isPureGplMode
+        ? 0
+        : typeof row.clientDiscountPct === 'number' && row.clientDiscountPct > 0
+          ? row.clientDiscountPct
+          : row.isParent && row.fastTrackInfo
+            ? row.fastTrackInfo.distributorDiscount || effectiveGlobalDisc
+            : pNum.startsWith('CON-')
+              ? Math.min(effectiveGlobalDisc, 22.65)
+              : effectiveGlobalDisc;
+
+      const netCiscoUnit = Number((unitListGpl * (1 - rowDiscPct / 100)).toFixed(2));
+      const costoInternacion = isIntangible ? 0 : Number((netCiscoUnit * internacionRate).toFixed(2));
+      const costoArancel = llevaArancel ? Number((netCiscoUnit * arancelRate).toFixed(2)) : 0;
+      const costoTotalUnitario = Number(
+        (netCiscoUnit + costoInternacion + costoArancel).toFixed(2)
+      );
+      const precioVentaUnitario =
+        marginRate < 1
+          ? Number((costoTotalUnitario / (1 - marginRate)).toFixed(2))
+          : costoTotalUnitario;
+      const qty = row.quantity > 0 ? row.quantity : 1;
+      const precioVentaExtendido = Number((precioVentaUnitario * qty).toFixed(2));
+
+      return {
+        rowIdx: idx + 19,
+        lineNumber,
+        partNumber: row.partNumber,
+        description: row.notes || row.partNumber,
+        qty,
+        unitListPrice: unitListGpl,
+        netCiscoUnit,
+        discPct: rowDiscPct,
+        isIntangible,
+        llevaArancel,
+        costoInternacion,
+        costoArancel,
+        costoTotalUnitario,
+        precioVentaUnitario,
+        precioVentaExtendido,
+        transformedLeadTime: isIntangible ? 'Entrega Digital (ED)' : '14-21 días',
+        isFastTrackPromo: Boolean(row.fastTrackInfo),
+      };
+    });
+
+    const totalListPrice = quoterItems.reduce((acc, i) => acc + i.unitListPrice * i.qty, 0);
+    const totalNetCisco = quoterItems.reduce((acc, i) => acc + i.netCiscoUnit * i.qty, 0);
+    const totalInternacion = quoterItems.reduce((acc, i) => acc + i.costoInternacion * i.qty, 0);
+    const totalArancel = quoterItems.reduce((acc, i) => acc + i.costoArancel * i.qty, 0);
+    const totalCostoIntcomex = quoterItems.reduce(
+      (acc, i) => acc + i.costoTotalUnitario * i.qty,
+      0
+    );
+    const totalCotizadoIntcomex = quoterItems.reduce((acc, i) => acc + i.precioVentaExtendido, 0);
+    const totalMargenUsd = totalCotizadoIntcomex - totalCostoIntcomex;
+
+    const cleanClient = (clientName || extractionResult.clientName || 'Cliente').trim();
+    const estimateId = `CFG-${Date.now().toString().slice(-6)}`;
+    const record: CloudEstimateRecord = {
+      dealId: `BOM-${cleanClient.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'CCW'}`,
+      estimateId,
+      partnerName: 'ConfigurIAtor Pre-Costeo GPL',
+      clientFinalName: cleanClient,
+      originalFileName: `ConfigurIAtor_${cleanClient.replace(/\s+/g, '_')}_GPL.xlsx`,
+      createdAt: new Date().toISOString(),
+      creator: {
+        username: currentUser?.username || 'preventa',
+        fullName: currentUser?.full_name || 'Arquitecto Cisco',
+        email: currentUser?.email || '',
+        role: currentUser?.role || 'admin',
+      },
+      financialSummary: {
+        totalListPrice,
+        totalNetCisco,
+        totalInternacion,
+        totalArancel,
+        totalCostoIntcomex,
+        totalMargenUsd,
+        totalCotizadoIntcomex,
+        effectiveMarginPct:
+          totalCotizadoIntcomex > 0 ? (totalMargenUsd / totalCotizadoIntcomex) * 100 : 5,
+        params: quoterParams || { internacionPct: 7, arancelPct: 6, margenPct: 5 },
+      },
+      headerInfo: {
+        customerName: 'ConfigurIAtor Pre-Costeo GPL',
+        companyName: cleanClient,
+        address: '',
+        city: 'Santiago',
+        country: 'Chile',
+        phone: '',
+        estimateId,
+        dealId: 'PRE-COSTEO-GPL',
+        priceList: 'Global Price List (GPL US$)',
+        date: new Date().toISOString().slice(0, 10),
+      },
+      itemsCount: quoterItems.length,
+      items: quoterItems,
+    };
+
+    await loadCloudEstimateIntoStore(record);
+  };
+
   // Gestión del Pool de API Keys
   const handleAddKey = () => {
     if (!newKeyValue.trim()) return;
@@ -502,7 +888,7 @@ export const ConfiguriatorView: React.FC = () => {
   };
 
   // ============================================================================
-  // IDEA 2 & IDEA 6: CÁLCULO EN VIVO DE BALANCE PoE (WATTS), VALORES DE LISTA Y DESCUENTOS CCW (%)
+  // IDEA 2 & IDEA 6: CÁLCULO EN VIVO DE BALANCE PoE (WATTS), VALORES DE LISTA (GPL) Y DESCUENTOS CCW (%)
   // ============================================================================
   const bomMetrics = useMemo(() => {
     let totalListUsd = 0;
@@ -510,6 +896,12 @@ export const ConfiguriatorView: React.FC = () => {
     let fastTrackCount = 0;
     let eolMigratedCount = 0;
     let coherentCorrectedCount = 0;
+
+    const numericGlobalDisc = isPureGplMode
+      ? 0
+      : typeof globalDiscountPct === 'number'
+        ? globalDiscountPct
+        : 38;
 
     (extractionResult?.items || []).forEach((it) => {
       if (it.isNonExistentSku) coherentCorrectedCount += 1;
@@ -519,19 +911,22 @@ export const ConfiguriatorView: React.FC = () => {
     for (const row of assembledRows) {
       const rowList = row.estimatedTotalListUsd || 0;
       totalListUsd += rowList;
-      if (typeof row.clientDiscountPct === 'number' && row.clientDiscountPct > 0) {
+      if (isPureGplMode) {
+        totalEstimatedNetUsd += rowList;
+        if (row.isParent && row.fastTrackInfo) fastTrackCount += 1;
+      } else if (typeof row.clientDiscountPct === 'number' && row.clientDiscountPct > 0) {
         totalEstimatedNetUsd += rowList * (1 - row.clientDiscountPct / 100);
         if (row.isParent && row.fastTrackInfo) fastTrackCount += 1;
       } else if (row.isParent && row.fastTrackInfo) {
         fastTrackCount += 1;
-        const disc = (row.fastTrackInfo.distributorDiscount || globalDiscountPct || 45) / 100;
+        const disc = (row.fastTrackInfo.distributorDiscount || numericGlobalDisc || 45) / 100;
         totalEstimatedNetUsd += rowList * (1 - disc);
       } else {
         // Usar el descuento del analizador interactivo CCW (en CON-SNT SmartNet el descuento típico en CCW es ~22.65%)
         const isSupport = row.partNumber.startsWith('CON-');
         const effectivePct = isSupport
-          ? Math.min(globalDiscountPct, 22.65)
-          : globalDiscountPct;
+          ? Math.min(numericGlobalDisc, 22.65)
+          : numericGlobalDisc;
         totalEstimatedNetUsd += rowList * (1 - effectivePct / 100);
       }
     }
@@ -616,7 +1011,7 @@ export const ConfiguriatorView: React.FC = () => {
       firstUpgradeableSwitchIdx,
       poweredEndpointsSummary,
     };
-  }, [assembledRows, extractionResult, globalDiscountPct]);
+  }, [assembledRows, extractionResult, globalDiscountPct, isPureGplMode]);
 
   // Acción 1-Clic para subir un switch de 370W a Full PoE 740W cuando la alerta PoE lo sugiere
   const handleUpgradeSwitchToFullPoe = (idx: number) => {
@@ -759,13 +1154,25 @@ export const ConfiguriatorView: React.FC = () => {
                 type="button"
                 onClick={() =>
                   setInputText(
+                    'Cotizar 1 switch Catalyst WS-C2960X-24PS-L con licencia por 3 años'
+                  )
+                }
+                className="px-2 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 text-[10px] font-bold text-emerald-300 border border-emerald-600/50 cursor-pointer transition-colors"
+                title="Probar solicitud de 1 equipo EOL (WS-C2960X-24PS-L) con entrega de 3+ propuestas al 100% de homologación, Valor GPL (Sin Descuentos) y orden de prioridad"
+              >
+                Ej. 1 Equipo EOL (3 Propuestas GPL 100%)
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setInputText(
                     'Cotizar 1 switch Meraki MS210-48FP con licencia por 3 años'
                   )
                 }
                 className="px-2 py-1 rounded-lg bg-amber-950/70 hover:bg-amber-900/80 text-[10px] font-bold text-amber-300 border border-amber-700/50 cursor-pointer transition-colors"
-                title="Cargar caso Meraki MS210-48FP (EOL -> MS225-48FP-HW / MS130-SWITCHES)"
+                title="Cargar caso Meraki MS210-48FP (EOL -> 3 Propuestas Homologadas con Valor GPL)"
               >
-                Ej. MS210-48FP
+                Ej. MS210-48FP (3 Propuestas)
               </button>
               <button
                 type="button"
@@ -786,7 +1193,7 @@ export const ConfiguriatorView: React.FC = () => {
                     'Necesito 1 servidor UCS C220-M6S, 2 switches industriales IE-2000-8TC-B PoE para faena minera, 1 firewall ASA5508-X y 10 teléfonos IP CP-7841-K9 por 3 años con SmartNet'
                   )
                 }
-                className="px-2 py-1 rounded-lg bg-emerald-950/70 hover:bg-emerald-900/80 text-[10px] font-bold text-emerald-300 border border-emerald-700/50 cursor-pointer transition-colors"
+                className="px-2 py-1 rounded-lg bg-indigo-950/70 hover:bg-indigo-900/80 text-[10px] font-bold text-indigo-300 border border-indigo-700/50 cursor-pointer transition-colors"
                 title="Probar Servidores UCS M7, Switches Industriales IE, Firewall FPR, Colaboración DP-9800 y SmartNet"
               >
                 Ej. UCS + IE + FW + Colab
@@ -1025,6 +1432,23 @@ export const ConfiguriatorView: React.FC = () => {
 
         {/* COLUMNA DERECHA: Estructura Madre-Hijo, Calculadora PoE, Pre-Cotización USD y Tabla 10 Columnas CCW */}
         <div className="lg:col-span-7 space-y-5">
+          {/* Toast de confirmación de acciones ejecutivas */}
+          {actionToast && (
+            <div className="p-3 rounded-xl bg-emerald-950/90 border border-emerald-500/50 text-emerald-200 text-xs font-bold flex items-center justify-between gap-2 shadow-lg animate-fade-in">
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{actionToast}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActionToast(null)}
+                className="text-emerald-300 hover:text-white cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Tarjeta de Equipos Madre e Hijos */}
           <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1070,12 +1494,22 @@ export const ConfiguriatorView: React.FC = () => {
 
                   <button
                     type="button"
-                    onClick={handleClearAllBom}
-                    className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950 text-slate-300 hover:text-rose-200 border border-slate-700 text-xs font-bold transition-all cursor-pointer"
-                    title="Limpiar BOM actual"
+                    onClick={handleDownloadProposalsComparisonExcel}
+                    className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-amber-950/80 hover:bg-amber-900 text-amber-200 border border-amber-600/50 text-xs font-bold transition-all cursor-pointer"
+                    title="Descargar Excel Comparativo de las 3+ Propuestas Homologadas con Valor GPL (Sin Descuentos), % Homologación, Mejor Descuento y Sheet1 CCW"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Limpiar</span>
+                    <Award className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Excel 3 Propuestas GPL</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSendBomToIntcomexQuoter}
+                    className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
+                    title="Enviar el BOM ensamblado con sus Valores GPL al Cotizador Intcomex principal para pre-costear Internación, Arancel (6% HW / 0% Licencias) y Margen"
+                  >
+                    <Calculator className="w-3.5 h-3.5" />
+                    <span>Pre-Costear en Cotizador</span>
                   </button>
 
                   <button
@@ -1090,20 +1524,22 @@ export const ConfiguriatorView: React.FC = () => {
               )}
             </div>
 
-            {/* IDEA 6 MEJORADA: ANALIZADOR DE VALORES DE LISTA (GPL), DESCUENTOS CCW (%) Y PRESUPUESTO PoE */}
+            {/* IDEA 6 MEJORADA: ANALIZADOR DE VALORES DE LISTA (GPL SIN DESCUENTOS), DESCUENTOS CCW (%) Y PRESUPUESTO PoE */}
             {assembledRows.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* Resumen Financiero Preliminar USD + Simulador de Descuento CCW */}
+                {/* Resumen Financiero Preliminar USD + Simulador de Descuento CCW / Modo GPL Puro */}
                 <div className="p-3.5 rounded-xl bg-gradient-to-br from-slate-950 to-indigo-950/40 border border-indigo-500/30 flex flex-col justify-between gap-2.5">
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-0.5">
                       <div className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
                         <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Analizador de Valores de Lista (GPL) y Descuentos CCW</span>
+                        <span>Valor GPL (Sin Descuentos) &amp; Analizador de Descuentos CCW</span>
                       </div>
                       <div className="flex flex-wrap items-baseline gap-3 pt-1">
                         <div>
-                          <span className="text-[10px] text-slate-400 block">Total Lista (GPL)</span>
+                          <span className="text-[10px] text-amber-300 font-bold block">
+                            Valor GPL Total (Sin Descuento)
+                          </span>
                           <span className="font-mono text-sm font-black text-white">
                             US${' '}
                             {bomMetrics.totalListUsd.toLocaleString('en-US', {
@@ -1114,7 +1550,9 @@ export const ConfiguriatorView: React.FC = () => {
                         </div>
                         <div className="pl-3 border-l border-slate-800">
                           <span className="text-[10px] text-emerald-400 font-semibold block">
-                            Neto Est. ({bomMetrics.effectiveAvgDiscountPct.toFixed(1)}% Dcto Prom.)
+                            {isPureGplMode
+                              ? 'Neto Modo GPL Puro (0% Dcto)'
+                              : `Neto Est. (${bomMetrics.effectiveAvgDiscountPct.toFixed(1)}% Dcto Prom.)`}
                           </span>
                           <span className="font-mono text-sm font-black text-emerald-300">
                             US${' '}
@@ -1140,16 +1578,25 @@ export const ConfiguriatorView: React.FC = () => {
                     </div>
 
                     <div className="text-right shrink-0 space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsPureGplMode((prev) => !prev)}
+                        className={`px-2.5 py-1 rounded-lg border text-[10px] font-black transition-all cursor-pointer block ${
+                          isPureGplMode
+                            ? 'bg-amber-500/20 border-amber-400 text-amber-200 shadow-sm'
+                            : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-amber-500/50 hover:text-amber-200'
+                        }`}
+                        title="Alternar entre Vista Valor GPL Puro (0% Descuento) y Vista con Descuento Estimado CCW"
+                      >
+                        {isPureGplMode
+                          ? '💵 Modo GPL Puro Activo (0% Dcto)'
+                          : 'Ver solo Valor GPL (0% Dcto)'}
+                      </button>
                       <span className="px-2 py-0.5 rounded-lg bg-emerald-950/90 border border-emerald-700/50 text-[10px] font-bold text-emerald-300 block">
                         {bomMetrics.fastTrackCount > 0
                           ? `⚡ ${bomMetrics.fastTrackCount} SKU Fast Track`
                           : 'Precios GPL CCW 2026'}
                       </span>
-                      {(bomMetrics.eolMigratedCount > 0 || bomMetrics.coherentCorrectedCount > 0) && (
-                        <span className="px-2 py-0.5 rounded-lg bg-amber-950/80 border border-amber-600/50 text-[9px] font-bold text-amber-200 block">
-                          🛡️ {bomMetrics.eolMigratedCount} EOL / {bomMetrics.coherentCorrectedCount} Coherentes
-                        </span>
-                      )}
                     </div>
                   </div>
 
@@ -1165,8 +1612,9 @@ export const ConfiguriatorView: React.FC = () => {
                           min={0}
                           max={95}
                           step={0.5}
+                          disabled={isPureGplMode}
                           placeholder="Auto (38%)"
-                          value={globalDiscountPct === '' ? '' : globalDiscountPct}
+                          value={isPureGplMode ? 0 : globalDiscountPct === '' ? '' : globalDiscountPct}
                           onChange={(e) => {
                             const val = e.target.value;
                             if (val === '') {
@@ -1175,11 +1623,11 @@ export const ConfiguriatorView: React.FC = () => {
                               setGlobalDiscountPct(Math.min(95, Math.max(0, Number(val))));
                             }
                           }}
-                          className="w-20 bg-transparent text-emerald-300 font-mono font-bold text-xs focus:outline-none text-right"
+                          className="w-16 bg-transparent text-emerald-300 font-mono font-bold text-xs focus:outline-none text-right disabled:opacity-50"
                         />
                         <span className="text-slate-400 font-mono ml-1">%</span>
                       </div>
-                      {globalDiscountPct !== '' && (
+                      {globalDiscountPct !== '' && !isPureGplMode && (
                         <button
                           type="button"
                           onClick={() => setGlobalDiscountPct('')}
@@ -1277,7 +1725,7 @@ export const ConfiguriatorView: React.FC = () => {
                   Esperando instrucciones en lenguaje natural o captura de pantalla (Ctrl + V).
                 </p>
                 <p className="text-[11px] text-slate-500 max-w-md mx-auto">
-                  La IA analizará tu solicitud y armará automáticamente cada equipo <strong>MADRE (Chasis/Contenedor)</strong> junto con sus líneas <strong>HIJO (Hardware, Licencia DNA/Meraki, Fuente, Cable Norma Chile CAB-IT, Stack, SmartNet)</strong>.
+                  La IA analizará tu solicitud y armará automáticamente cada equipo <strong>MADRE (Chasis/Contenedor)</strong> junto con sus líneas <strong>HIJO (Hardware, Licencia DNA/Meraki, Fuente, Cable Norma Chile CAB-IT, Stack, SmartNet)</strong> y entregará <strong>al menos 3 propuestas homologadas con su Valor GPL (Sin Descuentos)</strong> ordenadas por prioridad.
                 </p>
               </div>
             ) : (
@@ -1291,7 +1739,15 @@ export const ConfiguriatorView: React.FC = () => {
                     : activeSku;
                   const poeInfo = resolvePoeBudgetFromSku(effectiveHardwareSku);
                   const itemAdvisories = psirtByIndex[idx] || [];
-                  const eolAlternatives = getEolAlternatives(item.rawMentionedSku || '');
+                  const itemProposals = proposalsByItemIdx[idx] || [];
+                  const isSingleProductRequest = extractionResult.items.length === 1;
+                  const showProposalsPanel =
+                    isSingleProductRequest ||
+                    Boolean(item.isEol2026) ||
+                    Boolean(item.isNonExistentSku) ||
+                    Boolean(parentRow?.wasReplacedFromEol) ||
+                    Boolean(expandedProposalsByIdx[idx]);
+
                   const hasEolAlternative = Boolean(
                     !item.isNonExistentSku &&
                       item.rawMentionedSku &&
@@ -1413,12 +1869,33 @@ export const ConfiguriatorView: React.FC = () => {
                               </span>
                             )}
 
-                            {/* Precio Lista Referencial Unitario */}
-                            {parentRow?.estimatedUnitListUsd && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-900 text-emerald-300 border border-slate-700">
-                                Ref: US$ {parentRow.estimatedUnitListUsd.toLocaleString('en-US')} c/u
-                              </span>
-                            )}
+                            {/* Valor GPL Unitario Chasis (Sin Descuento) y Valor GPL Solución Madre-Hijo (Sin Descuento) */}
+                            {typeof parentRow?.unitChassisGplUsd === 'number' &&
+                              parentRow.unitChassisGplUsd > 0 && (
+                                <span
+                                  className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-900 text-amber-300 border border-amber-700/40"
+                                  title="Valor GPL Unitario del Chasis físico sin descuentos"
+                                >
+                                  GPL Chasis (Sin Dcto): US${' '}
+                                  {parentRow.unitChassisGplUsd.toLocaleString('en-US', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </span>
+                              )}
+                            {typeof parentRow?.totalSolutionGplUsd === 'number' &&
+                              parentRow.totalSolutionGplUsd > 0 && (
+                                <span
+                                  className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-600/50"
+                                  title="Valor GPL Total de la Solución Madre-Hijo completa (Chasis + Licencia + Fuente/Cable) sin descuentos"
+                                >
+                                  GPL Solución Total (Sin Dcto): US${' '}
+                                  {parentRow.totalSolutionGplUsd.toLocaleString('en-US', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
+                                </span>
+                              )}
 
                             {/* Link Oficial Cisco.com */}
                             {parentRow?.officialCiscoUrl && (
@@ -1445,8 +1922,32 @@ export const ConfiguriatorView: React.FC = () => {
                           )}
                         </div>
 
-                        {/* Botón PSIRT, alternar SKU original vs Reemplazo EOL y botón eliminar */}
+                        {/* Botón Ver 3 Propuestas Homologadas, PSIRT, alternar SKU original vs Reemplazo EOL y botón eliminar */}
                         <div className="flex items-center gap-2 flex-wrap">
+                          {!isSingleProductRequest &&
+                            !item.isEol2026 &&
+                            !item.isNonExistentSku &&
+                            !parentRow?.wasReplacedFromEol && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedProposalsByIdx((prev) => ({
+                                    ...prev,
+                                    [idx]: !prev[idx],
+                                  }))
+                                }
+                                className="px-2.5 py-1 rounded-lg bg-indigo-950/90 hover:bg-indigo-900 text-[11px] font-bold text-indigo-200 border border-indigo-500/50 flex items-center gap-1 cursor-pointer"
+                                title="Ver al menos 3 propuestas homologadas con su Valor GPL (Sin Descuentos) y ranking de prioridad"
+                              >
+                                <Award className="w-3.5 h-3.5 text-amber-400" />
+                                <span>
+                                  {expandedProposalsByIdx[idx]
+                                    ? 'Ocultar 3 Propuestas GPL'
+                                    : `Ver ${itemProposals.length} Propuestas Homologadas & GPL`}
+                                </span>
+                              </button>
+                            )}
+
                           <button
                             type="button"
                             onClick={() =>
@@ -1488,90 +1989,338 @@ export const ConfiguriatorView: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Tarjetas Interactivas de Alternativas Oficiales CCW cuando se detecta EOL o SKU Inexistente */}
-                      {eolAlternatives.length > 0 && (
+                      {/* ============================================================================
+                          PANEL DE 3+ PROPUESTAS HOMOLOGADAS CON VALOR GPL (SIN DESCUENTOS) Y ORDEN DE PRIORIDAD
+                          Se muestra automáticamente cuando piden 1 solo producto o cuando el equipo es EOL / Inexistente
+                         ============================================================================ */}
+                      {showProposalsPanel && itemProposals.length > 0 && (
                         <div
-                          className={`p-3 rounded-xl border space-y-2 ${
+                          className={`p-3.5 rounded-xl border space-y-3 ${
                             item.isNonExistentSku
-                              ? 'bg-rose-950/30 border-rose-500/50'
-                              : 'bg-amber-950/20 border-amber-500/30'
+                              ? 'bg-rose-950/25 border-rose-500/50'
+                              : item.isEol2026 || parentRow?.wasReplacedFromEol
+                                ? 'bg-gradient-to-br from-amber-950/25 via-slate-950 to-indigo-950/30 border-amber-500/40'
+                                : 'bg-gradient-to-br from-indigo-950/30 via-slate-950 to-emerald-950/20 border-indigo-500/40'
                           }`}
                         >
-                          <div className="flex items-center justify-between flex-wrap gap-2">
-                            <span
-                              className={`text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1.5 ${
-                                item.isNonExistentSku ? 'text-rose-300' : 'text-amber-300'
-                              }`}
-                            >
-                              <AlertTriangle
-                                className={`w-3.5 h-3.5 ${
-                                  item.isNonExistentSku ? 'text-rose-400' : 'text-amber-400'
-                                }`}
-                              />
-                              <span>
-                                {item.isNonExistentSku
-                                  ? `SKU Inexistente Bloqueado (${item.rawMentionedSku}) • Selecciona Modelo Oficial Real en Cisco CCW:`
-                                  : `EOL Detectado (${item.rawMentionedSku}) • Selecciona Alternativa Oficial Vigente en CCW:`}
+                          {/* Cabecera del Comparador de Propuestas + Selector de Prioridad + Acciones Ejecutivas */}
+                          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-2.5 pb-2 border-b border-slate-800/80">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center flex-wrap gap-2">
+                                <span
+                                  className={`text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 ${
+                                    item.isNonExistentSku
+                                      ? 'text-rose-300'
+                                      : item.isEol2026 || parentRow?.wasReplacedFromEol
+                                        ? 'text-amber-300'
+                                        : 'text-emerald-300'
+                                  }`}
+                                >
+                                  <Award className="w-4 h-4 text-amber-400" />
+                                  <span>
+                                    {item.isNonExistentSku
+                                      ? `SKU Inexistente Bloqueado (${item.rawMentionedSku}) • ${itemProposals.length} Propuestas Oficiales con Valor GPL (Sin Descuento):`
+                                      : item.isEol2026 || parentRow?.wasReplacedFromEol
+                                        ? `Reemplazo EOL (${item.rawMentionedSku}) • ${itemProposals.length} Propuestas Homologadas al 100% con Valor GPL (Sin Descuento):`
+                                        : `Comparativo de ${itemProposals.length} Propuestas Homologadas con Valor GPL (Sin Descuento) y Prioridad:`}
+                                  </span>
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-200 border border-emerald-400/40">
+                                  100% Homologación Técnica &bull; Precios GPL Oficiales
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-400">
+                                Ordenadas automáticamente por prioridad combinando <strong>Mejor % de Descuento (Fast Track / Promo)</strong> + <strong>Mayor % de Compatibilidad / Homologación (100%)</strong>. Haz clic en cualquier propuesta para cargarla en el ensamblado Madre-Hijo.
+                              </p>
+                            </div>
+
+                            {/* Botones de Acción Rápida sobre las 3 Propuestas */}
+                            <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleCopyProposalsSummary(idx)}
+                                className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-700/50 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Copiar resumen ejecutivo de las 3 propuestas con Valor GPL (Sin Descuento), % Homologación y Mejor Descuento para Correo / Teams / WhatsApp"
+                              >
+                                <Copy className="w-3 h-3 text-cyan-400" />
+                                <span>Copiar 3 Propuestas GPL</span>
+                              </button>
+
+                              {extractionResult.items.length === 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleLoadAllThreeProposalsIntoBom(idx)}
+                                  className="px-2.5 py-1 rounded-lg bg-indigo-950/90 hover:bg-indigo-900 text-indigo-200 border border-indigo-500/50 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                                  title="Cargar las 3 propuestas al mismo tiempo como bloques Madre-Hijo en el BOM para subirlas juntas a Cisco CCW"
+                                >
+                                  <Plus className="w-3 h-3 text-indigo-400" />
+                                  <span>Cargar las 3 al BOM CCW</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Barra de Criterio de Ordenamiento de Prioridad (1-Clic) */}
+                          <div className="flex items-center justify-between flex-wrap gap-2 text-[10px]">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-slate-400 font-bold flex items-center gap-1 mr-1">
+                                <ArrowUpDown className="w-3 h-3 text-indigo-400" />
+                                <span>Ordenar Prioridad por:</span>
                               </span>
-                            </span>
-                            <span className="text-[10px] text-slate-400">
-                              Clic en cualquier opción para re-ensamblar Madre-Hijo en vivo
+                              {(
+                                [
+                                  {
+                                    id: 'priority_optimal' as ProposalPrioritySortMode,
+                                    label: '🏆 Prioridad: Mejor Dcto + % Homologación',
+                                  },
+                                  {
+                                    id: 'highest_compatibility' as ProposalPrioritySortMode,
+                                    label: '🎯 Mayor % Homologación (100%)',
+                                  },
+                                  {
+                                    id: 'best_discount' as ProposalPrioritySortMode,
+                                    label: '⚡ Mejor % Descuento (Fast Track)',
+                                  },
+                                  {
+                                    id: 'lowest_gpl' as ProposalPrioritySortMode,
+                                    label: '💵 Menor Valor GPL (Sin Descuento)',
+                                  },
+                                ] as const
+                              ).map((modeOpt) => (
+                                <button
+                                  key={modeOpt.id}
+                                  type="button"
+                                  onClick={() => setProposalSortMode(modeOpt.id)}
+                                  className={`px-2.5 py-1 rounded-lg font-bold border transition-all cursor-pointer ${
+                                    proposalSortMode === modeOpt.id
+                                      ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm'
+                                      : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:border-indigo-500/50'
+                                  }`}
+                                >
+                                  {modeOpt.label}
+                                </button>
+                              ))}
+                            </div>
+
+                            <span className="text-slate-400 font-mono">
+                              Cant. Evaluada: <strong className="text-white">{item.quantity || 1}x</strong> &bull; Licencia:{' '}
+                              <strong className="text-indigo-300">
+                                {item.licenseTier || 'Essentials'} ({item.termYears || 3}Y)
+                              </strong>
                             </span>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                            {eolAlternatives.map((alt) => {
+                          {/* Grilla de las 3+ Tarjetas de Propuestas Homologadas con Valor GPL (Sin Descuento) */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            {itemProposals.map((prop) => {
                               const isSelected =
                                 !item.keepOriginalSku &&
-                                (effectiveHardwareSku.toUpperCase() === alt.recommendedSku.toUpperCase() ||
-                                  activeSku.toUpperCase() === alt.recommendedSku.toUpperCase());
-                              const altPoe = resolvePoeBudgetFromSku(alt.recommendedSku);
+                                (effectiveHardwareSku.toUpperCase() ===
+                                  prop.recommendedSku.toUpperCase() ||
+                                  activeSku.toUpperCase() === prop.recommendedSku.toUpperCase());
+                              const propPoe = resolvePoeBudgetFromSku(prop.recommendedSku);
+                              const effectiveDisc = isPureGplMode ? 0 : prop.bestDiscountPct;
+                              const effectiveNetTotal = isPureGplMode
+                                ? prop.totalSolutionGplUsd
+                                : prop.totalEstimatedNetUsd;
+                              const effectiveSavings = isPureGplMode ? 0 : prop.totalSavingsUsd;
+
                               return (
-                                <button
-                                  key={alt.recommendedSku}
-                                  type="button"
+                                <div
+                                  key={prop.recommendedSku}
                                   onClick={() =>
                                     updateParentItem(idx, {
-                                      selectedEolAlternativeSku: alt.recommendedSku,
-                                      suggestedActiveSku: alt.recommendedSku,
+                                      selectedEolAlternativeSku: prop.recommendedSku,
+                                      suggestedActiveSku: prop.recommendedSku,
                                       keepOriginalSku: false,
+                                      discountPct: isPureGplMode ? 0 : prop.bestDiscountPct,
                                     })
                                   }
-                                  className={`text-left p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${
+                                  className={`text-left p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
                                     isSelected
-                                      ? 'bg-emerald-950/50 border-emerald-500/70 shadow-md shadow-emerald-950/40'
-                                      : 'bg-slate-900/80 border-slate-800 hover:border-indigo-500/50'
+                                      ? 'bg-emerald-950/45 border-emerald-500/80 shadow-lg shadow-emerald-950/50 ring-1 ring-emerald-400/40'
+                                      : prop.priorityRank === 1
+                                        ? 'bg-slate-900/95 border-amber-500/50 hover:border-amber-400'
+                                        : 'bg-slate-900/85 border-slate-800 hover:border-indigo-500/60'
                                   }`}
                                 >
-                                  <div>
-                                    <div className="flex items-center justify-between gap-1">
-                                      <span className="font-mono text-xs font-black text-white">
-                                        {alt.recommendedSku.includes(':')
-                                          ? alt.recommendedSku.replace(':', ' → ')
-                                          : alt.recommendedSku}
-                                      </span>
+                                  <div className="space-y-2">
+                                    {/* Fila superior: Prioridad #1/#2/#3 + % Homologación + % Mejor Descuento */}
+                                    <div className="flex items-center justify-between gap-1 flex-wrap">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span
+                                          className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
+                                            prop.priorityRank === 1
+                                              ? 'bg-amber-500/25 text-amber-200 border border-amber-400/50'
+                                              : 'bg-indigo-950 text-indigo-300 border border-indigo-700/40'
+                                          }`}
+                                        >
+                                          {prop.priorityRank === 1
+                                            ? '🏆 #1 PRIORIDAD ÓPTIMA'
+                                            : `#${prop.priorityRank} PROPUESTA`}
+                                        </span>
+                                        <span
+                                          className={`px-2 py-0.5 rounded text-[9px] font-black ${
+                                            prop.compatibilityPct >= 100
+                                              ? 'bg-emerald-950 text-emerald-300 border border-emerald-600/50'
+                                              : 'bg-cyan-950 text-cyan-300 border border-cyan-700/50'
+                                          }`}
+                                          title={prop.compatibilityLabel}
+                                        >
+                                          🎯 {prop.compatibilityPct}% Homologación
+                                        </span>
+                                      </div>
+
                                       {isSelected && (
-                                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase">
-                                          Activo
+                                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/25 text-emerald-200 border border-emerald-400/40 text-[9px] font-black uppercase">
+                                          ✓ En BOM
                                         </span>
                                       )}
                                     </div>
-                                    <div className="text-[11px] font-bold text-indigo-300 mt-0.5">
-                                      {alt.title}
+
+                                    {/* SKU Madre + Estrategia + Descripción */}
+                                    <div>
+                                      <div className="flex items-center justify-between gap-1">
+                                        <span className="font-mono text-xs font-black text-white">
+                                          {prop.recommendedSku.includes(':')
+                                            ? prop.recommendedSku.replace(':', ' → ')
+                                            : prop.recommendedSku}
+                                        </span>
+                                        <span className="px-1.5 py-0.5 rounded bg-cyan-950/90 text-cyan-300 border border-cyan-700/40 font-mono text-[9px] font-bold">
+                                          {isPureGplMode
+                                            ? '0% Dcto (GPL)'
+                                            : `⚡ ${effectiveDisc.toFixed(0)}% Dcto`}
+                                        </span>
+                                      </div>
+                                      <div className="text-[11px] font-bold text-indigo-300 mt-0.5">
+                                        {prop.title}
+                                      </div>
+                                      <div className="text-[9px] font-semibold text-amber-300/90 mt-0.5">
+                                        {prop.strategyTag} &bull; {prop.compatibilityLabel}
+                                      </div>
+                                      <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                                        {prop.description}
+                                      </p>
                                     </div>
-                                    <p className="text-[10px] text-slate-400 mt-1 leading-snug">
-                                      {alt.description}
-                                    </p>
+
+                                    {/* CAJA FINANCIERA EXPLÍCITA: VALOR GPL (SIN DESCUENTOS) VS NETO ESTIMADO */}
+                                    <div className="p-2.5 rounded-lg bg-slate-950/95 border border-slate-800/90 space-y-1.5 font-mono text-[10px]">
+                                      <div className="flex items-center justify-between text-slate-300">
+                                        <span className="font-sans text-[10px] text-slate-400">
+                                          Valor GPL Chasis Unit. (Sin Dcto):
+                                        </span>
+                                        <span className="font-bold text-white">
+                                          US${' '}
+                                          {prop.unitChassisGplUsd.toLocaleString('en-US', {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                          })}
+                                        </span>
+                                      </div>
+
+                                      <div className="flex items-center justify-between text-amber-200">
+                                        <span className="font-sans text-[10px] text-amber-300/90 font-semibold">
+                                          Valor GPL Solución Unit. (Sin Dcto):
+                                        </span>
+                                        <span className="font-bold text-amber-300">
+                                          US${' '}
+                                          {prop.unitSolutionGplUsd.toLocaleString('en-US', {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                          })}
+                                        </span>
+                                      </div>
+
+                                      <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
+                                        <span className="font-sans text-[10px] font-bold text-white">
+                                          Valor GPL Total ({item.quantity || 1}x, Sin Dcto):
+                                        </span>
+                                        <span className="text-xs font-black text-amber-300">
+                                          US${' '}
+                                          {prop.totalSolutionGplUsd.toLocaleString('en-US', {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                          })}
+                                        </span>
+                                      </div>
+
+                                      <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
+                                        <span className="font-sans text-[10px] text-emerald-400 font-semibold">
+                                          {isPureGplMode
+                                            ? 'Total en Modo GPL Puro (0%):'
+                                            : `Neto Est. (${effectiveDisc.toFixed(0)}% Dcto):`}
+                                        </span>
+                                        <span className="text-xs font-black text-emerald-300">
+                                          US${' '}
+                                          {effectiveNetTotal.toLocaleString('en-US', {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                          })}
+                                        </span>
+                                      </div>
+
+                                      {!isPureGplMode && effectiveSavings > 0 && (
+                                        <div className="flex items-center justify-between text-[9px] text-cyan-300">
+                                          <span className="font-sans">{prop.discountSourceLabel}</span>
+                                          <span>
+                                            Ahorro: -US${' '}
+                                            {effectiveSavings.toLocaleString('en-US', {
+                                              minimumFractionDigits: 2,
+                                              maximumFractionDigits: 2,
+                                            })}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Mini-desglose de Sub-SKUs Hijos incluidos en el Valor GPL de esta propuesta */}
+                                    {prop.subItemsSummary.length > 0 && (
+                                      <div className="space-y-1 pt-0.5">
+                                        <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                                          Incluye en Solución Madre-Hijo ({prop.subItemsSummary.length} Hijos):
+                                        </div>
+                                        <div className="flex flex-wrap gap-1">
+                                          {prop.subItemsSummary.map((subItem, sIdx) => (
+                                            <span
+                                              key={`${prop.recommendedSku}-sub-${sIdx}`}
+                                              className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-[9px] font-mono text-slate-300"
+                                              title={`${subItem.description} • Valor GPL Sin Descuento: US$ ${subItem.totalGplUsd.toLocaleString('en-US')}`}
+                                            >
+                                              {subItem.qty}x {subItem.partNumber}
+                                              {subItem.unitGplUsd > 0
+                                                ? ` (GPL $${subItem.unitGplUsd.toLocaleString('en-US')})`
+                                                : ' (Inc.)'}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
-                                  {altPoe.poeSupported && (
-                                    <div className="flex items-center gap-1 text-[10px] font-mono text-amber-300 pt-1 border-t border-slate-800/80">
-                                      <Zap className="w-3 h-3 text-amber-400" />
-                                      <span>
-                                        Budget: {altPoe.maxWatts}W ({altPoe.standard})
+
+                                  {/* Footer de la tarjeta de propuesta: PoE + Botón Seleccionar */}
+                                  <div className="pt-1.5 border-t border-slate-800/80 flex items-center justify-between gap-2 text-[10px]">
+                                    {propPoe.poeSupported ? (
+                                      <span className="flex items-center gap-1 font-mono text-amber-300">
+                                        <Zap className="w-3 h-3 text-amber-400" />
+                                        <span>
+                                          {propPoe.maxWatts}W ({propPoe.standard})
+                                        </span>
                                       </span>
-                                    </div>
-                                  )}
-                                </button>
+                                    ) : (
+                                      <span className="text-slate-400 font-mono">
+                                        Score Prioridad: {prop.priorityScore} pts
+                                      </span>
+                                    )}
+
+                                    <span
+                                      className={`font-bold ${
+                                        isSelected ? 'text-emerald-300' : 'text-indigo-300'
+                                      }`}
+                                    >
+                                      {isSelected ? '✓ Propuesta Activa' : 'Elegir Propuesta →'}
+                                    </span>
+                                  </div>
+                                </div>
                               );
                             })}
                           </div>

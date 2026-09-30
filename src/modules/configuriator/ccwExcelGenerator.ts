@@ -27,6 +27,9 @@ import {
   sanitizeAndValidateCcwSku,
   SubItemConfig,
   PowerCordStandard,
+  HomologatedProposal,
+  ProposalPrioritySortMode,
+  generateHomologatedProposalsForItem,
 } from './catalogRules';
 import { FastTrackProduct } from '../fasttrack/types';
 
@@ -44,7 +47,7 @@ export interface CcwAssembledRow {
   billingModel: string;
   requestedStartDate: string;
   notes: string;
-  // Metadatos enriquecidos para vista previa en UI
+  // Metadatos enriquecidos para vista previa en UI y Valor GPL (Sin Descuento)
   rawMentionedSku?: string;
   resolvedChildModel?: string;
   wasReplacedFromEol?: boolean;
@@ -55,6 +58,12 @@ export interface CcwAssembledRow {
   fastTrackInfo?: FastTrackProduct | null;
   estimatedUnitListUsd?: number;
   estimatedTotalListUsd?: number;
+  /** Valor GPL Unitario del Chasis físico (Sin Descuento) */
+  unitChassisGplUsd?: number;
+  /** Valor GPL Unitario de la Solución Madre-Hijo completa (Chasis + Licencia + Fuente/Módulo, Sin Descuento) */
+  unitSolutionGplUsd?: number;
+  /** Valor GPL Total de la Solución Madre-Hijo completa (Sin Descuento) */
+  totalSolutionGplUsd?: number;
   clientDiscountPct?: number;
   estimatedUnitNetUsd?: number;
   estimatedTotalNetUsd?: number;
@@ -426,11 +435,74 @@ export async function buildAssembledCcwRows(
           : 0;
 
     if (rule) {
-      const parentUnitUsd =
+      const subItems = rule.defaultSubItems({
+        licenseTier: item.licenseTier || 'Essentials',
+        termYears: item.termYears || 3,
+        isPoe: item.isPoe ?? true,
+        uplinkType: item.uplinkType,
+        includeStackingKit: item.includeStacking,
+        includeRedundantPsu: item.includeRedundantPsu,
+        includeSmartNet: item.includeSmartNet,
+        smartNetLevel: item.smartNetLevel || '8x5xNBD',
+        powerCordStandard: effectiveCordStd,
+        merakiLicenseMode: effectiveMerakiMode,
+        selectedModel: containerChildModel,
+      });
+
+      const isVirtualContainer = rule.parentSku === 'MS130-SWITCHES';
+      const rawChassisGpl =
         (item.unitListPriceUsd && item.unitListPriceUsd > 0 ? item.unitListPriceUsd : undefined) ||
         ftMatch?.listPrice ||
         estimateReferencePriceUsd(containerChildModel ? targetSku : rule.parentSku, true);
+
+      const parentUnitUsd = isVirtualContainer ? 0 : rawChassisGpl;
       const parentUnitNet = Number((parentUnitUsd * (1 - itemDiscountPct / 100)).toFixed(2));
+
+      let childrenUnitGplSum = 0;
+      const builtChildRows: CcwAssembledRow[] = [];
+
+      for (let sIdx = 0; sIdx < subItems.length; sIdx++) {
+        const sub = subItems[sIdx];
+        const childQty = qty * sub.qtyMultiplier;
+        const aiMatchingSub = Array.isArray(item.aiSubItems)
+          ? item.aiSubItems.find(
+              (a) => (a.partNumber || '').trim().toUpperCase() === sub.partNumber.trim().toUpperCase()
+            )
+          : undefined;
+        const childUnitUsd =
+          (aiMatchingSub?.unitListPriceUsd !== undefined && aiMatchingSub.unitListPriceUsd >= 0
+            ? aiMatchingSub.unitListPriceUsd
+            : undefined) ?? estimateReferencePriceUsd(sub.partNumber, false);
+        const childDiscPct =
+          aiMatchingSub?.discountPct !== undefined ? aiMatchingSub.discountPct : itemDiscountPct;
+        const childUnitNet = Number((childUnitUsd * (1 - childDiscPct / 100)).toFixed(2));
+
+        childrenUnitGplSum += childUnitUsd * sub.qtyMultiplier;
+
+        builtChildRows.push({
+          rowId: `row-${idx}-sub-${sIdx}`,
+          parentIndex: idx,
+          isParent: false,
+          partNumber: sub.partNumber,
+          quantity: childQty,
+          durationMonths: sub.durationMonths || '',
+          listPrice: '',
+          discountPct: childDiscPct > 0 ? childDiscPct : '',
+          initialTerm: sub.initialTerm || '',
+          autoRenewTerm: sub.autoRenewTerm || '',
+          billingModel: sub.billingModel || '',
+          requestedStartDate: '',
+          notes: sub.description,
+          estimatedUnitListUsd: childUnitUsd,
+          estimatedTotalListUsd: childUnitUsd * childQty,
+          clientDiscountPct: childDiscPct,
+          estimatedUnitNetUsd: childUnitNet,
+          estimatedTotalNetUsd: childUnitNet * childQty,
+        });
+      }
+
+      const unitSolutionGplUsd = Number((parentUnitUsd + childrenUnitGplSum).toFixed(2));
+      const totalSolutionGplUsd = Number((unitSolutionGplUsd * qty).toFixed(2));
 
       // 1. Fila MADRE (Chasis Principal o Contenedor Oficial CCW como MS130-SWITCHES)
       rows.push({
@@ -457,43 +529,47 @@ export async function buildAssembledCcwRows(
         fastTrackInfo: ftMatch,
         estimatedUnitListUsd: parentUnitUsd,
         estimatedTotalListUsd: parentUnitUsd * qty,
+        unitChassisGplUsd: rawChassisGpl,
+        unitSolutionGplUsd,
+        totalSolutionGplUsd,
         clientDiscountPct: itemDiscountPct,
         estimatedUnitNetUsd: parentUnitNet,
         estimatedTotalNetUsd: parentUnitNet * qty,
       });
 
-      // 2. Filas HIJAS consecutivas (Hardware / Licencia DNA o Meraki / Fuente PoE / Cable CAB-IT / Network Stack / SmartNet)
-      const subItems = rule.defaultSubItems({
-        licenseTier: item.licenseTier || 'Essentials',
-        termYears: item.termYears || 3,
-        isPoe: item.isPoe ?? true,
-        uplinkType: item.uplinkType,
-        includeStackingKit: item.includeStacking,
-        includeRedundantPsu: item.includeRedundantPsu,
-        includeSmartNet: item.includeSmartNet,
-        smartNetLevel: item.smartNetLevel || '8x5xNBD',
-        powerCordStandard: effectiveCordStd,
-        merakiLicenseMode: effectiveMerakiMode,
-        selectedModel: containerChildModel,
-      });
+      // 2. Filas HIJAS consecutivas
+      rows.push(...builtChildRows);
+    } else {
+      const parentUnitUsd =
+        (item.unitListPriceUsd && item.unitListPriceUsd > 0 ? item.unitListPriceUsd : undefined) ||
+        ftMatch?.listPrice ||
+        estimateReferencePriceUsd(targetSku, true);
+      const parentUnitNet = Number((parentUnitUsd * (1 - itemDiscountPct / 100)).toFixed(2));
 
-      for (let sIdx = 0; sIdx < subItems.length; sIdx++) {
-        const sub = subItems[sIdx];
+      const fallbackSubs = resolveFallbackSubItems(
+        targetSku,
+        item,
+        effectiveMerakiMode,
+        effectiveCordStd
+      );
+
+      let childrenUnitGplSum = 0;
+      const builtFallbackChildRows: CcwAssembledRow[] = [];
+
+      for (let sIdx = 0; sIdx < fallbackSubs.length; sIdx++) {
+        const sub = fallbackSubs[sIdx];
         const childQty = qty * sub.qtyMultiplier;
-        const aiMatchingSub = Array.isArray(item.aiSubItems)
-          ? item.aiSubItems.find(
-              (a) => (a.partNumber || '').trim().toUpperCase() === sub.partNumber.trim().toUpperCase()
-            )
-          : undefined;
         const childUnitUsd =
-          (aiMatchingSub?.unitListPriceUsd !== undefined && aiMatchingSub.unitListPriceUsd >= 0
-            ? aiMatchingSub.unitListPriceUsd
+          (sub.unitListPriceUsd !== undefined && sub.unitListPriceUsd >= 0
+            ? sub.unitListPriceUsd
             : undefined) ?? estimateReferencePriceUsd(sub.partNumber, false);
         const childDiscPct =
-          aiMatchingSub?.discountPct !== undefined ? aiMatchingSub.discountPct : itemDiscountPct;
+          sub.discountPct !== undefined ? sub.discountPct : itemDiscountPct;
         const childUnitNet = Number((childUnitUsd * (1 - childDiscPct / 100)).toFixed(2));
 
-        rows.push({
+        childrenUnitGplSum += childUnitUsd * sub.qtyMultiplier;
+
+        builtFallbackChildRows.push({
           rowId: `row-${idx}-sub-${sIdx}`,
           parentIndex: idx,
           isParent: false,
@@ -514,12 +590,10 @@ export async function buildAssembledCcwRows(
           estimatedTotalNetUsd: childUnitNet * childQty,
         });
       }
-    } else {
-      const parentUnitUsd =
-        (item.unitListPriceUsd && item.unitListPriceUsd > 0 ? item.unitListPriceUsd : undefined) ||
-        ftMatch?.listPrice ||
-        estimateReferencePriceUsd(targetSku, true);
-      const parentUnitNet = Number((parentUnitUsd * (1 - itemDiscountPct / 100)).toFixed(2));
+
+      const unitSolutionGplUsd = Number((parentUnitUsd + childrenUnitGplSum).toFixed(2));
+      const totalSolutionGplUsd = Number((unitSolutionGplUsd * qty).toFixed(2));
+
       // 1. Fila MADRE (Equipo principal)
       rows.push({
         rowId: `row-${idx}-parent`,
@@ -544,49 +618,16 @@ export async function buildAssembledCcwRows(
         fastTrackInfo: ftMatch,
         estimatedUnitListUsd: parentUnitUsd,
         estimatedTotalListUsd: parentUnitUsd * qty,
+        unitChassisGplUsd: parentUnitUsd,
+        unitSolutionGplUsd,
+        totalSolutionGplUsd,
         clientDiscountPct: itemDiscountPct,
         estimatedUnitNetUsd: parentUnitNet,
         estimatedTotalNetUsd: parentUnitNet * qty,
       });
 
-      // 2. Filas HIJAS (Meraki, aiSubItems de la IA o fallback universal por familia)
-      const fallbackSubs = resolveFallbackSubItems(
-        targetSku,
-        item,
-        effectiveMerakiMode,
-        effectiveCordStd
-      );
-      for (let sIdx = 0; sIdx < fallbackSubs.length; sIdx++) {
-        const sub = fallbackSubs[sIdx];
-        const childQty = qty * sub.qtyMultiplier;
-        const childUnitUsd =
-          (sub.unitListPriceUsd !== undefined && sub.unitListPriceUsd >= 0
-            ? sub.unitListPriceUsd
-            : undefined) ?? estimateReferencePriceUsd(sub.partNumber, false);
-        const childDiscPct =
-          sub.discountPct !== undefined ? sub.discountPct : itemDiscountPct;
-        const childUnitNet = Number((childUnitUsd * (1 - childDiscPct / 100)).toFixed(2));
-        rows.push({
-          rowId: `row-${idx}-sub-${sIdx}`,
-          parentIndex: idx,
-          isParent: false,
-          partNumber: sub.partNumber,
-          quantity: childQty,
-          durationMonths: sub.durationMonths || '',
-          listPrice: '',
-          discountPct: childDiscPct > 0 ? childDiscPct : '',
-          initialTerm: sub.initialTerm || '',
-          autoRenewTerm: sub.autoRenewTerm || '',
-          billingModel: sub.billingModel || '',
-          requestedStartDate: '',
-          notes: sub.description,
-          estimatedUnitListUsd: childUnitUsd,
-          estimatedTotalListUsd: childUnitUsd * childQty,
-          clientDiscountPct: childDiscPct,
-          estimatedUnitNetUsd: childUnitNet,
-          estimatedTotalNetUsd: childUnitNet * childQty,
-        });
-      }
+      // 2. Filas HIJAS
+      rows.push(...builtFallbackChildRows);
     }
 
     // 3. Si el ingeniero agregó Transceivers SFP / Fibra / DAC compatibles en este bloque Madre-Hijo
@@ -689,5 +730,161 @@ export async function generateCcwUploadWorkbook(
     filename,
     summaryRows: assembledRows.length,
     assembledRows,
+  };
+}
+
+/**
+ * Genera un Workbook Ejecutivo Comparativo de las 3+ Propuestas Homologadas con Valor GPL (Sin Descuentos),
+ * % Homologación, Mejor % Descuento, Valor Neto Estimado y desglose Madre-Hijo, además de la hoja "Sheet1" oficial CCW.
+ */
+export async function generateProposalsComparisonWorkbook(params: {
+  req: ExtractedRequirementResult;
+  proposalsByItemIdx: Record<number, HomologatedProposal[]>;
+  sortMode: ProposalPrioritySortMode;
+  assembledRows: CcwAssembledRow[];
+  pureGplMode?: boolean;
+}): Promise<{
+  buffer: ArrayBuffer;
+  filename: string;
+}> {
+  const { req, proposalsByItemIdx, sortMode, assembledRows, pureGplMode } = params;
+  const workbook = new ExcelJS.Workbook();
+
+  // Hoja 1: Comparativo Ejecutivo de las 3+ Propuestas Homologadas (Valor GPL Sin Descuento + Prioridad)
+  const compSheet = workbook.addWorksheet('Comparativo 3 Propuestas GPL');
+  compSheet.columns = [
+    { header: 'Prioridad #', key: 'rank', width: 14 },
+    { header: 'Equipo Solicitado / EOL', key: 'requestedSku', width: 24 },
+    { header: 'Propuesta SKU Madre CCW', key: 'recommendedSku', width: 28 },
+    { header: 'Estrategia / Tier', key: 'strategyTag', width: 28 },
+    { header: '% Homologación Técnica', key: 'compatibilityPct', width: 22 },
+    { header: 'Cant.', key: 'qty', width: 10 },
+    { header: 'Valor GPL Chasis Unit. (Sin Dcto USD)', key: 'unitChassisGplUsd', width: 32 },
+    { header: 'Valor GPL Solución Madre-Hijo Unit. (Sin Dcto USD)', key: 'unitSolutionGplUsd', width: 42 },
+    { header: 'Valor GPL Total Solución (Sin Dcto USD)', key: 'totalSolutionGplUsd', width: 36 },
+    { header: '% Mejor Descuento', key: 'bestDiscountPct', width: 18 },
+    { header: 'Origen Descuento', key: 'discountSourceLabel', width: 26 },
+    { header: 'Valor Neto Estimado Total (USD)', key: 'totalEstimatedNetUsd', width: 28 },
+    { header: 'Ahorro Estimado (USD)', key: 'totalSavingsUsd', width: 22 },
+    { header: 'Score Prioridad', key: 'priorityScore', width: 16 },
+    { header: 'Desglose Sub-SKUs Hijos (Licencia / Fuente / Cable)', key: 'subItemsDetail', width: 58 },
+    { header: 'Justificación de Homologación', key: 'description', width: 55 },
+  ];
+
+  const headerRow = compSheet.getRow(1);
+  headerRow.font = { bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+  headerRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF0F172A' },
+  };
+
+  (req.items || []).forEach((it, idx) => {
+    const qty = it.quantity > 0 ? it.quantity : 1;
+    const proposals =
+      proposalsByItemIdx[idx] ||
+      generateHomologatedProposalsForItem({
+        rawMentionedSku: it.rawMentionedSku,
+        suggestedActiveSku: it.suggestedActiveSku,
+        deviceType: it.deviceType,
+        ports: it.ports,
+        isPoe: it.isPoe,
+        poeBudget: it.poeBudget,
+        uplinkType: it.uplinkType,
+        licenseTier: it.licenseTier || 'Essentials',
+        termYears: it.termYears || 3,
+        quantity: qty,
+        includeStacking: it.includeStacking,
+        includeRedundantPsu: it.includeRedundantPsu,
+        includeSmartNet: it.includeSmartNet,
+        smartNetLevel: it.smartNetLevel || '8x5xNBD',
+        powerCordStandard: it.powerCordStandard || 'italy_chile',
+        merakiLicenseMode: it.merakiLicenseMode || 'subscription',
+        sortMode,
+      });
+
+    proposals.forEach((prop) => {
+      const effectiveDisc = pureGplMode ? 0 : prop.bestDiscountPct;
+      const effectiveNetTotal = pureGplMode
+        ? prop.totalSolutionGplUsd
+        : prop.totalEstimatedNetUsd;
+      const effectiveSavings = pureGplMode ? 0 : prop.totalSavingsUsd;
+
+      const subDetail = prop.subItemsSummary
+        .map(
+          (s) =>
+            `${s.qty}x ${s.partNumber} (GPL: US$${s.totalGplUsd.toLocaleString('en-US', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })})`
+        )
+        .join(' + ');
+
+      const added = compSheet.addRow({
+        rank: `Propuesta #${prop.priorityRank}`,
+        requestedSku: it.rawMentionedSku || it.suggestedActiveSku || `Ítem #${idx + 1}`,
+        recommendedSku: prop.recommendedSku.replace(':', ' → '),
+        strategyTag: `${prop.strategyTag} — ${prop.title}`,
+        compatibilityPct: `${prop.compatibilityPct}%`,
+        qty,
+        unitChassisGplUsd: prop.unitChassisGplUsd,
+        unitSolutionGplUsd: prop.unitSolutionGplUsd,
+        totalSolutionGplUsd: prop.totalSolutionGplUsd,
+        bestDiscountPct: `${effectiveDisc.toFixed(1)}%`,
+        discountSourceLabel: pureGplMode ? 'Valor GPL Puro (0% Descuento)' : prop.discountSourceLabel,
+        totalEstimatedNetUsd: effectiveNetTotal,
+        totalSavingsUsd: effectiveSavings,
+        priorityScore: prop.priorityScore,
+        subItemsDetail: subDetail,
+        description: prop.description,
+      });
+
+      if (prop.priorityRank === 1) {
+        added.font = { bold: true };
+      }
+    });
+  });
+
+  // Hoja 2: Sheet1 oficial para carga directa en Cisco CCW
+  const ccwSheet = workbook.addWorksheet('Sheet1');
+  ccwSheet.columns = [
+    { header: 'Part Number', key: 'partNumber', width: 28 },
+    { header: 'Quantity', key: 'quantity', width: 12 },
+    { header: 'Duration (Mnths)', key: 'durationMonths', width: 18 },
+    { header: 'List Price', key: 'listPrice', width: 14 },
+    { header: 'Discount %', key: 'discountPct', width: 14 },
+    { header: 'Initial Term(Months)', key: 'initialTerm', width: 20 },
+    { header: 'Auto Renew Term(Months)', key: 'autoRenewTerm', width: 22 },
+    { header: 'Billing Model', key: 'billingModel', width: 18 },
+    { header: 'Requested Start Date', key: 'requestedStartDate', width: 20 },
+    { header: 'Notes', key: 'notes', width: 38 },
+  ];
+  ccwSheet.getRow(1).font = { bold: true, size: 10 };
+
+  for (const r of assembledRows) {
+    ccwSheet.addRow({
+      partNumber: r.partNumber,
+      quantity: r.quantity,
+      durationMonths: r.durationMonths === '' ? '' : Number(r.durationMonths),
+      listPrice: '',
+      discountPct: r.discountPct === '' ? '' : Number(r.discountPct),
+      initialTerm: r.initialTerm === '' ? '' : Number(r.initialTerm),
+      autoRenewTerm: r.autoRenewTerm === '' ? '' : Number(r.autoRenewTerm),
+      billingModel: r.billingModel || '',
+      requestedStartDate: r.requestedStartDate || '',
+      notes: '',
+    });
+  }
+
+  const clientTag = (req.clientName || 'Cliente')
+    .trim()
+    .replace(/[^A-Za-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  const filename = `Comparativo_3_Propuestas_GPL_${clientTag || 'Cliente'}.xlsx`;
+  const rawBuffer = await workbook.xlsx.writeBuffer();
+  return {
+    buffer: rawBuffer as ArrayBuffer,
+    filename,
   };
 }

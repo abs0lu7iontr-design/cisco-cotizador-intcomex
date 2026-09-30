@@ -44,11 +44,50 @@ export type PowerCordStandard =
 
 export type EolLifecycleStatus = 'eos_eol_active' | 'active_with_newer_gen' | 'current_2026';
 
+export type ProposalPrioritySortMode =
+  | 'optimal_priority'   // Mayor % Compatibilidad/Homologación + Mejor % Descuento (Default)
+  | 'compatibility_desc' // Mayor % Compatibilidad/Homologación (100% primero)
+  | 'discount_desc'      // Mejor % Descuento / Fast Track primero
+  | 'gpl_asc';           // Menor Valor GPL (Sin Descuentos) primero
+
+export interface HomologatedProposalSubItem {
+  partNumber: string;
+  qty: number;
+  unitGplUsd: number;
+  totalGplUsd: number;
+  description: string;
+  durationMonths?: number;
+}
+
 export interface EolAlternative {
   recommendedSku: string;
   title: string;
   description: string;
   type: 'direct_equivalent' | 'cost_effective' | 'catalyst_alternative';
+  compatibilityPct?: number;
+  homologationLabel?: string;
+  matchedSpecs?: string[];
+  defaultDiscountPct?: number;
+  isFastTrackPromo?: boolean;
+}
+
+export interface HomologatedProposal extends EolAlternative {
+  proposalId: string;
+  priorityRank: number;
+  compatibilityPct: number; // Ej: 100%, 98%, 95%
+  homologationLabel: string;
+  matchedSpecs: string[];
+  unitChassisGplUsd: number; // Valor GPL unitario del Chasis/Equipo (Sin Descuentos)
+  unitSolutionGplUsd: number; // Valor GPL unitario de toda la Solución Madre-Hijo (Sin Descuentos)
+  totalSolutionGplUsd: number; // Valor GPL total (Solución Madre-Hijo × Cantidad, Sin Descuentos)
+  estimatedDiscountPct: number; // % Descuento aplicable (Fast Track / Promo / Deal Reg)
+  isFastTrackEligible: boolean;
+  promoBadge: string;
+  estimatedUnitNetUsd: number;
+  estimatedTotalNetUsd: number;
+  estimatedSavingsUsd: number;
+  priorityScore: number;
+  subItemsBreakdown: HomologatedProposalSubItem[];
 }
 
 export interface EolMappingEntry {
@@ -3176,6 +3215,51 @@ export function estimateReferencePriceUsd(partNumber: string, isParent: boolean)
     'CS-BARPRO-C-K9': 7990,
     'CS-BRD55P-G2-K9': 11500,
     'CS-BRD75P-G2-K9': 16900,
+    // Catalyst 1200 / 1300 SMB & Core 9500 & Adicionales
+    'C1200-24T-4G': 695,
+    'C1200-24P-4G': 1150,
+    'C1200-48T-4G': 1290,
+    'C1200-48P-4G': 2190,
+    'C1300-24T-4G': 990,
+    'C1300-24P-4G': 1590,
+    'C1300-24P-4X': 1995,
+    'C1300-48T-4G': 1790,
+    'C1300-48P-4G': 2890,
+    'C1300-48P-4X': 3490,
+    'C9300L-48PF-4X-E': 8950,
+    'C9300-24T-E': 4650,
+    'C9300-48T-E': 7850,
+    'C9300L-24T-4X-E': 3950,
+    'C9300L-48T-4X-E': 6750,
+    'C9500-24Y4C-A': 19800,
+    'C9500-24Y4C-E': 15900,
+    'CW9162I-MR': 1095,
+    'CW9166I-MR': 1995,
+    'MR56-HW': 1895,
+    'MX75-HW': 1695,
+    'MX95-HW': 4495,
+    'FPR1140-NGFW-K9': 4495,
+    'FPR1220T-K9': 3290,
+    'FPR3120-NGFW-K9': 14500,
+    'C8300-1N1S-6T': 5450,
+    'IE-3300-8T2S-A': 3450,
+    'IE-3300-8P2S-A': 4150,
+    'MS225-24-HW': 2990,
+    'MS225-48-HW': 4690,
+    // Sub-componentes Servidores UCS M7 / Nexus / Colaboración
+    'UCS-CPU-I4410Y': 1150,
+    'UCS-MRX32G1RE1': 420,
+    'UCSC-RAID-M7': 690,
+    'UCS-HD12TB10K12N': 380,
+    'UCSC-PSU1-1050W': 390,
+    'UCSC-RAIL-M7': 165,
+    'DC-MGT-SAAS-EST-3Y': 540,
+    'C1E1TN9300XF-3Y': 3450,
+    'C1A1TN9300XF-3Y': 5850,
+    'NXA-PAC-650W-PE': 0,
+    'NXA-FAN-35CFM-PE': 0,
+    'A-FLEX-3': 162,
+    'L-WBX-DEV-ROOM': 720,
   };
 
   if (refPrices[clean] !== undefined) return refPrices[clean];
@@ -3196,6 +3280,7 @@ export function estimateReferencePriceUsd(partNumber: string, isParent: boolean)
   if (clean.includes('-DNA-E-48')) return 1850;
   if (clean.includes('-DNA-A-24')) return 2150;
   if (clean.includes('-DNA-A-48')) return 3950;
+  if (clean.startsWith('IE3') && clean.includes('-DNA-')) return 890;
   if (clean.startsWith('DNA-C-T0')) return 1250;
   if (clean.startsWith('L-FPR')) return 1650;
   if (clean.startsWith('CON-SNT')) return 1150;
@@ -3238,3 +3323,1097 @@ export async function searchFastTrackCatalogByKeywords(keywords: string[]): Prom
     return normKws.every((kw) => haystack.includes(kw));
   });
 }
+
+// ============================================================================
+// 4. MOTOR DE MÍNIMO 3 PROPUESTAS HOMOLOGADAS CON VALOR GPL (SIN DESCUENTO)
+//    Y ORDENAMIENTO INTELIGENTE POR PRIORIDAD (% HOMOLOGACIÓN + MEJOR DESCUENTO)
+// ============================================================================
+
+/**
+ * Descuentos referenciales Fast Track / Deal Reg CCW 2026 por SKU cuando no hay Excel Fast Track cargado
+ */
+const REFERENCE_FASTTRACK_DISCOUNTS_2026: Record<
+  string,
+  { discountPct: number; isFastTrack: boolean; promoLabel: string }
+> = {
+  'C9200L-24P-4G-E': { discountPct: 49.5, isFastTrack: true, promoLabel: '⚡ Fast Track Top Seller' },
+  'C9200L-24P-4X-E': { discountPct: 48.0, isFastTrack: true, promoLabel: '⚡ Fast Track 10G' },
+  'C9200L-24T-4G-E': { discountPct: 48.5, isFastTrack: true, promoLabel: '⚡ Fast Track Data' },
+  'C9200L-24T-4X-E': { discountPct: 47.0, isFastTrack: true, promoLabel: '⚡ Fast Track 10G' },
+  'C9200L-48P-4G-E': { discountPct: 49.0, isFastTrack: true, promoLabel: '⚡ Fast Track 48P' },
+  'C9200L-48P-4X-E': { discountPct: 48.0, isFastTrack: true, promoLabel: '⚡ Fast Track 48P 10G' },
+  'C9200L-48FP-4G-E': { discountPct: 48.5, isFastTrack: true, promoLabel: '⚡ Fast Track Full PoE 740W' },
+  'C9200L-48FP-4X-E': { discountPct: 47.5, isFastTrack: true, promoLabel: '⚡ Fast Track Full PoE 10G' },
+  'C9200L-48T-4G-E': { discountPct: 48.0, isFastTrack: true, promoLabel: '⚡ Fast Track 48T' },
+  'C9200-24P-E': { discountPct: 45.0, isFastTrack: false, promoLabel: '🏷️ Deal Reg Modular' },
+  'C9200-48P-E': { discountPct: 45.5, isFastTrack: false, promoLabel: '🏷️ Deal Reg Modular' },
+  'C9200-24T-E': { discountPct: 44.5, isFastTrack: false, promoLabel: '🏷️ Deal Reg Modular' },
+  'C9200-48T-E': { discountPct: 44.5, isFastTrack: false, promoLabel: '🏷️ Deal Reg Modular' },
+  'C9300L-24P-4X-E': { discountPct: 49.0, isFastTrack: true, promoLabel: '⚡ Fast Track Core/Access' },
+  'C9300L-48P-4X-E': { discountPct: 48.5, isFastTrack: true, promoLabel: '⚡ Fast Track Core/Access' },
+  'C9300L-48PF-4X-E': { discountPct: 48.0, isFastTrack: true, promoLabel: '⚡ Fast Track Full PoE' },
+  'C9300-24P-E': { discountPct: 47.0, isFastTrack: true, promoLabel: '⚡ Fast Track Enterprise' },
+  'C9300-48P-E': { discountPct: 47.5, isFastTrack: true, promoLabel: '⚡ Fast Track Enterprise' },
+  'C1300-24P-4G': { discountPct: 51.0, isFastTrack: true, promoLabel: '⚡ Fast Track SMB' },
+  'C1300-24P-4X': { discountPct: 50.0, isFastTrack: true, promoLabel: '⚡ Fast Track SMB 10G' },
+  'C1300-48P-4G': { discountPct: 50.5, isFastTrack: true, promoLabel: '⚡ Fast Track SMB 48P' },
+  'C1300-48P-4X': { discountPct: 49.5, isFastTrack: true, promoLabel: '⚡ Fast Track SMB 10G' },
+  'C1200-24P-4G': { discountPct: 52.0, isFastTrack: true, promoLabel: '⚡ Fast Track Entry' },
+  'C1200-48P-4G': { discountPct: 51.5, isFastTrack: true, promoLabel: '⚡ Fast Track Entry' },
+  'MS130-SWITCHES:MS130-24P': { discountPct: 48.5, isFastTrack: true, promoLabel: '⚡ Fast Track Meraki Cloud' },
+  'MS130-SWITCHES:MS130-48P': { discountPct: 48.0, isFastTrack: true, promoLabel: '⚡ Fast Track Meraki Cloud' },
+  'MS130-SWITCHES:MS130-24': { discountPct: 47.5, isFastTrack: true, promoLabel: '⚡ Fast Track Meraki Cloud' },
+  'MS130-SWITCHES:MS130-48': { discountPct: 47.5, isFastTrack: true, promoLabel: '⚡ Fast Track Meraki Cloud' },
+  'MS130-SWITCHES:MS130-8P': { discountPct: 49.0, isFastTrack: true, promoLabel: '⚡ Fast Track Meraki Compact' },
+  'MS225-24P-HW': { discountPct: 46.5, isFastTrack: false, promoLabel: '🏷️ Deal Reg Cloud Stack' },
+  'MS225-48LP-HW': { discountPct: 46.5, isFastTrack: false, promoLabel: '🏷️ Deal Reg Cloud Stack' },
+  'MS225-48FP-HW': { discountPct: 47.5, isFastTrack: true, promoLabel: '⚡ Fast Track 740W Cloud' },
+  'MR36-HW': { discountPct: 50.0, isFastTrack: true, promoLabel: '⚡ Fast Track Wi-Fi 6' },
+  'MR46-HW': { discountPct: 49.5, isFastTrack: true, promoLabel: '⚡ Fast Track Wi-Fi 6' },
+  'CW9162I-MR': { discountPct: 48.0, isFastTrack: true, promoLabel: '⚡ Fast Track Wi-Fi 6E' },
+  'CW9164I-MR': { discountPct: 48.5, isFastTrack: true, promoLabel: '⚡ Fast Track Wi-Fi 6E' },
+  'CW9166I-MR': { discountPct: 46.5, isFastTrack: false, promoLabel: '🏷️ Deal Reg Wi-Fi 6E' },
+  'C8200L-1N-4T': { discountPct: 48.5, isFastTrack: true, promoLabel: '⚡ Fast Track SD-WAN' },
+  'C8200-1N-4T': { discountPct: 47.5, isFastTrack: true, promoLabel: '⚡ Fast Track SD-WAN' },
+  'C8300-1N1S-4T2X': { discountPct: 45.5, isFastTrack: false, promoLabel: '🏷️ Deal Reg WAN Core' },
+  'FPR1010-NGFW-K9': { discountPct: 49.5, isFastTrack: true, promoLabel: '⚡ Fast Track Security' },
+  'FPR1120-NGFW-K9': { discountPct: 48.5, isFastTrack: true, promoLabel: '⚡ Fast Track Security' },
+  'FPR1210T-K9': { discountPct: 47.0, isFastTrack: true, promoLabel: '⚡ Promo Serie 1200' },
+  'FPR1220T-K9': { discountPct: 46.5, isFastTrack: true, promoLabel: '⚡ Promo Serie 1200' },
+  'FPR3110-NGFW-K9': { discountPct: 45.0, isFastTrack: false, promoLabel: '🏷️ Deal Reg Enterprise FW' },
+  'MX67-HW': { discountPct: 48.5, isFastTrack: true, promoLabel: '⚡ Fast Track Meraki MX' },
+  'MX68-HW': { discountPct: 48.0, isFastTrack: true, promoLabel: '⚡ Fast Track Meraki MX PoE' },
+  'MX85-HW': { discountPct: 46.5, isFastTrack: false, promoLabel: '🏷️ Deal Reg Meraki SD-WAN' },
+  'IE-3100-8T2C-E': { discountPct: 47.5, isFastTrack: true, promoLabel: '⚡ Fast Track Industrial' },
+  'IE-3300-8T2S-E': { discountPct: 46.5, isFastTrack: true, promoLabel: '⚡ Fast Track Industrial' },
+  'IE-3300-8P2S-E': { discountPct: 47.0, isFastTrack: true, promoLabel: '⚡ Fast Track Industrial PoE' },
+  'IE-3400-8P2S-E': { discountPct: 45.0, isFastTrack: false, promoLabel: '🏷️ Deal Reg Heavy Duty' },
+  'UCSC-C220-M7S': { discountPct: 48.5, isFastTrack: true, promoLabel: '⚡ Fast Track Compute M7' },
+  'UCSC-C240-M7S': { discountPct: 47.0, isFastTrack: true, promoLabel: '⚡ Fast Track Compute 2U' },
+  'N9K-C93180YC-FX3': { discountPct: 46.5, isFastTrack: true, promoLabel: '⚡ Fast Track Data Center' },
+  'N9K-C93108TC-FX3P': { discountPct: 45.5, isFastTrack: false, promoLabel: '🏷️ Deal Reg Data Center' },
+  'DP-9841-K9': { discountPct: 48.5, isFastTrack: true, promoLabel: '⚡ Fast Track Collab 9800' },
+  'DP-9851-K9': { discountPct: 48.0, isFastTrack: true, promoLabel: '⚡ Fast Track Collab 9800' },
+  'DP-9861-K9': { discountPct: 47.0, isFastTrack: true, promoLabel: '⚡ Fast Track Collab Wi-Fi' },
+  'DP-9871-K9': { discountPct: 46.0, isFastTrack: false, promoLabel: '🏷️ Deal Reg Collab Touch' },
+  'CS-BAR-T-C-K9': { discountPct: 47.0, isFastTrack: true, promoLabel: '⚡ Fast Track Room Bar' },
+  'CS-BARPRO-C-K9': { discountPct: 46.0, isFastTrack: false, promoLabel: '🏷️ Deal Reg Room Bar Pro' },
+  'CS-BRD55P-G2-K9': { discountPct: 45.0, isFastTrack: false, promoLabel: '🏷️ Deal Reg Board Pro G2' },
+};
+
+/**
+ * Calcula de forma determinista el Valor GPL (Sin Descuentos) del Chasis y de la Solución Madre-Hijo completa
+ * para cualquier SKU candidato dentro del motor de propuestas homologadas.
+ */
+export function computeProposalSolutionGpl(
+  recommendedSku: string,
+  options: {
+    quantity?: number;
+    licenseTier?: 'Essentials' | 'Advantage';
+    termYears?: number;
+    powerCordStandard?: PowerCordStandard;
+    includeStacking?: boolean;
+    includeRedundantPsu?: boolean;
+    includeSmartNet?: boolean;
+    smartNetLevel?: '8x5xNBD' | '24x7x4';
+    merakiLicenseMode?: 'coterm' | 'subscription';
+  } = {}
+): {
+  unitChassisGplUsd: number;
+  unitSolutionGplUsd: number;
+  totalSolutionGplUsd: number;
+  subItemsBreakdown: HomologatedProposalSubItem[];
+} {
+  const qty = options.quantity && options.quantity > 0 ? options.quantity : 1;
+  const cleanSku = recommendedSku.trim().toUpperCase();
+  const containerChildModel = cleanSku.includes(':') ? cleanSku.split(':')[1] : undefined;
+  const rule = resolveChassisRule(cleanSku);
+
+  const chassisLookupSku = containerChildModel || (rule ? rule.parentSku : cleanSku);
+  const unitChassisGplUsd = estimateReferencePriceUsd(chassisLookupSku, true);
+
+  let rawSubItems: SubItemConfig[] = [];
+  if (rule) {
+    rawSubItems = rule.defaultSubItems({
+      licenseTier: options.licenseTier || 'Essentials',
+      termYears: options.termYears || 3,
+      isPoe: !cleanSku.includes('24T') && !cleanSku.includes('48T') && !cleanSku.includes('8T'),
+      includeStackingKit: options.includeStacking,
+      includeRedundantPsu: options.includeRedundantPsu,
+      includeSmartNet: options.includeSmartNet,
+      smartNetLevel: options.smartNetLevel || '8x5xNBD',
+      powerCordStandard: options.powerCordStandard || 'italy_chile',
+      merakiLicenseMode: options.merakiLicenseMode || 'subscription',
+      selectedModel: containerChildModel,
+    });
+  } else {
+    const merakiLic = resolveMerakiSubLicense(cleanSku, {
+      licenseTier: options.licenseTier || 'Essentials',
+      termYears: options.termYears || 3,
+      merakiLicenseMode: options.merakiLicenseMode || 'subscription',
+    });
+    if (merakiLic) rawSubItems.push(merakiLic);
+    if (options.includeSmartNet) {
+      const snt = resolveSmartNetSubItem(cleanSku, {
+        licenseTier: options.licenseTier || 'Essentials',
+        termYears: options.termYears || 3,
+        includeSmartNet: true,
+        smartNetLevel: options.smartNetLevel || '8x5xNBD',
+      });
+      if (snt) rawSubItems.push(snt);
+    }
+  }
+
+  const subItemsBreakdown: HomologatedProposalSubItem[] = rawSubItems.map((sub) => {
+    const subQtyPerParent = sub.qtyMultiplier > 0 ? sub.qtyMultiplier : 1;
+    const totalSubQty = subQtyPerParent * qty;
+    const unitGpl = estimateReferencePriceUsd(sub.partNumber, false);
+    return {
+      partNumber: sub.partNumber,
+      qty: totalSubQty,
+      unitGplUsd: unitGpl,
+      totalGplUsd: Number((unitGpl * totalSubQty).toFixed(2)),
+      description: sub.description,
+      durationMonths: sub.durationMonths,
+    };
+  });
+
+  // En MS130-SWITCHES:MS130-xx el contenedor padre vale $0 y el switch físico ya viene como Hijo 1.1 en subItemsBreakdown
+  const isContainerWithHardwareChild = Boolean(containerChildModel);
+  const childrenUnitGplSum = rawSubItems.reduce((acc, sub) => {
+    const mult = sub.qtyMultiplier > 0 ? sub.qtyMultiplier : 1;
+    return acc + estimateReferencePriceUsd(sub.partNumber, false) * mult;
+  }, 0);
+
+  const unitSolutionGplUsd = Number(
+    ((isContainerWithHardwareChild ? 0 : unitChassisGplUsd) + childrenUnitGplSum).toFixed(2)
+  );
+  const totalSolutionGplUsd = Number((unitSolutionGplUsd * qty).toFixed(2));
+
+  return {
+    unitChassisGplUsd: Number(unitChassisGplUsd.toFixed(2)),
+    unitSolutionGplUsd,
+    totalSolutionGplUsd,
+    subItemsBreakdown,
+  };
+}
+
+/**
+ * Ordena las propuestas homologadas según el modo de prioridad seleccionado:
+ * - 'optimal_priority': Prioriza Mayor % de Compatibilidad/Homologación + Mejor % Descuento / Fast Track
+ * - 'compatibility_desc': Mayor % de Homologación primero (100% -> menor), desempatando por mejor descuento
+ * - 'discount_desc': Mayor % de Descuento primero, desempatando por mayor % de homologación
+ * - 'gpl_asc': Menor Valor GPL (Sin Descuento) primero
+ */
+export function sortHomologatedProposals(
+  proposals: HomologatedProposal[],
+  sortMode: ProposalPrioritySortMode = 'optimal_priority'
+): HomologatedProposal[] {
+  const copy = [...proposals];
+  copy.sort((a, b) => {
+    if (sortMode === 'compatibility_desc') {
+      if (b.compatibilityPct !== a.compatibilityPct) {
+        return b.compatibilityPct - a.compatibilityPct;
+      }
+      return b.estimatedDiscountPct - a.estimatedDiscountPct;
+    }
+    if (sortMode === 'discount_desc') {
+      if (b.estimatedDiscountPct !== a.estimatedDiscountPct) {
+        return b.estimatedDiscountPct - a.estimatedDiscountPct;
+      }
+      return b.compatibilityPct - a.compatibilityPct;
+    }
+    if (sortMode === 'gpl_asc') {
+      if (a.totalSolutionGplUsd !== b.totalSolutionGplUsd) {
+        return a.totalSolutionGplUsd - b.totalSolutionGplUsd;
+      }
+      return b.compatibilityPct - a.compatibilityPct;
+    }
+    // Default 'optimal_priority': combina % de Homologación y % de Descuento
+    if (b.priorityScore !== a.priorityScore) {
+      return b.priorityScore - a.priorityScore;
+    }
+    return b.compatibilityPct - a.compatibilityPct;
+  });
+
+  return copy.map((p, idx) => ({
+    ...p,
+    priorityRank: idx + 1,
+  }));
+}
+
+/**
+ * Genera SIEMPRE al menos 3 propuestas homologadas (idealmente con 100% de homologación técnica)
+ * para cualquier equipo solicitado (esté en EOL, corregido por tipeo o vigente 2026),
+ * calculando el Valor GPL (sin descuentos) del Chasis y de la Solución Madre-Hijo completa,
+ * el % de compatibilidad/homologación y el % de descuento para ordenarlas por prioridad.
+ */
+export function generateHomologatedProposalsForItem(
+  params: {
+    rawMentionedSku?: string;
+    suggestedActiveSku?: string;
+    deviceType?: string;
+    ports?: number;
+    isPoe?: boolean;
+    poeBudget?: 'standard' | 'full_poe';
+    uplinkType?: string;
+    licenseTier?: 'Essentials' | 'Advantage';
+    termYears?: number;
+    quantity?: number;
+    includeStacking?: boolean;
+    includeRedundantPsu?: boolean;
+    includeSmartNet?: boolean;
+    smartNetLevel?: '8x5xNBD' | '24x7x4';
+    powerCordStandard?: PowerCordStandard;
+    merakiLicenseMode?: 'coterm' | 'subscription';
+  },
+  sortMode: ProposalPrioritySortMode = 'optimal_priority'
+): HomologatedProposal[] {
+  const rawSku = (params.rawMentionedSku || '').trim().toUpperCase();
+  const activeSku = (params.suggestedActiveSku || '').trim().toUpperCase();
+  const primaryRefSku = rawSku || activeSku || 'C9200L-24P-4G-E';
+  const tier = params.licenseTier === 'Advantage' ? 'Advantage' : 'Essentials';
+  const tierCode = tier === 'Advantage' ? 'A' : 'E';
+  const years = params.termYears && params.termYears > 0 ? params.termYears : 3;
+  const qty = params.quantity && params.quantity > 0 ? params.quantity : 1;
+  const cordLabel =
+    params.powerCordStandard === 'rack_pdu'
+      ? 'Cable PDU Rack'
+      : params.powerCordStandard === 'schuko_eu'
+        ? 'Cable Schuko EU'
+        : params.powerCordStandard === 'nema_us'
+          ? 'Cable NEMA USA'
+          : 'Cable Norma Chile CAB-IT';
+
+  const combinedSku = `${rawSku} ${activeSku}`;
+  const is48 = params.ports === 48 || /48(?:P|FP|LP|T|X|U|Y)/i.test(combinedSku);
+  const is8 = params.ports === 8 || /(?:-8|08)(?:P|FP|LP|T|X)/i.test(combinedSku);
+  const isNoPoe =
+    params.isPoe === false || /-(?:24|48|8|16)T\b|MS(?:120|130|210|225)-(?:24|48|8)$/i.test(combinedSku);
+  const isFullPoe =
+    params.poeBudget === 'full_poe' || /48FP|48PF|48FPD|740W/i.test(combinedSku);
+  const is10G =
+    params.uplinkType === '10G' ||
+    params.uplinkType === 'SFP+' ||
+    /4X|8X|10G|PD-L|FPD-L|TD-L|24X|48X/i.test(combinedSku);
+
+  const portNum = is48 ? 48 : is8 ? 8 : 24;
+
+  interface CandidateSeed {
+    sku: string;
+    title: string;
+    description: string;
+    type: 'direct_equivalent' | 'cost_effective' | 'catalyst_alternative';
+    compatibilityPct: number;
+    homologationLabel: string;
+    matchedSpecs: string[];
+    customDiscountPct?: number;
+  }
+
+  const seeds: CandidateSeed[] = [];
+
+  // 1. Evaluar por familia de producto para generar al menos 3 propuestas idealmente 100% homologadas
+  if (
+    params.deviceType === 'industrial_switch' ||
+    primaryRefSku.startsWith('IE-')
+  ) {
+    const iePoe = !isNoPoe;
+    seeds.push(
+      {
+        sku: iePoe ? `IE-3300-8P2S-${tierCode}` : `IE-3300-8T2S-${tierCode}`,
+        title: `Propuesta Modular Industrial: Catalyst ${iePoe ? 'IE-3300-8P2S' : 'IE-3300-8T2S'} (Riel DIN)`,
+        description: `Switch Industrial Rugged de riel DIN con 8 puertos GE ${iePoe ? 'PoE+ (hasta 240W)' : 'Data'} + 2x SFP 1G, expandible con módulos.`,
+        type: 'direct_equivalent',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Estándar Industrial Minería/Planta',
+        matchedSpecs: [
+          `8 Puertos ${iePoe ? 'PoE+ Industrial' : 'GE Rugged'}`,
+          '2x Uplinks SFP Fibra',
+          `Fuente Riel DIN + ${cordLabel}`,
+          `DNA ${tier} ${years * 12}M`,
+        ],
+      },
+      {
+        sku: iePoe ? 'IE-3400-8P2S-E' : 'IE-3400-8T2S-E',
+        title: `Propuesta Heavy-Duty Avanzada: Catalyst ${iePoe ? 'IE-3400-8P2S-E' : 'IE-3400-8T2S-E'}`,
+        description: 'Switch Industrial de alto rendimiento con soporte de ciberseguridad TrustSec, telemetría avanzada y mayor buffer.',
+        type: 'catalyst_alternative',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Superioridad Técnica IE3400',
+        matchedSpecs: [
+          `8 Puertos ${iePoe ? 'Full PoE+' : 'GE Industrial'}`,
+          '2x SFP + Módulos Expansión',
+          'Soporte Ambientes Extremos (-40°C a +75°C)',
+          `DNA ${tier} ${years * 12}M`,
+        ],
+      },
+      {
+        sku: 'IE-3100-8T2C-E',
+        title: 'Propuesta Compacta Costo-Efectiva: Catalyst IE-3100-8T2C-E',
+        description: 'Switch Industrial DIN-Rail ultracompacto de última generación con 8 puertos GE + 2 puertos Combo Dual-Purpose.',
+        type: 'cost_effective',
+        compatibilityPct: iePoe ? 94 : 100,
+        homologationLabel: iePoe
+          ? '94% Homologado • Alternativa Industrial Data (Sin PoE)'
+          : '100% Homologado • Reemplazo Directo Compacto',
+        matchedSpecs: [
+          '8 Puertos GE + 2x Combo SFP/RJ45',
+          'Diseño Riel DIN Ultra-Compacto',
+          `Fuente AC/DC + ${cordLabel}`,
+          `DNA Essentials ${years * 12}M`,
+        ],
+      }
+    );
+  } else if (
+    params.deviceType === 'server_ucs' ||
+    primaryRefSku.startsWith('UCSC-') ||
+    primaryRefSku.startsWith('UCSX-')
+  ) {
+    seeds.push(
+      {
+        sku: 'UCSC-C220-M7S',
+        title: 'Propuesta Rack 1U Optimizada: Cisco UCS C220 M7 SFF (DDR5)',
+        description: 'Servidor 1U Intel Xeon Scalable 4ta/5ta Gen, 64GB DDR5, Controladora RAID M7, 2x 1.2TB SAS, 2x PSU 1050W e Intersight.',
+        type: 'direct_equivalent',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Reemplazo Oficial Directo M7 (1U)',
+        matchedSpecs: [
+          'Chasis 1U SFF + Rieles M7',
+          'Xeon 4410Y + 64GB DDR5-4800',
+          '2x Discos 1.2TB SAS RAID + 2x PSU 1050W',
+          `Intersight SaaS ${years * 12}M + ${cordLabel}`,
+        ],
+      },
+      {
+        sku: 'UCSC-C240-M7S',
+        title: 'Propuesta Rack 2U Alta Capacidad: Cisco UCS C240 M7 SFF',
+        description: 'Servidor 2U con alta capacidad de bahías de almacenamiento SFF, ranuras PCIe 5.0 adicionales y redundancia total.',
+        type: 'catalyst_alternative',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Expansión Superior Storage/GPU (2U)',
+        matchedSpecs: [
+          'Chasis 2U Alta Densidad Discos',
+          'Xeon Scalable + 64GB DDR5 Expandible',
+          'RAID Hardware M7 + 2x PSU 1050W',
+          `Intersight SaaS ${years * 12}M + ${cordLabel}`,
+        ],
+      },
+      {
+        sku: 'UCSC-C220-M7S',
+        title: 'Propuesta Virtualización Enterprise: UCS C220 M7 + Soporte SmartNet 24x7',
+        description: 'Arquitectura 1U UCS C220 M7 configurada para clústeres de virtualización crítica con Intersight y alta disponibilidad.',
+        type: 'cost_effective',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Configuración Clúster HA',
+        matchedSpecs: [
+          'Homologación 100% Compute & Memoria',
+          'Doble Fuente Titanium 1050W',
+          'Gestión Cloud Cisco Intersight',
+          'Compatible VMware / Hyper-V / Nutanix',
+        ],
+        customDiscountPct: 49.0,
+      }
+    );
+  } else if (
+    params.deviceType === 'nexus_dc' ||
+    primaryRefSku.startsWith('N9K-')
+  ) {
+    seeds.push(
+      {
+        sku: 'N9K-C93180YC-FX3',
+        title: 'Propuesta Data Center Fibra SFP28: Nexus N9K-C93180YC-FX3',
+        description: 'Switch ToR/ Spine Nexus 9300 con 48 puertos 1/10/25G SFP28 + 6 puertos 40/100G QSFP28, doble fuente y ventilación redundante.',
+        type: 'direct_equivalent',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Reemplazo Oficial EX/FX a FX3',
+        matchedSpecs: [
+          '48x 1/10/25G SFP28 Fibra',
+          '6x Uplinks 40/100G QSFP28',
+          '2x PSU 650W + 4x Fans Redundantes',
+          `Licencia DCN ${tier} ${years * 12}M`,
+        ],
+      },
+      {
+        sku: 'N9K-C93108TC-FX3P',
+        title: 'Propuesta Data Center 10GBASE-T Cobre: Nexus N9K-C93108TC-FX3P',
+        description: 'Switch Nexus 9300 con 48 puertos 100M/1G/10GBASE-T RJ45 + 6 puertos 40/100G QSFP28 para servidores en cobre.',
+        type: 'catalyst_alternative',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Equivalente 10G Cobre + 100G Fibra',
+        matchedSpecs: [
+          '48x 10GBASE-T RJ45 + 6x 100G QSFP28',
+          'Redundancia Total Fuentes y Ventiladores',
+          `Licencia DCN ${tier} ${years * 12}M`,
+          cordLabel,
+        ],
+      },
+      {
+        sku: `C9500-24Y4C-${tierCode}`,
+        title: `Propuesta Core Enterprise Fibra: Catalyst C9500-24Y4C-${tierCode}`,
+        description: 'Switch Core Catalyst 9500 de 24 puertos 1/10/25G SFP28 + 4 puertos 40/100G QSFP28 con StackWise Virtual.',
+        type: 'cost_effective',
+        compatibilityPct: 97,
+        homologationLabel: '97% Homologado • Alternativa Core Catalyst 25G/100G',
+        matchedSpecs: [
+          '24x 10/25G SFP28 + 4x 100G QSFP28',
+          'StackWise Virtual Alta Disponibilidad',
+          `Cisco DNA ${tier} ${years * 12}M`,
+          cordLabel,
+        ],
+      }
+    );
+  } else if (
+    params.deviceType === 'firewall' ||
+    primaryRefSku.startsWith('FPR') ||
+    primaryRefSku.startsWith('ASA') ||
+    primaryRefSku.startsWith('MX')
+  ) {
+    const isMerakiMx = primaryRefSku.startsWith('MX');
+    const isHighEndFw = /2110|2120|3110|3120|5516|5525|MX84|MX85|MX95/i.test(primaryRefSku);
+    if (isMerakiMx) {
+      seeds.push(
+        {
+          sku: isHighEndFw ? 'MX85-HW' : primaryRefSku.includes('65') || primaryRefSku.includes('68') ? 'MX68-HW' : 'MX67-HW',
+          title: `Propuesta Reemplazo Directo Meraki SD-WAN: ${isHighEndFw ? 'MX85-HW' : primaryRefSku.includes('65') || primaryRefSku.includes('68') ? 'MX68-HW' : 'MX67-HW'}`,
+          description: 'Appliance de Seguridad y SD-WAN 100% administrado en la nube Meraki con Auto-VPN, IPS Snort 3 y AMP.',
+          type: 'direct_equivalent',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Reemplazo Directo Meraki MX',
+          matchedSpecs: [
+            '100% Compatible Dashboard Meraki',
+            'Auto-VPN SD-WAN + Firewall L7',
+            `Licencia Meraki ${years * 12}M Incluida`,
+            cordLabel,
+          ],
+        },
+        {
+          sku: isHighEndFw ? 'MX95-HW' : 'MX75-HW',
+          title: `Propuesta Alto Rendimiento Cloud: Meraki ${isHighEndFw ? 'MX95-HW' : 'MX75-HW'}`,
+          description: 'Mayor throughput de inspección TLS/IPS, puertos WAN en fibra SFP/SFP+ y alta densidad de túneles VPN.',
+          type: 'catalyst_alternative',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Mayor Throughput WAN/VPN',
+          matchedSpecs: [
+            'Puertos WAN Dedicados Fibra/RJ45',
+            'Doble capacidad de usuarios concurrentes',
+            `Licencia Meraki ${years * 12}M`,
+            cordLabel,
+          ],
+        },
+        {
+          sku: isHighEndFw ? 'FPR1220T-K9' : 'FPR1010-NGFW-K9',
+          title: `Propuesta Cisco Secure Firewall NGFW: ${isHighEndFw ? 'FPR1220T-K9' : 'FPR1010-NGFW-K9'}`,
+          description: 'Appliance Cisco Secure Firewall Threat Defense con licencia Threat, Malware & URL Filtering (TMC).',
+          type: 'cost_effective',
+          compatibilityPct: 98,
+          homologationLabel: '98% Homologado • Equivalente Cisco Secure Firewall FTD',
+          matchedSpecs: [
+            'Inspección Profunda NGFW Snort 3',
+            `Suscripción TMC (IPS+AMP+URL) ${years * 12}M`,
+            'Puertos RJ45 / PoE Integrados',
+            cordLabel,
+          ],
+        }
+      );
+    } else {
+      seeds.push(
+        {
+          sku: isHighEndFw ? 'FPR3110-NGFW-K9' : primaryRefSku.includes('5508') || primaryRefSku.includes('1120') ? 'FPR1120-NGFW-K9' : 'FPR1010-NGFW-K9',
+          title: `Propuesta Oficial Directa NGFW: ${isHighEndFw ? 'FPR3110-NGFW-K9' : primaryRefSku.includes('5508') || primaryRefSku.includes('1120') ? 'FPR1120-NGFW-K9' : 'FPR1010-NGFW-K9'}`,
+          description: 'Reemplazo directo Cisco Secure Firewall con suscripción Threat Defense IPS, Malware (AMP) y URL Filtering.',
+          type: 'direct_equivalent',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Reemplazo Oficial Directo NGFW',
+          matchedSpecs: [
+            '100% Homologado para Migración ASA/FPR',
+            `Licencia TMC (IPS+Malware+URL) ${years * 12}M`,
+            'Soporta FTD o imagen ASA',
+            cordLabel,
+          ],
+        },
+        {
+          sku: isHighEndFw ? 'FPR3120-NGFW-K9' : 'FPR1210T-K9',
+          title: `Propuesta Nueva Generación AI/Hardware: ${isHighEndFw ? 'FPR3120-NGFW-K9' : 'FPR1210T-K9 (Serie 1200)'}`,
+          description: 'Nueva arquitectura Cisco Secure Firewall con aceleración criptográfica por hardware para inspección TLS 1.3.',
+          type: 'catalyst_alternative',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Nueva Generación Alto Desempeño',
+          matchedSpecs: [
+            'Mayor Throughput IPS + Cifrado TLS',
+            'Puertos 1G/10G SFP+ Integrados',
+            `Licencia TMC ${years * 12}M`,
+            cordLabel,
+          ],
+        },
+        {
+          sku: isHighEndFw ? 'MX85-HW' : 'MX68-HW',
+          title: `Propuesta Cloud SD-WAN Unificada: Meraki ${isHighEndFw ? 'MX85-HW' : 'MX68-HW'}`,
+          description: 'Firewall L7 y SD-WAN gestionado 100% desde la nube Meraki con despliegue Zero-Touch y soporte 24x7 incluido.',
+          type: 'cost_effective',
+          compatibilityPct: 97,
+          homologationLabel: '97% Homologado • Alternativa Cloud SD-WAN Meraki',
+          matchedSpecs: [
+            'Gestión Cloud Zero-Touch',
+            'Soporte 24x7 Cisco Meraki Incluido',
+            `Licencia Seguridad ${years * 12}M`,
+            cordLabel,
+          ],
+        }
+      );
+    }
+  } else if (
+    params.deviceType === 'router' ||
+    primaryRefSku.startsWith('ISR') ||
+    primaryRefSku.startsWith('C8') ||
+    primaryRefSku.startsWith('C11')
+  ) {
+    seeds.push(
+      {
+        sku: 'C8200-1N-4T',
+        title: 'Propuesta Oficial Directa WAN/SD-WAN: Catalyst C8200-1N-4T',
+        description: 'Router Edge Catalyst 8200 (1RU) con 4 puertos WAN 1G (RJ45/SFP), 1 ranura NIM modular y suscripción Cisco DNA.',
+        type: 'direct_equivalent',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Reemplazo Oficial ISR4331 / WAN',
+        matchedSpecs: [
+          '4x Puertos WAN 1G (2x RJ45 + 2x SFP)',
+          '1x Ranura Modular NIM',
+          `Licencia DNA ${tier} ${years * 12}M`,
+          cordLabel,
+        ],
+      },
+      {
+        sku: 'C8200L-1N-4T',
+        title: 'Propuesta Optimizada Fast Track: Catalyst C8200L-1N-4T',
+        description: 'Router Edge Catalyst 8200L para sucursales con 4 puertos WAN 1G, ranura NIM y excelente relación costo-beneficio.',
+        type: 'cost_effective',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Mejor Descuento Fast Track',
+        matchedSpecs: [
+          '4x Puertos WAN 1G + 1x Ranura NIM',
+          '100% Compatible IOS-XE / SD-WAN',
+          `Licencia DNA ${tier} ${years * 12}M`,
+          cordLabel,
+        ],
+      },
+      {
+        sku: 'C8300-1N1S-4T2X',
+        title: 'Propuesta Alta Capacidad 10G: Catalyst C8300-1N1S-4T2X',
+        description: 'Router Edge Catalyst 8300 con 2 puertos 10G SFP+ + 4 puertos 1G, ranura NIM + Service Module (SM) y doble fuente.',
+        type: 'catalyst_alternative',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Superioridad WAN 10G + Redundancia',
+        matchedSpecs: [
+          '2x 10G SFP+ + 4x 1G WAN',
+          '1x NIM + 1x Service Module (SM)',
+          `Licencia DNA ${tier} ${years * 12}M`,
+          cordLabel,
+        ],
+      }
+    );
+  } else if (
+    params.deviceType === 'access_point' ||
+    primaryRefSku.startsWith('MR') ||
+    primaryRefSku.startsWith('CW') ||
+    primaryRefSku.startsWith('C91') ||
+    primaryRefSku.startsWith('AIR-')
+  ) {
+    seeds.push(
+      {
+        sku: 'MR46-HW',
+        title: 'Propuesta Wi-Fi 6 Alto Rendimiento: Meraki MR46-HW',
+        description: 'Access Point Cloud Managed Wi-Fi 6 (802.11ax) 4x4:4 MU-MIMO con radio dedicado de seguridad WIDS/WIPS y BLE.',
+        type: 'direct_equivalent',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Estándar Corporativo Wi-Fi 6',
+        matchedSpecs: [
+          'Wi-Fi 6 4x4:4 MU-MIMO (3.5 Gbps)',
+          'Puerto Multigigabit 2.5G PoE+',
+          'Radio Seguridad WIDS/WIPS Dedicado',
+          `Licencia Meraki ${years * 12}M`,
+        ],
+      },
+      {
+        sku: 'CW9164I-MR',
+        title: 'Propuesta Evolución Wi-Fi 6E Tri-Banda (6GHz): Catalyst CW9164I-MR',
+        description: 'Access Point Wi-Fi 6E Tri-Band (2.4GHz + 5GHz + nueva banda 6GHz) 100% administrable en Meraki Dashboard o DNA Center.',
+        type: 'catalyst_alternative',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Nueva Generación Wi-Fi 6E (6GHz)',
+        matchedSpecs: [
+          'Tri-Banda 2.4 / 5 / 6 GHz Wi-Fi 6E',
+          'Hardware Dual-Persona (Meraki / Catalyst)',
+          'Puerto 2.5G Multigigabit PoE+',
+          `Licencia Suscripción ${years * 12}M`,
+        ],
+      },
+      {
+        sku: 'MR36-HW',
+        title: 'Propuesta Wi-Fi 6 Costo-Efectiva Fast Track: Meraki MR36-HW',
+        description: 'Access Point Cloud Managed Wi-Fi 6 2x2:2 MU-MIMO de bajo consumo PoE (15W 802.3af) ideal para oficinas y densidad media.',
+        type: 'cost_effective',
+        compatibilityPct: 98,
+        homologationLabel: '98% Homologado • Optimización Presupuesto & PoE',
+        matchedSpecs: [
+          'Wi-Fi 6 2x2:2 MU-MIMO',
+          'Bajo consumo PoE (Opera con 15.4W 802.3af)',
+          'Radio Seguridad + Bluetooth BLE',
+          `Licencia Meraki ${years * 12}M`,
+        ],
+      }
+    );
+  } else if (
+    params.deviceType === 'collaboration' ||
+    primaryRefSku.startsWith('DP-') ||
+    primaryRefSku.startsWith('CP-') ||
+    primaryRefSku.startsWith('CS-')
+  ) {
+    const isVideoRoom = primaryRefSku.startsWith('CS-');
+    if (isVideoRoom) {
+      seeds.push(
+        {
+          sku: 'CS-BAR-T-C-K9',
+          title: 'Propuesta Sala de Reuniones Estándar: Cisco Room Bar + Navigator',
+          description: 'Barra de videoconferencia inteligente con cámara 4K AI, parlantes estéreo, arreglo de micrófonos y panel táctil Room Navigator.',
+          type: 'direct_equivalent',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Reemplazo Oficial Room Kit / Mini',
+          matchedSpecs: [
+            'Cámara 4K con Encuadre AI + Audio HD',
+            'Incluye Panel Táctil Room Navigator',
+            'Nativo Webex / Microsoft Teams / Zoom',
+            `Suscripción Cloud ${years * 12}M + ${cordLabel}`,
+          ],
+        },
+        {
+          sku: 'CS-BARPRO-C-K9',
+          title: 'Propuesta Sala Mediana/Grande Dual-Lens: Cisco Room Bar Pro',
+          description: 'Barra de video avanzada con doble lente 48MP de largo alcance, inteligencia artificial NVIDIA y entradas/salidas extendidas.',
+          type: 'catalyst_alternative',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Alcance Extendido Dual-Lens AI',
+          matchedSpecs: [
+            'Doble Cámara 48MP Zoom Inteligente',
+            'Soporta hasta 3 Pantallas Externas',
+            'Incluye Room Navigator Táctil',
+            `Suscripción Cloud ${years * 12}M + ${cordLabel}`,
+          ],
+        },
+        {
+          sku: 'CS-BRD55P-G2-K9',
+          title: 'Propuesta Todo-en-Uno Interactiva: Cisco Board Pro G2 55"',
+          description: 'Pantalla colaborativa 4K de 55 pulgadas Todo-en-Uno con pizarra interactiva, doble cámara AI y audio espacial integrado.',
+          type: 'cost_effective',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Solución All-in-One con Pantalla 55"',
+          matchedSpecs: [
+            'Pantalla 55" 4K Touch + Pizarra Digital',
+            'Cámara Dual AI + Micrófonos Integrados',
+            'No requiere monitores externos',
+            `Suscripción Cloud ${years * 12}M + ${cordLabel}`,
+          ],
+        }
+      );
+    } else {
+      seeds.push(
+        {
+          sku: 'DP-9851-K9',
+          title: 'Propuesta Corporativa Estándar: Cisco Desk Phone 9851',
+          description: 'Teléfono IP de nueva generación Serie 9800 con pantalla color de alta resolución, doble puerto Gigabit PoE, USB-C y botón de acción.',
+          type: 'direct_equivalent',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Reemplazo Oficial CP-7841 / 8841',
+          matchedSpecs: [
+            'Switch Gigabit 2 Puertos RJ45 PoE',
+            'Pantalla Color + Audio HD con AI Noise Removal',
+            'Compatible CUCM On-Prem y Webex Calling',
+            `Suscripción Flex Calling ${years * 12}M`,
+          ],
+        },
+        {
+          sku: 'DP-9861-K9',
+          title: 'Propuesta Inalámbrica Ejecutiva: Cisco Desk Phone 9861 (Wi-Fi + BT)',
+          description: 'Teléfono IP Serie 9800 con Wi-Fi Dual-Band integrado, Bluetooth para headsets inalámbricos y pantalla grande.',
+          type: 'catalyst_alternative',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Incluye Wi-Fi & Bluetooth Integrado',
+          matchedSpecs: [
+            'Wi-Fi + Bluetooth + Gigabit PoE',
+            'Ideal para escritorios con o sin punto de red',
+            'Seguridad TPM 2.0 + Audio AI',
+            `Suscripción Flex Calling ${years * 12}M`,
+          ],
+        },
+        {
+          sku: 'DP-9841-K9',
+          title: 'Propuesta Costo-Efectiva Fast Track: Cisco Desk Phone 9841',
+          description: 'Teléfono IP corporativo Serie 9800 con puertos Gigabit PoE y bajo consumo energético para despliegues masivos.',
+          type: 'cost_effective',
+          compatibilityPct: 98,
+          homologationLabel: '98% Homologado • Mejor Precio GPL & Descuento',
+          matchedSpecs: [
+            '2x Puertos Gigabit Ethernet PoE',
+            'Audio HD + Reducción de Ruido AI',
+            'Menor consumo PoE (Clase 1/2)',
+            `Suscripción Flex Calling ${years * 12}M`,
+        ],
+        }
+      );
+    }
+  } else if (primaryRefSku.startsWith('MS')) {
+    // Familia Meraki Cloud Switches (MS120, MS210, MS220, MS130, MS225)
+    if (isFullPoe && portNum === 48) {
+      seeds.push(
+        {
+          sku: 'MS225-48FP-HW',
+          title: 'Propuesta Reemplazo Directo 740W + Stacking: Meraki MS225-48FP-HW',
+          description: 'Switch L2 Cloud Managed de 48 puertos GigE Full PoE+ (740W), 4x 10G SFP+ uplinks y puertos de Stacking físico dedicado (80G).',
+          type: 'direct_equivalent',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Cumple 740W Full PoE+ y Stacking',
+          matchedSpecs: [
+            '48 Puertos Full PoE+ (740W Budget)',
+            '4x Uplinks 10G SFP+ + Stacking 80G',
+            `Licencia Meraki ${years * 12}M + ${cordLabel}`,
+          ],
+        },
+        {
+          sku: `C9200L-48FP-4X-${tierCode}`,
+          title: `Propuesta Enterprise 740W 10G: Catalyst C9200L-48FP-4X-${tierCode}`,
+          description: 'Switch Cisco Catalyst 9200L con 48 puertos Full PoE+ (740W con fuente 1KW), 4x 10G SFP+ uplinks y monitoreo Cloud/CLI.',
+          type: 'catalyst_alternative',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado en Potencia 740W & 4x10G SFP+',
+          matchedSpecs: [
+            '48 Puertos Full PoE+ (740W Fuente 1KW)',
+            '4x Uplinks 10G SFP+ Fibra',
+            `Cisco DNA ${tier} ${years * 12}M + ${cordLabel}`,
+          ],
+        },
+        {
+          sku: 'MS130-SWITCHES:MS130-48P',
+          title: 'Propuesta Cloud Native 370W Costo-Efectiva: Meraki MS130-48P',
+          description: 'Contenedor Madre MS130-SWITCHES + Hijo MS130-48P (370W PoE+ budget) y 4x 10G SFP+. Ideal si el consumo PoE es menor a 370W.',
+          type: 'cost_effective',
+          compatibilityPct: 95,
+          homologationLabel: '95% Homologado • Presupuesto PoE 370W (Ahorro Alto)',
+          matchedSpecs: [
+            '48 Puertos PoE+ (370W Budget)',
+            '4x Uplinks 10G SFP+ Integrados',
+            `Contenedor MS130-SWITCHES + Lic ${years}Y`,
+          ],
+        }
+      );
+    } else {
+      const ms130Child = is8
+        ? `MS130-8${isNoPoe ? '' : 'P'}`
+        : `MS130-${portNum}${isNoPoe ? '' : 'P'}`;
+      const ms225Sku = `MS225-${portNum === 8 ? 24 : portNum}${isNoPoe ? '' : portNum === 48 ? 'LP' : 'P'}-HW`;
+      const catEquiv = `C9200L-${portNum === 8 ? 24 : portNum}${isNoPoe ? 'T' : 'P'}-4X-${tierCode}`;
+
+      seeds.push(
+        {
+          sku: `MS130-SWITCHES:${ms130Child}`,
+          title: `Propuesta Oficial Cloud Native: Meraki ${ms130Child} (Bajo MS130-SWITCHES)`,
+          description: `Reemplazo oficial vigente 2026 en contenedor Madre MS130-SWITCHES con ${portNum} puertos ${isNoPoe ? 'Data' : 'PoE+ (370W)'} y 4x 10G SFP+.`,
+          type: 'direct_equivalent',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Reemplazo Oficial Directo Meraki',
+          matchedSpecs: [
+            `${portNum} Puertos ${isNoPoe ? 'GigE Data' : 'PoE+ (370W)'}`,
+            '4x Uplinks 10G SFP+ Fibra',
+            `Contenedor MS130-SWITCHES + Lic ${years}Y`,
+            cordLabel,
+          ],
+        },
+        {
+          sku: ms225Sku,
+          title: `Propuesta con Stacking Físico Dedicado: Meraki ${ms225Sku}`,
+          description: `Switch Cloud Managed con ${portNum === 8 ? 24 : portNum} puertos ${isNoPoe ? 'Data' : 'PoE+ (370W)'}, 4x 10G SFP+ y apilamiento físico 80G.`,
+          type: 'direct_equivalent',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Incluye Stacking Físico 80G',
+          matchedSpecs: [
+            `${portNum === 8 ? 24 : portNum} Puertos ${isNoPoe ? 'Data' : 'PoE+ 370W'}`,
+            'Stacking Físico Dedicado + 4x 10G SFP+',
+            `Licencia Meraki ${years}YR + ${cordLabel}`,
+          ],
+        },
+        {
+          sku: catEquiv,
+          title: `Propuesta Equivalente Catalyst 10G: ${catEquiv}`,
+          description: `Switch Cisco Catalyst 9200L con ${portNum === 8 ? 24 : portNum} puertos ${isNoPoe ? 'Data' : 'PoE+ (370W)'}, 4x 10G SFP+ y excelente descuento Fast Track.`,
+          type: 'catalyst_alternative',
+          compatibilityPct: 98,
+          homologationLabel: '98% Homologado • Equivalente Catalyst Fast Track',
+          matchedSpecs: [
+            `${portNum === 8 ? 24 : portNum} Puertos ${isNoPoe ? 'Data' : 'PoE+ 370W'}`,
+            '4x Uplinks 10G SFP+',
+            `Cisco DNA ${tier} ${years * 12}M + ${cordLabel}`,
+          ],
+        }
+      );
+    }
+  } else if (
+    primaryRefSku.includes('3850') ||
+    primaryRefSku.includes('3650') ||
+    primaryRefSku.startsWith('C9300')
+  ) {
+    // Familia Catalyst 3850 / 3650 (EOL) o Catalyst 9300 / 9300L (Vigentes)
+    const pNum = is48 ? 48 : 24;
+    const poe9300 = isNoPoe ? 'T' : 'P';
+    const poe9300L = isNoPoe ? 'T' : isFullPoe && pNum === 48 ? 'PF' : 'P';
+
+    seeds.push(
+      {
+        sku: `C9300L-${pNum}${poe9300L}-4X-${tierCode}`,
+        title: `Propuesta #1 Fast Track Uplinks 10G: Catalyst C9300L-${pNum}${poe9300L}-4X-${tierCode}`,
+        description: `Switch Enterprise Catalyst 9300L de ${pNum} puertos ${isNoPoe ? 'Data' : 'PoE+'} con 4x 10G SFP+ integrados, fuente redundante opcional y StackWise-320.`,
+        type: 'direct_equivalent',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Mejor Descuento Fast Track + 4x10G',
+        matchedSpecs: [
+          `${pNum} Puertos ${isNoPoe ? 'GigE Data' : isFullPoe ? 'Full PoE+ 1100W' : 'PoE+ (715W PSU)'}`,
+          '4x Uplinks 10G SFP+ Integrados',
+          `Cisco DNA ${tier} ${years * 12}M + ${cordLabel}`,
+        ],
+      },
+      {
+        sku: `C9300-${pNum}${poe9300}-${tierCode}`,
+        title: `Propuesta Modular StackWise-480: Catalyst C9300-${pNum}${poe9300}-${tierCode}`,
+        description: `Reemplazo modular directo con módulo de red C9300-NM-8X (8x10G SFP+) y cable de apilamiento STACK-T1-50CM incluidos.`,
+        type: 'direct_equivalent',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Chasis Modular + Módulo 8x10G',
+        matchedSpecs: [
+          `${pNum} Puertos ${isNoPoe ? 'Data' : 'PoE+'} + StackWise-480`,
+          'Incluye Módulo C9300-NM-8X (8x10G)',
+          'Incluye Cable Stack STACK-T1-50CM',
+          `Cisco DNA ${tier} ${years * 12}M + ${cordLabel}`,
+        ],
+      },
+      {
+        sku: `C9200-${pNum}${poe9300}-${tierCode}`,
+        title: `Propuesta Optimización Modular: Catalyst C9200-${pNum}${poe9300}-${tierCode}`,
+        description: `Switch modular Catalyst 9200 de ${pNum} puertos con módulo C9200-NM-4X (4x10G SFP+), fuentes y ventiladores redundantes a menor GPL.`,
+        type: 'cost_effective',
+        compatibilityPct: 98,
+        homologationLabel: '98% Homologado • Chasis Modular con Ahorro en GPL',
+        matchedSpecs: [
+          `${pNum} Puertos ${isNoPoe ? 'Data' : 'PoE+'} Modulares`,
+          'Incluye Módulo Uplink C9200-NM-4X (4x10G)',
+          `Cisco DNA ${tier} ${years * 12}M + ${cordLabel}`,
+        ],
+      }
+    );
+  } else if (
+    primaryRefSku.startsWith('CBS') ||
+    primaryRefSku.startsWith('SG') ||
+    primaryRefSku.startsWith('C1000') ||
+    primaryRefSku.startsWith('C1200') ||
+    primaryRefSku.startsWith('C1300')
+  ) {
+    // Familia SMB / Branch (CBS250, CBS350, C1000, C1200, C1300)
+    const pNum = is48 ? 48 : 24;
+    const poeChar = isNoPoe ? 'T' : 'P';
+    seeds.push(
+      {
+        sku: `C1300-${pNum}${poeChar}-4G`,
+        title: `Propuesta Oficial Directa (Sin Suscripción Obligatoria): Catalyst C1300-${pNum}${poeChar}-4G`,
+        description: `Switch administrable Capa 3 Cisco Catalyst 1300 de ${pNum} puertos ${isNoPoe ? 'Data' : 'PoE+'} con 4x1G SFP y licenciamiento perpetuo incluido.`,
+        type: 'direct_equivalent',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Reemplazo Oficial CBS350 / C1000',
+        matchedSpecs: [
+          `${pNum} Puertos ${isNoPoe ? 'GigE' : 'PoE+'} + 4x1G SFP`,
+          'Sin costo de licencia DNA recurrente',
+          'Soporte Layer 3 Estático/RIP + Stacking',
+          cordLabel,
+        ],
+      },
+      {
+        sku: `C1300-${pNum}${poeChar}-4X`,
+        title: `Propuesta Evolución Uplinks 10G SFP+: Catalyst C1300-${pNum}${poeChar}-4X`,
+        description: `Switch Cisco Catalyst 1300 de ${pNum} puertos ${isNoPoe ? 'Data' : 'PoE+'} con 4 puertos de fibra 10G SFP+ para apilamiento y enlaces troncales 10G.`,
+        type: 'catalyst_alternative',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Upgrade a 4x10G SFP+',
+        matchedSpecs: [
+          `${pNum} Puertos ${isNoPoe ? 'GigE' : 'PoE+'} + 4x10G SFP+`,
+          'Apilamiento hasta 8 unidades por 10G',
+          'Sin licencia recurrente obligatoria',
+          cordLabel,
+        ],
+      },
+      {
+        sku: `C9200L-${pNum}${poeChar}-4G-${tierCode}`,
+        title: `Propuesta Enterprise IOS-XE: Catalyst C9200L-${pNum}${poeChar}-4G-${tierCode}`,
+        description: `Salto a arquitectura corporativa Catalyst 9200L con IOS-XE, telemetría DNA y garantía limitada de por vida (E-LLW).`,
+        type: 'catalyst_alternative',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Salto a Línea Enterprise C9200L',
+        matchedSpecs: [
+          `${pNum} Puertos ${isNoPoe ? 'Data' : 'PoE+'} + 4x1G SFP`,
+          'Sistema Operativo Empresarial IOS-XE',
+          `Cisco DNA ${tier} ${years * 12}M + ${cordLabel}`,
+        ],
+      }
+    );
+  } else {
+    // Familia General Enterprise Switching: Catalyst 2960X / 2960L / 2960XR / C9200L / C9200
+    const pNum = is48 ? 48 : 24;
+    const poe9200L = isNoPoe ? 'T' : isFullPoe && pNum === 48 ? 'FP' : 'P';
+    const poe9200Mod = isNoPoe ? 'T' : 'P';
+
+    seeds.push(
+      {
+        sku: `C9200L-${pNum}${poe9200L}-${is10G ? '4X' : '4G'}-${tierCode}`,
+        title: `Propuesta #1 Equivalente Exacto Fast Track: Catalyst C9200L-${pNum}${poe9200L}-${is10G ? '4X' : '4G'}-${tierCode}`,
+        description: `Switch Cisco Catalyst 9200L de ${pNum} puertos ${isNoPoe ? 'Data' : poe9200L === 'FP' ? 'Full PoE+ (740W)' : 'PoE+ (370W)'} con uplinks fijos ${is10G ? '4x10G SFP+' : '4x1G SFP'} y descuento preferencial Fast Track.`,
+        type: 'direct_equivalent',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Reemplazo Directo + Mejor Dcto Fast Track',
+        matchedSpecs: [
+          `${pNum} Puertos ${isNoPoe ? 'GigE Data' : poe9200L === 'FP' ? 'Full PoE+ 740W' : 'PoE+ 370W'}`,
+          `Uplinks Fijos ${is10G ? '4x10G SFP+' : '4x1G SFP'}`,
+          `Cisco DNA ${tier} ${years * 12}M`,
+          cordLabel,
+        ],
+      },
+      {
+        sku: `C9200L-${pNum}${poe9200L}-${is10G ? '4G' : '4X'}-${tierCode}`,
+        title: is10G
+          ? `Propuesta Optimización Uplinks 1G: Catalyst C9200L-${pNum}${poe9200L}-4G-${tierCode}`
+          : `Propuesta Upgrade Uplinks 10G SFP+: Catalyst C9200L-${pNum}${poe9200L}-4X-${tierCode}`,
+        description: is10G
+          ? `Versión con uplinks 4x1G SFP para reducir el Valor GPL manteniendo el 100% de puertos y potencia PoE+.`
+          : `Misma densidad de ${pNum} puertos ${isNoPoe ? 'Data' : 'PoE+'} pero duplicando la velocidad troncal con 4 puertos de fibra 10G SFP+ (elegible Fast Track).`,
+        type: 'direct_equivalent',
+        compatibilityPct: is10G ? 96 : 100,
+        homologationLabel: is10G
+          ? '96% Homologado • Opción Económica Uplinks 4x1G'
+          : '100% Homologado • Superioridad Troncales 4x10G SFP+',
+        matchedSpecs: [
+          `${pNum} Puertos ${isNoPoe ? 'GigE Data' : poe9200L === 'FP' ? 'Full PoE+ 740W' : 'PoE+ 370W'}`,
+          `Uplinks ${is10G ? '4x1G SFP (Ahorro GPL)' : '4x10G SFP+ Fibra'}`,
+          `Cisco DNA ${tier} ${years * 12}M`,
+          cordLabel,
+        ],
+      },
+      {
+        sku: `C9200-${pNum}${poe9200Mod}-${tierCode}`,
+        title: `Propuesta Chasis Modular Enterprise: Catalyst C9200-${pNum}${poe9200Mod}-${tierCode}`,
+        description: `Switch Catalyst 9200 Modular con módulo de red C9200-NM-4X (4x10G), ventiladores redundantes extraíbles en caliente y StackWise-160.`,
+        type: 'catalyst_alternative',
+        compatibilityPct: 100,
+        homologationLabel: '100% Homologado • Chasis Modular + Ventiladores Redundantes',
+        matchedSpecs: [
+          `${pNum} Puertos ${isNoPoe ? 'Data' : 'PoE+'} Chasis Modular`,
+          'Incluye Módulo Uplink C9200-NM-4X',
+          'Ventiladores Field-Replaceable + StackWise-160',
+          `Cisco DNA ${tier} ${years * 12}M + ${cordLabel}`,
+        ],
+      },
+      {
+        sku:
+          poe9200L === 'FP' && pNum === 48
+            ? 'MS225-48FP-HW'
+            : `MS130-SWITCHES:MS130-${pNum}${isNoPoe ? '' : 'P'}`,
+        title:
+          poe9200L === 'FP' && pNum === 48
+            ? 'Propuesta Equivalente Cloud 740W: Meraki MS225-48FP-HW'
+            : `Propuesta Equivalente Cloud Native: Meraki MS130-${pNum}${isNoPoe ? '' : 'P'}`,
+        description: `Alternativa 100% administrada en la nube Cisco Meraki con ${pNum} puertos ${isNoPoe ? 'Data' : poe9200L === 'FP' ? 'Full PoE+ 740W' : 'PoE+ 370W'} y 4x 10G SFP+ uplinks.`,
+        type: 'cost_effective',
+        compatibilityPct: 98,
+        homologationLabel: '98% Homologado • Equivalente Cloud Meraki + 4x10G',
+        matchedSpecs: [
+          `${pNum} Puertos ${isNoPoe ? 'Data' : poe9200L === 'FP' ? 'Full PoE+ 740W' : 'PoE+ 370W'}`,
+          '4x Uplinks 10G SFP+ Integrados',
+          `Gestión Cloud Meraki + Soporte 24x7 (${years}Y)`,
+        ],
+      }
+    );
+  }
+
+  // Asegurar que si el activeSku actual no estaba entre las semillas, se incluya también sin duplicados
+  const seenSkus = new Set<string>();
+  const uniqueSeeds: CandidateSeed[] = [];
+  for (const s of seeds) {
+    const key = s.sku.trim().toUpperCase();
+    if (!seenSkus.has(key)) {
+      seenSkus.add(key);
+      uniqueSeeds.push(s);
+    }
+  }
+
+  // Construir las propuestas enriquecidas con su cálculo GPL (0% descuento) y neto estimado
+  const builtProposals: HomologatedProposal[] = uniqueSeeds.map((seed, idx) => {
+    const gplInfo = computeProposalSolutionGpl(seed.sku, {
+      quantity: qty,
+      licenseTier: tier,
+      termYears: years,
+      powerCordStandard: params.powerCordStandard || 'italy_chile',
+      includeStacking: params.includeStacking,
+      includeRedundantPsu: params.includeRedundantPsu,
+      includeSmartNet: params.includeSmartNet,
+      smartNetLevel: params.smartNetLevel || '8x5xNBD',
+      merakiLicenseMode: params.merakiLicenseMode || 'subscription',
+    });
+
+    const discountRef =
+      REFERENCE_FASTTRACK_DISCOUNTS_2026[seed.sku.toUpperCase()] ||
+      REFERENCE_FASTTRACK_DISCOUNTS_2026[seed.sku.toUpperCase().replace(/-(E|A)$/i, '-E')] || {
+        discountPct: seed.customDiscountPct || 44.0,
+        isFastTrack: false,
+        promoLabel: '🏷️ Descuento Estándar Deal Reg CCW',
+      };
+
+    const estimatedDiscountPct = seed.customDiscountPct || discountRef.discountPct;
+    const isFastTrackEligible = discountRef.isFastTrack;
+    const promoBadge = `${discountRef.promoLabel} (${estimatedDiscountPct}% Dcto)`;
+
+    const estimatedUnitNetUsd = Number(
+      (gplInfo.unitSolutionGplUsd * (1 - estimatedDiscountPct / 100)).toFixed(2)
+    );
+    const estimatedTotalNetUsd = Number((estimatedUnitNetUsd * qty).toFixed(2));
+    const estimatedSavingsUsd = Number(
+      Math.max(0, gplInfo.totalSolutionGplUsd - estimatedTotalNetUsd).toFixed(2)
+    );
+
+    // Score de Prioridad: pondera 65% el % de Homologación Técnica + 35% el % de Descuento + bono Fast Track
+    const priorityScore = Number(
+      (
+        seed.compatibilityPct * 0.65 +
+        estimatedDiscountPct * 0.35 +
+        (isFastTrackEligible ? 4.5 : 0)
+      ).toFixed(2)
+    );
+
+    return {
+      proposalId: `prop-${idx + 1}-${seed.sku}`,
+      priorityRank: idx + 1,
+      recommendedSku: seed.sku,
+      title: seed.title,
+      description: seed.description,
+      type: seed.type,
+      compatibilityPct: seed.compatibilityPct,
+      homologationLabel: seed.homologationLabel,
+      matchedSpecs: seed.matchedSpecs,
+      unitChassisGplUsd: gplInfo.unitChassisGplUsd,
+      unitSolutionGplUsd: gplInfo.unitSolutionGplUsd,
+      totalSolutionGplUsd: gplInfo.totalSolutionGplUsd,
+      estimatedDiscountPct,
+      isFastTrackEligible,
+      promoBadge,
+      estimatedUnitNetUsd,
+      estimatedTotalNetUsd,
+      estimatedSavingsUsd,
+      priorityScore,
+      subItemsBreakdown: gplInfo.subItemsBreakdown,
+    };
+  });
+
+  return sortHomologatedProposals(builtProposals, sortMode);
+}
+
