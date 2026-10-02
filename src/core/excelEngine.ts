@@ -21,6 +21,7 @@ import {
   isCloudSubscriptionSku,
   safeParseFloat,
   normalizeOverrideRule,
+  roundFinancial,
 } from './calculations';
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../lib/intcomexLogoBase64';
 import { generateQuotationFileName, isPureLicensingQuote } from './exportUtils';
@@ -418,9 +419,22 @@ export async function parseEstimateWorkbook(
   promoNetPrices?: Record<number, number>
 ): Promise<{ result: ProcessedEstimateResult }> {
   // Always clone arrayBuffer to prevent memory detachment / buffer consumption issues
-  const bufferCopy = arrayBuffer.slice(0);
+  const bufferCopy = arrayBuffer instanceof ArrayBuffer
+    ? arrayBuffer.slice(0)
+    : (typeof Buffer !== 'undefined' && Buffer.isBuffer(arrayBuffer)
+      ? arrayBuffer
+      : (arrayBuffer && (arrayBuffer as any).buffer
+        ? (arrayBuffer as any).buffer.slice(
+            (arrayBuffer as any).byteOffset || 0,
+            ((arrayBuffer as any).byteOffset || 0) + ((arrayBuffer as any).byteLength || (arrayBuffer as any).length || 0)
+          )
+        : (arrayBuffer && typeof (arrayBuffer as any).slice === 'function' ? (arrayBuffer as any).slice(0) : arrayBuffer)));
+
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(bufferCopy);
+  const loadPayload = typeof Buffer !== 'undefined' && !(bufferCopy instanceof Buffer)
+    ? Buffer.from(bufferCopy as ArrayBuffer)
+    : bufferCopy;
+  await workbook.xlsx.load(loadPayload as any);
 
   let isPreviouslyProcessed = false;
   let priorMargin = 0;
@@ -797,13 +811,23 @@ export async function parseEstimateWorkbook(
     // Dentro del bucle de items: Si el archivo fue previamente procesado, restaurar costos de fábrica
     if (isPreviouslyProcessed && shadowSnapshot[lineNumStr]) {
       const snap = shadowSnapshot[lineNumStr];
-      netCiscoUnit = snap.pera;        // Costo base original
+      let healedPera = snap.pera;
+      let healedSandia = snap.sandia !== undefined ? Boolean(snap.sandia) : false;
+
+      // Autocuración: Si un archivo previo fue grabado con el bug de multiplicación (pera > manzana con descuento),
+      // restaurar el costo neto original unitario dividiendo por los meses
+      if (snap.manzana > 0 && snap.mango && snap.mango > 1 && healedPera > snap.manzana * 1.05) {
+        healedPera = roundFinancial(healedPera / snap.mango);
+        healedSandia = false;
+      }
+
+      netCiscoUnit = healedPera;        // Costo base original
       unitListPrice = snap.manzana;    // List price original
       discPct = snap.cereza;           // Descuento original
-      rawNetCiscoUnit = snap.pera;
-      realUnitCost = snap.pera;
+      rawNetCiscoUnit = healedPera;
+      realUnitCost = healedPera;
       if (snap.mango) detectedDurationMonths = snap.mango;
-      if (snap.sandia !== undefined) isPeriodicSubscription = Boolean(snap.sandia);
+      isPeriodicSubscription = healedSandia;
     }
 
     // Caso Sub-líneas a costo $0.00 (como LIC-MT-E-INCL o contenedores .0 a costo 0)
@@ -852,7 +876,27 @@ export async function parseEstimateWorkbook(
     // Look-ahead estrictamente local (solo fila siguiente) para no mezclar licencias
     const nextDesc1 = colMap.colDesc > 0 ? getCellString(worksheet.getCell(r + 1, colMap.colDesc)) : '';
 
-    if (isPeriodicSubscription || isCloudSubscriptionSku(sku, nextDesc1)) {
+    const isExplicitPrepaid =
+      /Billing\s*Model\s*[-:]\s*Prepaid/i.test(nextDesc1) ||
+      /Prepaid\s*Term/i.test(nextDesc1) ||
+      /\bPrepaid\b/i.test(nextDesc1) ||
+      /Billing\s*Model\s*[-:]\s*Prepaid/i.test(description) ||
+      /Prepaid\s*Term/i.test(description);
+
+    // Si el total extendido en CCW es igual al unitario por cantidad (ratio <= 1.05),
+    // el Unit Net de Cisco YA ES el total por el plazo (Prepaid / Lump-sum consolidado).
+    const isRatioConsolidated =
+      rawExtCost > 0 && rawNetCiscoUnit > 0 && qty > 0 && (rawExtCost / (rawNetCiscoUnit * qty)) <= 1.05;
+
+    // Solo se procesa como suscripción periódica multiplicada (tipo Meraki mensual) si:
+    // 1) NO es explícitamente prepago ni consolidado en ratio
+    // 2) Y el parser jerárquico lo marcó como periódica (ratio > 1.05) O es un SKU Meraki en catálogo
+    const shouldCalculatePeriodic =
+      !isExplicitPrepaid &&
+      !isRatioConsolidated &&
+      (isPeriodicSubscription || (hierLine === undefined && isCloudSubscriptionSku(sku, nextDesc1)));
+
+    if (shouldCalculatePeriodic) {
       try {
         const nextPart1 = colMap.colPart > 0 ? getCellString(worksheet.getCell(r + 1, colMap.colPart)) : '';
         const nextDesc2 = colMap.colDesc > 0 ? getCellString(worksheet.getCell(r + 2, colMap.colDesc)) : '';
@@ -1032,7 +1076,10 @@ export async function generateOptimizedWorkbook(
   promoNetPrices?: Record<number, number>
 ): Promise<{ result: ProcessedEstimateResult; modifiedBuffer: ArrayBuffer }> {
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(arrayBuffer);
+  const loadPayload = typeof Buffer !== 'undefined' && !(arrayBuffer instanceof Buffer)
+    ? Buffer.from(arrayBuffer as ArrayBuffer)
+    : arrayBuffer;
+  await workbook.xlsx.load(loadPayload as any);
 
   const worksheet = workbook.worksheets[0];
   if (!worksheet) {
@@ -1567,8 +1614,15 @@ export async function generateOptimizedWorkbook(
   sanitizeWorkbookForExport(workbook);
 
   const buf = await workbook.xlsx.writeBuffer();
-  const modifiedBuffer =
-    buf instanceof ArrayBuffer ? buf : (new Uint8Array(buf).buffer as ArrayBuffer);
+  const modifiedBuffer: ArrayBuffer =
+    buf instanceof ArrayBuffer
+      ? buf
+      : (buf && (buf as any).buffer
+        ? (buf as any).buffer.slice(
+            (buf as any).byteOffset || 0,
+            ((buf as any).byteOffset || 0) + ((buf as any).byteLength || (buf as any).length || 0)
+          )
+        : (new Uint8Array(buf).buffer as ArrayBuffer));
 
   const isOnlyLicensing = isPureLicensingQuote(items);
 

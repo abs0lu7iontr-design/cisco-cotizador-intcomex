@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { ProcessedEstimateLine } from './estimateHierarchyParser';
+import { checkIsIntangible } from '../../core/calculations';
 
 export interface CalculatedSaleLine extends ProcessedEstimateLine {
   unitSalePrice: number;
@@ -20,7 +21,8 @@ export function calculateEstimateSalesPricing(
 
   return lines.map((line) => {
     // Las licencias y suscripciones no pagan internación de aduana
-    const isHardware = !line.isPeriodicSubscription && !line.partNumber.startsWith('LIC-') && !line.partNumber.startsWith('CON-');
+    const isIntangible = checkIsIntangible(line.partNumber, line.description);
+    const isHardware = !isIntangible;
     const applicableInternacion = isHardware ? hwInternacionDecimal : 0;
 
     const landedCost = line.realUnitCost * (1 + applicableInternacion);

@@ -45,6 +45,13 @@ export function checkIsIntangible(sku: string, description: string): boolean {
     upperSku.startsWith('CON') ||
     upperSku.startsWith('L-') ||
     upperSku.startsWith('LIC-') ||
+    upperSku.startsWith('C1') ||
+    upperSku.startsWith('SVS-') ||
+    upperSku.startsWith('CX-') ||
+    upperSku.startsWith('CXE-') ||
+    upperSku.startsWith('CXS-') ||
+    upperSku.startsWith('DCN-') ||
+    upperSku.startsWith('NETWORK-') ||
     upperSku.includes('-DNA-') ||
     upperSku.includes('DNA-') ||
     upperSku.includes('-NW-') ||
@@ -112,6 +119,14 @@ export function checkIsIntangible(sku: string, description: string): boolean {
     'dna advantage',
     'network essentials',
     'network advantage',
+    'networking essentials',
+    'networking advantage',
+    'essentials term',
+    'advantage term',
+    'premier term',
+    'cisco one',
+    'data center networking',
+    'dcn',
   ];
 
   if (intangibleKeywords.some((keyword) => lowerDesc.includes(keyword))) {
@@ -571,15 +586,42 @@ export function suggestFileName(fileName: string, suffix: string = 'CALC'): stri
 
 /**
  * Universal SaaS/Cloud Subscription Classifier
- * Protege Hardware/DNA/SmartNet y habilita SaaS Meraki/Catalyst
+ * Detecta si un SKU corresponde a una suscripción en la nube SaaS (como Meraki LIC-*)
+ * cuyo precio unitario en CCW representa un valor mensual que requiere multiplicarse por el plazo.
+ *
+ * REGLAS DE SEGURIDAD ESTRICTAS:
+ * 1. Suscripciones Prepago (Prepaid Term / Lump-Sum): Si la fila adyacente o descripción indica "Prepaid Term",
+ *    el Unit Net Price de CCW YA ES el costo total por todo el período. JAMÁS debe multiplicarse por meses.
+ * 2. Licencias Cisco ONE (C1*), Data Center (DCN*), DNA, Servicios (CON*, SVS*, CX*) y software perpetuo (L-*, =):
+ *    NUNCA deben multiplicarse por meses.
+ * 3. Solo familias Meraki Cloud (LIC-*) con modalidad periódica mensual aplican para multiplicación.
  */
 export function isCloudSubscriptionSku(sku: string, descriptionRowAhead?: string): boolean {
   const cleanSku = (sku || '').trim().toUpperCase();
-  
-  // 1. BLACKLIST ESTRICTA: Ignorar servicios, software perpetuo y hardware con arancel
+  if (!cleanSku) return false;
+
+  // 1. REGLA PREPAGO EXPLICITA: Si la descripción indica "Prepaid Term" o "Prepaid",
+  // el precio en CCW YA ES POR EL PLAZO COMPLETO.
+  if (descriptionRowAhead) {
+    if (
+      /Billing\s*Model\s*[-:]\s*Prepaid/i.test(descriptionRowAhead) ||
+      /Prepaid\s*Term/i.test(descriptionRowAhead) ||
+      /\bPrepaid\b/i.test(descriptionRowAhead)
+    ) {
+      return false;
+    }
+  }
+
+  // 2. BLACKLIST ESTRICTA: Ignorar servicios, Cisco ONE, DNA, DCN, perpetuos y repuestos
   if (
     cleanSku.startsWith('CON-') || 
+    cleanSku.startsWith('SVS-') || 
+    cleanSku.startsWith('CX-') || 
+    cleanSku.startsWith('CXE-') || 
+    cleanSku.startsWith('CXS-') || 
     cleanSku.startsWith('L-') || 
+    cleanSku.startsWith('C1') || 
+    cleanSku.startsWith('DCN-') || 
     cleanSku.includes('-DNA') || 
     cleanSku.startsWith('DNA-') ||
     cleanSku.endsWith('=')
@@ -587,13 +629,10 @@ export function isCloudSubscriptionSku(sku: string, descriptionRowAhead?: string
     return false; 
   }
 
-  // 2. WHITELIST: Familias de suscripción en la nube conocidas
+  // 3. WHITELIST: Familias de suscripción en la nube conocidas (Meraki LIC-*)
   const isMerakiFamily = /^LIC-(MS|MR|CW|MX|MV|MT|MG|Z|SM|CS|SPACES)-/i.test(cleanSku);
-  
-  // 3. CONFIRMACIÓN: Tiene sufijo SaaS O la fila adyacente indica "Initial Term"
-  const hasInitialTerm = descriptionRowAhead ? /Initial Term/i.test(descriptionRowAhead) : false;
 
-  return isMerakiFamily || hasInitialTerm;
+  return isMerakiFamily;
 }
 
 /**
@@ -624,10 +663,20 @@ export function recalculateEstimateResult(
     const override = overrides ? (overrides[rowIdx] ?? (cleanSkuKey ? (overrides as any)[cleanSkuKey] : undefined)) : undefined;
 
     // SaaS / Meraki Cloud Subscription with multi-month duration
+    const isExplicitPrepaid =
+      /Billing\s*Model\s*[-:]\s*Prepaid/i.test(item.description || '') ||
+      /Prepaid\s*Term/i.test(item.description || '') ||
+      /\bPrepaid\b/i.test(item.description || '') ||
+      cleanSkuKey.startsWith('C1') ||
+      cleanSkuKey.startsWith('SVS-') ||
+      cleanSkuKey.startsWith('CON-') ||
+      cleanSkuKey.startsWith('DCN-');
+
     const isPeriodic =
-      item.isPeriodicSubscription !== undefined
+      !isExplicitPrepaid &&
+      (item.isPeriodicSubscription !== undefined
         ? Boolean(item.isPeriodicSubscription)
-        : Boolean(item.months && item.months > 1);
+        : Boolean(item.months && item.months > 1 && isCloudSubscriptionSku(cleanSkuKey)));
     const durationMonths = isPeriodic ? (item.detectedDurationMonths ?? item.months ?? 1) : 1;
 
     if (item.realUnitCost === 0 && (item.unitListPrice === 0 || item.netCiscoUnit === 0)) {
