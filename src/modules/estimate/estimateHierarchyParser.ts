@@ -24,6 +24,13 @@ function parseSafeNum(val: any): number {
   return isNaN(n) ? 0 : n;
 }
 
+function normalizeLineNumber(value: any): string {
+  // Excel/CCW sometimes stores a displayed "1.0" as numeric 1; retain its
+  // major-line meaning instead of dropping it as an invalid hierarchy value.
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return `${value}.0`;
+  return String(value || '').trim();
+}
+
 export function parseEstimateWithHierarchy(rawRows: any[][]): ProcessedEstimateLine[] {
   // Mapa de plazos por grupo mayor: "1" -> 36, "4" -> 12, etc.
   const parentGroupTerms = new Map<string, number>();
@@ -33,7 +40,7 @@ export function parseEstimateWithHierarchy(rawRows: any[][]): ProcessedEstimateL
   for (let i = 0; i < rawRows.length; i++) {
     const row = rawRows[i];
     if (!row) continue;
-    const lineNum = String(row[0] || '').trim();
+    const lineNum = normalizeLineNumber(row[0]);
     const col1Text = String(row[1] || '').trim();
     const col3Text = String(row[3] || '').trim();
     const fullText = `${col1Text} ${col3Text}`;
@@ -60,7 +67,7 @@ export function parseEstimateWithHierarchy(rawRows: any[][]): ProcessedEstimateL
   for (let i = 0; i < rawRows.length; i++) {
     const row = rawRows[i];
     if (!row) continue;
-    const lineNum = String(row[0] || '').trim();
+    const lineNum = normalizeLineNumber(row[0]);
     const partNumber = String(row[1] || '').trim();
     const description = String(row[3] || '').trim();
 

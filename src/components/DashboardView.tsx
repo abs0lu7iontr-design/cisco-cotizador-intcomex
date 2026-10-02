@@ -38,7 +38,22 @@ import {
   CheckCircle2,
   BarChart3,
   Layers,
+  ExternalLink,
 } from 'lucide-react';
+import { formatPartnerName, getUniqueFormattedPartners } from '../utils/partnerDbUtils';
+
+const isValidEstimateId = (id?: string | null): boolean => {
+  if (!id) return false;
+  const clean = id.trim().toUpperCase();
+  return (
+    clean !== '' &&
+    clean !== '—' &&
+    clean !== 'NA' &&
+    clean !== 'N/A' &&
+    clean !== 'SIN ESTIMATE' &&
+    clean !== '-'
+  );
+};
 
 interface DashboardViewProps {
   onOpenQuoter: () => void;
@@ -214,12 +229,7 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
   }, [mirrorEstimates]);
 
   const availablePartners = useMemo(() => {
-    const set = new Set<string>();
-    mirrorEstimates.forEach((e) => {
-      const p = (e.partnerName || '').trim();
-      if (p) set.add(p);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+    return getUniqueFormattedPartners(mirrorEstimates);
   }, [mirrorEstimates]);
 
   // Helper to check if an estimate's createdAt falls within a given period
@@ -297,18 +307,23 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
         if (selectedCreator !== 'mine' && creatorLower !== selectedCreator) return false;
       }
 
-      if (
-        selectedPartner !== 'all' &&
-        (e.partnerName || '').trim().toLowerCase() !== selectedPartner.toLowerCase()
-      ) {
-        return false;
+      if (selectedPartner !== 'all') {
+        const partnerFmt = formatPartnerName(e.partnerName);
+        if (
+          partnerFmt.toLowerCase() !== selectedPartner.toLowerCase() &&
+          (e.partnerName || '').trim().toLowerCase() !== selectedPartner.toLowerCase()
+        ) {
+          return false;
+        }
       }
 
       if (q) {
+        const partnerFmt = formatPartnerName(e.partnerName);
         const hit =
           (e.estimateId || '').toLowerCase().includes(q) ||
           (e.dealId || '').toLowerCase().includes(q) ||
           (e.partnerName || '').toLowerCase().includes(q) ||
+          partnerFmt.toLowerCase().includes(q) ||
           (e.clientFinalName || '').toLowerCase().includes(q) ||
           (e.creator?.fullName || '').toLowerCase().includes(q) ||
           (e.creator?.username || '').toLowerCase().includes(q) ||
@@ -360,7 +375,7 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
       marginSum += mPct;
       marginCount += 1;
 
-      const pName = (est.partnerName || 'Intcomex Partner').trim();
+      const pName = formatPartnerName(est.partnerName) || 'Intcomex Partner';
       if (!partnerMap[pName]) partnerMap[pName] = { count: 0, revenue: 0, profit: 0 };
       partnerMap[pName].count += 1;
       partnerMap[pName].revenue += rev;
@@ -1153,9 +1168,22 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
                     <tr key={e.id || idx} className="hover:bg-slate-800/40 transition-colors">
                       <td className="px-5 py-3.5">
                         <div className="flex items-center space-x-1.5">
-                          <span className="font-mono font-bold text-indigo-300">
-                            {e.estimateId || '—'}
-                          </span>
+                          {isValidEstimateId(e.estimateId) ? (
+                            <a
+                              href={`https://apps.cisco.com/ccw/cpc/estimate/items/${encodeURIComponent(e.estimateId!.trim())}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="group inline-flex items-center gap-1 font-mono font-bold text-indigo-300 hover:text-cyan-300 transition-colors"
+                              title={`Abrir Estimate ${e.estimateId} directamente en Cisco CCW (apps.cisco.com)`}
+                            >
+                              <span className="group-hover:underline underline-offset-2">{e.estimateId}</span>
+                              <ExternalLink className="w-2.5 h-2.5 text-indigo-400/80 group-hover:text-cyan-300 shrink-0 transition-colors" />
+                            </a>
+                          ) : (
+                            <span className="font-mono font-bold text-indigo-300">
+                              {e.estimateId || '—'}
+                            </span>
+                          )}
                           {e.isRestricted ? (
                             <span className="inline-flex items-center space-x-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-700/50">
                               <Lock className="w-2.5 h-2.5" />
@@ -1184,7 +1212,9 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
                         </div>
                       </td>
 
-                      <td className="px-5 py-3.5 font-bold text-white">{e.partnerName}</td>
+                      <td className="px-5 py-3.5 font-bold text-white">
+                        {formatPartnerName(e.partnerName) || 'Intcomex Partner'}
+                      </td>
                       <td className="px-5 py-3.5 text-slate-200">{e.clientFinalName}</td>
                       <td
                         className="px-5 py-3.5 font-mono text-[11px] text-slate-400 max-w-[180px] truncate"

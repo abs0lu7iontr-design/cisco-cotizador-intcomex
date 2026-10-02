@@ -35,6 +35,7 @@ import {
   detectMiningFastTrackUsage,
   MiningFastTrackAlertData,
 } from '../modules/mining';
+import { formatPartnerName } from '../utils/partnerDbUtils';
 
 export type NavViewId =
   | 'dashboard'
@@ -927,7 +928,9 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         }
       }
 
-      const resolvedPartner = (options?.partnerName || fallbackPartner).trim();
+      const resolvedPartner =
+        formatPartnerName(options?.partnerName || fallbackPartner) ||
+        (options?.partnerName || fallbackPartner).trim();
       const resolvedClient = (options?.clientFinalName || fallbackClient).trim();
       const resolvedFileName = (
         options?.originalFileName ||

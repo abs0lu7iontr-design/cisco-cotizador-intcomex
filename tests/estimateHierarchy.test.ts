@@ -125,6 +125,18 @@ function runTests() {
   console.assert(h1_1.mango === 36 && h1_1.sandia === true, 'Error en huerto 1.1');
   console.assert(h4_1.mango === 12 && h4_1.sandia === true, 'Error en huerto 4.1');
   console.log('✅ Estructura huerto de sys_metadata validada exitosamente.');
+
+  // CCW may export the first major line as numeric 1 (displayed in Excel as 1.0)
+  // after an unnumbered equipment-description banner.
+  const bannerRows: any[][] = [
+    ['', 'Switch Catalyst 9200 de 24 puertos PoE+ con licencia y servicios'],
+    [1, 'C9200-24P-E', '-', 'Catalyst 9200 24-port PoE+', '', 29, 5041.72, '', 7, 2117.52, 58, 14822.64],
+    ['1.0.1', 'CON-SNT-C920024P', '-', 'SmartNet 8x5xNBD', 36, 'N/A', 1501.5, '', 7, 879.73, 41.41, 6158.11],
+  ];
+  const parsedBanner = parseEstimateWithHierarchy(bannerRows);
+  console.assert(parsedBanner.length === 2, `Error: se esperaban 2 líneas tras el banner; obtuve ${parsedBanner.length}`);
+  console.assert(parsedBanner[0]?.lineNumber === '1.0', `Error: línea principal normalizada incorrectamente: ${parsedBanner[0]?.lineNumber}`);
+  console.assert(parsedBanner[1]?.lineNumber === '1.0.1', 'Error: se perdió la sublínea después del banner');
   console.log('\n🎉 ¡TODAS LAS PRUEBAS COMPLETADAS CON ÉXITO AL 100%!');
 }
 
