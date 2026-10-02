@@ -58,6 +58,9 @@ export interface CcwAssembledRow {
   fastTrackInfo?: FastTrackProduct | null;
   estimatedUnitListUsd?: number;
   estimatedTotalListUsd?: number;
+  isGoldenTemplate?: boolean;
+  goldenTemplateName?: string;
+  goldenTemplateSource?: string;
   /** Valor GPL Unitario del Chasis físico (Sin Descuento) */
   unitChassisGplUsd?: number;
   /** Valor GPL Unitario de la Solución Madre-Hijo completa (Chasis + Licencia + Fuente/Módulo, Sin Descuento) */
@@ -526,6 +529,9 @@ export async function buildAssembledCcwRows(
         clientRequestedPowerCord: Boolean(item.clientRequestedPowerCord),
         eolReason,
         officialCiscoUrl: officialCiscoUrl || rule.officialUrl,
+        isGoldenTemplate: Boolean(rule.isGoldenTemplate),
+        goldenTemplateName: rule.goldenTemplateName,
+        goldenTemplateSource: rule.goldenTemplateSource,
         fastTrackInfo: ftMatch,
         estimatedUnitListUsd: parentUnitUsd,
         estimatedTotalListUsd: parentUnitUsd * qty,

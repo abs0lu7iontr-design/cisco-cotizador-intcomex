@@ -42,12 +42,20 @@ import {
   Check,
   ArrowUpDown,
   Calculator,
+  Crown,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Eye,
+  EyeOff,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import {
   extractBOMRequirementsFromInput,
   ExtractedRequirementResult,
   ExtractedRequirementItem,
 } from './aiBomExtractor';
+import { auditCustomerIntentDiscrepancies } from './aiDiscrepancyAuditor';
 import {
   buildAssembledCcwRows,
   generateCcwUploadWorkbook,
@@ -83,8 +91,21 @@ import {
 import { useCiscoAutomatedStore } from '../../core/store';
 import { CloudEstimateRecord } from '../cloud';
 
-export const ConfiguriatorView: React.FC = () => {
+export interface ConfiguriatorViewProps {
+  isNavSidebarOpen?: boolean;
+  onToggleNavSidebar?: () => void;
+  onCollapseNavSidebar?: () => void;
+}
+
+export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
+  isNavSidebarOpen,
+  onToggleNavSidebar,
+  onCollapseNavSidebar,
+}) => {
   const { loadCloudEstimateIntoStore, params: quoterParams, currentUser } = useCiscoAutomatedStore();
+
+  // Control de visibilidad del panel de Solicitud en Lenguaje Natural (Barra 1)
+  const [isPromptPanelOpen, setIsPromptPanelOpen] = useState<boolean>(true);
 
   // Entrada de lenguaje natural e imagen (Ctrl+V o Drag & Drop)
   const [inputText, setInputText] = useState<string>('');
@@ -112,6 +133,7 @@ export const ConfiguriatorView: React.FC = () => {
   // Orden de prioridad para las 3+ propuestas homologadas (Mejor Descuento + Mayor % Compatibilidad)
   const [proposalSortMode, setProposalSortMode] = useState<ProposalPrioritySortMode>('priority_optimal');
   const [expandedProposalsByIdx, setExpandedProposalsByIdx] = useState<Record<number, boolean>>({});
+  const [showComplianceDetails, setShowComplianceDetails] = useState<boolean>(false);
   const [fastTrackDiscountMap, setFastTrackDiscountMap] = useState<
     Record<string, { discountPct: number; listPrice?: number }>
   >({});
@@ -319,6 +341,7 @@ export const ConfiguriatorView: React.FC = () => {
     setManualSkuInput('');
     setManualQtyInput(1);
     setPsirtByIndex({});
+    setIsPromptPanelOpen(true);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -360,6 +383,12 @@ export const ConfiguriatorView: React.FC = () => {
 
       setExtractionResult(result);
       setAiSettings(loadAiSettings());
+
+      // Una vez entregada la cotización: auto-ocultar la barra de solicitud IA y colapsar la barra de módulos principales
+      if (result.items && result.items.length > 0) {
+        setIsPromptPanelOpen(false);
+        onCollapseNavSidebar?.();
+      }
     } catch (err: any) {
       setErrorMsg(err?.message || 'Error al procesar la solicitud con IA.');
       setAiSettings(loadAiSettings());
@@ -396,6 +425,19 @@ export const ConfiguriatorView: React.FC = () => {
       ...extractionResult,
       items: nextItems,
     });
+  };
+
+  // Auditoría paralela de discrepancias IA: Compara el lenguaje natural original vs ensamble Golden Template
+  const discrepancyReport = useMemo(() => {
+    return auditCustomerIntentDiscrepancies(inputText, extractionResult, assembledRows);
+  }, [inputText, extractionResult, assembledRows]);
+
+  const handleApplyDiscrepancyFix = (
+    itemIndex: number,
+    patch?: Partial<ExtractedRequirementItem>
+  ) => {
+    if (!patch) return;
+    updateParentItem(itemIndex, patch);
   };
 
   // Agregar o incrementar un transceiver SFP/Fibra/DAC en un equipo Madre
@@ -1121,13 +1163,71 @@ export const ConfiguriatorView: React.FC = () => {
           </div>
         </div>
 
-        {/* Botón rápido Limpiar / Nuevo BOM si hay datos */}
+        {/* Controles ejecutivos: Ocultar/Mostrar barras, Limpiar BOM y Badge Portafolio */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
+          {/* Toggle Barra 1: Solicitud en Lenguaje Natural */}
+          <button
+            type="button"
+            onClick={() => setIsPromptPanelOpen((prev) => !prev)}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+              isPromptPanelOpen
+                ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                : 'bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border-indigo-600/50 shadow-md shadow-indigo-950/40'
+            }`}
+            title={
+              isPromptPanelOpen
+                ? 'Ocultar barra de Solicitud en Lenguaje Natural (Más espacio para la cotización)'
+                : 'Mostrar barra de Solicitud en Lenguaje Natural'
+            }
+          >
+            {isPromptPanelOpen ? (
+              <>
+                <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+                <span>Ocultar Solicitud IA</span>
+              </>
+            ) : (
+              <>
+                <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Mostrar Solicitud IA</span>
+              </>
+            )}
+          </button>
+
+          {/* Toggle Barra 2: Módulos Principales (Sidebar de la aplicación) */}
+          {onToggleNavSidebar && (
+            <button
+              type="button"
+              onClick={onToggleNavSidebar}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                isNavSidebarOpen
+                  ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                  : 'bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border-emerald-600/50 shadow-md shadow-emerald-950/40'
+              }`}
+              title={
+                isNavSidebarOpen
+                  ? 'Ocultar barra lateral de Módulos Principales (Visión ultra limpia a pantalla completa)'
+                  : 'Mostrar barra lateral de Módulos Principales'
+              }
+            >
+              {isNavSidebarOpen ? (
+                <>
+                  <PanelLeftClose className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Ocultar Módulos</span>
+                </>
+              ) : (
+                <>
+                  <PanelLeftOpen className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Mostrar Módulos</span>
+                </>
+              )}
+            </button>
+          )}
+
           {(inputText || pastedImage || assembledRows.length > 0) && (
             <button
               type="button"
               onClick={handleClearAllBom}
-              className="px-3.5 py-2 rounded-xl bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-700/50 font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+              className="px-3.5 py-1.5 rounded-xl bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-700/50 font-bold flex items-center gap-1.5 cursor-pointer transition-all"
               title="Limpiar solicitud y BOM actual para comenzar uno nuevo"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -1144,15 +1244,87 @@ export const ConfiguriatorView: React.FC = () => {
         </div>
       </div>
 
+      {/* Barra Resumida cuando el Panel 1 de Solicitud IA está Oculto */}
+      {!isPromptPanelOpen && (
+        <div className="bg-slate-900/90 border border-indigo-500/30 rounded-2xl p-3.5 shadow-lg flex flex-wrap items-center justify-between gap-3 animate-fade-in">
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="p-2 rounded-xl bg-indigo-950 text-indigo-400 border border-indigo-700/40 shrink-0">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div className="text-xs overflow-hidden">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-extrabold text-indigo-300">1. Solicitud en Lenguaje Natural</span>
+                <span className="px-2 py-0.5 rounded-full bg-slate-800 text-[10px] text-slate-300 font-bold border border-slate-700">
+                  Cliente: {clientName || 'Cliente'}
+                </span>
+                {assembledRows.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-950/80 text-[10px] text-emerald-300 font-bold border border-emerald-700/40">
+                    {totalParents} Chasis Madre &bull; {assembledRows.length} Líneas CCW
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 truncate max-w-2xl mt-0.5">
+                {inputText.trim() || (pastedImage ? '📸 Captura de pantalla analizada' : 'Sin texto escrito')}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setIsPromptPanelOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
+              title="Volver a mostrar y editar la solicitud en lenguaje natural o imagen"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Mostrar / Editar Solicitud IA</span>
+            </button>
+
+            {onToggleNavSidebar && (
+              <button
+                type="button"
+                onClick={onToggleNavSidebar}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                title={isNavSidebarOpen ? 'Ocultar barra de módulos principales' : 'Mostrar barra de módulos principales'}
+              >
+                {isNavSidebarOpen ? (
+                  <>
+                    <PanelLeftClose className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Ocultar Módulos</span>
+                  </>
+                ) : (
+                  <>
+                    <PanelLeftOpen className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Mostrar Módulos</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Grilla Principal: Panel de Entrada IA (Izquierda) + Vista Previa Madre-Hijo CCW (Derecha) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className={isPromptPanelOpen ? 'grid grid-cols-1 lg:grid-cols-12 gap-6 items-start' : 'space-y-6'}>
         {/* COLUMNA IZQUIERDA: Entrada Multimodal IA */}
-        <div className="lg:col-span-5 bg-slate-900/95 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-indigo-400" />
-              <span>1. Solicitud en Lenguaje Natural o Screenshot (IA)</span>
-            </h3>
+        {isPromptPanelOpen && (
+          <div className="lg:col-span-5 bg-slate-900/95 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-indigo-400" />
+                  <span>1. Solicitud en Lenguaje Natural o Screenshot (IA)</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsPromptPanelOpen(false)}
+                  className="px-2 py-0.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-[10px] font-bold text-slate-400 hover:text-slate-200 border border-slate-700 flex items-center gap-1 transition-all cursor-pointer"
+                  title="Ocultar barra de solicitud para darle máxima visibilidad a la cotización"
+                >
+                  <ChevronUp className="w-3 h-3" />
+                  <span>Ocultar</span>
+                </button>
+              </div>
 
             {/* Ejemplos rápidos para todo el portafolio */}
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -1435,9 +1607,10 @@ export const ConfiguriatorView: React.FC = () => {
             </div>
           )}
         </div>
+        )}
 
         {/* COLUMNA DERECHA: Estructura Madre-Hijo, Calculadora PoE, Pre-Cotización USD y Tabla 10 Columnas CCW */}
-        <div className="lg:col-span-7 space-y-5">
+        <div className={isPromptPanelOpen ? 'lg:col-span-7 space-y-5' : 'w-full space-y-5'}>
           {/* Toast de confirmación de acciones ejecutivas */}
           {actionToast && (
             <div className="p-3 rounded-xl bg-emerald-950/90 border border-emerald-500/50 text-emerald-200 text-xs font-bold flex items-center justify-between gap-2 shadow-lg animate-fade-in">
@@ -1736,6 +1909,119 @@ export const ConfiguriatorView: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-3">
+                {/* ============================================================================
+                    CO-PILOTO PREVENTA IA: AUDITORÍA PARALELA DE CONCORDANCIA LENGUAJE NATURAL vs BOM CCW
+                   ============================================================================ */}
+                <div
+                  className={`p-3.5 rounded-2xl border transition-all ${
+                    discrepancyReport.hasDiscrepancies
+                      ? 'bg-gradient-to-br from-amber-950/30 via-slate-950 to-slate-900 border-amber-500/50 shadow-lg'
+                      : 'bg-gradient-to-br from-emerald-950/20 via-slate-950 to-slate-900 border-emerald-500/40 shadow-sm'
+                  }`}
+                >
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {discrepancyReport.hasDiscrepancies ? (
+                        <AlertTriangle className="w-4 h-4 text-amber-400" />
+                      ) : (
+                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      )}
+                      <span
+                        className={`text-xs font-black uppercase tracking-wider ${
+                          discrepancyReport.hasDiscrepancies ? 'text-amber-300' : 'text-emerald-300'
+                        }`}
+                      >
+                        Co-Piloto Preventa IA &bull; Auditoría de Lenguaje Natural vs Ensamble CCW
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                          discrepancyReport.hasDiscrepancies
+                            ? 'bg-amber-500/20 text-amber-200 border border-amber-500/40'
+                            : 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/40'
+                        }`}
+                      >
+                        Concordancia: {discrepancyReport.concordanceScore}%
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowComplianceDetails((prev) => !prev)}
+                      className="text-[10px] font-bold text-slate-400 hover:text-slate-200 underline cursor-pointer"
+                    >
+                      {showComplianceDetails ? 'Ocultar Puntos Validados' : 'Ver Puntos Técnicos Validados'}
+                    </button>
+                  </div>
+
+                  {/* Discrepancias detectadas */}
+                  {discrepancyReport.hasDiscrepancies && (
+                    <div className="mt-2.5 space-y-2">
+                      <p className="text-[11px] text-slate-300">
+                        La IA analizó en paralelo lo solicitado por el cliente frente al ensamble Golden Template y detectó las siguientes observaciones para asegurar que no falte nada:
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {discrepancyReport.discrepancies.map((d) => (
+                          <div
+                            key={d.id}
+                            className="p-2.5 rounded-xl bg-slate-950/90 border border-amber-500/30 space-y-1.5 flex flex-col justify-between"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[11px] font-bold text-amber-300">{d.title}</span>
+                                <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700/50">
+                                  {d.severity}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                <span className="text-slate-300 font-semibold">Cliente pidió:</span> {d.customerStated}
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                <span className="text-slate-300 font-semibold">BOM actual:</span> {d.configuredInBom}
+                              </div>
+                              <p className="text-[10px] text-slate-300/90 leading-snug">{d.explanation}</p>
+                            </div>
+
+                            {d.applyFixPatch && d.recommendedActionLabel && (
+                              <button
+                                type="button"
+                                onClick={() => handleApplyDiscrepancyFix(d.itemIndex, d.applyFixPatch)}
+                                className="mt-1 w-full py-1 px-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/50 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                              >
+                                <Wrench className="w-3 h-3 text-amber-400" />
+                                <span>{d.recommendedActionLabel}</span>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Sin discrepancias */}
+                  {!discrepancyReport.hasDiscrepancies && (
+                    <div className="mt-1 text-[11px] text-slate-400">
+                      ✓ Concordancia técnica total. No se detectaron omisiones ni inconsistencias entre la solicitud en lenguaje natural y la solución técnica armada.
+                    </div>
+                  )}
+
+                  {/* Desglose de conformidades técnicas */}
+                  {showComplianceDetails && discrepancyReport.verifiedCompliances.length > 0 && (
+                    <div className="mt-2.5 pt-2 border-t border-slate-800 space-y-1">
+                      <div className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">
+                        Puntos de Control Técnicos Validados ({discrepancyReport.verifiedCompliances.length}):
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 font-mono text-[10px] text-slate-300">
+                        {discrepancyReport.verifiedCompliances.map((c, cIdx) => (
+                          <div key={`comp-${cIdx}`} className="flex items-center gap-1.5">
+                            <span className="text-emerald-400">✓</span>
+                            <span>{c}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {extractionResult.items.map((item, idx) => {
                   const parentRow = assembledRows.find((r) => r.parentIndex === idx && r.isParent);
                   const childRows = assembledRows.filter((r) => r.parentIndex === idx && !r.isParent);
@@ -1872,6 +2158,17 @@ export const ConfiguriatorView: React.FC = () => {
                                 <span>
                                   FAST TRACK ({parentRow.fastTrackInfo.distributorDiscount}% Dcto Disti)
                                 </span>
+                              </span>
+                            )}
+
+                            {/* Insignia Golden Template CCW Verificado (Cero Alucinaciones) */}
+                            {parentRow?.isGoldenTemplate && (
+                              <span
+                                className="px-2 py-0.5 rounded-full text-[10px] font-black bg-gradient-to-r from-amber-500/25 via-yellow-500/20 to-amber-500/25 text-amber-300 border border-amber-500/60 flex items-center gap-1 shadow-sm"
+                                title={`${parentRow.goldenTemplateName || 'Plantilla Madre-Hijo'} • Verificada 100% en ${parentRow.goldenTemplateSource || 'Cisco CCW'}. Cero alucinaciones.`}
+                              >
+                                <Crown className="w-3 h-3 text-amber-400" />
+                                <span>GOLDEN TEMPLATE CCW</span>
                               </span>
                             )}
 
@@ -2675,8 +2972,16 @@ export const ConfiguriatorView: React.FC = () => {
                       {/* Sub-líneas HIJAS ensambladas */}
                       {childRows.length > 0 && (
                         <div className="pl-3 border-l-2 border-indigo-500/50 space-y-1.5 pt-1">
-                          <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">
-                            ↳ Componentes HIJOS ensamblados automáticamente ({childRows.length}):
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">
+                              ↳ Componentes HIJOS ensamblados automáticamente ({childRows.length}):
+                            </div>
+                            {parentRow?.isGoldenTemplate && (
+                              <span className="text-[9px] font-bold text-amber-300/90 bg-amber-950/70 px-1.5 py-0.5 rounded border border-amber-600/40 flex items-center gap-1">
+                                <Crown className="w-2.5 h-2.5 text-amber-400" />
+                                <span>Árbol CCW Oficial Verificado</span>
+                              </span>
+                            )}
                           </div>
                           {childRows.map((sub, cIdx) => (
                             <div

@@ -521,7 +521,11 @@ function AppContent() {
 
           {currentView === 'configuriator' && (
             <ErrorBoundary fallbackTitle="Error en ConfigurIAtor (AI BOM Generator)">
-              <ConfiguriatorView />
+              <ConfiguriatorView
+                isNavSidebarOpen={isNavSidebarOpen}
+                onToggleNavSidebar={() => setIsNavSidebarOpen((prev) => !prev)}
+                onCollapseNavSidebar={() => setIsNavSidebarOpen(false)}
+              />
             </ErrorBoundary>
           )}
 

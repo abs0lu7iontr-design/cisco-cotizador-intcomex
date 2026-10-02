@@ -6,6 +6,7 @@
 
 import { getFastTrackItem, getAllFastTrackItems } from '../fasttrack/fastTrackDb';
 import { FastTrackProduct } from '../fasttrack/types';
+import { findGoldenTemplate, goldenTemplateToChassisRule } from './goldenTemplates';
 
 export type CiscoProductFamily =
   | 'catalyst9200'
@@ -157,6 +158,9 @@ export interface ChassisConfigRule {
   description: string;
   officialUrl?: string;
   estimatedListUsd?: number; // Precio Lista referencial en USD para pre-cotización instantánea
+  isGoldenTemplate?: boolean;
+  goldenTemplateName?: string;
+  goldenTemplateSource?: string;
   defaultSubItems: (options: ChassisConfigOptions) => SubItemConfig[];
 }
 
@@ -2285,6 +2289,9 @@ function buildCatalyst9200Rule(
     family: 'catalyst9200',
     description: `Catalyst ${prefix} ${ports}-port ${poeType === 'T' ? 'Data' : poeType === 'FP' ? 'Full PoE+' : 'PoE+'}, ${uplinkDesc} Switch`,
     officialUrl: 'https://www.cisco.com/c/en/us/products/collateral/switches/catalyst-9200-series-switches/nb-06-cat9200-ser-data-sheet-cte-en.html',
+    isGoldenTemplate: true,
+    goldenTemplateName: `Cisco Catalyst ${prefix} ${ports}P ${poeType === 'T' ? 'Data' : 'PoE+'} Ensamble Oficial CCW`,
+    goldenTemplateSource: 'Cisco CCW / Netformx',
     defaultSubItems: (opts) => {
       const tierCode = opts.licenseTier === 'Advantage' ? 'A' : 'E';
       const tierLabel = opts.licenseTier === 'Advantage' ? 'Advantage' : 'Essentials';
@@ -2367,6 +2374,9 @@ function buildCatalyst9300Rule(
     family: 'catalyst9300',
     description: `Catalyst ${prefix} ${ports}-port ${poeType === 'T' ? 'Data' : 'PoE+'} Enterprise Switch`,
     officialUrl: 'https://www.cisco.com/c/en/us/products/collateral/switches/catalyst-9300-series-switches/nb-06-cat9300-ser-data-sheet-cte-en.html',
+    isGoldenTemplate: true,
+    goldenTemplateName: `Cisco Catalyst ${prefix} ${ports}P Ensamble Modular Oficial CCW`,
+    goldenTemplateSource: 'Cisco CCW / Netformx',
     defaultSubItems: (opts) => {
       const tierCode = opts.licenseTier === 'Advantage' ? 'A' : 'E';
       const tierLabel = opts.licenseTier === 'Advantage' ? 'Advantage' : 'Essentials';
@@ -2475,6 +2485,9 @@ function buildIndustrialIeRule(
     family: 'industrial_ie',
     description: `Cisco Catalyst ${series} Rugged Industrial Ethernet Switch (${isPoe ? 'PoE+' : 'Data'})`,
     officialUrl: 'https://www.cisco.com/c/en/us/products/switches/catalyst-ie3300-rugged-series/index.html',
+    isGoldenTemplate: true,
+    goldenTemplateName: `Cisco Catalyst ${series} Ensamble Industrial Rugged CCW`,
+    goldenTemplateSource: 'Cisco CCW / Netformx',
     defaultSubItems: (opts) => {
       const tierCode = opts.licenseTier === 'Advantage' ? 'A' : 'E';
       const { skuSuffixYear, months } = normalizeCiscoDnaTermYears(opts.termYears);
@@ -2587,6 +2600,9 @@ function buildNexus9000Rule(parentSku: string, description: string): ChassisConf
     family: 'nexus_dc',
     description,
     officialUrl: 'https://www.cisco.com/c/en/us/products/switches/nexus-9000-series-switches/index.html',
+    isGoldenTemplate: true,
+    goldenTemplateName: `Cisco Nexus 9000 (${parentSku}) Ensamble Data Center CCW`,
+    goldenTemplateSource: 'Cisco CCW / Netformx',
     defaultSubItems: (opts) => {
       const { skuSuffixYear, months } = normalizeCiscoDnaTermYears(opts.termYears);
       const tierPrefix = opts.licenseTier === 'Advantage' ? 'C1A1TN9300XF' : 'C1E1TN9300XF';
@@ -2631,6 +2647,9 @@ function buildSecureFirewallRule(parentSku: string, description: string): Chassi
     family: 'firewall_fpr',
     description,
     officialUrl: 'https://www.cisco.com/c/en/us/products/security/firewalls/index.html',
+    isGoldenTemplate: true,
+    goldenTemplateName: `Cisco Secure Firewall (${baseModel}) Ensamble NGFW CCW`,
+    goldenTemplateSource: 'Cisco CCW / Netformx',
     defaultSubItems: (opts) => {
       const { skuSuffixYear, months } = normalizeCiscoDnaTermYears(opts.termYears);
       const cordQty = opts.includeRedundantPsu ? 2 : 1;
@@ -2734,6 +2753,9 @@ function buildMerakiMs130Rule(defaultSubModel = 'MS130-24P'): ChassisConfigRule 
     family: 'meraki_ms130',
     description: 'Cloud-Native Access Switches in Mixed Port Options',
     officialUrl: 'https://documentation.meraki.com/MS/MS_Overview_and_Specifications/MS130_Datasheet',
+    isGoldenTemplate: true,
+    goldenTemplateName: 'Cisco Meraki MS130 Contenedor Cloud Switch CCW',
+    goldenTemplateSource: 'Cisco CCW / Netformx',
     defaultSubItems: (opts) => {
       const model = (opts.selectedModel || defaultSubModel).trim().toUpperCase().replace(/-HW$/i, '');
       const validYears = [1, 3, 5, 7, 10].includes(Number(opts.termYears)) ? Number(opts.termYears) : 3;
@@ -2771,6 +2793,9 @@ function buildMerakiMs225Rule(parentSku: string, description: string): ChassisCo
     family: 'meraki_ms225',
     description,
     officialUrl: 'https://documentation.meraki.com/MS/MS_Overview_and_Specifications/MS225_Datasheet',
+    isGoldenTemplate: true,
+    goldenTemplateName: `Cisco Meraki ${modelBase} Cloud Switch CCW`,
+    goldenTemplateSource: 'Cisco CCW / Netformx',
     defaultSubItems: (opts) => {
       const validYears = [1, 3, 5, 7, 10].includes(Number(opts.termYears)) ? Number(opts.termYears) : 3;
       const termMonths = validYears * 12;
@@ -2943,6 +2968,12 @@ export const CHASSIS_RULES: Record<string, ChassisConfigRule> = {
 export function resolveChassisRule(sku: string): ChassisConfigRule | null {
   const cleanSku = sku.trim().toUpperCase();
 
+  // 0. Búsqueda prioritaria en la Biblioteca de Golden Templates Oficiales (Cisco CCW & Netformx)
+  const golden = findGoldenTemplate(cleanSku);
+  if (golden) {
+    return goldenTemplateToChassisRule(golden);
+  }
+
   // 1. Contenedor compuesto Meraki MS130 ("MS130-SWITCHES:MS130-48P" o similar)
   if (cleanSku.startsWith('MS130-SWITCHES:')) {
     const subModel = cleanSku.split(':')[1]?.trim().replace(/-HW$/i, '') || 'MS130-24P';
@@ -3033,6 +3064,9 @@ export function resolveChassisRule(sku: string): ChassisConfigRule | null {
       officialUrl: cleanSku.startsWith('C1300-')
         ? 'https://www.cisco.com/c/en/us/products/switches/catalyst-1300-series-switches/index.html'
         : 'https://www.cisco.com/c/en/us/products/switches/catalyst-1200-series-switches/index.html',
+      isGoldenTemplate: true,
+      goldenTemplateName: `Cisco ${cleanSku.startsWith('C1300-') ? 'Catalyst 1300' : 'Catalyst 1200'} Smart Switch Ensamble CCW`,
+      goldenTemplateSource: 'Cisco CCW / Netformx',
       defaultSubItems: (opts) => {
         const items: SubItemConfig[] = [
           resolvePowerCordSubItem('catalyst1200_1300', opts.powerCordStandard || 'italy_chile', 1),
