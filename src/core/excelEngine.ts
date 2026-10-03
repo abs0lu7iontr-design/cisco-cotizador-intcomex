@@ -60,6 +60,36 @@ function safeUnmerge(worksheet: ExcelJS.Worksheet, range: string): void {
   }
 }
 
+/**
+ * Codifica una cadena UTF-8 en Base64 de forma robusta y sin usar escape/unescape obsoletos.
+ */
+export function encodeBase64Utf8(str: string): string {
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(str, 'utf-8').toString('base64');
+  }
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+/**
+ * Decodifica una cadena Base64 a UTF-8 de forma robusta y sin usar escape/unescape obsoletos.
+ */
+export function decodeBase64Utf8(base64Str: string): string {
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(base64Str, 'base64').toString('utf-8');
+  }
+  const binary = atob(base64Str);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 export function sanitizeWorkbookForExport(workbook: ExcelJS.Workbook): void {
   try {
     if (typeof (workbook as any).clearThemes === 'function') {
@@ -446,10 +476,15 @@ export async function parseEstimateWorkbook(
   if (metaSheet) {
     try {
       const rawCell = metaSheet.getCell('A1').value?.toString() || '';
-      const decoded =
-        typeof atob !== 'undefined'
-          ? decodeURIComponent(escape(atob(rawCell)))
-          : Buffer.from(rawCell, 'base64').toString('utf-8');
+      let decoded = '';
+      try {
+        decoded = decodeBase64Utf8(rawCell);
+      } catch {
+        decoded =
+          typeof atob !== 'undefined'
+            ? decodeURIComponent(escape(atob(rawCell)))
+            : Buffer.from(rawCell, 'base64').toString('utf-8');
+      }
       const parsed = JSON.parse(decoded);
 
       if (parsed.token === 'cisco-ca-v2' && Array.isArray(parsed.huerto)) {
@@ -1603,10 +1638,7 @@ export async function generateOptimizedWorkbook(
   };
 
   const jsonString = JSON.stringify(payload);
-  const encodedPayload =
-    typeof btoa !== 'undefined'
-      ? btoa(unescape(encodeURIComponent(jsonString)))
-      : Buffer.from(jsonString).toString('base64');
+  const encodedPayload = encodeBase64Utf8(jsonString);
 
   metaSheet.getCell('A1').value = encodedPayload;
   await metaSheet.protect('cisco-vault-hash-key', {});

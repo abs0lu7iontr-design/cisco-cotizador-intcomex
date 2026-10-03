@@ -200,9 +200,15 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
 
   // Sincronizar configuración de IA con el puente Desktop (.exe) al montar
   useEffect(() => {
+    let isMounted = true;
     syncAiSettingsFromDesktopBridge().then((synced) => {
-      setAiSettings(synced);
+      if (isMounted) {
+        setAiSettings(synced);
+      }
     });
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Recalcular filas ensambladas Madre-Hijo cuando cambian los ítems extraídos, modo Meraki o norma de cable

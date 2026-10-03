@@ -88,15 +88,17 @@ export const DsvView: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Close context menu on outside click or scroll
+  // Close context menu on outside click or scroll (active only when contextMenu is visible)
   useEffect(() => {
+    if (!contextMenu.visible) return;
+
     const handleOutsideClick = () => {
-      if (contextMenu.visible) {
-        setContextMenu((prev) => ({ ...prev, visible: false }));
-      }
+      setContextMenu((prev) => ({ ...prev, visible: false }));
     };
+
     window.addEventListener('click', handleOutsideClick);
-    window.addEventListener('scroll', handleOutsideClick, true);
+    window.addEventListener('scroll', handleOutsideClick, { passive: true, capture: true });
+
     return () => {
       window.removeEventListener('click', handleOutsideClick);
       window.removeEventListener('scroll', handleOutsideClick, true);

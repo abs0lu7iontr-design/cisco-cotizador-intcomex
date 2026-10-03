@@ -5,7 +5,7 @@
 import ExcelJS from 'exceljs';
 import { RawBomItem, RawBomParsedResult, sanitizeTrim } from './dsvBomParser';
 import { DsvModalFormData, Dsv48LineItem, DsvTransformationSummary, SkuCategoryType } from './types';
-import { isCiscoLicenseSku } from '../../core/ciscoTaxonomy';
+import { isCiscoLicenseSku, isCiscoServiceSku } from '../../core/ciscoTaxonomy';
 import { resolveDsvRowPrices, DsvBomRowRaw } from './dsvSubscriptionResolver';
 
 /**
@@ -45,40 +45,13 @@ export function parseCellNumericId(val: any): number | string {
 export function detectSkuCategory(sku: string): SkuCategoryType {
   const upper = sanitizeTrim(sku).toUpperCase();
 
-  // Prefijos explícitos de servicios Cisco
-  const servicePrefixes = [
-    'CON-SNT',
-    'CON-SNTP',
-    'CON-OSP',
-    'CON-PRE',
-    'CON-ECDN',
-    'CON-SAU',
-    'CON-SU1',
-    'CON-SU2',
-    'CON-SU3',
-    'CON-SU4',
-    'CON-ISV',
-    'CON-SW',
-    'CON-',
-    'SNT-',
-  ];
-
-  for (const prefix of servicePrefixes) {
-    if (upper.startsWith(prefix) || upper.includes('-SNT')) {
-      return 'service';
-    }
+  // 1. Detección unificada de servicios Cisco (SmartNet / CX / SVS)
+  if (isCiscoServiceSku(upper)) {
+    return 'service';
   }
 
-  // Licencias / Suscripciones
-  if (
-    upper.startsWith('L-') ||
-    upper.startsWith('LIC-') ||
-    upper.startsWith('SUB-') ||
-    upper.includes('-DNA') ||
-    upper.includes('-LIC') ||
-    upper.includes('-SUB') ||
-    isCiscoLicenseSku(upper)
-  ) {
+  // 2. Detección unificada de Licencias / Suscripciones (Meraki, Cisco ONE, DNA, Term, etc.)
+  if (isCiscoLicenseSku(upper)) {
     return 'subscription';
   }
 
@@ -128,17 +101,8 @@ export interface DsvDiscrepancy {
   selectedResolution?: 'BOM' | 'MATH';
 }
 
-// Clasificador universal de contratos de servicio Cisco
-export function isCiscoServiceSku(sku: string, description: string = ''): boolean {
-  const normSku = String(sku || '').trim().toUpperCase();
-  const normDesc = String(description || '').trim().toUpperCase();
-
-  const servicePrefixRegex = /^(CON|CX|CXE|CXS|SVS|AS|ASF|HT|HTS|SP|SPA|SOL|TRN|EDU)-/i;
-  if (servicePrefixRegex.test(normSku)) return true;
-
-  const serviceKeywords = ['SMARTNET', 'SOLUTION SUPPORT', 'SUCCESS TRACK', 'SUPPORT SERVICE', 'TECH SUPPORT'];
-  return serviceKeywords.some((kw) => normDesc.includes(kw));
-}
+// Clasificador universal de contratos de servicio Cisco (re-exportado desde la taxonomía central)
+export { isCiscoServiceSku };
 
 /**
  * FASE 4: Lógica Financiera (Columnas J y K en DSV) y Conciliación Silenciosa

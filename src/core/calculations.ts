@@ -4,6 +4,7 @@
 
 import { QuoteParameters, OverrideRuleType, ProcessedEstimateResult } from './types';
 import { generateQuotationFileName, isPureLicensingQuote } from './exportUtils';
+import { isCiscoIntangibleSku } from './ciscoTaxonomy';
 
 export { isPureLicensingQuote };
 
@@ -92,6 +93,10 @@ export function checkIsIntangible(sku: string, description: string): boolean {
 
   // Tier 3: Intangibles Rules
   if (isPureStandaloneLicenseSku) {
+    return true;
+  }
+
+  if (isCiscoIntangibleSku(upperSku, lowerDesc)) {
     return true;
   }
 
@@ -474,8 +479,11 @@ export function solveGoalSeekParameters(
   }
 
   // Base parameters to scale from (7.0% Internacion, 5.0% Margen)
-  const fixedArancel = 6.0;
-  const baseInternacion = currentParams.internacionPct > 0 ? currentParams.internacionPct : 7.0;
+  const fixedArancel = currentParams.arancelPct ?? 6.0;
+  const isInternacionStrictlyZero = currentParams.internacionPct === 0;
+  const baseInternacion = isInternacionStrictlyZero
+    ? 0
+    : (currentParams.internacionPct > 0 ? currentParams.internacionPct : 7.0);
   const baseMargen = currentParams.margenPct > 0 ? currentParams.margenPct : 5.0;
 
   // Binary search for equitable scaling factor k in [0.0, 1.5]
@@ -487,7 +495,7 @@ export function solveGoalSeekParameters(
   for (let iter = 0; iter < 45; iter++) {
     const mid = (low + high) / 2;
     const testParams: QuoteParameters = {
-      internacionPct: Math.max(0, mid * baseInternacion),
+      internacionPct: isInternacionStrictlyZero ? 0 : Math.max(0, mid * baseInternacion),
       arancelPct: fixedArancel,
       margenPct: Math.max(0, mid * baseMargen),
     };
@@ -508,7 +516,7 @@ export function solveGoalSeekParameters(
   }
 
   // Candidate percentages rounded to 1 decimal place (e.g. 5.2%, 3.7%)
-  let bestInt = Math.max(0, Math.round(bestK * baseInternacion * 10) / 10);
+  let bestInt = isInternacionStrictlyZero ? 0 : Math.max(0, Math.round(bestK * baseInternacion * 10) / 10);
   let bestMar = Math.max(0, Math.round(bestK * baseMargen * 10) / 10);
   let bestAchieved = computeTotal({
     internacionPct: bestInt,
@@ -518,9 +526,10 @@ export function solveGoalSeekParameters(
   let minDistance = Math.abs(bestAchieved - targetTotal);
 
   // Micro fine-tuning pass over +/- 0.3% in steps of 0.1% to find the exact closest discrete match
-  for (let dInt = -3; dInt <= 3; dInt++) {
+  const dIntRange = isInternacionStrictlyZero ? [0] : [-3, -2, -1, 0, 1, 2, 3];
+  for (const dInt of dIntRange) {
     for (let dMar = -3; dMar <= 3; dMar++) {
-      const candInt = Math.max(0, Math.round((bestInt + dInt * 0.1) * 10) / 10);
+      const candInt = isInternacionStrictlyZero ? 0 : Math.max(0, Math.round((bestInt + dInt * 0.1) * 10) / 10);
       const candMar = Math.max(0, Math.round((bestMar + dMar * 0.1) * 10) / 10);
       const candTotal = computeTotal({
         internacionPct: candInt,
