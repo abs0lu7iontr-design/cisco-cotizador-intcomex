@@ -20,6 +20,7 @@ import { QuickCalculator } from './components/QuickCalculator';
 import { RulesExplanationModal } from './components/RulesExplanationModal';
 import { DownloadModal } from './components/DownloadModal';
 import { isPureLicensingQuote } from './core/exportUtils';
+import { openDesktopFileDialog } from './core/desktopBridge';
 import { PriorAuditDetectedModal } from './components/PriorAuditDetectedModal';
 import {
   MiningAuditModal,
@@ -209,33 +210,15 @@ function AppContent() {
 
   // Handle native file input trigger
   const handleUploadClick = async () => {
-    if ((window as any).pywebview?.api?.open_file_dialog) {
-      try {
-        const res = await (window as any).pywebview.api.open_file_dialog();
-        if (res && res.success) {
-          let buffer: ArrayBuffer;
-          if (res.file_base64) {
-            const binaryStr = atob(res.file_base64);
-            const len = binaryStr.length;
-            const bytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) {
-              bytes[i] = binaryStr.charCodeAt(i);
-            }
-            buffer = bytes.buffer;
-          } else if (res.file_bytes && Array.isArray(res.file_bytes)) {
-            buffer = new Uint8Array(res.file_bytes).buffer;
-          } else {
-            return;
-          }
-          await processFileBuffer(buffer, res.filename);
-          setCurrentView('quoter');
-        }
-      } catch (err: any) {
-        console.error('Error handling upload:', err);
+    const desktopRes = await openDesktopFileDialog();
+    if (desktopRes) {
+      if (desktopRes.success && desktopRes.buffer && desktopRes.filename) {
+        await processFileBuffer(desktopRes.buffer, desktopRes.filename);
+        setCurrentView('quoter');
       }
-    } else {
-      fileInputRef.current?.click();
+      return;
     }
+    fileInputRef.current?.click();
   };
 
   const handleDsvClick = () => {

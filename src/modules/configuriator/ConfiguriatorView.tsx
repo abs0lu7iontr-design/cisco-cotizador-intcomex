@@ -315,6 +315,9 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
           });
           setErrorMsg(null);
         };
+        reader.onerror = () => {
+          setErrorMsg('Error al procesar la imagen del portapapeles. Intenta subir el archivo directamente.');
+        };
         reader.readAsDataURL(file);
         break;
       }
@@ -333,6 +336,9 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
         previewUrl: dataUrl,
       });
       setErrorMsg(null);
+    };
+    reader.onerror = () => {
+      setErrorMsg('Error al leer el archivo de imagen seleccionado.');
     };
     reader.readAsDataURL(file);
   };

@@ -396,8 +396,44 @@ const GENERAL_FAMILY_SEARCH_TERMS = new Set([
   'CISCO IP PHONE',
 ]);
 
+// Caché en memoria + sessionStorage para advertencias PSIRT (TTL 24 horas)
+const PSIRT_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const memoryPsirtCache = new Map<string, { data: PsirtAdvisory[]; timestamp: number }>();
+
+function getCachedPsirt(cacheKey: string): PsirtAdvisory[] | null {
+  const now = Date.now();
+  const inMem = memoryPsirtCache.get(cacheKey);
+  if (inMem && now - inMem.timestamp < PSIRT_CACHE_TTL_MS) {
+    return inMem.data;
+  }
+  if (typeof sessionStorage !== 'undefined') {
+    try {
+      const raw = sessionStorage.getItem(`cisco_psirt_${cacheKey}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && now - parsed.timestamp < PSIRT_CACHE_TTL_MS) {
+          memoryPsirtCache.set(cacheKey, parsed);
+          return parsed.data;
+        }
+      }
+    } catch {}
+  }
+  return null;
+}
+
+function setCachedPsirt(cacheKey: string, data: PsirtAdvisory[]): void {
+  const record = { data, timestamp: Date.now() };
+  memoryPsirtCache.set(cacheKey, record);
+  if (typeof sessionStorage !== 'undefined') {
+    try {
+      sessionStorage.setItem(`cisco_psirt_${cacheKey}`, JSON.stringify(record));
+    } catch {}
+  }
+}
+
 /**
  * Consulta vulnerabilidades conocidas en Cisco PSIRT openVuln API v2 (https://apix.cisco.com)
+ * Con capa de caché instantánea (0 ms) para prevenir rate-limiting y saturación de API.
  */
 export async function checkPsirtForProduct(
   productNameOrSku: string,
@@ -405,6 +441,14 @@ export async function checkPsirtForProduct(
 ): Promise<PsirtAdvisory[]> {
   try {
     const cleanInput = (productNameOrSku || '').trim().toUpperCase();
+    if (!cleanInput) return [];
+
+    const cacheKey = `${cleanInput}_${maxResults}`;
+    const cached = getCachedPsirt(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     if (!GENERAL_FAMILY_SEARCH_TERMS.has(cleanInput)) {
       const validation = validateOfficialCiscoSku(cleanInput);
       if (validation.isNonExistentSku) {
@@ -421,7 +465,7 @@ export async function checkPsirtForProduct(
       return [];
     }
 
-    return (res.data.advisories as any[]).slice(0, maxResults).map((adv: any) => ({
+    const result = (res.data.advisories as any[]).slice(0, maxResults).map((adv: any) => ({
       advisoryId: adv.advisoryId || '',
       advisoryTitle: adv.advisoryTitle || '',
       sir: adv.sir || 'Medium',
@@ -433,6 +477,9 @@ export async function checkPsirtForProduct(
       summary: adv.summary ? String(adv.summary).replace(/<[^>]+>/g, '').slice(0, 280) : '',
       productNames: Array.isArray(adv.productNames) ? adv.productNames.slice(0, 4) : [],
     }));
+
+    setCachedPsirt(cacheKey, result);
+    return result;
   } catch {
     return [];
   }

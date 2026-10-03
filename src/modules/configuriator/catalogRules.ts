@@ -8,24 +8,15 @@ import { getFastTrackItem, getAllFastTrackItems } from '../fasttrack/fastTrackDb
 import { FastTrackProduct } from '../fasttrack/types';
 import { findGoldenTemplate, goldenTemplateToChassisRule } from './goldenTemplates';
 
-export type CiscoProductFamily =
-  | 'catalyst9200'
-  | 'catalyst9300'
-  | 'catalyst1200_1300'
-  | 'catalyst8000'
-  | 'industrial_ie'
-  | 'ucs_server'
-  | 'nexus_dc'
-  | 'meraki_mr'
-  | 'meraki_ms'
-  | 'meraki_ms130'
-  | 'meraki_ms225'
-  | 'meraki_mx'
-  | 'catalyst_wireless'
-  | 'firewall_fpr'
-  | 'collaboration'
-  | 'accessory'
-  | 'generic';
+import {
+  CiscoProductFamily,
+  MODULAR_EOL_CATALOG_2026,
+  MODULAR_CHASSIS_RULES,
+  ALL_PRODUCT_DOMAIN_PACKAGES,
+} from './rules';
+
+export type { CiscoProductFamily };
+export { ALL_PRODUCT_DOMAIN_PACKAGES };
 
 /**
  * Norma de cable de poder para Chile (Intcomex Chile):
@@ -169,7 +160,7 @@ export interface ChassisConfigRule {
 // Distingue entre equipos estrictamente End-of-Sale (no ordenables en CCW)
 // y equipos de generación anterior que pueden tener reemplazo sugerido.
 // ============================================================================
-export const EOL_CATALOG_2026: Record<string, EolMappingEntry> = {
+const BASE_EOL_CATALOG_2026: Record<string, EolMappingEntry> = {
   // --- Catalyst 2960X / 2960XR / 2960S / 2960L (End-of-Sale -> Catalyst 9200L / 9200 / 1200) ---
   'WS-C2960X-24PS-L': {
     legacySku: 'WS-C2960X-24PS-L',
@@ -968,6 +959,14 @@ export const EOL_CATALOG_2026: Record<string, EolMappingEntry> = {
     eolNote: 'Se recomienda versión S-Class costo-efectiva vigente en CCW: SFP-10G-LR-S.',
     canKeepOriginal: true,
   },
+};
+
+/**
+ * Catálogo consolidado de transiciones EOL/EOS 2026 (Base histórica + 8 Dominios Modulares)
+ */
+export const EOL_CATALOG_2026: Record<string, EolMappingEntry> = {
+  ...BASE_EOL_CATALOG_2026,
+  ...MODULAR_EOL_CATALOG_2026,
 };
 
 // Compatibilidad directa clave-valor requerida por código externo
@@ -2816,7 +2815,7 @@ function buildMerakiMs225Rule(parentSku: string, description: string): ChassisCo
   };
 }
 
-export const CHASSIS_RULES: Record<string, ChassisConfigRule> = {
+const BASE_CHASSIS_RULES: Record<string, ChassisConfigRule> = {
   // --- Contenedor Madre Meraki MS130 en CCW ---
   'MS130-SWITCHES': buildMerakiMs130Rule('MS130-24P'),
 
@@ -2960,6 +2959,14 @@ export const CHASSIS_RULES: Record<string, ChassisConfigRule> = {
   'CS-BARPRO-C-K9': buildCollaborationRule('CS-BARPRO-C-K9', 'Cisco Room Bar Pro Dual-Lens AI Video Bar con Navigator', true),
   'CS-BRD55P-G2-K9': buildCollaborationRule('CS-BRD55P-G2-K9', 'Cisco Board Pro G2 55-inch All-in-One Collaboration Board', true),
   'CS-BRD75P-G2-K9': buildCollaborationRule('CS-BRD75P-G2-K9', 'Cisco Board Pro G2 75-inch All-in-One Collaboration Board', true),
+};
+
+/**
+ * Catálogo consolidado de reglas de ensamble Madre-Hijo (Base + 8 Dominios Modulares)
+ */
+export const CHASSIS_RULES: Record<string, ChassisConfigRule> = {
+  ...BASE_CHASSIS_RULES,
+  ...MODULAR_CHASSIS_RULES,
 };
 
 /**

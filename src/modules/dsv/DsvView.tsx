@@ -26,6 +26,7 @@ import { SkuCategoryType, DsvModalFormData } from './types';
 import { DsvIngestionView, ConsolidatedDealRecord } from './ingestion';
 import { saveDsvToCloud } from '../cloud';
 import { useCiscoAutomatedStore } from '../../core/store';
+import { openDesktopFileDialog } from '../../core/desktopBridge';
 
 interface ContextMenuState {
   visible: boolean;
@@ -109,42 +110,27 @@ export const DsvView: React.FC = () => {
     setErrorMessage(null);
     setExportNotification(null);
 
-    // Desktop PyWebView bridge check
-    if ((window as any).pywebview?.api?.open_file_dialog) {
-      setIsProcessing(true);
-      try {
-        const res = await (window as any).pywebview.api.open_file_dialog();
-        if (res && res.success) {
-          let buffer: ArrayBuffer;
-          if (res.file_base64) {
-            const binaryStr = atob(res.file_base64);
-            const len = binaryStr.length;
-            const bytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) {
-              bytes[i] = binaryStr.charCodeAt(i);
-            }
-            buffer = bytes.buffer;
-          } else if (res.file_bytes && Array.isArray(res.file_bytes)) {
-            buffer = new Uint8Array(res.file_bytes).buffer;
-          } else {
-            setErrorMessage('No se pudieron leer los bytes del archivo seleccionado.');
-            setIsProcessing(false);
-            return;
-          }
-
-          const parsed = await parseRawDealBom(buffer, res.filename);
+    const desktopRes = await openDesktopFileDialog();
+    if (desktopRes) {
+      if (desktopRes.success && desktopRes.buffer && desktopRes.filename) {
+        setIsProcessing(true);
+        try {
+          const parsed = await parseRawDealBom(desktopRes.buffer, desktopRes.filename);
           setRawBom(parsed);
           setOverrides({});
+        } catch (err: any) {
+          console.error('Error cargando BOM para DSV:', err);
+          setErrorMessage(err?.message || 'Error cargando archivo Deal BOM.');
+        } finally {
+          setIsProcessing(false);
         }
-      } catch (err: any) {
-        console.error('Error cargando BOM para DSV:', err);
-        setErrorMessage(err?.message || 'Error cargando archivo Deal BOM.');
-      } finally {
-        setIsProcessing(false);
+      } else if (desktopRes.error && desktopRes.error !== 'Apertura cancelada') {
+        setErrorMessage(desktopRes.error);
       }
-    } else {
-      fileInputRef.current?.click();
+      return;
     }
+
+    fileInputRef.current?.click();
   };
 
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
