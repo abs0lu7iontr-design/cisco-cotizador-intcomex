@@ -7,9 +7,9 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   CloudEstimateRecord,
   getCloudEstimates,
-  getEstimatesMirrorSnapshot,
   getMirrorLastSyncTimestamp,
   requestEstimateAccess,
+  useEstimatesMirror,
 } from '../modules/cloud';
 import { useCiscoAutomatedStore } from '../core/store';
 import {
@@ -66,10 +66,8 @@ export type QuarterMode = 'rolling_3m' | 'Q1' | 'Q2' | 'Q3' | 'Q4';
 export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps) {
   const { currentUser, loadCloudEstimateIntoStore, setCurrentView } = useCiscoAutomatedStore();
 
-  // 1. Instant Mirror Snapshot State (Loads in 0ms from local mirror cache before cloud sync finishes)
-  const [mirrorEstimates, setMirrorEstimates] = useState<CloudEstimateRecord[]>(() =>
-    getEstimatesMirrorSnapshot()
-  );
+  // 1. Instant Mirror Snapshot State (Loads in 0ms via React 19 Concurrent External Store)
+  const mirrorEstimates = useEstimatesMirror();
   const [lastSyncIso, setLastSyncIso] = useState<string | null>(() =>
     getMirrorLastSyncTimestamp()
   );
@@ -144,7 +142,6 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
 
         const res = await getCloudEstimates(limitCount, sinceIso);
         if (res.success && res.data) {
-          setMirrorEstimates(res.data);
           setLastSyncIso(getMirrorLastSyncTimestamp() || new Date().toISOString());
         }
         if (res.error) {
@@ -162,18 +159,9 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
     [periodFilter, getWindowSinceIso]
   );
 
-  // Initial background sync + listen for live mirror updates (e.g. after downloading an Estimate)
+  // Initial background sync with Firebase Firestore
   useEffect(() => {
     syncMirrorWithFirebase(false, 'all');
-
-    const handleMirrorUpdated = () => {
-      setMirrorEstimates(getEstimatesMirrorSnapshot());
-      setLastSyncIso(getMirrorLastSyncTimestamp());
-    };
-    window.addEventListener('cisco-estimates-mirror-updated', handleMirrorUpdated);
-    return () => {
-      window.removeEventListener('cisco-estimates-mirror-updated', handleMirrorUpdated);
-    };
   }, []);
 
   // Access check for restricted estimates

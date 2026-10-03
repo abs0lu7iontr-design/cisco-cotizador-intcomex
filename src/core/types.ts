@@ -90,6 +90,12 @@ export interface ProcessedEstimateResult {
   headerRowIndex: number;
   workbookBuffer?: ArrayBuffer;
   detectedAudit?: DetectedAuditInfo | null;
+  isPreviouslyProcessed?: boolean;
+  priorParameters?: {
+    margin?: number;
+    internacion?: number;
+    timestamp?: string;
+  };
 }
 
 export interface UserSession {

@@ -90,6 +90,12 @@ import {
 } from '../ciscoApi';
 import { useCiscoAutomatedStore } from '../../core/store';
 import { CloudEstimateRecord } from '../cloud';
+import {
+  PoeBudgetCard,
+  AiDiscrepancyCard,
+  CcwPreviewTable,
+  ApiManagementModal,
+} from './components';
 
 export interface ConfiguriatorViewProps {
   isNavSidebarOpen?: boolean;
@@ -1844,68 +1850,10 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                 </div>
 
                 {/* Calculadora y Alerta Inteligente de Presupuesto PoE en Vivo */}
-                <div
-                  className={`p-3.5 rounded-xl border flex flex-col justify-between gap-2 ${
-                    bomMetrics.poeUtilizationPct >= 80
-                      ? 'bg-amber-950/30 border-amber-500/50'
-                      : 'bg-slate-950 border-slate-800'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-                      <Zap className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Calculadora de Presupuesto PoE en Vivo</span>
-                    </span>
-                    <span className="font-mono text-[11px] font-bold text-white">
-                      Demanda: <strong className="text-amber-300">{bomMetrics.totalPoeDemandWatts}W</strong> / Capacidad:{' '}
-                      <strong className="text-emerald-300">{bomMetrics.totalPoeSupplyWatts}W</strong>
-                    </span>
-                  </div>
-
-                  {bomMetrics.totalPoeSupplyWatts > 0 || bomMetrics.totalPoeDemandWatts > 0 ? (
-                    <div className="space-y-1.5">
-                      <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                        <div
-                          className={`h-full transition-all ${
-                            bomMetrics.poeUtilizationPct >= 85
-                              ? 'bg-rose-500'
-                              : bomMetrics.poeUtilizationPct >= 65
-                                ? 'bg-amber-400'
-                                : 'bg-emerald-500'
-                          }`}
-                          style={{ width: `${Math.min(100, Math.max(6, bomMetrics.poeUtilizationPct))}%` }}
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 flex-wrap text-[10px]">
-                        <span className="text-slate-400">
-                          {bomMetrics.poweredEndpointsSummary.length > 0
-                            ? `Consumo: ${bomMetrics.poweredEndpointsSummary.join(' + ')}`
-                            : `${bomMetrics.poeSwitchesCount} switch(es) PoE suministrando ${bomMetrics.totalPoeSupplyWatts}W totales`}
-                        </span>
-
-                        {(bomMetrics.poeUtilizationPct >= 75 ||
-                          (bomMetrics.firstUpgradeableSwitchIdx !== null &&
-                            bomMetrics.totalPoeDemandWatts > 300)) &&
-                          bomMetrics.firstUpgradeableSwitchIdx !== null && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleUpgradeSwitchToFullPoe(bomMetrics.firstUpgradeableSwitchIdx!)
-                              }
-                              className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/50 font-bold cursor-pointer transition-colors"
-                            >
-                              ⚡ Subir Switch a Full PoE+ (740W) en 1 Clic
-                            </button>
-                          )}
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-[10px] text-slate-500">
-                      Agrega switches PoE, Access Points o Teléfonos IP para validar el balance de potencia en Watts.
-                    </p>
-                  )}
-                </div>
+                <PoeBudgetCard
+                  bomMetrics={bomMetrics}
+                  onUpgradeSwitchToFullPoe={handleUpgradeSwitchToFullPoe}
+                />
               </div>
             )}
 
@@ -1921,118 +1869,13 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
               </div>
             ) : (
               <div className="space-y-3">
-                {/* ============================================================================
-                    CO-PILOTO PREVENTA IA: AUDITORÍA PARALELA DE CONCORDANCIA LENGUAJE NATURAL vs BOM CCW
-                   ============================================================================ */}
-                <div
-                  className={`p-3.5 rounded-2xl border transition-all ${
-                    discrepancyReport.hasDiscrepancies
-                      ? 'bg-gradient-to-br from-amber-950/30 via-slate-950 to-slate-900 border-amber-500/50 shadow-lg'
-                      : 'bg-gradient-to-br from-emerald-950/20 via-slate-950 to-slate-900 border-emerald-500/40 shadow-sm'
-                  }`}
-                >
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {discrepancyReport.hasDiscrepancies ? (
-                        <AlertTriangle className="w-4 h-4 text-amber-400" />
-                      ) : (
-                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                      )}
-                      <span
-                        className={`text-xs font-black uppercase tracking-wider ${
-                          discrepancyReport.hasDiscrepancies ? 'text-amber-300' : 'text-emerald-300'
-                        }`}
-                      >
-                        Co-Piloto Preventa IA &bull; Auditoría de Lenguaje Natural vs Ensamble CCW
-                      </span>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                          discrepancyReport.hasDiscrepancies
-                            ? 'bg-amber-500/20 text-amber-200 border border-amber-500/40'
-                            : 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/40'
-                        }`}
-                      >
-                        Concordancia: {discrepancyReport.concordanceScore}%
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setShowComplianceDetails((prev) => !prev)}
-                      className="text-[10px] font-bold text-slate-400 hover:text-slate-200 underline cursor-pointer"
-                    >
-                      {showComplianceDetails ? 'Ocultar Puntos Validados' : 'Ver Puntos Técnicos Validados'}
-                    </button>
-                  </div>
-
-                  {/* Discrepancias detectadas */}
-                  {discrepancyReport.hasDiscrepancies && (
-                    <div className="mt-2.5 space-y-2">
-                      <p className="text-[11px] text-slate-300">
-                        La IA analizó en paralelo lo solicitado por el cliente frente al ensamble Golden Template y detectó las siguientes observaciones para asegurar que no falte nada:
-                      </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {discrepancyReport.discrepancies.map((d) => (
-                          <div
-                            key={d.id}
-                            className="p-2.5 rounded-xl bg-slate-950/90 border border-amber-500/30 space-y-1.5 flex flex-col justify-between"
-                          >
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="text-[11px] font-bold text-amber-300">{d.title}</span>
-                                <span className="text-[9px] uppercase font-mono px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700/50">
-                                  {d.severity}
-                                </span>
-                              </div>
-                              <div className="text-[10px] text-slate-400">
-                                <span className="text-slate-300 font-semibold">Cliente pidió:</span> {d.customerStated}
-                              </div>
-                              <div className="text-[10px] text-slate-400">
-                                <span className="text-slate-300 font-semibold">BOM actual:</span> {d.configuredInBom}
-                              </div>
-                              <p className="text-[10px] text-slate-300/90 leading-snug">{d.explanation}</p>
-                            </div>
-
-                            {d.applyFixPatch && d.recommendedActionLabel && (
-                              <button
-                                type="button"
-                                onClick={() => handleApplyDiscrepancyFix(d.itemIndex, d.applyFixPatch)}
-                                className="mt-1 w-full py-1 px-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/50 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                              >
-                                <Wrench className="w-3 h-3 text-amber-400" />
-                                <span>{d.recommendedActionLabel}</span>
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Sin discrepancias */}
-                  {!discrepancyReport.hasDiscrepancies && (
-                    <div className="mt-1 text-[11px] text-slate-400">
-                      ✓ Concordancia técnica total. No se detectaron omisiones ni inconsistencias entre la solicitud en lenguaje natural y la solución técnica armada.
-                    </div>
-                  )}
-
-                  {/* Desglose de conformidades técnicas */}
-                  {showComplianceDetails && discrepancyReport.verifiedCompliances.length > 0 && (
-                    <div className="mt-2.5 pt-2 border-t border-slate-800 space-y-1">
-                      <div className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">
-                        Puntos de Control Técnicos Validados ({discrepancyReport.verifiedCompliances.length}):
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 font-mono text-[10px] text-slate-300">
-                        {discrepancyReport.verifiedCompliances.map((c, cIdx) => (
-                          <div key={`comp-${cIdx}`} className="flex items-center gap-1.5">
-                            <span className="text-emerald-400">✓</span>
-                            <span>{c}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                {/* CO-PILOTO PREVENTA IA: AUDITORÍA PARALELA DE CONCORDANCIA LENGUAJE NATURAL vs BOM CCW */}
+                <AiDiscrepancyCard
+                  discrepancyReport={discrepancyReport}
+                  showComplianceDetails={showComplianceDetails}
+                  onToggleComplianceDetails={() => setShowComplianceDetails((prev) => !prev)}
+                  onApplyDiscrepancyFix={handleApplyDiscrepancyFix}
+                />
 
                 {extractionResult.items.map((item, idx) => {
                   const parentRow = assembledRows.find((r) => r.parentIndex === idx && r.isParent);
@@ -3052,319 +2895,31 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
           </div>
 
           {/* Vista Previa Exacta de las 10 Columnas de UploadExcelTemplate (Sheet1) */}
-          {assembledRows.length > 0 && (
-            <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <h3 className="text-xs font-extrabold uppercase tracking-wider text-cyan-300 flex items-center gap-2">
-                  <FileSpreadsheet className="w-4 h-4 text-cyan-400" />
-                  <span>
-                    3. Vista Previa Hoja "Sheet1" &bull; Orden Secuencial Madre-Hijo (UploadExcelTemplate)
-                  </span>
-                </h3>
-                <span className="text-[11px] font-mono text-slate-400">
-                  CCW_BOM_Upload_{(clientName || 'Cliente').replace(/\s+/g, '_')}.xlsx
-                </span>
-              </div>
-
-              <div className="overflow-x-auto border border-slate-800 rounded-xl">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-950 text-slate-300 border-b border-slate-800 text-[11px] font-bold">
-                      <th className="py-2.5 px-3">#</th>
-                      <th className="py-2.5 px-3">Jerarquía</th>
-                      <th className="py-2.5 px-3">Part Number</th>
-                      <th className="py-2.5 px-3 text-center">Quantity</th>
-                      <th className="py-2.5 px-3 text-center">Duration (Mnths)</th>
-                      <th className="py-2.5 px-3 text-center">Initial Term</th>
-                      <th className="py-2.5 px-3">Billing Model</th>
-                      <th className="py-2.5 px-3 text-right">Ref. Lista USD</th>
-                      <th className="py-2.5 px-3 text-center">% Dcto</th>
-                      <th className="py-2.5 px-3 text-right">Neto Est. USD</th>
-                      <th className="py-2.5 px-3">Descripción / Reconciliación</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/70">
-                    {assembledRows.map((row, rIdx) => (
-                      <tr
-                        key={row.rowId}
-                        className={
-                          row.isParent
-                            ? 'bg-emerald-950/25 font-semibold text-white'
-                            : 'bg-slate-950/40 text-slate-300'
-                        }
-                      >
-                        <td className="py-2 px-3 font-mono text-[11px] text-slate-500">
-                          {rIdx + 1}
-                        </td>
-                        <td className="py-2 px-3">
-                          {row.isParent ? (
-                            <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/40 text-[10px] font-black uppercase">
-                              MADRE
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded bg-indigo-950/70 text-indigo-300 border border-indigo-700/30 text-[10px] font-bold uppercase ml-2">
-                              ↳ HIJO
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2 px-3 font-mono">
-                          <span
-                            className={
-                              row.isParent ? 'text-emerald-300 font-bold' : 'text-slate-200 pl-2'
-                            }
-                          >
-                            {row.partNumber}
-                          </span>
-                        </td>
-                        <td className="py-2 px-3 text-center font-mono">{row.quantity}</td>
-                        <td className="py-2 px-3 text-center font-mono text-cyan-300">
-                          {row.durationMonths || '-'}
-                        </td>
-                        <td className="py-2 px-3 text-center font-mono text-cyan-300">
-                          {row.initialTerm || '-'}
-                        </td>
-                        <td className="py-2 px-3 text-[11px] text-slate-300">
-                          {row.billingModel || '-'}
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono text-[11px] text-slate-200">
-                          {typeof row.estimatedTotalListUsd === 'number' &&
-                          row.estimatedTotalListUsd > 0
-                            ? `$${row.estimatedTotalListUsd.toLocaleString('en-US', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}`
-                            : '$0.00'}
-                        </td>
-                        <td className="py-2 px-3 text-center font-mono text-[11px] text-amber-300">
-                          {typeof row.estimatedTotalListUsd === 'number' &&
-                          row.estimatedTotalListUsd > 0
-                            ? `${(row.clientDiscountPct ?? 38).toFixed(1)}%`
-                            : '0%'}
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono text-[11px] text-emerald-300 font-bold">
-                          {typeof row.estimatedTotalNetUsd === 'number' &&
-                          row.estimatedTotalNetUsd > 0
-                            ? `$${row.estimatedTotalNetUsd.toLocaleString('en-US', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}`
-                            : '$0.00'}
-                        </td>
-                        <td className="py-2 px-3 text-[11px] text-slate-400 max-w-[240px] truncate">
-                          {row.notes}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          <CcwPreviewTable
+            assembledRows={assembledRows}
+            clientName={clientName}
+          />
         </div>
       </div>
 
       {/* MODAL DE GESTIÓN MULTI-API Y ROTACIÓN DE TOKENS */}
-      {isApiModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-3xl w-full p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-              <div className="flex items-center space-x-3">
-                <div className="p-2 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
-                  <KeyRound className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-white">
-                    Pool de API Keys & Rotación Automática Multi-Proveedor
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Prioridad #1: Google Gemini (3.7 Flash Texto &rarr; 3.6/3.8 Flash Visión) &rarr; Respaldo #2: OpenRouter (Auto Vision / DeepSeek).
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsApiModalOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Opción de Grounding en Cisco.com */}
-            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-4">
-              <div>
-                <div className="text-xs font-bold text-white flex items-center gap-2">
-                  <Globe className="w-4 h-4 text-cyan-400" />
-                  <span>Verificación EOL 2026 en páginas oficiales de Cisco (cisco.com)</span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Evalúa boletines End-of-Sale 2026 en cisco.com. Si el equipo sigue vigente, mantiene el SKU original.
-                </p>
-              </div>
-              <input
-                type="checkbox"
-                checked={aiSettings.useCiscoOfficialGrounding}
-                onChange={handleToggleWebGrounding}
-                className="w-4 h-4 rounded text-indigo-600 focus:ring-0 cursor-pointer"
-              />
-            </div>
-
-            {/* Formulario para Añadir Nueva API Key */}
-            <div className="p-4 rounded-xl bg-slate-950/90 border border-indigo-500/30 space-y-3">
-              <div className="text-xs font-bold text-indigo-300 uppercase tracking-wider">
-                Añadir Nueva API Key al Pool de Respaldo
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
-                    Proveedor IA
-                  </label>
-                  <select
-                    value={newProvider}
-                    onChange={(e) => {
-                      const p = e.target.value as Exclude<AiProviderId, 'local_deterministic'>;
-                      setNewProvider(p);
-                      setNewKeyModel(PROVIDER_META[p].defaultModel);
-                    }}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
-                  >
-                    <option value="gemini">Google Gemini (Principal)</option>
-                    <option value="openrouter">OpenRouter (Auto / DeepSeek / Qwen)</option>
-                    <option value="groq">Groq Cloud (Llama 4 / 3.3 Gratis)</option>
-                    <option value="deepseek">DeepSeek Oficial API</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
-                    Modelo
-                  </label>
-                  <select
-                    value={newKeyModel}
-                    onChange={(e) => setNewKeyModel(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
-                  >
-                    {PROVIDER_META[newProvider].models.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
-                    Etiqueta Identificadora
-                  </label>
-                  <input
-                    type="text"
-                    value={newKeyLabel}
-                    onChange={(e) => setNewKeyLabel(e.target.value)}
-                    placeholder="Ej. Gemini Respaldo #2"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="password"
-                  value={newKeyValue}
-                  onChange={(e) => setNewKeyValue(e.target.value)}
-                  placeholder={PROVIDER_META[newProvider].placeholder}
-                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white font-mono"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddKey}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer shrink-0"
-                >
-                  Guardar en el Pool
-                </button>
-              </div>
-            </div>
-
-            {/* Lista de API Keys Configuradas */}
-            <div className="space-y-2">
-              <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                Orden de Prioridad y Estado de Tokens ({aiSettings.keys.length} registradas)
-              </div>
-
-              {aiSettings.keys.map((k, idx) => (
-                <div
-                  key={k.id}
-                  className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs"
-                >
-                  <div className="flex items-center space-x-3">
-                    <span className="w-6 h-6 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center font-mono text-[11px] text-slate-400">
-                      #{idx + 1}
-                    </span>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-white">{k.label}</span>
-                        <span className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/40 text-[10px] font-mono uppercase">
-                          {k.provider} &bull; {k.model}
-                        </span>
-                        {k.lastStatus === 'ok' && (
-                          <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 text-[10px] font-bold">
-                            Operativa (200 OK)
-                          </span>
-                        )}
-                        {k.lastStatus === 'quota_exceeded' && (
-                          <span className="px-2 py-0.5 rounded bg-amber-950 text-amber-300 text-[10px] font-bold">
-                            Tokens Agotados (429)
-                          </span>
-                        )}
-                        {k.lastStatus === 'invalid' && (
-                          <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 text-[10px] font-bold">
-                            Revisar Key
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                        Key: {k.apiKey.slice(0, 6)}••••••••{k.apiKey.slice(-4)}
-                        {k.lastError ? ` • Último aviso: ${k.lastError}` : ''}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleToggleKey(k.id)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
-                        k.enabled
-                          ? 'bg-emerald-950/60 text-emerald-300 border-emerald-700/40'
-                          : 'bg-slate-900 text-slate-500 border-slate-800'
-                      }`}
-                    >
-                      {k.enabled ? 'Habilitada' : 'Pausada'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteKey(k.id)}
-                      className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 cursor-pointer"
-                      title="Eliminar Key"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setIsApiModalOpen(false)}
-                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer"
-              >
-                Listo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ApiManagementModal
+        isOpen={isApiModalOpen}
+        onClose={() => setIsApiModalOpen(false)}
+        aiSettings={aiSettings}
+        onToggleWebGrounding={handleToggleWebGrounding}
+        newProvider={newProvider}
+        setNewProvider={setNewProvider}
+        newKeyModel={newKeyModel}
+        setNewKeyModel={setNewKeyModel}
+        newKeyLabel={newKeyLabel}
+        setNewKeyLabel={setNewKeyLabel}
+        newKeyValue={newKeyValue}
+        setNewKeyValue={setNewKeyValue}
+        onAddKey={handleAddKey}
+        onToggleKey={handleToggleKey}
+        onDeleteKey={handleDeleteKey}
+      />
 
       {/* Modal de Estado y Pruebas de las 7 APIs Oficiales de Cisco */}
       <CiscoApiStatusModal

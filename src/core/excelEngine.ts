@@ -1084,6 +1084,14 @@ export async function parseEstimateWorkbook(
     finalTotalPrice: finalCalculatedProductTotal,
     headerRowIndex,
     workbookBuffer: arrayBuffer,
+    isPreviouslyProcessed,
+    priorParameters: isPreviouslyProcessed
+      ? {
+          margin: priorMargin,
+          internacion: priorInternacion,
+          timestamp: priorTimestamp,
+        }
+      : undefined,
     detectedAudit: isPreviouslyProcessed
       ? {
           previousMarginPct: priorMargin,

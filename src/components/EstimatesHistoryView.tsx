@@ -10,7 +10,7 @@ import {
   EstimateAccessRequest,
   CloudDsvRecord,
   getCloudEstimates,
-  getEstimatesMirrorSnapshot,
+  useEstimatesMirror,
   getCloudDsvs,
   deleteCloudEstimate,
   deleteCloudDsv,
@@ -89,10 +89,8 @@ export function EstimatesHistoryView() {
   // Active Tab: 'estimates' | 'dsv'
   const [activeTab, setActiveTab] = useState<'estimates' | 'dsv'>('estimates');
 
-  // Cloud datasets initialized from Instant Local Mirror Snapshot (0ms load)
-  const [estimates, setEstimates] = useState<CloudEstimateRecord[]>(() =>
-    getEstimatesMirrorSnapshot()
-  );
+  // Instant 0ms Cloud Estimates Mirror via React 19 Concurrent External Store
+  const estimates = useEstimatesMirror();
   const [dsvRecords, setDsvRecords] = useState<CloudDsvRecord[]>([]);
 
   // Existing + Enhanced Filter States
@@ -170,9 +168,6 @@ export function EstimatesHistoryView() {
         getCloudDsvs(100),
       ]);
 
-      if (estRes.success && estRes.data) {
-        setEstimates(estRes.data);
-      }
       if (dsvRes.success && dsvRes.data) {
         setDsvRecords(dsvRes.data);
       }
@@ -194,13 +189,6 @@ export function EstimatesHistoryView() {
 
   useEffect(() => {
     fetchAllHistory(false);
-    const handleMirrorUpdate = () => {
-      setEstimates(getEstimatesMirrorSnapshot());
-    };
-    window.addEventListener('cisco-estimates-mirror-updated', handleMirrorUpdate);
-    return () => {
-      window.removeEventListener('cisco-estimates-mirror-updated', handleMirrorUpdate);
-    };
   }, []);
 
   // Format Currency
@@ -417,15 +405,6 @@ export function EstimatesHistoryView() {
     const nextRestricted = !est.isRestricted;
     const docId = est.id || `est_${est.estimateId}`;
 
-    // Optimistic UI update
-    setEstimates((prev) =>
-      prev.map((item) =>
-        item.id === est.id || item.estimateId === est.estimateId
-          ? { ...item, isRestricted: nextRestricted }
-          : item
-      )
-    );
-
     const res = await toggleEstimateRestriction(docId, est.estimateId, nextRestricted);
     if (res.success) {
       showToast(
@@ -450,13 +429,6 @@ export function EstimatesHistoryView() {
     });
 
     if (res.success) {
-      setEstimates((prev) =>
-        prev.map((item) =>
-          item.id === est.id || item.estimateId === est.estimateId
-            ? { ...item, accessRequests: res.updatedRequests || item.accessRequests }
-            : item
-        )
-      );
       showToast(
         `🔑 Solicitud de permiso enviada a ${est.creator?.fullName || est.creator?.username}.`,
         'success'
@@ -483,26 +455,17 @@ export function EstimatesHistoryView() {
     );
 
     if (res.success) {
-      setEstimates((prev) =>
-        prev.map((item) => {
-          if (item.id === est.id || item.estimateId === est.estimateId) {
-            const updated = {
-              ...item,
-              allowedUsers: res.allowedUsers ?? item.allowedUsers,
-              accessRequests: res.accessRequests ?? item.accessRequests,
-            };
-            if (
-              permissionsModalEstimate &&
-              (permissionsModalEstimate.id === est.id ||
-                permissionsModalEstimate.estimateId === est.estimateId)
-            ) {
-              setPermissionsModalEstimate(updated);
-            }
-            return updated;
-          }
-          return item;
-        })
-      );
+      if (
+        permissionsModalEstimate &&
+        (permissionsModalEstimate.id === est.id ||
+          permissionsModalEstimate.estimateId === est.estimateId)
+      ) {
+        setPermissionsModalEstimate({
+          ...permissionsModalEstimate,
+          allowedUsers: res.allowedUsers ?? permissionsModalEstimate.allowedUsers,
+          accessRequests: res.accessRequests ?? permissionsModalEstimate.accessRequests,
+        });
+      }
       showToast(
         approve
           ? `✅ Permiso concedido a @${targetUsername} para la cotización ${est.estimateId}.`
@@ -520,7 +483,6 @@ export function EstimatesHistoryView() {
     if (window.confirm('¿Está seguro de eliminar esta cotización del historial compartido?')) {
       const res = await deleteCloudEstimate(est.id, est.estimateId);
       if (res.success) {
-        setEstimates((prev) => prev.filter((x) => x.id !== est.id));
         showToast('Cotización eliminada del historial.', 'success');
       }
     }
