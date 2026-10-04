@@ -90,6 +90,7 @@ import {
 } from '../ciscoApi';
 import { useCiscoAutomatedStore } from '../../core/store';
 import { CloudEstimateRecord } from '../cloud';
+import { saveDesktopExcelFile, isDesktopApp } from '../../core/desktopBridge';
 import {
   PoeBudgetCard,
   AiDiscrepancyCard,
@@ -574,10 +575,11 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
       };
       const { buffer, filename } = await generateCcwUploadWorkbook(updatedReq, assembledRows);
 
-      const pyApi = typeof window !== 'undefined' ? (window as any).pywebview?.api : null;
-      if (pyApi && typeof pyApi.download_excel_file === 'function') {
-        const byteArray = Array.from(new Uint8Array(buffer));
-        await pyApi.download_excel_file(filename, byteArray);
+      if (isDesktopApp()) {
+        const saved = await saveDesktopExcelFile(filename, buffer);
+        if (saved) {
+          triggerActionToast(`✅ Archivo oficial CCW exportado: ${filename}`);
+        }
         return;
       }
 
@@ -653,11 +655,11 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
         pureGplMode: isPureGplMode,
       });
 
-      const pyApi = typeof window !== 'undefined' ? (window as any).pywebview?.api : null;
-      if (pyApi && typeof pyApi.download_excel_file === 'function') {
-        const byteArray = Array.from(new Uint8Array(buffer));
-        await pyApi.download_excel_file(filename, byteArray);
-        triggerActionToast(`✅ Comparativo 3 Propuestas GPL exportado: ${filename}`);
+      if (isDesktopApp()) {
+        const saved = await saveDesktopExcelFile(filename, buffer);
+        if (saved) {
+          triggerActionToast(`✅ Comparativo 3 Propuestas GPL exportado: ${filename}`);
+        }
         return;
       }
 

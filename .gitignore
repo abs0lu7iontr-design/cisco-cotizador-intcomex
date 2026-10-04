@@ -12,6 +12,8 @@ dist/
 dist-pages/
 build/
 out/
+desktop_app/frontend/
+desktop_app/index.html
 
 # Python & Virtual Environments
 __pycache__/

@@ -6,6 +6,7 @@
 import { parseEstimateWithHierarchy } from '../src/modules/estimate/estimateHierarchyParser';
 import { calculateEstimateSalesPricing } from '../src/modules/estimate/pricingEngine';
 import { isCloudSubscriptionSku, checkIsIntangible } from '../src/core/calculations';
+import { isPeriodicSubscriptionLine, resolveDsvRowPrices } from '../src/modules/dsv/dsvSubscriptionResolver';
 
 function runPrepaidTests() {
   console.log('🧪 Iniciando pruebas de Suscripciones Prepago (Prepaid Term)...\n');
@@ -49,6 +50,24 @@ function runPrepaidTests() {
   console.assert(Math.abs(priced1_11.unitSalePrice - expectedSale) < 0.05, `Error PV esperado ${expectedSale}, obtuve ${priced1_11.unitSalePrice}`);
   console.assert(Math.abs(priced1_11.extendedSalePrice - (expectedSale * 2)) < 0.05, `Error Ext PV esperado ${expectedSale * 2}, obtuve ${priced1_11.extendedSalePrice}`);
   console.log(`✅ Motor de Precios: Precio Venta Unitario = $${priced1_11.unitSalePrice} USD, Extendido (Qty 2) = $${priced1_11.extendedSalePrice} USD`);
+
+  // 6. Verificación en Motor DSV (Evitar multiplicación por meses en BOM DSV)
+  const dsvPrepaidRow = {
+    lineNumber: '1.11',
+    ciscoSku: 'C1E1TN9300XF-3Y',
+    quantity: 2,
+    durationMonthsColK: 36,
+    unitListPriceColO: 20605.68,
+    unitNetPriceColQ: 11951.28,
+    extendedNetPriceColR: 23902.56,
+    description: 'Initial Term - 36.00 Months | Billing Model - Prepaid Term',
+  };
+  const isDsvPeriodic = isPeriodicSubscriptionLine(dsvPrepaidRow);
+  console.assert(isDsvPeriodic === false, 'Error DSV: C1E1TN9300XF-3Y NO debe clasificarse como suscripción periódica');
+  const dsvResolved = resolveDsvRowPrices(dsvPrepaidRow);
+  console.assert(dsvResolved.colKNetPrice === 11951.28, `Error DSV: Net Price esperado 11951.28, obtuve ${dsvResolved.colKNetPrice}`);
+  console.assert(dsvResolved.unitListPriceFullTerm === 20605.68, `Error DSV: List Price esperado 20605.68, obtuve ${dsvResolved.unitListPriceFullTerm}`);
+  console.log(`✅ Motor DSV: C1E1TN9300XF-3Y no se multiplica por 36. Net Price = $${dsvResolved.colKNetPrice} USD, List Price = $${dsvResolved.unitListPriceFullTerm} USD`);
 
   console.log('\n🎉 ¡TODAS LAS PRUEBAS DE PREPAID TERM COMPLETADAS CON ÉXITO AL 100%!');
 }

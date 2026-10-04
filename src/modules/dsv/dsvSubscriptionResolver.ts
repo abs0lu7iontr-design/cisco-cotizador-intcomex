@@ -86,6 +86,22 @@ function isCiscoServiceSku(sku: string, description: string = ''): boolean {
 export function isPeriodicSubscriptionLine(row: DsvBomRowRaw): boolean {
   const sku = (row.ciscoSku || '').trim();
 
+  // BARRERA DE SEGURIDAD 0: Suscripciones Prepago (Prepaid Term) y Licencias Lump-Sum
+  const upperSku = (row.ciscoSku || '').trim().toUpperCase();
+  const normDesc = String(row.description || '').toUpperCase();
+  const isPrepaidTerm =
+    normDesc.includes('PREPAID') ||
+    upperSku.startsWith('C1') ||
+    upperSku.startsWith('DCN-') ||
+    upperSku.includes('-DNA') ||
+    upperSku.startsWith('DNA-') ||
+    upperSku.startsWith('L-') ||
+    upperSku.endsWith('=');
+
+  if (isPrepaidTerm) {
+    return false;
+  }
+
   // BARRERA DE SEGURIDAD 1: Servicios Cisco (CON-*, SmartNet) tienen su propia lógica financiera
   if (isCiscoServiceSku(sku, row.description || '')) {
     return false;
@@ -113,6 +129,12 @@ export function isPeriodicSubscriptionLine(row: DsvBomRowRaw): boolean {
 
   const months = row.durationMonthsColK > 0 ? row.durationMonthsColK : 1;
   const isExplicitSubscription = cat === 'suscripción' || cat === 'subscription';
+
+  // Si CCW entrega Extended Net y es igual a Unit Net * Qty (ratio <= 1.05),
+  // el precio unitario en CCW YA es el valor total por el período completo (Lump-Sum)
+  if (extNet > 0 && simpleNet > 0 && !isMathMultiplied) {
+    return false;
+  }
 
   // Solo se clasifica como periódica si tiene plazo multi-mes (o ratio matemático) y cumple con alguno de los criterios
   return (

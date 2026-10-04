@@ -27,6 +27,12 @@ import { QuoteParameters, OverrideRuleType, EstimateHeaderInfo } from '../core/t
 import { getCcwTimestamp, suggestFileName } from '../core/calculations';
 import { generateQuotationFileName } from '../core/exportUtils';
 import { useCiscoAutomatedStore } from '../core/store';
+import {
+  isDesktopApp,
+  saveDesktopExcelFile,
+  saveStructuredDesktopEstimate,
+  openFolderInExplorer,
+} from '../core/desktopBridge';
 
 interface DownloadModalProps {
   isOpen: boolean;
@@ -62,7 +68,7 @@ export function DownloadModal({
   isOnlyLicensing,
 }: DownloadModalProps) {
   const { saveCurrentEstimateToCloud, processedResult } = useCiscoAutomatedStore();
-  const isDesktop = Boolean((window as any).pywebview?.api);
+  const isDesktop = isDesktopApp();
 
   const computeCorporateFilename = (
     pName?: string,
@@ -307,26 +313,25 @@ export function DownloadModal({
     try {
       const targetBuffer = await getTargetBuffer();
 
-      if (isDesktop && (window as any).pywebview?.api?.save_estimate_structured) {
+      if (isDesktop) {
         if (!partnerName.trim() || !clientName.trim()) {
           setErrorMessage('Por favor completa el Canal/Partner y el Cliente Final.');
           setIsSaving(false);
           return;
         }
 
-        const bytesList = Array.from(new Uint8Array(targetBuffer));
-        const res = await (window as any).pywebview.api.save_estimate_structured(
+        const res = await saveStructuredDesktopEstimate(
           cleanPartner,
           cleanClient,
           cleanFile,
-          bytesList
+          targetBuffer
         );
         if (res?.success) {
           await persistToCloudAfterDownload(cleanFile);
           setSaveSuccess({
-            filepath: res.filepath,
+            filepath: res.filePath,
             folder: res.folder,
-            message: `Guardado en: gravity_storage › ${cleanPartner} › ${cleanClient} › ${res.month} › ${res.filename}`,
+            message: `Guardado en: gravity_storage › ${cleanPartner} › ${cleanClient} › ${res.month || ''} › ${res.filename || cleanFile}`,
           });
         } else {
           setErrorMessage(res?.error || 'Error guardando el archivo.');
@@ -354,12 +359,11 @@ export function DownloadModal({
     const cleanFile = getCleanFilename();
     try {
       const targetBuffer = await getTargetBuffer();
-      if (isDesktop && (window as any).pywebview?.api?.download_excel_file) {
-        const bytesList = Array.from(new Uint8Array(targetBuffer));
-        const res = await (window as any).pywebview.api.download_excel_file(cleanFile, bytesList);
+      if (isDesktop) {
+        const res = await saveDesktopExcelFile(cleanFile, targetBuffer);
         if (res?.success) {
           await persistToCloudAfterDownload(cleanFile);
-          setSaveSuccess({ filepath: res.filepath, message: `Guardado en: ${res.filepath}` });
+          setSaveSuccess({ filepath: res.filePath, message: `Guardado en: ${res.filePath}` });
         } else if (!res?.cancelled) {
           setErrorMessage(res?.error || 'Error al guardar.');
         }
@@ -376,8 +380,8 @@ export function DownloadModal({
   };
 
   const handleOpenFolder = async () => {
-    if (saveSuccess?.folder && (window as any).pywebview?.api?.open_folder_in_explorer) {
-      await (window as any).pywebview.api.open_folder_in_explorer(saveSuccess.folder);
+    if (saveSuccess?.folder) {
+      await openFolderInExplorer(saveSuccess.folder);
     }
   };
 

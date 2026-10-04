@@ -117,7 +117,18 @@ console.log('✅ Subcomponentes modulares de ConfigurIAtor verificados correctam
 // --- Test 4: Verificación de campos de metadatos de auditoría en ProcessedEstimateResult ---
 const mockProcessedResult: ProcessedEstimateResult = {
   fileName: 'test.xlsx',
-  headerInfo: { estimateId: '123' },
+  headerInfo: {
+    customerName: 'Cliente Test',
+    companyName: 'Partner Test',
+    address: 'Direccion Test',
+    city: 'Santiago',
+    country: 'Chile',
+    phone: '+56912345678',
+    estimateId: '123',
+    dealId: 'DEAL-123',
+    priceList: 'Global Price List',
+    date: '2026-10-04',
+  },
   items: [],
   originalProductTotal: 1000,
   calculatedProductTotal: 1050,

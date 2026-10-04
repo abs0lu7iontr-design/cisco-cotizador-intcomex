@@ -639,7 +639,7 @@ export function isCloudSubscriptionSku(sku: string, descriptionRowAhead?: string
   }
 
   // 3. WHITELIST: Familias de suscripción en la nube conocidas (Meraki LIC-*)
-  const isMerakiFamily = /^LIC-(MS|MR|CW|MX|MV|MT|MG|Z|SM|CS|SPACES)-/i.test(cleanSku);
+  const isMerakiFamily = /^LIC-(MS|MR|CW|MX|MV|MT|MG|Z|SM|CS|SPACES|CSR|VMX|ENT|SEC|SDW|D2C|ACCSMGR|CT)-/i.test(cleanSku);
 
   return isMerakiFamily;
 }

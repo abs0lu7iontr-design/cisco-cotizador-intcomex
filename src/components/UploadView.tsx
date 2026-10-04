@@ -12,6 +12,7 @@ import {
   Download,
   Info,
 } from 'lucide-react';
+import { openDesktopFileDialog, isDesktopApp } from '../core/desktopBridge';
 
 interface UploadViewProps {
   onProcessFile: (buffer: ArrayBuffer, fileName: string) => void;
@@ -32,46 +33,27 @@ export function UploadView({ onProcessFile }: UploadViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSelectFileDesktop = async () => {
-    if ((window as any).pywebview?.api?.open_file_dialog) {
+    if (isDesktopApp()) {
       setIsProcessing(true);
       try {
-        const res = await (window as any).pywebview.api.open_file_dialog();
+        const res = await openDesktopFileDialog();
         if (!res) {
           setIsProcessing(false);
           return;
         }
-        if (!res.success) {
+        if (!res.success || !res.buffer) {
           setValidationResult({
             success: false,
-            error: res.error,
+            error: res.error || 'No se recibieron bytes válidos del archivo.',
           });
         } else {
-          let buffer: ArrayBuffer;
-          if (res.file_base64) {
-            const binaryStr = atob(res.file_base64);
-            const len = binaryStr.length;
-            const bytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) {
-              bytes[i] = binaryStr.charCodeAt(i);
-            }
-            buffer = bytes.buffer;
-          } else if (res.file_bytes && Array.isArray(res.file_bytes)) {
-            buffer = new Uint8Array(res.file_bytes).buffer;
-          } else {
-            setValidationResult({
-              success: false,
-              error: 'No se recibieron bytes válidos del archivo.',
-            });
-            return;
-          }
-
           setValidationResult({
             success: true,
             partner: res.partner,
             client: res.client,
             filename: res.filename,
-            storedPath: res.stored_filepath,
-            buffer: buffer,
+            storedPath: res.storedFilepath,
+            buffer: res.buffer,
           });
         }
       } catch (err: any) {

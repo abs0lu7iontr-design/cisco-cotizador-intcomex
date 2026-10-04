@@ -7,6 +7,9 @@ export interface DesktopFileOpenResult {
   success: boolean;
   buffer?: ArrayBuffer;
   filename?: string;
+  partner?: string;
+  client?: string;
+  storedFilepath?: string;
   error?: string;
 }
 
@@ -14,6 +17,9 @@ export interface DesktopFileSaveResult {
   success: boolean;
   filePath?: string;
   folder?: string;
+  month?: string;
+  filename?: string;
+  cancelled?: boolean;
   error?: string;
 }
 
@@ -44,7 +50,10 @@ export async function openDesktopFileDialog(): Promise<DesktopFileOpenResult | n
 
   try {
     const res = await api.open_file_dialog();
-    if (!res || !res.success) {
+    if (!res) {
+      return null;
+    }
+    if (!res.success) {
       return { success: false, error: res?.error || 'Apertura cancelada' };
     }
 
@@ -67,6 +76,9 @@ export async function openDesktopFileDialog(): Promise<DesktopFileOpenResult | n
       success: true,
       buffer,
       filename: res.filename || 'cotizacion.xlsx',
+      partner: res.partner,
+      client: res.client,
+      storedFilepath: res.stored_filepath || res.storedFilepath,
     };
   } catch (err: any) {
     console.error('[DesktopBridge] Error en openDesktopFileDialog:', err);
@@ -95,14 +107,51 @@ export async function saveDesktopExcelFile(
     const res = await api.download_excel_file(filename, bytesList);
     return {
       success: Boolean(res?.success),
-      filePath: res?.file_path,
+      filePath: res?.filepath || res?.file_path,
       folder: res?.folder,
+      cancelled: Boolean(res?.cancelled),
       error: res?.error,
     };
   } catch (err: any) {
     return {
       success: false,
       error: err?.message || 'Error guardando archivo en Desktop',
+    };
+  }
+}
+
+/**
+ * Guarda el archivo cotizado en la estructura jerárquica corporativa de carpetas:
+ * gravity_storage / [Partner] / [ClienteFinal] / [Mes] / [filename]
+ */
+export async function saveStructuredDesktopEstimate(
+  partnerName: string,
+  clientFinalName: string,
+  filename: string,
+  buffer: ArrayBuffer | Uint8Array
+): Promise<DesktopFileSaveResult> {
+  const api = getDesktopApi();
+  if (!api || typeof api.save_estimate_structured !== 'function') {
+    return { success: false, error: 'Puente desktop estructurado no disponible' };
+  }
+
+  try {
+    const uint8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    const bytesList = Array.from(uint8);
+    const res = await api.save_estimate_structured(partnerName, clientFinalName, filename, bytesList);
+    return {
+      success: Boolean(res?.success),
+      filePath: res?.filepath || res?.file_path,
+      folder: res?.folder,
+      month: res?.month,
+      filename: res?.filename,
+      cancelled: Boolean(res?.cancelled),
+      error: res?.error,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err?.message || 'Error guardando archivo estructurado en Desktop',
     };
   }
 }
