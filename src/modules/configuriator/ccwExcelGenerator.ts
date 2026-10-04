@@ -926,7 +926,7 @@ export function generateNetformxCsv(
 
   const filename = `Netformx_BOM_${clientTag || 'Cliente'}.csv`;
   return {
-    content: headers + lines.join('\n'),
+    content: '\uFEFF' + headers + lines.join('\n'),
     filename,
   };
 }

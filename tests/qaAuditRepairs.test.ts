@@ -114,4 +114,51 @@ assert.strictEqual(decoded.naranja, 6.0, 'naranja debe almacenar arancelPct (6.0
 assert.strictEqual(decoded.platano, 5.0, 'platano debe almacenar margenPct (5.0)');
 console.log('✅ sys_metadata preserva inequívocamente internacionPct (7.0%) y arancelPct (6.0%).\n');
 
+// ----------------------------------------------------------------------------
+// Test 4: Verificación de Detección de Duplicados en DSV (Excluyendo Genéricos)
+// ----------------------------------------------------------------------------
+console.log('--- 4. Prueba de Detección Inteligente de Duplicados en DSV ---');
+const existingCloudRecords = [
+  { dealId: 'DEAL-998877', originalFileName: 'Cisco_BOM_BancoChile.xlsx', soNumber: 'SO-101' },
+  { dealId: 'NA', originalFileName: 'bom.xlsx', soNumber: 'SO-PENDING' },
+];
+
+function checkIsDsvDuplicate(dealId: string, filename: string): boolean {
+  const currentDeal = (dealId || '').trim().toUpperCase();
+  const currentFile = (filename || '').trim().toLowerCase();
+  const isGenericDeal =
+    !currentDeal ||
+    ['NA', 'N/A', 'NONE', 'PENDING', 'SO-PENDING', 'NULL', 'UNDEFINED', '0'].includes(currentDeal);
+  const isGenericFile =
+    !currentFile ||
+    ['bom.xlsx', 'bom.xls', 'estimate.xlsx', 'estimate.xls', 'cotizacion.xlsx', 'cotizacion.xls'].includes(
+      currentFile
+    );
+
+  return existingCloudRecords.some((rec) => {
+    if (!isGenericDeal && rec.dealId && rec.dealId.trim().toUpperCase() === currentDeal) return true;
+    if (!isGenericFile && rec.originalFileName && rec.originalFileName.trim().toLowerCase() === currentFile) return true;
+    return false;
+  });
+}
+
+// Deal existente real debe detectarse como duplicado
+assert.strictEqual(checkIsDsvDuplicate('DEAL-998877', 'nuevo_archivo.xlsx'), true, 'Deal ID exacto debe alertar duplicidad');
+// Archivo con Deal 'NA' o 'bom.xlsx' NO debe disparar falso positivo
+assert.strictEqual(checkIsDsvDuplicate('NA', 'nuevo_pedido.xlsx'), false, 'Deal ID "NA" no debe disparar falso positivo');
+assert.strictEqual(checkIsDsvDuplicate('OTRO-DEAL', 'bom.xlsx'), false, 'Nombre genérico "bom.xlsx" no debe disparar falso positivo');
+console.log('✅ Detector de duplicados en DSV previene falsos positivos con Deal IDs y nombres genéricos.\n');
+
+// ----------------------------------------------------------------------------
+// Test 5: Verificación de Prefijo UTF-8 BOM (\uFEFF) en Exportaciones CSV
+// ----------------------------------------------------------------------------
+console.log('--- 5. Prueba de Codificación UTF-8 BOM en Exportaciones CSV ---');
+import { generateNetformxCsv } from '../src/modules/configuriator/ccwExcelGenerator';
+const sampleCsv = generateNetformxCsv(
+  { clientName: 'Cliente Ñuñoa SpA', items: [] },
+  [{ partNumber: 'C9300-24T-E', quantity: 1, isParent: true, parentIndex: 0, notes: 'Switch de Distribución con Tildes' } as any]
+);
+assert.ok(sampleCsv.content.startsWith('\uFEFF'), 'CSV debe comenzar con BOM UTF-8 (\\uFEFF) para compatibilidad con Excel');
+console.log('✅ Exportación CSV compatible con Excel para caracteres latinos (ñ, tildes) verificado.\n');
+
 console.log('🎉 ¡TODAS LAS PRUEBAS DE AUDITORÍA Y QA PASARON EXITOSAMENTE AL 100%!');

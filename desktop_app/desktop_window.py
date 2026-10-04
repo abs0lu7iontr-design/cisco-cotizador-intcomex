@@ -218,15 +218,23 @@ class DesktopBridge:
             return {"success": False, "error": str(e)}
 
     def open_folder_in_explorer(self, folder_path):
-        """Opens directory in Windows file explorer."""
+        """Opens directory or highlights file in Windows file explorer."""
         try:
-            target = folder_path
-            if target and os.path.isfile(target):
-                target = os.path.dirname(target)
-            if target and os.path.exists(target):
+            if not folder_path:
+                return {"success": False, "error": "Ruta no especificada"}
+            target = os.path.normpath(str(folder_path).strip())
+            if os.path.isfile(target):
+                import subprocess
+                subprocess.Popen(f'explorer /select,"{target}"')
+                return {"success": True}
+            elif os.path.isdir(target):
                 os.startfile(target)
                 return {"success": True}
-            return {"success": False, "error": "Directorio no encontrado"}
+            parent = os.path.dirname(target)
+            if parent and os.path.isdir(parent):
+                os.startfile(parent)
+                return {"success": True}
+            return {"success": False, "error": f"Directorio no encontrado: {target}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -235,13 +243,14 @@ class DesktopBridge:
         try:
             import urllib.parse
             import webbrowser
+            normalized_body = (body or "").replace('\r\n', '\n').replace('\n', '\r\n')
             params = {}
             if cc:
                 params['cc'] = cc
             if subject:
                 params['subject'] = subject
-            if body:
-                params['body'] = body
+            if normalized_body:
+                params['body'] = normalized_body
             query_string = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
             mailto_url = f"mailto:{recipient}?{query_string}" if query_string else f"mailto:{recipient}"
             webbrowser.open(mailto_url)
@@ -249,66 +258,92 @@ class DesktopBridge:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def search_storage(self, query_text):
+    def search_storage(self, query_text=""):
         """Searches gravity_storage hierarchical folder and database for matching estimates."""
         try:
             q = (query_text or "").strip().lower()
-            if not q:
-                return {"success": True, "results": []}
-
             results = []
-            base_dir = self._file_processor.base_storage_dir
-            if os.path.exists(base_dir):
+
+            # Candidate directories to discover stored Excel files
+            candidate_dirs = [
+                self._file_processor.base_storage_dir,
+                os.path.join(os.getcwd(), "gravity_storage")
+            ]
+            if getattr(sys, 'frozen', False):
+                exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+                candidate_dirs.append(os.path.join(exe_dir, "gravity_storage"))
+
+            seen_paths = set()
+            found_files = []
+
+            for base_dir in candidate_dirs:
+                if not base_dir or not os.path.exists(base_dir):
+                    continue
                 for root, dirs, files in os.walk(base_dir):
                     for file in files:
                         if not file.lower().endswith(('.xlsx', '.xls')):
                             continue
-                        full_path = os.path.join(root, file)
+                        full_path = os.path.abspath(os.path.join(root, file))
+                        if full_path in seen_paths:
+                            continue
+                        seen_paths.add(full_path)
+
                         rel_path = os.path.relpath(full_path, base_dir)
                         path_parts = rel_path.split(os.sep)
                         partner = path_parts[0] if len(path_parts) > 1 else ""
                         client = path_parts[1] if len(path_parts) > 2 else ""
                         month = path_parts[2] if len(path_parts) > 3 else ""
 
-                        if q in file.lower() or q in rel_path.lower() or q in partner.lower() or q in client.lower():
-                            stat = os.stat(full_path)
-                            results.append({
-                                "filename": file,
-                                "filepath": full_path,
-                                "folder": root,
-                                "partner": partner,
-                                "client": client,
-                                "month": month,
-                                "size_bytes": stat.st_size,
-                                "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat()
-                            })
-                            if len(results) >= 50:
-                                break
-                    if len(results) >= 50:
-                        break
+                        # If q is empty, match all files; otherwise filter by q
+                        if not q or (q in file.lower() or q in rel_path.lower() or q in partner.lower() or q in client.lower()):
+                            try:
+                                stat = os.stat(full_path)
+                                found_files.append({
+                                    "filename": file,
+                                    "filepath": full_path,
+                                    "folder": os.path.abspath(root),
+                                    "partner": partner,
+                                    "client": client,
+                                    "month": month,
+                                    "size_bytes": stat.st_size,
+                                    "mtime": stat.st_mtime,
+                                    "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                                })
+                            except Exception:
+                                pass
 
-            # Also search in SQLite DB records
-            try:
-                db_estimates = self._db.get_estimates_list()
-                for est in db_estimates:
-                    est_id = str(est.get("estimate_id", "")).lower()
-                    deal_id = str(est.get("deal_id", "")).lower()
-                    cust = str(est.get("customer_name", "")).lower()
-                    if q in est_id or q in deal_id or q in cust:
-                        fn = est.get("filename") or f"{est.get('estimate_id', 'estimate')}.xlsx"
-                        if not any(r.get("filename") == fn for r in results):
-                            results.append({
-                                "filename": fn,
-                                "filepath": "",
-                                "folder": "",
-                                "partner": est.get("company_name", ""),
-                                "client": est.get("customer_name", ""),
-                                "month": est.get("created_at", "")[:7],
-                                "size_bytes": 0,
-                                "modified_at": est.get("created_at", "")
-                            })
-            except Exception:
-                pass
+            # Sort files by newest modification time
+            found_files.sort(key=lambda x: x.get("mtime", 0), reverse=True)
+            for f in found_files[:50]:
+                f_copy = dict(f)
+                f_copy.pop("mtime", None)
+                results.append(f_copy)
+
+            # Also search in SQLite DB records if query is specified or results < 50
+            if len(results) < 50:
+                try:
+                    db_estimates = self._db.get_estimates_list()
+                    for est in db_estimates:
+                        est_id = str(est.get("estimate_id", "")).lower()
+                        deal_id = str(est.get("deal_id", "")).lower()
+                        cust = str(est.get("customer_name", "")).lower()
+                        if not q or (q in est_id or q in deal_id or q in cust):
+                            fn = est.get("filename") or f"{est.get('estimate_id', 'estimate')}.xlsx"
+                            if not any(r.get("filename") == fn for r in results):
+                                results.append({
+                                    "filename": fn,
+                                    "filepath": "",
+                                    "folder": "",
+                                    "partner": est.get("company_name", ""),
+                                    "client": est.get("customer_name", ""),
+                                    "month": est.get("created_at", "")[:7],
+                                    "size_bytes": 0,
+                                    "modified_at": est.get("created_at", "")
+                                })
+                                if len(results) >= 50:
+                                    break
+                except Exception:
+                    pass
 
             return {"success": True, "results": results[:50]}
         except Exception as e:

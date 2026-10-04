@@ -18,8 +18,12 @@ class FileProcessor:
 
     def __init__(self, base_storage_dir: str = None):
         if base_storage_dir is None:
-            # Default storage root folder in user home or current project directory
-            self.base_storage_dir = os.path.join(os.getcwd(), "gravity_storage")
+            import sys
+            if getattr(sys, 'frozen', False):
+                exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+                self.base_storage_dir = os.path.join(exe_dir, "gravity_storage")
+            else:
+                self.base_storage_dir = os.path.join(os.getcwd(), "gravity_storage")
         else:
             self.base_storage_dir = base_storage_dir
 

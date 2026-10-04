@@ -132,9 +132,8 @@ const testRows: CcwAssembledRow[] = [
 const netformxExport = generateNetformxCsv(
   {
     clientName: 'Cliente_Test_SpA',
+    projectName: 'Proyecto_Netformx_Test',
     items: [],
-    detectedLanguage: 'es',
-    totalEstimatedListUsd: 10000,
   },
   testRows
 );

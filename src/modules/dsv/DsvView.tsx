@@ -67,15 +67,31 @@ export const DsvView: React.FC = () => {
     const currentDeal = (rawBom.dealIdFromBom || rawBom.authorizationNumber || '').trim().toUpperCase();
     const currentFile = (rawBom.fileName || '').trim().toLowerCase();
 
-    return existingDsvs.find((rec) => {
-      if (currentDeal && rec.dealId && rec.dealId.trim().toUpperCase() === currentDeal) {
-        return true;
-      }
-      if (currentFile && rec.originalFileName && rec.originalFileName.trim().toLowerCase() === currentFile) {
-        return true;
-      }
-      return false;
-    }) || null;
+    const isGenericDeal =
+      !currentDeal ||
+      ['NA', 'N/A', 'NONE', 'PENDING', 'SO-PENDING', 'NULL', 'UNDEFINED', '0'].includes(currentDeal);
+
+    const isGenericFile =
+      !currentFile ||
+      ['bom.xlsx', 'bom.xls', 'estimate.xlsx', 'estimate.xls', 'cotizacion.xlsx', 'cotizacion.xls'].includes(
+        currentFile
+      );
+
+    return (
+      existingDsvs.find((rec) => {
+        if (!isGenericDeal && rec.dealId && rec.dealId.trim().toUpperCase() === currentDeal) {
+          return true;
+        }
+        if (
+          !isGenericFile &&
+          rec.originalFileName &&
+          rec.originalFileName.trim().toLowerCase() === currentFile
+        ) {
+          return true;
+        }
+        return false;
+      }) || null
+    );
   }, [rawBom, existingDsvs]);
 
   const handleGenerateFromRecord = async (record: ConsolidatedDealRecord) => {

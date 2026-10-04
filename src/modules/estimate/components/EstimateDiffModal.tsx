@@ -60,8 +60,8 @@ export const EstimateDiffModal: React.FC<EstimateDiffModalProps> = ({
 
     const snapshotMap = new Map<string, EstimateLineItem>();
     if (shadowSnapshot && shadowSnapshot.items) {
-      shadowSnapshot.items.forEach((it) => {
-        const key = `${it.partNumber}_${it.lineNumber || it.itemNo || ''}`;
+      shadowSnapshot.items.forEach((it, idx) => {
+        const key = `${it.partNumber}_${it.lineNumber || it.itemNo || idx}`;
         snapshotMap.set(key, it);
       });
     }
@@ -158,7 +158,7 @@ export const EstimateDiffModal: React.FC<EstimateDiffModalProps> = ({
         `"${r.partNumber}","${r.description.replace(/"/g, '""')}",${r.qty},${r.baseUnit},${r.currentUnit},${r.baseExt},${r.currentExt},${r.deltaExt},${r.deltaPct}%,"${r.baseRule}","${r.currentRule}"`
       )
       .join('\n');
-    const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['\uFEFF' + headers + rows], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

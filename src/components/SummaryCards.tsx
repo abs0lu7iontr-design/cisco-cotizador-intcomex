@@ -27,9 +27,42 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
   miningAudit,
   onOpenMiningAudit,
 }) => {
-  const [currency, setCurrency] = useState<CurrencyCode>('USD');
-  const [rates, setRates] = useState<CurrencyConversionRates>(DEFAULT_CURRENCY_RATES);
+  const [currency, setCurrency] = useState<CurrencyCode>(() => {
+    try {
+      const saved = localStorage.getItem('cisco_selected_currency');
+      if (saved === 'USD' || saved === 'CLP' || saved === 'UF') return saved;
+    } catch {}
+    return 'USD';
+  });
+
+  const [rates, setRates] = useState<CurrencyConversionRates>(() => {
+    try {
+      const saved = localStorage.getItem('cisco_custom_currency_rates');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && Number(parsed.CLP) > 0 && Number(parsed.UF) > 0) {
+          return { ...DEFAULT_CURRENCY_RATES, ...parsed };
+        }
+      }
+    } catch {}
+    return DEFAULT_CURRENCY_RATES;
+  });
+
   const [showRateSettings, setShowRateSettings] = useState<boolean>(false);
+
+  const handleSelectCurrency = (c: CurrencyCode) => {
+    setCurrency(c);
+    try {
+      localStorage.setItem('cisco_selected_currency', c);
+    } catch {}
+  };
+
+  const handleUpdateRates = (newRates: CurrencyConversionRates) => {
+    setRates(newRates);
+    try {
+      localStorage.setItem('cisco_custom_currency_rates', JSON.stringify(newRates));
+    } catch {}
+  };
 
   const formatCurrency = (amountUsd?: number) => {
     if (amountUsd === undefined || amountUsd === null || isNaN(amountUsd)) return '$0.00';
@@ -74,7 +107,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             <button
               key={c}
               type="button"
-              onClick={() => setCurrency(c)}
+              onClick={() => handleSelectCurrency(c)}
               className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 currency === c
                   ? 'bg-indigo-600 text-white shadow'
@@ -108,8 +141,8 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             <label className="text-[11px] text-slate-400">Tipo Cambio CLP:</label>
             <input
               type="number"
-              value={rates.CLP}
-              onChange={(e) => setRates({ ...rates, CLP: Number(e.target.value) || 1 })}
+              value={rates.CLP || ''}
+              onChange={(e) => handleUpdateRates({ ...rates, CLP: parseFloat(e.target.value) || 0 })}
               className="w-20 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-right text-emerald-400 font-bold focus:border-indigo-500 outline-none"
             />
           </div>
@@ -117,14 +150,14 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             <label className="text-[11px] text-slate-400">Valor UF (CLP):</label>
             <input
               type="number"
-              value={rates.UF}
-              onChange={(e) => setRates({ ...rates, UF: Number(e.target.value) || 1 })}
+              value={rates.UF || ''}
+              onChange={(e) => handleUpdateRates({ ...rates, UF: parseFloat(e.target.value) || 0 })}
               className="w-24 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-right text-cyan-400 font-bold focus:border-indigo-500 outline-none"
             />
           </div>
           <button
             type="button"
-            onClick={() => setRates(DEFAULT_CURRENCY_RATES)}
+            onClick={() => handleUpdateRates(DEFAULT_CURRENCY_RATES)}
             className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
           >
             Restablecer Valores por Defecto
