@@ -41,6 +41,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { formatPartnerName, getUniqueFormattedPartners } from '../utils/partnerDbUtils';
+import { normalizeIsoTimestamp, extractYearMonth, extractYear } from '../utils/dateUtils';
 
 const isValidEstimateId = (id?: string | null): boolean => {
   if (!id) return false;
@@ -75,8 +76,8 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
   const [syncNote, setSyncNote] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // 2. Analytical Filter States — Default is 'today' (Diario) for lightweight fast rendering
-  const [periodFilter, setPeriodFilter] = useState<DashboardPeriodFilter>('today');
+  // 2. Analytical Filter States — Default is 'month' (Mensual) so estimates are always visible upon opening
+  const [periodFilter, setPeriodFilter] = useState<DashboardPeriodFilter>('month');
   const currentYearStr = String(new Date().getFullYear());
   const currentMonthStr = new Date().toISOString().slice(0, 7); // YYYY-MM
 
@@ -92,55 +93,13 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
     setTimeout(() => setToast(null), 3500);
   };
 
-  // Compute start ISO for Firestore query based on selected period
-  const getWindowSinceIso = useCallback(
-    (period: DashboardPeriodFilter): string | undefined => {
-      const now = new Date();
-      if (period === 'today') {
-        // Fetch at least the last 30 days in background so switching to 7d/Month in the mirror is 0ms,
-        // while the UI filters to 'today' by default!
-        const d = new Date(now.getFullYear(), now.getMonth(), 1);
-        return d.toISOString();
-      }
-      if (period === '7d') {
-        const d = new Date(now.getTime() - 7 * 86400000);
-        return d.toISOString();
-      }
-      if (period === 'month') {
-        return `${selectedMonth}-01T00:00:00.000Z`;
-      }
-      if (period === 'quarter') {
-        if (quarterMode === 'rolling_3m') {
-          const d = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-          return d.toISOString();
-        }
-        const qStartMonth =
-          quarterMode === 'Q1' ? '01' : quarterMode === 'Q2' ? '04' : quarterMode === 'Q3' ? '07' : '10';
-        return `${selectedYear}-${qStartMonth}-01T00:00:00.000Z`;
-      }
-      if (period === 'year') {
-        return `${selectedYear}-01-01T00:00:00.000Z`;
-      }
-      return undefined; // 'all'
-    },
-    [selectedMonth, quarterMode, selectedYear]
-  );
-
-  // Sync Mirror Snapshot with Firebase Firestore
+  // Sync Mirror Snapshot with Firebase Firestore & Desktop SQLite (Loads up to 300 recent estimates)
   const syncMirrorWithFirebase = useCallback(
-    async (isManual: boolean = false, targetPeriod: DashboardPeriodFilter = periodFilter) => {
+    async (isManual: boolean = false) => {
       setIsSyncingCloud(true);
       setSyncNote(null);
       try {
-        const limitCount =
-          targetPeriod === 'today' || targetPeriod === '7d'
-            ? 100
-            : targetPeriod === 'month' || targetPeriod === 'quarter'
-            ? 200
-            : 300;
-        const sinceIso = isManual || targetPeriod === 'all' ? undefined : getWindowSinceIso(targetPeriod);
-
-        const res = await getCloudEstimates(limitCount, sinceIso);
+        const res = await getCloudEstimates(300);
         if (res.success && res.data) {
           setLastSyncIso(getMirrorLastSyncTimestamp() || new Date().toISOString());
         }
@@ -156,13 +115,13 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
         setIsSyncingCloud(false);
       }
     },
-    [periodFilter, getWindowSinceIso]
+    []
   );
 
   // Initial background sync with Firebase Firestore
   useEffect(() => {
-    syncMirrorWithFirebase(false, 'all');
-  }, []);
+    syncMirrorWithFirebase(false);
+  }, [syncMirrorWithFirebase]);
 
   // Access check for restricted estimates
   const evaluateAccess = useCallback(
@@ -188,8 +147,9 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
   const availableMonths = useMemo(() => {
     const set = new Set<string>([currentMonthStr]);
     mirrorEstimates.forEach((e) => {
-      if (e.createdAt && e.createdAt.length >= 7) {
-        set.add(e.createdAt.slice(0, 7));
+      const ym = extractYearMonth(e.createdAt);
+      if (ym && ym.length === 7) {
+        set.add(ym);
       }
     });
     return Array.from(set).sort().reverse();
@@ -198,8 +158,9 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
   const availableYears = useMemo(() => {
     const set = new Set<string>([currentYearStr]);
     mirrorEstimates.forEach((e) => {
-      if (e.createdAt && e.createdAt.length >= 4) {
-        set.add(e.createdAt.slice(0, 4));
+      const y = extractYear(e.createdAt);
+      if (y && y.length === 4) {
+        set.add(y);
       }
     });
     return Array.from(set).sort().reverse();
@@ -222,10 +183,11 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
 
   // Helper to check if an estimate's createdAt falls within a given period
   const matchesTimePeriod = useCallback(
-    (createdAtIso: string | undefined, period: DashboardPeriodFilter): boolean => {
+    (createdAtRaw: string | undefined, period: DashboardPeriodFilter): boolean => {
       if (period === 'all') return true;
-      if (!createdAtIso) return false;
+      if (!createdAtRaw) return false;
 
+      const createdAtIso = normalizeIsoTimestamp(createdAtRaw);
       const recordDate = new Date(createdAtIso);
       if (isNaN(recordDate.getTime())) return false;
 
@@ -245,8 +207,8 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
       }
 
       if (period === 'month') {
-        const ym = `${recordDate.getFullYear()}-${String(recordDate.getMonth() + 1).padStart(2, '0')}`;
-        return ym === selectedMonth || createdAtIso.startsWith(selectedMonth);
+        const ym = extractYearMonth(createdAtIso);
+        return ym === selectedMonth;
       }
 
       if (period === 'quarter') {
@@ -254,7 +216,7 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
           const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1, 0, 0, 0);
           return recordDate >= threeMonthsAgo;
         }
-        const recYear = String(recordDate.getFullYear());
+        const recYear = extractYear(createdAtIso);
         if (recYear !== selectedYear) return false;
         const m = recordDate.getMonth() + 1; // 1..12
         if (quarterMode === 'Q1') return m >= 1 && m <= 3;
@@ -265,10 +227,7 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
       }
 
       if (period === 'year') {
-        return (
-          String(recordDate.getFullYear()) === selectedYear ||
-          createdAtIso.startsWith(selectedYear)
-        );
+        return extractYear(createdAtIso) === selectedYear;
       }
 
       return true;
@@ -806,45 +765,45 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
         </div>
       </div>
 
-      {/* Smart Daily Hint when Today has 0 quotes but Mirror has historical data */}
-      {periodFilter === 'today' &&
-        filteredEstimates.length === 0 &&
-        mirrorEstimates.length > 0 && (
-          <div className="p-4 bg-indigo-950/40 border border-indigo-500/40 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="flex items-center space-x-2.5 text-indigo-200">
-              <Cloud className="w-5 h-5 text-cyan-400 shrink-0" />
-              <span>
-                El filtro predeterminado <strong>Diario (Hoy)</strong> está activo para carga ultrarrápida y aún no registra cotizaciones con fecha de hoy. Tienes{' '}
-                <strong className="text-white">{mirrorEstimates.length} cotizaciones</strong> listas en el Espejo de Firebase.
-              </span>
-            </div>
-            <div className="flex items-center flex-wrap gap-2 shrink-0">
-              {currentMonthCount > 0 && (
-                <button
-                  onClick={() => setPeriodFilter('month')}
-                  className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] cursor-pointer transition-colors"
-                >
-                  Ver Mes Actual ({currentMonthCount})
-                </button>
-              )}
+      {/* Smart Fallback Hint when current filter yields 0 quotes but Mirror has historical data */}
+      {filteredEstimates.length === 0 && mirrorEstimates.length > 0 && (
+        <div className="p-4 bg-indigo-950/40 border border-indigo-500/40 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center space-x-2.5 text-indigo-200">
+            <Cloud className="w-5 h-5 text-cyan-400 shrink-0" />
+            <span>
+              El filtro seleccionado (<strong>{periodLabel}</strong>) no registra cotizaciones. Tienes{' '}
+              <strong className="text-white">{mirrorEstimates.length} cotizaciones</strong> resguardadas en el Espejo Cloud / Local.
+            </span>
+          </div>
+          <div className="flex items-center flex-wrap gap-2 shrink-0">
+            {periodFilter !== 'month' && currentMonthCount > 0 && (
               <button
-                onClick={() => {
-                  setQuarterMode('rolling_3m');
-                  setPeriodFilter('quarter');
-                }}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 font-bold text-[11px] cursor-pointer transition-colors"
+                onClick={() => setPeriodFilter('month')}
+                className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px] cursor-pointer transition-colors"
               >
-                Ver Últimos 3 Meses (Q)
+                Ver Mes Actual ({currentMonthCount})
               </button>
+            )}
+            <button
+              onClick={() => {
+                setQuarterMode('rolling_3m');
+                setPeriodFilter('quarter');
+              }}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 font-bold text-[11px] cursor-pointer transition-colors"
+            >
+              Ver Últimos 3 Meses (Q)
+            </button>
+            {periodFilter !== 'all' && (
               <button
                 onClick={() => setPeriodFilter('all')}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-[11px] cursor-pointer transition-colors"
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] cursor-pointer transition-colors shadow-md shadow-emerald-900/30"
               >
-                Ver Todo ({mirrorEstimates.length})
+                Ver Todo el Historial ({mirrorEstimates.length})
               </button>
-            </div>
+            )}
           </div>
-        )}
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

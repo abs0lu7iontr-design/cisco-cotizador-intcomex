@@ -52,6 +52,7 @@ import {
   FolderOpen,
 } from 'lucide-react';
 import { formatPartnerName, getUniqueFormattedPartners } from '../utils/partnerDbUtils';
+import { normalizeIsoTimestamp, extractYearMonth } from '../utils/dateUtils';
 import {
   searchDesktopStorage,
   DesktopSearchResult,
@@ -179,15 +180,15 @@ export function EstimatesHistoryView() {
     };
   };
 
-  // Fetch on demand function
+  // Fetch on demand function (fetches up to 300 documents so no history is truncated)
   const fetchAllHistory = async (isManualRefresh: boolean = false) => {
     setIsLoading(true);
     setCloudStatusNote(null);
 
     try {
       const [estRes, dsvRes] = await Promise.all([
-        getCloudEstimates(100),
-        getCloudDsvs(100),
+        getCloudEstimates(300),
+        getCloudDsvs(300),
       ]);
 
       if (dsvRes.success && dsvRes.data) {
@@ -225,17 +226,19 @@ export function EstimatesHistoryView() {
     );
   };
 
-  // Distinct Months for Filter (Preserved)
+  // Distinct Months for Filter (Bulletproof extractYearMonth)
   const availableMonths = useMemo(() => {
     const monthsSet = new Set<string>();
     estimates.forEach((e) => {
       if (e.createdAt) {
-        monthsSet.add(e.createdAt.substring(0, 7)); // YYYY-MM
+        const ym = extractYearMonth(e.createdAt);
+        if (ym && ym.length === 7) monthsSet.add(ym);
       }
     });
     dsvRecords.forEach((d) => {
       if (d.createdAt) {
-        monthsSet.add(d.createdAt.substring(0, 7));
+        const ym = extractYearMonth(d.createdAt);
+        if (ym && ym.length === 7) monthsSet.add(ym);
       }
     });
     return Array.from(monthsSet).sort().reverse();
@@ -315,7 +318,7 @@ export function EstimatesHistoryView() {
         (e.originalFileName || '').toLowerCase().includes(q);
 
       const matchesMonth =
-        selectedMonth === 'all' || (e.createdAt && e.createdAt.startsWith(selectedMonth));
+        selectedMonth === 'all' || (e.createdAt && extractYearMonth(e.createdAt) === selectedMonth);
 
       const creatorUserLower = (e.creator?.username || '').trim().toLowerCase();
       const matchesCreator =
@@ -391,7 +394,7 @@ export function EstimatesHistoryView() {
         (d.creator?.username || '').toLowerCase().includes(q);
 
       const matchesMonth =
-        selectedMonth === 'all' || (d.createdAt && d.createdAt.startsWith(selectedMonth));
+        selectedMonth === 'all' || (d.createdAt && extractYearMonth(d.createdAt) === selectedMonth);
 
       const creatorUserLower = (d.creator?.username || '').trim().toLowerCase();
       const matchesCreator =
@@ -1061,10 +1064,10 @@ export function EstimatesHistoryView() {
                           {est.createdAt ? (
                             <div className="flex flex-col items-end">
                               <span className="font-mono text-slate-300 font-semibold">
-                                {new Date(est.createdAt).toLocaleDateString('es-CL')}
+                                {new Date(normalizeIsoTimestamp(est.createdAt)).toLocaleDateString('es-CL')}
                               </span>
                               <span className="text-[10px] text-slate-500 font-mono">
-                                {new Date(est.createdAt).toLocaleTimeString('es-CL', {
+                                {new Date(normalizeIsoTimestamp(est.createdAt)).toLocaleTimeString('es-CL', {
                                   hour: '2-digit',
                                   minute: '2-digit',
                                 })}
@@ -1276,10 +1279,10 @@ export function EstimatesHistoryView() {
                         {dsv.createdAt ? (
                           <div className="flex flex-col items-end">
                             <span className="font-mono text-slate-300 font-semibold">
-                              {new Date(dsv.createdAt).toLocaleDateString('es-CL')}
+                              {new Date(normalizeIsoTimestamp(dsv.createdAt)).toLocaleDateString('es-CL')}
                             </span>
                             <span className="text-[10px] text-slate-500 font-mono">
-                              {new Date(dsv.createdAt).toLocaleTimeString('es-CL', {
+                              {new Date(normalizeIsoTimestamp(dsv.createdAt)).toLocaleTimeString('es-CL', {
                                 hour: '2-digit',
                                 minute: '2-digit',
                               })}

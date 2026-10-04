@@ -1,4 +1,5 @@
 import os
+import shutil
 import sqlite3
 import uuid
 from datetime import datetime
@@ -8,18 +9,23 @@ class DatabaseManager:
     """
     Dual-layer Database Manager supporting SQLite (local standalone)
     and Supabase (PostgreSQL Cloud) for multi-user collaboration.
+    Includes Automatic Fail-Safe Redundancy, Rolling Backups, and Auto-Merging.
     """
 
     def __init__(self, db_path: str = None, supabase_url: str = None, supabase_key: str = None):
-        if not db_path:
-            import sys
-            if getattr(sys, 'frozen', False):
-                exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-                self.db_path = os.path.join(exe_dir, "gravity_database.db")
-            else:
-                self.db_path = os.path.join(os.getcwd(), "gravity_database.db")
-        else:
+        user_home = os.path.expanduser("~")
+        canonical_dir = os.path.join(user_home, ".cotizador_intcomex")
+        os.makedirs(canonical_dir, exist_ok=True)
+        canonical_db_path = os.path.join(canonical_dir, "gravity_database.db")
+
+        if db_path:
             self.db_path = db_path
+        else:
+            self.db_path = canonical_db_path
+
+        # Consolidate, auto-backup, and self-heal from any candidate paths
+        self._consolidate_and_backup_databases(canonical_db_path)
+
         self.supabase_url = supabase_url or os.getenv("SUPABASE_URL", "")
         self.supabase_key = supabase_key or os.getenv("SUPABASE_KEY", "")
         self.use_supabase = bool(self.supabase_url and self.supabase_key)
@@ -35,6 +41,131 @@ class DatabaseManager:
                 self.use_supabase = False
 
         self._init_db_schema()
+
+    def _consolidate_and_backup_databases(self, canonical_path: str):
+        """
+        Discovers any scattered databases (root, dist/, desktop_app/, cwd),
+        creates rolling timestamped backups, and merges all records into canonical path.
+        """
+        try:
+            backup_dir = os.path.join(os.path.dirname(canonical_path), "backups")
+            os.makedirs(backup_dir, exist_ok=True)
+
+            candidate_paths = [
+                canonical_path,
+                os.path.join(os.getcwd(), "gravity_database.db"),
+                os.path.join(os.getcwd(), "dist", "gravity_database.db"),
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "gravity_database.db"),
+            ]
+            import sys
+            if getattr(sys, 'frozen', False):
+                exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+                candidate_paths.append(os.path.join(exe_dir, "gravity_database.db"))
+                candidate_paths.append(os.path.join(exe_dir, "_internal", "gravity_database.db"))
+
+            valid_candidates = []
+            for p in candidate_paths:
+                norm = os.path.normpath(os.path.abspath(p))
+                if os.path.isfile(norm) and norm not in valid_candidates:
+                    valid_candidates.append(norm)
+
+            if not valid_candidates:
+                return
+
+            if not os.path.exists(canonical_path):
+                shutil.copy2(valid_candidates[0], canonical_path)
+
+            try:
+                if os.path.exists(canonical_path) and os.path.getsize(canonical_path) > 0:
+                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    backup_file = os.path.join(backup_dir, f"gravity_database_backup_{ts}.db")
+                    shutil.copy2(canonical_path, backup_file)
+                    
+                    backups = sorted([os.path.join(backup_dir, f) for f in os.listdir(backup_dir) if f.startswith("gravity_database_backup_") and f.endswith(".db")])
+                    while len(backups) > 10:
+                        oldest = backups.pop(0)
+                        try:
+                            os.remove(oldest)
+                        except Exception:
+                            pass
+            except Exception as b_err:
+                print(f"[DB Backup Warning]: {b_err}")
+
+            with sqlite3.connect(canonical_path) as target_conn:
+                target_conn.row_factory = sqlite3.Row
+                target_cur = target_conn.cursor()
+
+                for src_path in valid_candidates:
+                    if src_path == os.path.normpath(os.path.abspath(canonical_path)):
+                        continue
+                    try:
+                        with sqlite3.connect(src_path) as src_conn:
+                            src_conn.row_factory = sqlite3.Row
+                            src_cur = src_conn.cursor()
+
+                            try:
+                                src_cur.execute("SELECT * FROM estimates")
+                                for row in src_cur.fetchall():
+                                    d = dict(row)
+                                    target_cur.execute("""
+                                        INSERT OR IGNORE INTO estimates (
+                                            id, user_id, estimate_id_cisco, deal_id, partner_name,
+                                            client_final_name, original_filename, stored_filepath,
+                                            net_cisco_total, total_cotizado_intcomex, recargo_reglas_usd,
+                                            ganancia_intcomex_usd, items_count, created_at
+                                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    """, (
+                                        d["id"], d["user_id"], d["estimate_id_cisco"], d["deal_id"],
+                                        d["partner_name"], d["client_final_name"], d["original_filename"],
+                                        d["stored_filepath"], d["net_cisco_total"], d["total_cotizado_intcomex"],
+                                        d["recargo_reglas_usd"], d["ganancia_intcomex_usd"], d["items_count"],
+                                        d["created_at"]
+                                    ))
+                            except Exception:
+                                pass
+
+                            try:
+                                src_cur.execute("SELECT * FROM estimate_items")
+                                for row in src_cur.fetchall():
+                                    d = dict(row)
+                                    target_cur.execute("""
+                                        INSERT OR IGNORE INTO estimate_items (
+                                            id, estimate_id, line_number, part_number, description, qty,
+                                            net_cisco_unit, is_intangible, lleva_arancel, costo_internacion,
+                                            costo_arancel, precio_venta_unitario, precio_venta_extendido
+                                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    """, (
+                                        d["id"], d["estimate_id"], d["line_number"], d["part_number"],
+                                        d["description"], d["qty"], d["net_cisco_unit"], d["is_intangible"],
+                                        d["lleva_arancel"], d["costo_internacion"], d["costo_arancel"],
+                                        d["precio_venta_unitario"], d["precio_venta_extendido"]
+                                    ))
+                            except Exception:
+                                pass
+
+                            try:
+                                src_cur.execute("SELECT * FROM audit_logs")
+                                for row in src_cur.fetchall():
+                                    d = dict(row)
+                                    target_cur.execute("""
+                                        INSERT OR IGNORE INTO audit_logs (id, username, action, details, created_at)
+                                        VALUES (?, ?, ?, ?, ?)
+                                    """, (d["id"], d["username"], d["action"], d["details"], d["created_at"]))
+                            except Exception:
+                                pass
+
+                        target_conn.commit()
+                    except Exception as merge_err:
+                        print(f"[DB Merge Warning from {src_path}]: {merge_err}")
+
+            root_db = os.path.join(os.getcwd(), "gravity_database.db")
+            if os.path.normpath(os.path.abspath(root_db)) != os.path.normpath(os.path.abspath(canonical_path)):
+                try:
+                    shutil.copy2(canonical_path, root_db)
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"[DB Consolidation Error]: {e}")
 
     def get_connection(self):
         """Returns SQLite connection."""
@@ -199,7 +330,10 @@ class DatabaseManager:
 
     def _seed_default_users(self):
         """Seeds initial required users: mskill (admin), madasme (pm), rcuevas (pm), jvalancia (pm)."""
-        from auth_manager import AuthManager
+        try:
+            from auth_manager import AuthManager
+        except ImportError:
+            from desktop_app.auth_manager import AuthManager
         default_pwd_hash = AuthManager.hash_password("Intcomex2026!")
 
         users_seed = [
@@ -396,15 +530,30 @@ class DatabaseManager:
             return dict(row)
 
     def get_estimates_list(self, user_id: str = None, is_admin: bool = False) -> List[Dict[str, Any]]:
-        """Retrieves estimate history list filtered by user role isolation."""
+        """Retrieves estimate history list filtered by user role isolation using fail-safe LEFT JOIN."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             if is_admin or user_id is None:
-                query = "SELECT e.*, u.username, u.full_name FROM estimates e JOIN users u ON e.user_id = u.id ORDER BY e.created_at DESC"
+                query = """
+                    SELECT e.*, 
+                           COALESCE(u.username, e.user_id, 'Usuario') AS username, 
+                           COALESCE(u.full_name, u.username, 'Usuario Intcomex') AS full_name 
+                    FROM estimates e 
+                    LEFT JOIN users u ON e.user_id = u.id 
+                    ORDER BY e.created_at DESC
+                """
                 cursor.execute(query)
             else:
-                query = "SELECT e.*, u.username, u.full_name FROM estimates e JOIN users u ON e.user_id = u.id WHERE e.user_id = ? ORDER BY e.created_at DESC"
-                cursor.execute(query, (user_id,))
+                query = """
+                    SELECT e.*, 
+                           COALESCE(u.username, e.user_id, 'Usuario') AS username, 
+                           COALESCE(u.full_name, u.username, 'Usuario Intcomex') AS full_name 
+                    FROM estimates e 
+                    LEFT JOIN users u ON e.user_id = u.id 
+                    WHERE (e.user_id = ? OR u.username = ?) 
+                    ORDER BY e.created_at DESC
+                """
+                cursor.execute(query, (user_id, user_id))
             return [dict(row) for row in cursor.fetchall()]
 
     def get_all_users(self) -> List[Dict[str, Any]]:

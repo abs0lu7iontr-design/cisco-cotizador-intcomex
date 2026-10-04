@@ -25,140 +25,31 @@ import {
   SharedSkuOverrideRecord,
   SharedSkuPackageRecord,
 } from './types';
+import {
+  getEstimatesMirrorSnapshot,
+  saveEstimatesMirrorSnapshot,
+  getMirrorLastSyncTimestamp,
+} from '../../hooks/useEstimatesMirror';
+import { normalizeIsoTimestamp } from '../../utils/dateUtils';
 
 const ESTIMATES_COLLECTION = 'estimates';
 const DSV_COLLECTION = 'dsv_records';
 
-const LOCAL_ESTIMATES_BACKUP_KEY = 'cisco_cloud_estimates_cache_v2';
-const LOCAL_ESTIMATES_LEGACY_KEY = 'cisco_estimates_history_v2';
-const LOCAL_MIRROR_SYNC_TS_KEY = 'cisco_cloud_estimates_mirror_sync_ts';
 const LOCAL_DSV_BACKUP_KEY = 'cisco_cloud_dsv_cache_v2';
 
 // ----------------------------------------------------------------------------
 // Local Storage Cache & Mirror Snapshot Helpers (0ms Instant Load + Failsafe)
 // ----------------------------------------------------------------------------
 function getLocalEstimatesCache(): CloudEstimateRecord[] {
-  try {
-    const raw = localStorage.getItem(LOCAL_ESTIMATES_BACKUP_KEY);
-    const cloudCache: CloudEstimateRecord[] = raw ? JSON.parse(raw) : [];
-
-    // Bridge any real estimates from local quoter history ('cisco_estimates_history_v2') not yet in cloud cache
-    try {
-      const legacyRaw = localStorage.getItem(LOCAL_ESTIMATES_LEGACY_KEY);
-      if (legacyRaw) {
-        const legacyList: any[] = JSON.parse(legacyRaw);
-        const existingKeys = new Set(
-          cloudCache.map((c) =>
-            c.estimateId && c.estimateId !== 'NA'
-              ? `EST:${c.estimateId.trim().toUpperCase()}`
-              : `FILE:${(c.originalFileName || '').toLowerCase()}`
-          )
-        );
-        let addedAny = false;
-        for (const leg of legacyList) {
-          if (!leg || typeof leg !== 'object') continue;
-          const estId = String(leg.estimate_id_cisco || '').trim();
-          const fName = String(leg.original_filename || '').trim();
-          // Skip demo/sample placeholders
-          if (
-            estId === '011682708571Z' ||
-            estId === '011682994012A' ||
-            fName === 'Intcomex_BancoDeChile_Estimate_2026.xlsx' ||
-            fName === 'Logicalis_Cencosud_Switching_CCW.xlsx'
-          ) {
-            continue;
-          }
-          const key =
-            estId && estId !== 'NA'
-              ? `EST:${estId.toUpperCase()}`
-              : `FILE:${fName.toLowerCase()}`;
-          if (!existingKeys.has(key) && (Number(leg.total_cotizado_intcomex) > 0 || Number(leg.net_cisco_total) > 0)) {
-            existingKeys.add(key);
-            addedAny = true;
-            cloudCache.push({
-              id: `est_${(estId || fName || Date.now().toString()).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 48)}`,
-              dealId: String(leg.deal_id || 'NA'),
-              estimateId: estId || 'NA',
-              partnerName: String(leg.partner_name || 'Intcomex Partner'),
-              clientFinalName: String(leg.client_final_name || 'Cliente Final'),
-              originalFileName: fName || `${estId || 'Estimate'}.xlsx`,
-              createdAt: leg.created_at || new Date().toISOString(),
-              creator: {
-                username: String(leg.username || 'mskill'),
-                fullName: String(leg.username || 'Usuario Intcomex'),
-                role: 'pm',
-              },
-              financialSummary: {
-                totalNetCisco: Number(leg.net_cisco_total) || 0,
-                totalCotizadoIntcomex: Number(leg.total_cotizado_intcomex) || 0,
-                gananciaIntcomexUsd: Number(leg.ganancia_intcomex_usd) || 0,
-                margenPct: 5.0,
-                currency: 'USD',
-                params: { internacionPct: 7.0, arancelPct: 6.0, margenPct: 5.0 },
-              },
-              headerInfo: {
-                customerName: String(leg.client_final_name || 'Cliente Final'),
-                companyName: String(leg.partner_name || 'Intcomex Partner'),
-                address: '',
-                city: 'Santiago',
-                country: 'Chile',
-                phone: '',
-                estimateId: estId || 'NA',
-                dealId: String(leg.deal_id || 'NA'),
-                priceList: 'Global Price List',
-                date: (leg.created_at || new Date().toISOString()).slice(0, 10),
-              },
-              itemsCount: Number(leg.items_count) || 0,
-              items: [],
-              customOverrideMap: {},
-              isRestricted: false,
-              syncedToCloud: false,
-            });
-          }
-        }
-        if (addedAny) {
-          cloudCache.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-          localStorage.setItem(LOCAL_ESTIMATES_BACKUP_KEY, JSON.stringify(cloudCache.slice(0, 300)));
-        }
-      }
-    } catch (_) {}
-
-    return cloudCache;
-  } catch (_) {
-    return [];
-  }
+  return getEstimatesMirrorSnapshot();
 }
 
 function saveLocalEstimatesCache(list: CloudEstimateRecord[], markSyncedNow: boolean = false) {
-  try {
-    localStorage.setItem(LOCAL_ESTIMATES_BACKUP_KEY, JSON.stringify(list.slice(0, 300)));
-    if (markSyncedNow) {
-      localStorage.setItem(LOCAL_MIRROR_SYNC_TS_KEY, new Date().toISOString());
-    }
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('cisco-estimates-mirror-updated'));
-    }
-  } catch (_) {}
+  saveEstimatesMirrorSnapshot(list, markSyncedNow);
 }
 
-/**
- * Returns the instantaneous local Mirror Snapshot of Cloud Estimates (0ms latency).
- * Used by DashboardView and EstimatesHistoryView for immediate rendering before background cloud sync.
- */
-export function getEstimatesMirrorSnapshot(): CloudEstimateRecord[] {
-  return getLocalEstimatesCache();
-}
-
-/**
- * Returns the ISO timestamp of the last successful Mirror Snapshot sync with Firebase Firestore.
- */
-export function getMirrorLastSyncTimestamp(): string | null {
-  try {
-    return localStorage.getItem(LOCAL_MIRROR_SYNC_TS_KEY);
-  } catch (_) {
-    return null;
-  }
-}
+// Re-export mirror snapshot helpers for backwards-compatible consumers
+export { getEstimatesMirrorSnapshot, getMirrorLastSyncTimestamp };
 
 function getLocalDsvCache(): CloudDsvRecord[] {
   try {
@@ -276,11 +167,16 @@ export async function saveEstimateToCloud(
         x.estimateId === record.estimateId)
   );
 
+  const normalizedCreatedAt = normalizeIsoTimestamp(
+    record.createdAt || existingLocal?.createdAt || nowIso
+  );
+  const normalizedUpdatedAt = nowIso;
+
   const mergedRecord: CloudEstimateRecord = {
     ...record,
     id: docId,
-    createdAt: record.createdAt || existingLocal?.createdAt || nowIso,
-    updatedAt: nowIso,
+    createdAt: normalizedCreatedAt,
+    updatedAt: normalizedUpdatedAt,
     isRestricted:
       record.isRestricted !== undefined
         ? Boolean(record.isRestricted)
@@ -290,13 +186,13 @@ export async function saveEstimateToCloud(
     syncedToCloud: false,
   };
 
-  // Save immediately to local cache as failsafe
+  // Save immediately to multi-tier redundant local cache as failsafe
   const filteredLocal = localList.filter(
     (x) =>
       x.id !== docId &&
       !(record.estimateId && record.estimateId !== 'NA' && x.estimateId === record.estimateId)
   );
-  saveLocalEstimatesCache([mergedRecord, ...filteredLocal].slice(0, 150));
+  saveLocalEstimatesCache([mergedRecord, ...filteredLocal].slice(0, 300));
 
   try {
     const { db, isReady, error } = getFirestoreInstance();
@@ -340,7 +236,7 @@ export async function saveEstimateToCloud(
 
     // Mark as synced in local cache
     const syncedRecord: CloudEstimateRecord = { ...mergedRecord, syncedToCloud: true };
-    saveLocalEstimatesCache([syncedRecord, ...filteredLocal].slice(0, 150));
+    saveLocalEstimatesCache([syncedRecord, ...filteredLocal].slice(0, 300));
 
     return { success: true, id: docId };
   } catch (err: any) {
@@ -356,40 +252,132 @@ export async function saveEstimateToCloud(
 /**
  * Fetches CCW Estimates from Firestore on-demand using getDocs().
  * Orders by createdAt descending, deduplicates by Estimate ID, and auto-syncs any pending local estimates to Cloud.
+ * Ingests Desktop SQLite quotes when executing inside PyWebView.
  */
 export async function getCloudEstimates(
-  limitCount: number = 150,
-  sinceIso?: string
+  limitCount: number = 300,
+  _sinceIso?: string
 ): Promise<{ success: boolean; data: CloudEstimateRecord[]; error?: string }> {
   try {
     const { db, isReady, error } = getFirestoreInstance();
     const localCache = getLocalEstimatesCache();
 
+    const dedupMap = new Map<string, CloudEstimateRecord>();
+
+    // 1. Ingest Desktop SQLite estimates if running within PyWebView desktop app
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.get_estimates_list) {
+      try {
+        const desktopEsts = await (window as any).pywebview.api.get_estimates_list();
+        if (Array.isArray(desktopEsts)) {
+          for (const d of desktopEsts) {
+            const estId = String(d.estimate_id_cisco || d.estimate_id || '').trim();
+            const fName = String(d.original_filename || d.filename || '').trim();
+            if (
+              estId === '011682708571Z' ||
+              estId === '011682994012A' ||
+              fName === 'Intcomex_BancoDeChile_Estimate_2026.xlsx'
+            ) {
+              continue;
+            }
+            const key =
+              estId && estId.toUpperCase() !== 'NA'
+                ? `EST:${estId.toUpperCase()}`
+                : `FILE:${fName.toLowerCase()}`;
+            if (!dedupMap.has(key)) {
+              const dCreatedAt = normalizeIsoTimestamp(d.created_at);
+              dedupMap.set(key, {
+                id: `est_${(estId || fName || Date.now().toString()).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 48)}`,
+                dealId: String(d.deal_id || 'NA'),
+                estimateId: estId || 'NA',
+                partnerName: String(d.partner_name || d.company_name || 'Intcomex Partner'),
+                clientFinalName: String(d.client_final_name || d.customer_name || 'Cliente Final'),
+                originalFileName: fName || `${estId || 'Estimate'}.xlsx`,
+                createdAt: dCreatedAt,
+                updatedAt: dCreatedAt,
+                creator: {
+                  username: String(d.username || 'mskill'),
+                  fullName: String(d.full_name || d.username || 'Usuario Intcomex'),
+                  role: 'pm',
+                },
+                financialSummary: {
+                  totalNetCisco: Number(d.net_cisco_total) || 0,
+                  totalCotizadoIntcomex: Number(d.total_cotizado_intcomex) || 0,
+                  gananciaIntcomexUsd: Number(d.ganancia_intcomex_usd) || 0,
+                  margenPct: 5.0,
+                  currency: 'USD',
+                  params: { internacionPct: 7.0, arancelPct: 6.0, margenPct: 5.0 },
+                },
+                headerInfo: {
+                  customerName: String(d.client_final_name || d.customer_name || 'Cliente Final'),
+                  companyName: String(d.partner_name || d.company_name || 'Intcomex Partner'),
+                  address: '',
+                  city: 'Santiago',
+                  country: 'Chile',
+                  phone: '',
+                  estimateId: estId || 'NA',
+                  dealId: String(d.deal_id || 'NA'),
+                  priceList: 'Global Price List',
+                  date: dCreatedAt.slice(0, 10),
+                },
+                itemsCount: Number(d.items_count) || 0,
+                items: [],
+                customOverrideMap: {},
+                isRestricted: false,
+                syncedToCloud: false,
+              });
+            }
+          }
+        }
+      } catch (desktopErr) {
+        console.warn('[Desktop Bridge Warning - get_estimates_list]:', desktopErr);
+      }
+    }
+
     if (!isReady || !db) {
+      // Offline / Local Mode: seed with localCache + desktopEsts
+      for (const l of localCache) {
+        const key =
+          l.estimateId && l.estimateId !== 'NA'
+            ? `EST:${l.estimateId.trim().toUpperCase()}`
+            : `ID:${l.id}`;
+        if (!dedupMap.has(key)) {
+          dedupMap.set(key, l);
+        }
+      }
+      const mergedLocal = Array.from(dedupMap.values()).sort((a, b) =>
+        (b.createdAt || '').localeCompare(a.createdAt || '')
+      );
+      saveLocalEstimatesCache(mergedLocal.slice(0, 300));
       return {
         success: true,
-        data: localCache,
+        data: mergedLocal,
         error: error ? `Modo local activo (${error})` : undefined,
       };
     }
 
     const colRef = collection(db, ESTIMATES_COLLECTION);
-    const q = sinceIso
-      ? query(
-          colRef,
-          where('createdAt', '>=', sinceIso),
-          orderBy('createdAt', 'desc'),
-          limit(limitCount)
-        )
-      : query(colRef, orderBy('createdAt', 'desc'), limit(limitCount));
-    const snapshot = await withTimeout(getDocs(q), 8000);
+    const fetchLimit = Math.max(limitCount || 300, 300);
+
+    let snapshot;
+    try {
+      const q = query(colRef, orderBy('createdAt', 'desc'), limit(fetchLimit));
+      snapshot = await withTimeout(getDocs(q), 8000);
+    } catch {
+      // Fallback query if ordering by createdAt encounters any unindexed or missing legacy field
+      const qFallback = query(colRef, limit(fetchLimit));
+      snapshot = await withTimeout(getDocs(qFallback), 8000);
+    }
 
     const remoteList: CloudEstimateRecord[] = [];
     snapshot.forEach((docSnap) => {
       const data = docSnap.data() as Omit<CloudEstimateRecord, 'id'>;
+      const normalizedCreatedAt = normalizeIsoTimestamp(data.createdAt);
+      const normalizedUpdatedAt = normalizeIsoTimestamp(data.updatedAt || data.createdAt);
       remoteList.push({
         ...data,
         id: docSnap.id,
+        createdAt: normalizedCreatedAt,
+        updatedAt: normalizedUpdatedAt,
         isRestricted: Boolean(data.isRestricted),
         allowedUsers: Array.isArray(data.allowedUsers) ? data.allowedUsers : [],
         accessRequests: Array.isArray(data.accessRequests) ? data.accessRequests : [],
@@ -398,7 +386,6 @@ export async function getCloudEstimates(
     });
 
     // Deduplicate remote list by estimateId (keep newest / deterministic docId first)
-    const dedupMap = new Map<string, CloudEstimateRecord>();
     for (const r of remoteList) {
       const key =
         r.estimateId && r.estimateId !== 'NA'
@@ -463,7 +450,7 @@ export async function getCloudEstimates(
       (b.createdAt || '').localeCompare(a.createdAt || '')
     );
 
-    // Update local mirror snapshot cache and timestamp
+    // Update multi-tier local mirror snapshot cache and timestamp
     saveLocalEstimatesCache(merged.slice(0, 300), true);
 
     return { success: true, data: merged };
