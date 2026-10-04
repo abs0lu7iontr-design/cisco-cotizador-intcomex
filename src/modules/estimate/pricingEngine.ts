@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { ProcessedEstimateLine } from './estimateHierarchyParser';
-import { checkIsIntangible } from '../../core/calculations';
+import { checkIsIntangible, roundFinancial } from '../../core/calculations';
 
 export interface CalculatedSaleLine extends ProcessedEstimateLine {
   unitSalePrice: number;
@@ -25,10 +25,11 @@ export function calculateEstimateSalesPricing(
     const isHardware = !isIntangible;
     const applicableInternacion = isHardware ? hwInternacionDecimal : 0;
 
-    const landedCost = line.realUnitCost * (1 + applicableInternacion);
-    const unitSalePrice = marginDecimal < 1 ? landedCost / (1 - marginDecimal) : landedCost;
-    const extendedSalePrice = unitSalePrice * line.qty;
-    const marginAmountTotal = (unitSalePrice - landedCost) * line.qty;
+    const landedCost = roundFinancial(line.realUnitCost * (1 + applicableInternacion));
+    const rawUnitPrice = marginDecimal < 1 ? landedCost / (1 - marginDecimal) : landedCost;
+    const unitSalePrice = roundFinancial(rawUnitPrice);
+    const extendedSalePrice = roundFinancial(unitSalePrice * line.qty);
+    const marginAmountTotal = roundFinancial((unitSalePrice - landedCost) * line.qty);
 
     return {
       ...line,

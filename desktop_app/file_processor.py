@@ -129,8 +129,11 @@ class FileProcessor:
         os.makedirs(target_dir, exist_ok=True)
 
         target_filepath = os.path.join(target_dir, clean_filename)
-        with open(target_filepath, 'wb') as f:
-            f.write(file_bytes)
+        try:
+            with open(target_filepath, 'wb') as f:
+                f.write(file_bytes)
+        except PermissionError:
+            raise PermissionError(f"El archivo '{clean_filename}' ya existe y está abierto en Microsoft Excel. Por favor ciérralo antes de guardar.")
 
         return {
             "success": True,

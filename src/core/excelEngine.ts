@@ -490,7 +490,8 @@ export async function parseEstimateWorkbook(
       if (parsed.token === 'cisco-ca-v2' && Array.isArray(parsed.huerto)) {
         isPreviouslyProcessed = true;
         priorMargin = parsed.platano ?? 0;
-        priorInternacion = parsed.uva ?? 0.06;
+        const rawUva = parsed.uva !== undefined ? parsed.uva : 7.0;
+        priorInternacion = rawUva > 0 && rawUva <= 1 ? rawUva * 100 : rawUva;
         priorTimestamp = parsed.kiwi ?? '';
 
         parsed.huerto.forEach((entry: any) => {
@@ -555,6 +556,8 @@ export async function parseEstimateWorkbook(
   let detectedDealId = '';
   let detectedPriceList = '';
   let detectedDate = '';
+  let detectedCustomerName = '';
+  let detectedCompanyName = '';
 
   const readLabelAdjacentValue = (r: number, labelCol: number): string => {
     const labelCell = worksheet.getCell(r, labelCol);
@@ -581,6 +584,12 @@ export async function parseEstimateWorkbook(
       } else if (!detectedDealId && (lower === 'deal id' || lower.startsWith('deal id:'))) {
         const inlineVal = rawText.includes(':') ? rawText.split(':').slice(1).join(':').trim() : '';
         detectedDealId = inlineVal || readLabelAdjacentValue(r, c);
+      } else if (!detectedCustomerName && (lower === 'customer name' || lower === 'customer' || lower.startsWith('customer name:') || lower.startsWith('customer:') || lower === 'prepared for' || lower.startsWith('prepared for:'))) {
+        const inlineVal = rawText.includes(':') ? rawText.split(':').slice(1).join(':').trim() : '';
+        detectedCustomerName = inlineVal || readLabelAdjacentValue(r, c);
+      } else if (!detectedCompanyName && (lower === 'company name' || lower === 'company' || lower.startsWith('company name:') || lower.startsWith('company:') || lower === 'partner name' || lower.startsWith('partner name:'))) {
+        const inlineVal = rawText.includes(':') ? rawText.split(':').slice(1).join(':').trim() : '';
+        detectedCompanyName = inlineVal || readLabelAdjacentValue(r, c);
       } else if (!detectedPriceList && (lower === 'price list' || lower.startsWith('price list:'))) {
         const inlineVal = rawText.includes(':') ? rawText.split(':').slice(1).join(':').trim() : '';
         detectedPriceList = inlineVal || readLabelAdjacentValue(r, c);
@@ -605,8 +614,8 @@ export async function parseEstimateWorkbook(
   }
 
   const headerInfo: EstimateHeaderInfo = {
-    customerName: getCellString(worksheet.getCell(3, 1)) || 'Mauricio Skill',
-    companyName: getCellString(worksheet.getCell(4, 1)) || 'INTCOMEX CHILE SA',
+    customerName: detectedCustomerName || getCellString(worksheet.getCell(3, 1)) || 'Mauricio Skill',
+    companyName: detectedCompanyName || getCellString(worksheet.getCell(4, 1)) || 'INTCOMEX CHILE SA',
     address: getCellString(worksheet.getCell(5, 1)) || 'ROSARIO NORTE 615, PISO 6',
     city: getCellString(worksheet.getCell(6, 1)) || 'SANTIAGO, 0-0',
     country: getCellString(worksheet.getCell(7, 1)) || 'CHILE',
@@ -1639,7 +1648,8 @@ export async function generateOptimizedWorkbook(
 
   const payload = {
     platano: params.targetMargin ?? params.margenPct,
-    uva: params.arancelPct ?? 0.06,
+    uva: params.internacionPct ?? 7.0,
+    naranja: params.arancelPct ?? 6.0,
     kiwi: new Date().toISOString(),
     huerto: shadowLedger,
     token: 'cisco-ca-v2',

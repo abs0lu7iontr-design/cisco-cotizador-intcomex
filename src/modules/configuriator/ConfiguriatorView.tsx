@@ -577,7 +577,7 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
 
       if (isDesktopApp()) {
         const saved = await saveDesktopExcelFile(filename, buffer);
-        if (saved) {
+        if (saved?.success) {
           triggerActionToast(`✅ Archivo oficial CCW exportado: ${filename}`);
         }
         return;
@@ -657,7 +657,7 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
 
       if (isDesktopApp()) {
         const saved = await saveDesktopExcelFile(filename, buffer);
-        if (saved) {
+        if (saved?.success) {
           triggerActionToast(`✅ Comparativo 3 Propuestas GPL exportado: ${filename}`);
         }
         return;

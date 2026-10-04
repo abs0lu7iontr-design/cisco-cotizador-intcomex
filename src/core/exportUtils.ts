@@ -41,7 +41,14 @@ export function isPureLicensingQuote(
  * - Solo licencias: partner_cliente_modeloequipos_Estimate_N°Estimate_M{margen}_CALC/RECALC_hh-mm_dd-mm-aa.xlsx
  */
 export function generateQuotationFileName(params: QuotationFileNameParams): string {
-  const sanitize = (str: string) => (str || '').replace(/[^a-zA-Z0-9_-]/g, '').trim();
+  const sanitize = (str: string) =>
+    (str || '')
+      .trim()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '_')
+      .replace(/[^a-zA-Z0-9_-]/g, '')
+      .replace(/_+/g, '_');
 
   const partner = sanitize(params.partner || 'Intcomex');
   const cliente = sanitize(params.customerName || 'Cliente');

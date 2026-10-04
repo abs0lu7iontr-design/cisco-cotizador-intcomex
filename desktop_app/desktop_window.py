@@ -166,6 +166,8 @@ class DesktopBridge:
             return {"success": False, "cancelled": True}
 
         target_file = save_path if isinstance(save_path, str) else save_path[0]
+        if not target_file.lower().endswith(('.xlsx', '.xls')):
+            target_file += ".xlsx"
 
         try:
             with open(target_file, 'wb') as f:
@@ -179,6 +181,11 @@ class DesktopBridge:
                 f"Cotización procesada descargada a: {target_file}"
             )
             return {"success": True, "filepath": target_file}
+        except PermissionError:
+            return {
+                "success": False,
+                "error": f"No se pudo guardar el archivo. '{os.path.basename(target_file)}' está abierto en Microsoft Excel u otra aplicación. Ciérralo e intenta nuevamente."
+            }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -205,14 +212,19 @@ class DesktopBridge:
             )
 
             return res
+        except PermissionError as pe:
+            return {"success": False, "error": str(pe)}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
     def open_folder_in_explorer(self, folder_path):
         """Opens directory in Windows file explorer."""
         try:
-            if os.path.exists(folder_path):
-                os.startfile(folder_path)
+            target = folder_path
+            if target and os.path.isfile(target):
+                target = os.path.dirname(target)
+            if target and os.path.exists(target):
+                os.startfile(target)
                 return {"success": True}
             return {"success": False, "error": "Directorio no encontrado"}
         except Exception as e:
