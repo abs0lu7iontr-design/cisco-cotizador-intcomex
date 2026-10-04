@@ -2,7 +2,7 @@
 // CISCO AUTOMATED - DEDICATED DSV GENERATOR VIEW WITH RIGHT-CLICK OVERRIDE
 // ============================================================================
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   FileCheck,
   UploadCloud,
@@ -24,7 +24,7 @@ import { DsvModal } from './DsvModal';
 import { isZeroValueBomItem, calculateDsvPrices, transformRawBomToDsv } from './dsvEngine';
 import { SkuCategoryType, DsvModalFormData } from './types';
 import { DsvIngestionView, ConsolidatedDealRecord } from './ingestion';
-import { saveDsvToCloud } from '../cloud';
+import { saveDsvToCloud, getCloudDsvs, CloudDsvRecord } from '../cloud';
 import { useCiscoAutomatedStore } from '../../core/store';
 import { openDesktopFileDialog } from '../../core/desktopBridge';
 
@@ -50,6 +50,33 @@ export const DsvView: React.FC = () => {
   // Tab State: manual vs onedrive ingestion
   const [activeTab, setActiveTab] = useState<'manual' | 'onedrive'>('manual');
   const [ingestedFormData, setIngestedFormData] = useState<Partial<DsvModalFormData> | undefined>(undefined);
+  const [existingDsvs, setExistingDsvs] = useState<CloudDsvRecord[]>([]);
+
+  // Cargar historial de DSVs para detección inteligente de duplicidad
+  useEffect(() => {
+    getCloudDsvs().then((res) => {
+      if (res && res.data) {
+        setExistingDsvs(res.data);
+      }
+    }).catch(() => {});
+  }, []);
+
+  // Detectar si el Deal ID o nombre de archivo ya fue procesado
+  const duplicateRecord = useMemo(() => {
+    if (!rawBom || existingDsvs.length === 0) return null;
+    const currentDeal = (rawBom.dealIdFromBom || rawBom.authorizationNumber || '').trim().toUpperCase();
+    const currentFile = (rawBom.fileName || '').trim().toLowerCase();
+
+    return existingDsvs.find((rec) => {
+      if (currentDeal && rec.dealId && rec.dealId.trim().toUpperCase() === currentDeal) {
+        return true;
+      }
+      if (currentFile && rec.originalFileName && rec.originalFileName.trim().toLowerCase() === currentFile) {
+        return true;
+      }
+      return false;
+    }) || null;
+  }, [rawBom, existingDsvs]);
 
   const handleGenerateFromRecord = async (record: ConsolidatedDealRecord) => {
     if (!record.cisco?.bomFile) {
@@ -431,6 +458,33 @@ export const DsvView: React.FC = () => {
       </div>
 
       {/* Notifications */}
+      {duplicateRecord && (
+        <div className="p-4 rounded-2xl bg-amber-950/80 border border-amber-500/50 text-amber-200 text-xs flex items-center justify-between gap-3 shadow-lg animate-in fade-in">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="font-bold text-amber-300 block">
+                ⚠️ Advertencia de Duplicidad DSV
+              </span>
+              <p className="text-[11px] text-amber-200/80 mt-0.5">
+                Este Deal ID ({duplicateRecord.dealId}) o archivo ({duplicateRecord.originalFileName}) ya fue procesado el{' '}
+                {new Date(duplicateRecord.createdAt).toLocaleDateString('es-CL')} a las{' '}
+                {new Date(duplicateRecord.createdAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })} por{' '}
+                <strong className="text-white">{duplicateRecord.creator?.fullName || duplicateRecord.creator?.username || 'Usuario'}</strong>.
+                {duplicateRecord.soNumber && ` (SO: ${duplicateRecord.soNumber})`}
+                {duplicateRecord.poNumber && ` (PO: ${duplicateRecord.poNumber})`}.
+                Verifica que no sea una orden duplicada antes de continuar.
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-mono px-2.5 py-1 rounded-full bg-amber-500/30 text-amber-300 font-bold shrink-0 border border-amber-500/40">
+            YA PROCESADO
+          </span>
+        </div>
+      )}
+
       {errorMessage && (
         <div className="p-4 rounded-2xl bg-rose-950/80 border border-rose-600/50 text-rose-200 text-xs flex items-center space-x-3 shadow-lg">
           <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />

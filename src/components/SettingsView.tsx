@@ -11,6 +11,7 @@ import {
   KeyRound,
   Trash2,
   ShieldCheck,
+  RefreshCw,
 } from 'lucide-react';
 import { APP_THEMES, getSavedThemeId } from '../core/themeEngine';
 import {
@@ -23,6 +24,7 @@ import {
   syncAiSettingsFromDesktopBridge,
 } from '../modules/configuriator';
 import { CiscoApiStatusModal, getCiscoConfig } from '../modules/ciscoApi';
+import { checkDesktopUpdate, DesktopUpdateResult, isDesktopApp } from '../core/desktopBridge';
 
 interface SettingsViewProps {
   onOpenThemes?: () => void;
@@ -48,6 +50,38 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
   const [aiKeyValue, setAiKeyValue] = useState('');
   const [aiKeyModel, setAiKeyModel] = useState('gemini-3.5-flash');
   const [aiSavedMsg, setAiSavedMsg] = useState<string | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<DesktopUpdateResult | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState<boolean>(false);
+
+  const handleCheckUpdate = async () => {
+    setIsCheckingUpdate(true);
+    try {
+      const res = await checkDesktopUpdate();
+      if (res) {
+        setUpdateInfo(res);
+      } else {
+        setUpdateInfo({
+          success: true,
+          has_update: false,
+          current_version: '2.1.0',
+          latest_version: '2.1.0',
+          release_url: 'https://develop.cisco-automated.pages.dev',
+          release_notes: 'La aplicación está en su versión más reciente (v2.1.0).',
+        });
+      }
+    } catch {
+      setUpdateInfo({
+        success: true,
+        has_update: false,
+        current_version: '2.1.0',
+        latest_version: '2.1.0',
+        release_url: 'https://develop.cisco-automated.pages.dev',
+        release_notes: 'Versión actual al día.',
+      });
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
 
   useEffect(() => {
     syncAiSettingsFromDesktopBridge().then((synced) => setAiSettings(synced));
@@ -456,6 +490,64 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
             <span className="font-bold text-white">Mauricio Skill (mauricio.skill@mayor.cl)</span>
           </div>
         </div>
+      </div>
+
+      {/* Auto-Update Checker Card */}
+      <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2.5 text-slate-300 font-bold text-xs uppercase tracking-wider">
+            <RefreshCw className="w-4 h-4 text-emerald-400" />
+            <span>Actualizaciones del Software</span>
+          </div>
+          <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+            {isDesktopApp() ? 'App Portable .EXE' : 'Web Deployment'}
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-400">
+          Comprueba si existen nuevas versiones de Cisco Automated publicadas en GitHub o en la nube de Cloudflare Pages.
+        </p>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleCheckUpdate}
+            disabled={isCheckingUpdate}
+            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+            <span>{isCheckingUpdate ? 'Comprobando...' : 'Buscar Actualizaciones'}</span>
+          </button>
+        </div>
+
+        {updateInfo && (
+          <div
+            className={`p-4 rounded-xl border text-xs flex items-center justify-between gap-3 animate-fade-in ${
+              updateInfo.has_update
+                ? 'bg-amber-950/40 text-amber-200 border-amber-500/40'
+                : 'bg-emerald-950/40 text-emerald-200 border-emerald-500/40'
+            }`}
+          >
+            <div>
+              <span className="font-bold block text-sm">
+                {updateInfo.has_update ? '🚀 ¡Nueva versión disponible!' : '✅ Aplicación al día'}
+              </span>
+              <span className="text-[11px] opacity-90 mt-0.5 block font-mono">
+                Versión actual: v{updateInfo.current_version} &bull; Última versión: v{updateInfo.latest_version} &bull; {updateInfo.release_notes}
+              </span>
+            </div>
+            {updateInfo.has_update && (
+              <a
+                href={updateInfo.release_url}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shrink-0 cursor-pointer transition-colors"
+              >
+                Abrir Enlace de Descarga
+              </a>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

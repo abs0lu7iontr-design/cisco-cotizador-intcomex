@@ -4515,4 +4515,60 @@ export function generateHomologatedProposalsForItem(
   return sortHomologatedProposals(builtProposals, effectiveSortMode);
 }
 
+// ============================================================================
+// CISCO DAC & AOC OPTICAL CABLES ASSISTANT CATALOG
+// ============================================================================
+
+export interface DacAocCableItem {
+  partNumber: string;
+  speed: '10G' | '25G' | '40G' | '100G';
+  type: 'DAC Twinax' | 'AOC Optical' | 'Breakout DAC';
+  lengthMeters: number;
+  connector: string;
+  referenceGplUsd: number;
+  description: string;
+}
+
+export const CISCO_DAC_AOC_CATALOG: DacAocCableItem[] = [
+  // 10G SFP+
+  { partNumber: 'SFP-H10GB-CU1M', speed: '10G', type: 'DAC Twinax', lengthMeters: 1, connector: 'SFP+ to SFP+', referenceGplUsd: 100, description: '10GBASE-CU SFP+ Cable 1 Meter (Passive Twinax)' },
+  { partNumber: 'SFP-H10GB-CU2M', speed: '10G', type: 'DAC Twinax', lengthMeters: 2, connector: 'SFP+ to SFP+', referenceGplUsd: 120, description: '10GBASE-CU SFP+ Cable 2 Meter (Passive Twinax)' },
+  { partNumber: 'SFP-H10GB-CU3M', speed: '10G', type: 'DAC Twinax', lengthMeters: 3, connector: 'SFP+ to SFP+', referenceGplUsd: 140, description: '10GBASE-CU SFP+ Cable 3 Meter (Passive Twinax)' },
+  { partNumber: 'SFP-H10GB-CU5M', speed: '10G', type: 'DAC Twinax', lengthMeters: 5, connector: 'SFP+ to SFP+', referenceGplUsd: 180, description: '10GBASE-CU SFP+ Cable 5 Meter (Passive Twinax)' },
+  { partNumber: 'SFP-10G-AOC1M', speed: '10G', type: 'AOC Optical', lengthMeters: 1, connector: 'SFP+ to SFP+', referenceGplUsd: 220, description: '10GBASE Active Optical Cable 1m' },
+  { partNumber: 'SFP-10G-AOC3M', speed: '10G', type: 'AOC Optical', lengthMeters: 3, connector: 'SFP+ to SFP+', referenceGplUsd: 260, description: '10GBASE Active Optical Cable 3m' },
+  { partNumber: 'SFP-10G-AOC5M', speed: '10G', type: 'AOC Optical', lengthMeters: 5, connector: 'SFP+ to SFP+', referenceGplUsd: 310, description: '10GBASE Active Optical Cable 5m' },
+
+  // 25G SFP28
+  { partNumber: 'SFP-H25G-CU1M', speed: '25G', type: 'DAC Twinax', lengthMeters: 1, connector: 'SFP28 to SFP28', referenceGplUsd: 160, description: '25GBASE-CR1 SFP28 Passive Copper Cable 1m' },
+  { partNumber: 'SFP-H25G-CU2M', speed: '25G', type: 'DAC Twinax', lengthMeters: 2, connector: 'SFP28 to SFP28', referenceGplUsd: 190, description: '25GBASE-CR1 SFP28 Passive Copper Cable 2m' },
+  { partNumber: 'SFP-H25G-CU3M', speed: '25G', type: 'DAC Twinax', lengthMeters: 3, connector: 'SFP28 to SFP28', referenceGplUsd: 220, description: '25GBASE-CR1 SFP28 Passive Copper Cable 3m' },
+  { partNumber: 'SFP-H25G-CU5M', speed: '25G', type: 'DAC Twinax', lengthMeters: 5, connector: 'SFP28 to SFP28', referenceGplUsd: 280, description: '25GBASE-CR1 SFP28 Passive Copper Cable 5m' },
+  { partNumber: 'SFP-25G-AOC1M', speed: '25G', type: 'AOC Optical', lengthMeters: 1, connector: 'SFP28 to SFP28', referenceGplUsd: 320, description: '25GBASE Active Optical Cable 1m' },
+  { partNumber: 'SFP-25G-AOC3M', speed: '25G', type: 'AOC Optical', lengthMeters: 3, connector: 'SFP28 to SFP28', referenceGplUsd: 380, description: '25GBASE Active Optical Cable 3m' },
+
+  // 40G QSFP+
+  { partNumber: 'QSFP-H40G-CU1M', speed: '40G', type: 'DAC Twinax', lengthMeters: 1, connector: 'QSFP+ to QSFP+', referenceGplUsd: 240, description: '40GBASE-CR4 QSFP+ Direct-Attach Copper Cable 1m' },
+  { partNumber: 'QSFP-H40G-CU3M', speed: '40G', type: 'DAC Twinax', lengthMeters: 3, connector: 'QSFP+ to QSFP+', referenceGplUsd: 290, description: '40GBASE-CR4 QSFP+ Direct-Attach Copper Cable 3m' },
+  { partNumber: 'QSFP-H40G-CU5M', speed: '40G', type: 'DAC Twinax', lengthMeters: 5, connector: 'QSFP+ to QSFP+', referenceGplUsd: 370, description: '40GBASE-CR4 QSFP+ Direct-Attach Copper Cable 5m' },
+  { partNumber: 'QSFP-4SFP10G-CU1M', speed: '40G', type: 'Breakout DAC', lengthMeters: 1, connector: 'QSFP+ to 4x SFP+', referenceGplUsd: 350, description: '40GBASE-CR4 QSFP+ to 4x 10GBASE-CU SFP+ Breakout 1m' },
+  { partNumber: 'QSFP-4SFP10G-CU3M', speed: '40G', type: 'Breakout DAC', lengthMeters: 3, connector: 'QSFP+ to 4x SFP+', referenceGplUsd: 410, description: '40GBASE-CR4 QSFP+ to 4x 10GBASE-CU SFP+ Breakout 3m' },
+
+  // 100G QSFP28
+  { partNumber: 'QSFP-100G-CU1M', speed: '100G', type: 'DAC Twinax', lengthMeters: 1, connector: 'QSFP28 to QSFP28', referenceGplUsd: 380, description: '100GBASE-CR4 QSFP28 Passive Copper Cable 1m' },
+  { partNumber: 'QSFP-100G-CU2M', speed: '100G', type: 'DAC Twinax', lengthMeters: 2, connector: 'QSFP28 to QSFP28', referenceGplUsd: 430, description: '100GBASE-CR4 QSFP28 Passive Copper Cable 2m' },
+  { partNumber: 'QSFP-100G-CU3M', speed: '100G', type: 'DAC Twinax', lengthMeters: 3, connector: 'QSFP28 to QSFP28', referenceGplUsd: 490, description: '100GBASE-CR4 QSFP28 Passive Copper Cable 3m' },
+  { partNumber: 'QSFP-100G-CU5M', speed: '100G', type: 'DAC Twinax', lengthMeters: 5, connector: 'QSFP28 to QSFP28', referenceGplUsd: 590, description: '100GBASE-CR4 QSFP28 Passive Copper Cable 5m' },
+  { partNumber: 'QSFP-4SFP25G-CU1M', speed: '100G', type: 'Breakout DAC', lengthMeters: 1, connector: 'QSFP28 to 4x SFP28', referenceGplUsd: 520, description: '100G QSFP28 to 4x 25G SFP28 Breakout Direct-Attach Copper 1m' },
+  { partNumber: 'QSFP-4SFP25G-CU3M', speed: '100G', type: 'Breakout DAC', lengthMeters: 3, connector: 'QSFP28 to 4x SFP28', referenceGplUsd: 580, description: '100G QSFP28 to 4x 25G SFP28 Breakout Direct-Attach Copper 3m' },
+  { partNumber: 'QSFP-100G-AOC1M', speed: '100G', type: 'AOC Optical', lengthMeters: 1, connector: 'QSFP28 to QSFP28', referenceGplUsd: 650, description: '100GBASE Active Optical Cable 1m' },
+  { partNumber: 'QSFP-100G-AOC3M', speed: '100G', type: 'AOC Optical', lengthMeters: 3, connector: 'QSFP28 to QSFP28', referenceGplUsd: 740, description: '100GBASE Active Optical Cable 3m' },
+];
+
+export function getDacAocCables(speed?: string): DacAocCableItem[] {
+  if (!speed || speed === 'ALL') return CISCO_DAC_AOC_CATALOG;
+  return CISCO_DAC_AOC_CATALOG.filter((c) => c.speed === speed);
+}
+
+
 

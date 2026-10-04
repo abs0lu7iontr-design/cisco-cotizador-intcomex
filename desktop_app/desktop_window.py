@@ -230,6 +230,121 @@ class DesktopBridge:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    def open_email_client(self, recipient, cc="", subject="", body=""):
+        """Opens native mail client (Outlook / Windows Mail) with pre-filled fields."""
+        try:
+            import urllib.parse
+            import webbrowser
+            params = {}
+            if cc:
+                params['cc'] = cc
+            if subject:
+                params['subject'] = subject
+            if body:
+                params['body'] = body
+            query_string = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
+            mailto_url = f"mailto:{recipient}?{query_string}" if query_string else f"mailto:{recipient}"
+            webbrowser.open(mailto_url)
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def search_storage(self, query_text):
+        """Searches gravity_storage hierarchical folder and database for matching estimates."""
+        try:
+            q = (query_text or "").strip().lower()
+            if not q:
+                return {"success": True, "results": []}
+
+            results = []
+            base_dir = self._file_processor.base_storage_dir
+            if os.path.exists(base_dir):
+                for root, dirs, files in os.walk(base_dir):
+                    for file in files:
+                        if not file.lower().endswith(('.xlsx', '.xls')):
+                            continue
+                        full_path = os.path.join(root, file)
+                        rel_path = os.path.relpath(full_path, base_dir)
+                        path_parts = rel_path.split(os.sep)
+                        partner = path_parts[0] if len(path_parts) > 1 else ""
+                        client = path_parts[1] if len(path_parts) > 2 else ""
+                        month = path_parts[2] if len(path_parts) > 3 else ""
+
+                        if q in file.lower() or q in rel_path.lower() or q in partner.lower() or q in client.lower():
+                            stat = os.stat(full_path)
+                            results.append({
+                                "filename": file,
+                                "filepath": full_path,
+                                "folder": root,
+                                "partner": partner,
+                                "client": client,
+                                "month": month,
+                                "size_bytes": stat.st_size,
+                                "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                            })
+                            if len(results) >= 50:
+                                break
+                    if len(results) >= 50:
+                        break
+
+            # Also search in SQLite DB records
+            try:
+                db_estimates = self._db.get_estimates_list()
+                for est in db_estimates:
+                    est_id = str(est.get("estimate_id", "")).lower()
+                    deal_id = str(est.get("deal_id", "")).lower()
+                    cust = str(est.get("customer_name", "")).lower()
+                    if q in est_id or q in deal_id or q in cust:
+                        fn = est.get("filename") or f"{est.get('estimate_id', 'estimate')}.xlsx"
+                        if not any(r.get("filename") == fn for r in results):
+                            results.append({
+                                "filename": fn,
+                                "filepath": "",
+                                "folder": "",
+                                "partner": est.get("company_name", ""),
+                                "client": est.get("customer_name", ""),
+                                "month": est.get("created_at", "")[:7],
+                                "size_bytes": 0,
+                                "modified_at": est.get("created_at", "")
+                            })
+            except Exception:
+                pass
+
+            return {"success": True, "results": results[:50]}
+        except Exception as e:
+            return {"success": False, "error": str(e), "results": []}
+
+    def check_for_updates(self):
+        """Checks for latest release info against online deployment / GitHub."""
+        current_version = "2.1.0"
+        try:
+            import urllib.request
+            url = "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/package.json"
+            req = urllib.request.Request(url, headers={'User-Agent': 'CiscoAutomatedDesktop'})
+            with urllib.request.urlopen(req, timeout=3) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode('utf-8'))
+                    remote_ver = data.get("version", current_version)
+                    has_update = remote_ver != current_version
+                    return {
+                        "success": True,
+                        "has_update": has_update,
+                        "current_version": current_version,
+                        "latest_version": remote_ver,
+                        "release_url": "https://develop.cisco-automated.pages.dev",
+                        "release_notes": "Nueva versión disponible." if has_update else "La aplicación está actualizada."
+                    }
+        except Exception:
+            pass
+        return {
+            "success": True,
+            "has_update": False,
+            "current_version": current_version,
+            "latest_version": current_version,
+            "release_url": "https://develop.cisco-automated.pages.dev",
+            "release_notes": "Versión 2.1.0 (Al día)"
+        }
+
 
     # -------------------------------------------------------------------------
     # 4. DATABASE & ANALYTICS

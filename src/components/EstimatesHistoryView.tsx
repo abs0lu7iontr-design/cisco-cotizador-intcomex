@@ -48,8 +48,16 @@ import {
   ArrowUpDown,
   RotateCcw,
   ExternalLink,
+  Folder,
+  FolderOpen,
 } from 'lucide-react';
 import { formatPartnerName, getUniqueFormattedPartners } from '../utils/partnerDbUtils';
+import {
+  searchDesktopStorage,
+  DesktopSearchResult,
+  openFolderInExplorer,
+  isDesktopApp,
+} from '../core/desktopBridge';
 
 const isValidEstimateId = (id?: string | null): boolean => {
   if (!id) return false;
@@ -86,8 +94,22 @@ const getEstimateParams = (est: CloudEstimateRecord) => {
 export function EstimatesHistoryView() {
   const { loadCloudEstimateIntoStore, currentUser } = useCiscoAutomatedStore();
 
-  // Active Tab: 'estimates' | 'dsv'
-  const [activeTab, setActiveTab] = useState<'estimates' | 'dsv'>('estimates');
+  // Active Tab: 'estimates' | 'dsv' | 'desktop'
+  const [activeTab, setActiveTab] = useState<'estimates' | 'dsv' | 'desktop'>('estimates');
+  const [desktopResults, setDesktopResults] = useState<DesktopSearchResult[]>([]);
+  const [isSearchingDesktop, setIsSearchingDesktop] = useState(false);
+
+  const handleSearchDesktop = async (query: string = searchTerm) => {
+    setIsSearchingDesktop(true);
+    try {
+      const results = await searchDesktopStorage(query);
+      setDesktopResults(results);
+    } catch (err) {
+      console.warn('Error buscando en disco:', err);
+    } finally {
+      setIsSearchingDesktop(false);
+    }
+  };
 
   // Instant 0ms Cloud Estimates Mirror via React 19 Concurrent External Store
   const estimates = useEstimatesMirror();
@@ -651,6 +673,23 @@ export function EstimatesHistoryView() {
               <FileCheck className="w-4 h-4" />
               <span>Órdenes DSV ({dsvRecords.length})</span>
             </button>
+
+            {isDesktopApp() && (
+              <button
+                onClick={() => {
+                  setActiveTab('desktop');
+                  handleSearchDesktop('');
+                }}
+                className={`flex items-center space-x-2 px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'desktop'
+                    ? 'bg-cyan-600 text-white shadow-md'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                <Folder className="w-4 h-4" />
+                <span>Disco Local / gravity_storage ({desktopResults.length})</span>
+              </button>
+            )}
           </div>
 
           {/* Search Input + Month Filter (Preserved & Expanded) */}
@@ -1276,6 +1315,86 @@ export function EstimatesHistoryView() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* 3. TAB: DISCO LOCAL (GRAVITY_STORAGE) */}
+      {activeTab === 'desktop' && (
+        <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-4 animate-in fade-in">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Folder className="w-4 h-4 text-cyan-400" />
+                <span>Estructura de Almacenamiento Local (gravity_storage)</span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                Archivos Excel generados y organizados automáticamente en disco: gravity_storage/[Partner]/[Cliente]/[Año-Mes]/
+              </p>
+            </div>
+            <button
+              onClick={() => handleSearchDesktop(searchTerm)}
+              disabled={isSearchingDesktop}
+              className="px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSearchingDesktop ? 'animate-spin' : ''}`} />
+              <span>{isSearchingDesktop ? 'Buscando...' : 'Actualizar Búsqueda'}</span>
+            </button>
+          </div>
+
+          {desktopResults.length === 0 ? (
+            <div className="text-center py-12 bg-slate-950/60 rounded-2xl border border-slate-800/80 space-y-2">
+              <FolderOpen className="w-10 h-10 text-slate-600 mx-auto" />
+              <p className="text-xs text-slate-400 font-semibold">
+                {searchTerm ? `No se encontraron archivos en disco para "${searchTerm}"` : 'No se encontraron archivos en gravity_storage aún.'}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-slate-800">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-950 text-slate-400 font-mono text-[11px] border-b border-slate-800">
+                  <tr>
+                    <th className="p-3">Archivo (.xlsx)</th>
+                    <th className="p-3">Partner / Distribuidor</th>
+                    <th className="p-3">Cliente Final</th>
+                    <th className="p-3">Carpeta / Mes</th>
+                    <th className="p-3 text-right">Tamaño</th>
+                    <th className="p-3 text-center">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-mono text-slate-300">
+                  {desktopResults.map((item, idx) => (
+                    <tr key={idx} className="hover:bg-slate-800/40 transition-colors">
+                      <td className="p-3 font-semibold text-white">
+                        <div className="flex items-center gap-2">
+                          <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span className="truncate max-w-xs" title={item.filename}>{item.filename}</span>
+                        </div>
+                      </td>
+                      <td className="p-3 text-slate-300">{item.partner || 'Intcomex'}</td>
+                      <td className="p-3 text-slate-300">{item.client || 'Cliente'}</td>
+                      <td className="p-3 text-slate-400 text-[11px]">
+                        {item.month || item.folder || 'gravity_storage'}
+                      </td>
+                      <td className="p-3 text-right text-slate-400">
+                        {item.size_bytes ? `${Math.round(item.size_bytes / 1024)} KB` : '—'}
+                      </td>
+                      <td className="p-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => openFolderInExplorer(item.folder || item.filepath)}
+                          className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-cyan-950 text-cyan-300 hover:border-cyan-500/50 border border-slate-700 text-[11px] font-sans font-bold transition-all cursor-pointer inline-flex items-center gap-1"
+                          title="Abrir carpeta contenedora en Windows Explorer"
+                        >
+                          <FolderOpen className="w-3.5 h-3.5" />
+                          <span>Abrir Carpeta</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

@@ -156,6 +156,83 @@ export async function saveStructuredDesktopEstimate(
   }
 }
 
+export interface DesktopSearchResult {
+  filename: string;
+  filepath: string;
+  folder: string;
+  partner?: string;
+  client?: string;
+  month?: string;
+  size_bytes?: number;
+  modified_at?: string;
+}
+
+export interface DesktopUpdateResult {
+  success: boolean;
+  has_update: boolean;
+  current_version: string;
+  latest_version: string;
+  release_url: string;
+  release_notes: string;
+}
+
+/**
+ * Abre el cliente nativo de correo (Outlook) con los parámetros especificados.
+ */
+export async function openDesktopEmailClient(
+  recipient: string,
+  cc: string = '',
+  subject: string = '',
+  body: string = ''
+): Promise<boolean> {
+  const api = getDesktopApi();
+  if (api && typeof api.open_email_client === 'function') {
+    try {
+      const res = await api.open_email_client(recipient, cc, subject, body);
+      return Boolean(res && res.success);
+    } catch (e) {
+      console.warn('[DesktopBridge] Error abriendo cliente de correo nativo:', e);
+    }
+  }
+  return false;
+}
+
+/**
+ * Busca cotizaciones en la estructura jerárquica gravity_storage y la base de datos local.
+ */
+export async function searchDesktopStorage(queryText: string): Promise<DesktopSearchResult[]> {
+  const api = getDesktopApi();
+  if (api && typeof api.search_storage === 'function') {
+    try {
+      const res = await api.search_storage(queryText);
+      if (res && res.success && Array.isArray(res.results)) {
+        return res.results;
+      }
+    } catch (e) {
+      console.warn('[DesktopBridge] Error en búsqueda de archivos desktop:', e);
+    }
+  }
+  return [];
+}
+
+/**
+ * Comprueba si existe una versión más reciente de la aplicación en la nube.
+ */
+export async function checkDesktopUpdate(): Promise<DesktopUpdateResult | null> {
+  const api = getDesktopApi();
+  if (api && typeof api.check_for_updates === 'function') {
+    try {
+      const res = await api.check_for_updates();
+      if (res && res.success) {
+        return res;
+      }
+    } catch (e) {
+      console.warn('[DesktopBridge] Error comprobando actualizaciones:', e);
+    }
+  }
+  return null;
+}
+
 /**
  * Abre la carpeta contenedora en el Explorador de archivos de Windows.
  */
@@ -169,3 +246,4 @@ export async function openFolderInExplorer(folderPath: string): Promise<void> {
     }
   }
 }
+

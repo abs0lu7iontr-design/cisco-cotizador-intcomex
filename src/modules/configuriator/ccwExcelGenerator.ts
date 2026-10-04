@@ -900,3 +900,34 @@ export async function generateProposalsComparisonWorkbook(params: {
     filename,
   };
 }
+
+/**
+ * Exporta el BOM en formato compatible con Netformx DesignXpert (.csv).
+ * Formato estándar Netformx: Part Number, Quantity, Description, Category, Parent Index
+ */
+export function generateNetformxCsv(
+  req: ExtractedRequirementResult,
+  assembledRows: CcwAssembledRow[]
+): { content: string; filename: string } {
+  const headers = 'Part Number,Quantity,Description,Category,Parent Index\n';
+  const lines = assembledRows.map((r) => {
+    const pn = `"${(r.partNumber || '').replace(/"/g, '""')}"`;
+    const qty = r.quantity || 1;
+    const desc = `"${(r.notes || r.partNumber || '').replace(/"/g, '""')}"`;
+    const cat = r.isParent ? '"Chassis / Parent"' : '"Sub-Item / License"';
+    const parentIdx = r.isParent ? '""' : `"${r.parentIndex}"`;
+    return `${pn},${qty},${desc},${cat},${parentIdx}`;
+  });
+
+  const clientTag = (req.clientName || 'Cliente')
+    .trim()
+    .replace(/[^A-Za-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+  const filename = `Netformx_BOM_${clientTag || 'Cliente'}.csv`;
+  return {
+    content: headers + lines.join('\n'),
+    filename,
+  };
+}
+

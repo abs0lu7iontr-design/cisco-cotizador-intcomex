@@ -47,6 +47,7 @@ import { FastTrackAdminModal, FastTrackOpportunityModal } from './modules/fasttr
 import { applyTheme, getSavedThemeId } from './core/themeEngine';
 import { useSessionInactivity, SessionInactivityModal } from './modules/security';
 import { SharedSkuManagerModal, SkuOverrideAuthorizationModal } from './modules/skuOverrides';
+import { EstimateDiffModal } from './modules/estimate';
 
 import {
   FileSpreadsheet,
@@ -56,6 +57,8 @@ import {
   AlertCircle,
   Sliders,
   RefreshCw,
+  GitCompare,
+  Zap,
 } from 'lucide-react';
 
 function AppContent() {
@@ -147,6 +150,7 @@ function AppContent() {
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
   const [isBoModalOpen, setIsBoModalOpen] = useState(false);
+  const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -388,6 +392,17 @@ function AppContent() {
         onClose={() => setIsBoModalOpen(false)}
       />
 
+      {/* Estimate Version History & Snapshot Diff Modal */}
+      {processedResult && (
+        <EstimateDiffModal
+          isOpen={isDiffModalOpen}
+          onClose={() => setIsDiffModalOpen(false)}
+          currentResult={processedResult}
+          shadowSnapshot={processedResult.shadowSnapshot}
+          overrides={customOverrideMap}
+        />
+      )}
+
       {/* Structured Dual Download Modal (Web & Desktop) */}
       {processedResult && (() => {
         const isOnlyLicensing = processedResult.items ? isPureLicensingQuote(processedResult.items) : false;
@@ -576,6 +591,31 @@ function AppContent() {
 
                     {/* Quoter Content Tabs (Expands to 12 cols when parameter sidebar is closed) */}
                     <div className={isParamSidebarOpen ? 'lg:col-span-9' : 'lg:col-span-12'}>
+                      {/* Fast Track Opportunity Alert Banner */}
+                      {pendingFastTrackAudit?.hasOpportunity && (
+                        <div className="mb-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-xs animate-fade-in">
+                          <div className="flex items-center space-x-2.5">
+                            <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+                              <Zap className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <span className="font-bold text-amber-300">
+                                ¡Oportunidad Fast Track disponible!
+                              </span>
+                              <span className="text-slate-300 ml-2">
+                                Se detectaron {pendingFastTrackAudit.totalMatchedSkus} SKUs con hasta ${pendingFastTrackAudit.totalSavings.toLocaleString('es-CL')} de ahorro adicional.
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setIsFastTrackOpportunityModalOpen(true)}
+                            className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-colors cursor-pointer shrink-0"
+                          >
+                            Revisar Promociones &rarr;
+                          </button>
+                        </div>
+                      )}
+
                       {/* Tabs Bar */}
                       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-1.5 mb-4 flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
                         <div className="flex items-center space-x-1.5">
@@ -613,6 +653,15 @@ function AppContent() {
                           >
                             <Calculator className="w-4 h-4" />
                             <span>Calculadora Rápida</span>
+                          </button>
+
+                          <button
+                            onClick={() => setIsDiffModalOpen(true)}
+                            className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-slate-400 hover:text-indigo-300 hover:bg-slate-800 transition-all cursor-pointer border border-transparent hover:border-indigo-500/30"
+                            title="Comparar versión actual con costo base o snapshot guardado"
+                          >
+                            <GitCompare className="w-4 h-4 text-indigo-400" />
+                            <span>Comparar Diff</span>
                           </button>
                         </div>
 

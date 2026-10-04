@@ -52,6 +52,7 @@ export interface EstimateLineItem {
 
   // Descriptive / Informational Row Flag (e.g. Initial Term)
   isInfoRow?: boolean;
+  appliedRule?: OverrideRuleType;
 
   // Fast Track Audit Promo Fields
   isFastTrackPromo?: boolean;
@@ -96,6 +97,7 @@ export interface ProcessedEstimateResult {
     internacion?: number;
     timestamp?: string;
   };
+  shadowSnapshot?: ProcessedEstimateResult | null;
 }
 
 export interface UserSession {

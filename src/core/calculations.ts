@@ -803,3 +803,73 @@ export function recalculateEstimateResult(
   };
 }
 
+// ============================================================================
+// MULTI-CURRENCY CONVERSION UTILITIES (USD / CLP / UF)
+// ============================================================================
+
+export type CurrencyCode = 'USD' | 'CLP' | 'UF';
+
+export interface CurrencyConversionRates {
+  USD: number;
+  CLP: number;
+  UF: number;
+}
+
+export const DEFAULT_CURRENCY_RATES: CurrencyConversionRates = {
+  USD: 1,
+  CLP: 950,
+  UF: 38500,
+};
+
+/**
+ * Convierte un monto en USD a la divisa seleccionada (USD, CLP o UF).
+ */
+export function convertUsdToCurrency(
+  amountUsd: number,
+  currency: CurrencyCode,
+  rates: CurrencyConversionRates = DEFAULT_CURRENCY_RATES
+): number {
+  if (!amountUsd || isNaN(amountUsd)) return 0;
+  if (currency === 'USD') return roundFinancial(amountUsd);
+  if (currency === 'CLP') {
+    const clpRate = rates.CLP || 950;
+    return Math.round(amountUsd * clpRate);
+  }
+  if (currency === 'UF') {
+    const clpRate = rates.CLP || 950;
+    const ufRate = rates.UF || 38500;
+    const totalClp = amountUsd * clpRate;
+    return roundFinancial(totalClp / ufRate);
+  }
+  return roundFinancial(amountUsd);
+}
+
+/**
+ * Da formato con símbolo según la divisa seleccionada.
+ */
+export function formatCurrencyAmount(
+  amount: number,
+  currency: CurrencyCode
+): string {
+  if (amount === undefined || amount === null || isNaN(amount)) {
+    return currency === 'UF' ? '0.00 UF' : '$0';
+  }
+  if (currency === 'USD') {
+    return `$${amount.toLocaleString('es-CL', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} USD`;
+  }
+  if (currency === 'CLP') {
+    return `$${Math.round(amount).toLocaleString('es-CL')} CLP`;
+  }
+  if (currency === 'UF') {
+    return `${amount.toLocaleString('es-CL', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} UF`;
+  }
+  return String(amount);
+}
+
+

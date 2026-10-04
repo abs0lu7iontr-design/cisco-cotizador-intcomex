@@ -2,9 +2,16 @@
 // CISCO AUTOMATED v2.1 - QUOTER EXECUTIVE FINANCIAL SUMMARY CARDS
 // ============================================================================
 
-import React from 'react';
+import React, { useState } from 'react';
 import { ProcessedEstimateResult, QuoteParameters } from '../core/types';
-import { DollarSign, TrendingUp, ShieldCheck, Truck, Sparkles, Layers, Percent, Pickaxe } from 'lucide-react';
+import {
+  CurrencyCode,
+  CurrencyConversionRates,
+  DEFAULT_CURRENCY_RATES,
+  convertUsdToCurrency,
+  formatCurrencyAmount,
+} from '../core/calculations';
+import { DollarSign, TrendingUp, ShieldCheck, Truck, Sparkles, Layers, Percent, Pickaxe, Coins } from 'lucide-react';
 import { AuditReport } from '../modules/mining';
 
 interface SummaryCardsProps {
@@ -20,15 +27,23 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
   miningAudit,
   onOpenMiningAudit,
 }) => {
-  const formatCurrency = (amount?: number) => {
-    if (amount === undefined || amount === null || isNaN(amount)) return '$0.00';
-    return (
-      '$' +
-      amount.toLocaleString('es-CL', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
-    );
+  const [currency, setCurrency] = useState<CurrencyCode>('USD');
+  const [rates, setRates] = useState<CurrencyConversionRates>(DEFAULT_CURRENCY_RATES);
+  const [showRateSettings, setShowRateSettings] = useState<boolean>(false);
+
+  const formatCurrency = (amountUsd?: number) => {
+    if (amountUsd === undefined || amountUsd === null || isNaN(amountUsd)) return '$0.00';
+    if (currency === 'USD') {
+      return (
+        '$' +
+        amountUsd.toLocaleString('es-CL', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })
+      );
+    }
+    const converted = convertUsdToCurrency(amountUsd, currency, rates);
+    return formatCurrencyAmount(converted, currency);
   };
 
   const totalDelta = data.calculatedProductTotal - data.originalProductTotal;
@@ -47,12 +62,82 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
   const ftCount = data.items.filter((i) => !i.isInfoRow && i.isFastTrackPromo).length;
 
   return (
-    <div id="summary-kpis" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {/* KPI 1: Base Cisco Net Cost / COGS */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2">
-        <div className="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider">
-          <span>Net Cost (COGS) Cisco</span>
-          <div className="p-1.5 bg-slate-800 text-slate-400 rounded-lg">
+    <div className="space-y-3">
+      {/* Selector de Divisa y Tipo de Cambio */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs">
+        <div className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 rounded-xl p-1 shadow-sm">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 flex items-center gap-1">
+            <Coins className="w-3 h-3 text-amber-400" />
+            <span>Moneda:</span>
+          </span>
+          {(['USD', 'CLP', 'UF'] as CurrencyCode[]).map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setCurrency(c)}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                currency === c
+                  ? 'bg-indigo-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+
+        {currency !== 'USD' && (
+          <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400 bg-slate-900/80 px-3 py-1 rounded-xl border border-slate-800">
+            <span>TC Ref: 1 USD = ${rates.CLP.toLocaleString('es-CL')} CLP</span>
+            <span>•</span>
+            <span>1 UF = ${rates.UF.toLocaleString('es-CL')} CLP</span>
+            <button
+              type="button"
+              onClick={() => setShowRateSettings((prev) => !prev)}
+              className="text-indigo-400 hover:text-indigo-300 underline text-[10px] ml-1 cursor-pointer"
+            >
+              {showRateSettings ? 'Ocultar' : 'Ajustar TC'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {showRateSettings && currency !== 'USD' && (
+        <div className="bg-slate-900 border border-indigo-500/30 p-3 rounded-xl flex flex-wrap items-center gap-4 text-xs font-mono text-slate-300 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-slate-400">Tipo Cambio CLP:</label>
+            <input
+              type="number"
+              value={rates.CLP}
+              onChange={(e) => setRates({ ...rates, CLP: Number(e.target.value) || 1 })}
+              className="w-20 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-right text-emerald-400 font-bold focus:border-indigo-500 outline-none"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-slate-400">Valor UF (CLP):</label>
+            <input
+              type="number"
+              value={rates.UF}
+              onChange={(e) => setRates({ ...rates, UF: Number(e.target.value) || 1 })}
+              className="w-24 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-right text-cyan-400 font-bold focus:border-indigo-500 outline-none"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setRates(DEFAULT_CURRENCY_RATES)}
+            className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+          >
+            Restablecer Valores por Defecto
+          </button>
+        </div>
+      )}
+
+      <div id="summary-kpis" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* KPI 1: Base Cisco Net Cost / COGS */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2">
+          <div className="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider">
+            <span>Net Cost (COGS) Cisco</span>
+            <div className="p-1.5 bg-slate-800 text-slate-400 rounded-lg">
             <DollarSign className="w-4 h-4" />
           </div>
         </div>
@@ -182,6 +267,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 };

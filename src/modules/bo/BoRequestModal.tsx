@@ -21,7 +21,9 @@ import {
   saveBoSkuMapping,
   batchSaveBoSkuMappings,
   findSkuInCatalog,
+  importBoSkuMappingsFromExcel,
 } from './boSkuCatalogService';
+import { openDesktopEmailClient } from '../../core/desktopBridge';
 import {
   ChevronDown,
   ChevronUp,
@@ -33,6 +35,7 @@ import {
   Copy,
   Cloud,
   RefreshCw,
+  Upload,
 } from 'lucide-react';
 
 interface Props {
@@ -63,7 +66,10 @@ export const BoRequestModal: React.FC<Props> = ({
   const [isCloudReady, setIsCloudReady] = useState<boolean>(false);
   const [cloudStatus, setCloudStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [memorizedSkuCount, setMemorizedSkuCount] = useState<number>(0);
+  const [isImportingExcel, setIsImportingExcel] = useState<boolean>(false);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
   const statusTimerRef = useRef<any>(null);
+  const excelInputRef = useRef<HTMLInputElement>(null);
 
   // Inicializar, particionar líneas y auto-completar SKUs desde la nube al abrir el modal
   useEffect(() => {
@@ -302,13 +308,68 @@ export const BoRequestModal: React.FC<Props> = ({
   };
 
   // Abrir cliente de correo con saludo dinámico según la hora ("Buenos días" / "Buenas tardes")
-  const handleOpenOutlook = () => {
+  const handleOpenOutlook = async () => {
     const greeting = getBoTimeBasedGreeting();
-    const subject = encodeURIComponent(`RV: Cotización ${clientName.trim()}`);
-    const body = encodeURIComponent(
-      `Estimado,\n\n${greeting}, por favor crear BO.\n\n(Pega aquí la tabla copiada usando CTRL+V)\n\nSaludos,`
-    );
-    window.location.href = `mailto:${recipientEmail}?cc=${ccEmail}&subject=${subject}&body=${body}`;
+    const rawSubject = `RV: Cotización ${clientName.trim()}`;
+    const rawBody = `Estimado,\n\n${greeting}, por favor crear BO.\n\n(Pega aquí la tabla copiada usando CTRL+V)\n\nSaludos,`;
+
+    // Intentar abrir vía API nativa de escritorio (Outlook / Windows Shell)
+    const openedInDesktop = await openDesktopEmailClient(recipientEmail, ccEmail, rawSubject, rawBody);
+    if (!openedInDesktop) {
+      // Fallback a enlace mailto en navegador
+      const subject = encodeURIComponent(rawSubject);
+      const body = encodeURIComponent(rawBody);
+      window.location.href = `mailto:${recipientEmail}?cc=${ccEmail}&subject=${subject}&body=${body}`;
+    }
+  };
+
+  // Importación masiva de catálogo Part Number <-> SKU desde archivo Excel
+  const handleImportExcelFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsImportingExcel(true);
+    setImportNotice(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const res = await importBoSkuMappingsFromExcel(buffer);
+      if (res.success && res.importedCount > 0) {
+        setImportNotice(`¡${res.importedCount} SKUs importados exitosamente!`);
+        // Recargar catálogo actualizado
+        const refreshed = await fetchBoSkuCatalog();
+        setSkuCatalog(refreshed.catalog);
+        setMemorizedSkuCount(Object.keys(refreshed.catalog).length);
+
+        // Actualizar líneas activas y descartadas con los nuevos SKUs
+        setLines((prev) =>
+          prev.map((l) => {
+            if (!l.sku) {
+              const matched = findSkuInCatalog(l.partNumber, refreshed.catalog);
+              if (matched) return { ...l, sku: matched };
+            }
+            return l;
+          })
+        );
+        setDiscardedLines((prev) =>
+          prev.map((l) => {
+            if (!l.sku) {
+              const matched = findSkuInCatalog(l.partNumber, refreshed.catalog);
+              if (matched) return { ...l, sku: matched };
+            }
+            return l;
+          })
+        );
+        setTimeout(() => setImportNotice(null), 5000);
+      } else {
+        setImportNotice(`Error: ${res.error || 'No se importaron SKUs'}`);
+        setTimeout(() => setImportNotice(null), 5000);
+      }
+    } catch (err: any) {
+      setImportNotice(`Error procesando archivo: ${err?.message || 'Error'}`);
+      setTimeout(() => setImportNotice(null), 5000);
+    } finally {
+      setIsImportingExcel(false);
+      if (e.target) e.target.value = '';
+    }
   };
 
   // Descargar CSV con los P/N descartados de costo 0
@@ -410,6 +471,35 @@ export const BoRequestModal: React.FC<Props> = ({
                     : `Caché Local (${memorizedSkuCount} SKUs)`}
                 </span>
               </div>
+
+              {/* Botón Importación Masiva Excel PN <-> SKU */}
+              <input
+                type="file"
+                ref={excelInputRef}
+                accept=".xlsx, .xls"
+                onChange={handleImportExcelFile}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => excelInputRef.current?.click()}
+                disabled={isImportingExcel}
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono bg-indigo-950/50 hover:bg-indigo-900/60 text-indigo-300 border border-indigo-700/60 transition-colors cursor-pointer disabled:opacity-50"
+                title="Cargar archivo Excel con columnas Part Number y SKU para enriquecer el catálogo automáticamente"
+              >
+                {isImportingExcel ? (
+                  <RefreshCw className="w-3 h-3 animate-spin text-indigo-400" />
+                ) : (
+                  <Upload className="w-3 h-3 text-indigo-400" />
+                )}
+                <span>{isImportingExcel ? 'Importando...' : 'Importar Excel (PN/SKU)'}</span>
+              </button>
+
+              {importNotice && (
+                <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-800/80 px-2 py-0.5 rounded animate-fade-in">
+                  {importNotice}
+                </span>
+              )}
             </div>
             <p className="text-xs text-zinc-400 mt-0.5">
               Valores calculados por el cotizador con margen e internación. Part Numbers con sufijo <strong className="text-zinc-200">-CBN</strong> editable y auto-rellenado de SKUs Intcomex.

@@ -3,6 +3,7 @@
 // Auto-fill and persistence for Cisco Part Number <-> Intcomex SKU mappings
 // ============================================================================
 
+import ExcelJS from 'exceljs';
 import {
   collection,
   doc,
@@ -24,6 +25,8 @@ export interface BoSkuCatalogRecord {
 const BO_SKU_COLLECTION = 'cisco_bo_sku_catalog';
 const LOCAL_BO_SKU_CACHE_KEY = 'cisco_bo_sku_catalog_cache_v1';
 
+let memoryBoSkuCache: Record<string, string> = {};
+
 /**
  * Normaliza una clave de Part Number a mayúsculas y sin espacios redundantes
  */
@@ -32,25 +35,32 @@ export function normalizePartNumberKey(pn: string): string {
 }
 
 /**
- * Obtiene el catálogo de SKUs en memoria desde LocalStorage
+ * Obtiene el catálogo de SKUs en memoria desde LocalStorage (o fallback en memoria)
  */
 export function getLocalBoSkuCache(): Record<string, string> {
   try {
-    const raw = localStorage.getItem(LOCAL_BO_SKU_CACHE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return typeof parsed === 'object' && parsed !== null ? parsed : {};
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(LOCAL_BO_SKU_CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed === 'object' && parsed !== null) return parsed;
+      }
+    }
+    return memoryBoSkuCache;
   } catch (_) {
-    return {};
+    return memoryBoSkuCache;
   }
 }
 
 /**
- * Guarda el mapa en LocalStorage
+ * Guarda el mapa en LocalStorage (y en memoria fallback)
  */
 export function saveLocalBoSkuCache(map: Record<string, string>) {
+  memoryBoSkuCache = { ...map };
   try {
-    localStorage.setItem(LOCAL_BO_SKU_CACHE_KEY, JSON.stringify(map));
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(LOCAL_BO_SKU_CACHE_KEY, JSON.stringify(map));
+    }
   } catch (_) {}
 }
 
@@ -234,4 +244,67 @@ export async function batchSaveBoSkuMappings(
     }
   }
   return { success: true, count };
+}
+
+/**
+ * Importación masiva de relaciones Part Number -> SKU Intcomex desde archivo Excel (.xlsx / .xls)
+ */
+export async function importBoSkuMappingsFromExcel(
+  buffer: ArrayBuffer,
+  user?: string
+): Promise<{ success: boolean; importedCount: number; error?: string }> {
+  try {
+    const workbook = new ExcelJS.Workbook();
+    const loadPayload = typeof Buffer !== 'undefined' && !(buffer instanceof Buffer)
+      ? Buffer.from(buffer)
+      : buffer;
+    await workbook.xlsx.load(loadPayload as any);
+    const worksheet = workbook.worksheets[0];
+    if (!worksheet) {
+      return { success: false, importedCount: 0, error: 'Planilla vacía o sin hojas válidas' };
+    }
+
+    let pnCol = -1;
+    let skuCol = -1;
+    let headerRow = 1;
+
+    for (let r = 1; r <= Math.min(worksheet.rowCount, 10); r++) {
+      const row = worksheet.getRow(r);
+      row.eachCell((cell, colNumber) => {
+        const val = String(cell.value || '').toLowerCase().trim();
+        if (pnCol === -1 && (val.includes('part number') || val.includes('partnumber') || val === 'pn' || val === 'p/n' || val === 'part #')) {
+          pnCol = colNumber;
+        }
+        if (skuCol === -1 && (val.includes('sku') || val.includes('intcomex') || val === 'código' || val === 'codigo')) {
+          skuCol = colNumber;
+        }
+      });
+      if (pnCol !== -1 && skuCol !== -1) {
+        headerRow = r;
+        break;
+      }
+    }
+
+    // Fallback si no hay cabeceras explícitas: Col 1 = PN, Col 2 = SKU
+    if (pnCol === -1) pnCol = 1;
+    if (skuCol === -1) skuCol = 2;
+
+    const itemsToSave: Array<{ partNumber: string; sku: string }> = [];
+    for (let r = headerRow + 1; r <= worksheet.rowCount; r++) {
+      const pn = String(worksheet.getCell(r, pnCol).value || '').trim();
+      const sku = String(worksheet.getCell(r, skuCol).value || '').trim();
+      if (pn && sku && pn.length <= 50 && sku.length <= 35) {
+        itemsToSave.push({ partNumber: pn, sku });
+      }
+    }
+
+    if (itemsToSave.length === 0) {
+      return { success: false, importedCount: 0, error: 'No se encontraron filas con Part Number y SKU válidos' };
+    }
+
+    const res = await batchSaveBoSkuMappings(itemsToSave, user);
+    return { success: true, importedCount: res.count };
+  } catch (err: any) {
+    return { success: false, importedCount: 0, error: err?.message || 'Error importando archivo' };
+  }
 }
