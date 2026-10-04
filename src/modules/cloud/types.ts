@@ -91,6 +91,53 @@ export interface CloudEstimateRecord {
   allowedUsers?: string[];
   accessRequests?: EstimateAccessRequest[];
   syncedToCloud?: boolean;
+
+  // Multi-Version System (v0 Raw Original vs v1..vN Calculated Iterations)
+  activeVersion?: number; // e.g. 0 for RAW, 1 for initial calc, 2+ for recalcs
+  activeVersionTag?: string; // 'v0', 'v1', 'v2', etc.
+  baselineV0Amount?: number; // Inmutable Net Cisco baseline cost from v0
+  currentAmount?: number; // Active quoted total with margins
+  versionsCount?: number;
+  versionsSummary?: EstimateVersionSummary[];
+}
+
+export interface EstimateVersionSummary {
+  versionNumber: number; // 0, 1, 2, ...
+  versionTag: string; // 'v0', 'v1', 'v2'
+  type: 'ORIGINAL_RAW' | 'EDITED';
+  totalAmount: number; // Cotizado Intcomex
+  netCiscoTotal: number; // Costo Neto Cisco
+  marginPct: number;
+  internacionPct?: number;
+  arancelPct?: number;
+  itemsCount: number;
+  createdAt: string; // ISO 8601 string
+  creatorUsername?: string;
+  creatorFullName?: string;
+  originalFileName?: string;
+  note?: string;
+}
+
+export interface EstimateVersionDetail extends EstimateVersionSummary {
+  id?: string; // e.g. 'v0', 'v1'
+  estimateId: string;
+  items: CloudEstimateItem[];
+  customOverrideMap?: Record<number, OverrideRuleType>;
+  fastTrackPromoMap?: Record<number, number>;
+  headerInfo?: EstimateHeaderInfo;
+}
+
+export interface EstimateVersionInfo {
+  exists: boolean;
+  activeVersion: number;
+  activeVersionTag: string;
+  nextVersionNumber: number;
+  nextVersionTag: string;
+  baselineV0Amount: number;
+  currentAmount: number;
+  versionsCount: number;
+  versionsSummary: EstimateVersionSummary[];
+  docId: string;
 }
 
 export interface CloudDsvRecord {

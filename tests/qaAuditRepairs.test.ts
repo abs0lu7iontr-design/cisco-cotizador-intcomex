@@ -33,8 +33,8 @@ console.log(`Nombre generado: ${generatedName}`);
 assert.ok(generatedName.includes('Telefonica'), 'Debe normalizar ó -> o sin perder la letra');
 // Verificar que "Ñuñoa" no perdió las letras (se convirtió en "Nunoa")
 assert.ok(generatedName.includes('Nunoa'), 'Debe normalizar Ñ -> N sin perder la letra');
-// Verificar tag comercial I7M5
-assert.ok(generatedName.includes('_I7M5_CALC_'), 'Debe incluir el tag comercial correcto I7M5');
+// Verificar tag comercial I7M5 y versión v1 (reemplaza CALC por v1)
+assert.ok(generatedName.includes('_I7M5_v1_'), 'Debe incluir el tag comercial correcto I7M5_v1');
 console.log('✅ Sanitización y diacríticos normalizados correctamente sin pérdida de letras.\n');
 
 // ----------------------------------------------------------------------------

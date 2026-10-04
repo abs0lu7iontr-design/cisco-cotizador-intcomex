@@ -28,6 +28,17 @@ rules_version = '2';
 //   - customOverrideMap: map
 //   - fastTrackPromoMap: map (optional)
 //
+//   Subcollection 1.1: estimates/{estimateId}/versions/{versionId}
+//     - versionNumber: number
+//     - versionTag: string
+//     - type: string
+//     - marginPct: number
+//     - totalAmount: number
+//     - netCiscoTotal: number
+//     - items: list
+//     - createdAt: string (ISO 8601)
+//     - creatorUsername: string
+//
 // Collection 2: dsv_records/{dsvId}
 //   - dealId: string
 //   - soNumber: string
@@ -194,6 +205,14 @@ service cloud.firestore {
       allow update: if isValidEstimate(request.resource.data) &&
         (isAdmin() || isDocOwner(resource.data) || !isAuthenticated());
       allow delete: if isAdmin() || isDocOwner(resource.data) || !isAuthenticated();
+
+      // Subcolección: versions (Historial y versiones de la cotización)
+      match /versions/{versionId} {
+        allow read: if true;
+        allow create, update: if isValidPayloadSize(request.resource.data) &&
+          (isAdmin() || isDocOwner(get(/databases/$(database)/documents/estimates/$(estimateId)).data) || !isAuthenticated());
+        allow delete: if isAdmin() || !isAuthenticated();
+      }
     }
 
     // ------------------------------------------------------------------------

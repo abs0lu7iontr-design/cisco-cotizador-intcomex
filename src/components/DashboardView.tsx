@@ -307,8 +307,10 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
     > = {};
 
     for (const est of filteredEstimates) {
-      const rev = Number(est.financialSummary?.totalCotizadoIntcomex) || 0;
-      const net = Number(est.financialSummary?.totalNetCisco) || 0;
+      const rev =
+        Number(est.currentAmount ?? est.financialSummary?.totalCotizadoIntcomex) || 0;
+      const net =
+        Number(est.baselineV0Amount ?? est.financialSummary?.totalNetCisco) || 0;
       const prof =
         Number(est.financialSummary?.gananciaIntcomexUsd) ||
         Math.max(0, rev - net);
@@ -1142,6 +1144,18 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
                               <span>Público</span>
                             </span>
                           )}
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold font-mono ${
+                              e.activeVersion === 0
+                                ? 'bg-slate-800 text-slate-300 border border-slate-700'
+                                : e.activeVersion === 1
+                                ? 'bg-blue-950/80 text-blue-300 border border-blue-700/50'
+                                : 'bg-purple-950/80 text-purple-300 border border-purple-700/50'
+                            }`}
+                            title={`Versión activa: ${e.activeVersionTag || (e.activeVersion === 0 ? 'v0_RAW' : `v${e.activeVersion ?? 1}`)}`}
+                          >
+                            {e.activeVersionTag || (e.activeVersion === 0 ? 'v0' : `v${e.activeVersion ?? 1}`)}
+                          </span>
                         </div>
                         {e.dealId && e.dealId !== 'NA' && (
                           <div className="text-[10px] text-slate-500 font-mono">

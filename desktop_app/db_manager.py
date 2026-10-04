@@ -249,6 +249,7 @@ class DatabaseManager:
                 """)
                 conn.commit()
             self._ensure_updated_user_schema()
+            self._ensure_updated_estimate_schema()
             self._seed_default_users()
             self._migrate_users_to_pm()
 
@@ -327,6 +328,34 @@ class DatabaseManager:
                     ALTER TABLE users_migrated RENAME TO users;
                 """)
                 conn.commit()
+
+    def _ensure_updated_estimate_schema(self):
+        """Adds versioning columns to estimates table if not already present."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(estimates)")
+            cols = [row["name"] for row in cursor.fetchall()]
+            if "version_number" not in cols:
+                try:
+                    cursor.execute("ALTER TABLE estimates ADD COLUMN version_number INTEGER DEFAULT 1")
+                except Exception:
+                    pass
+            if "version_tag" not in cols:
+                try:
+                    cursor.execute("ALTER TABLE estimates ADD COLUMN version_tag TEXT DEFAULT 'v1'")
+                except Exception:
+                    pass
+            if "baseline_v0_amount" not in cols:
+                try:
+                    cursor.execute("ALTER TABLE estimates ADD COLUMN baseline_v0_amount REAL DEFAULT 0.0")
+                except Exception:
+                    pass
+            if "is_active_version" not in cols:
+                try:
+                    cursor.execute("ALTER TABLE estimates ADD COLUMN is_active_version INTEGER DEFAULT 1")
+                except Exception:
+                    pass
+            conn.commit()
 
     def _seed_default_users(self):
         """Seeds initial required users: mskill (admin), madasme (pm), rcuevas (pm), jvalancia (pm)."""
@@ -462,20 +491,37 @@ class DatabaseManager:
             return (False, f"Error actualizando usuario: {e}")
 
     def save_estimate_record(self, estimate_data: Dict[str, Any], items: List[Dict[str, Any]]) -> str:
-        """Saves processed estimate header and detailed items into database."""
+        """Saves processed estimate header and detailed items into database with multi-version support."""
+        est_cisco_id = str(estimate_data.get("estimate_id_cisco", "N/A")).strip()
+        ver_num = int(estimate_data.get("version_number", 1))
+        ver_tag = str(estimate_data.get("version_tag", f"v{ver_num}")).strip()
+        baseline_v0 = float(estimate_data.get("baseline_v0_amount", estimate_data.get("net_cisco_total", 0.0)))
+
         est_id = f"est-{uuid.uuid4().hex[:8]}"
         with self.get_connection() as conn:
             cursor = conn.cursor()
+
+            # Mark any previous versions of this same estimate as non-active
+            if est_cisco_id and est_cisco_id.upper() not in ["N/A", "NA", ""]:
+                try:
+                    cursor.execute("""
+                        UPDATE estimates SET is_active_version = 0 
+                        WHERE estimate_id_cisco = ?
+                    """, (est_cisco_id,))
+                except Exception:
+                    pass
+
             cursor.execute("""
                 INSERT INTO estimates (
                     id, user_id, estimate_id_cisco, deal_id, partner_name, client_final_name,
                     original_filename, stored_filepath, net_cisco_total, total_cotizado_intcomex,
-                    recargo_reglas_usd, ganancia_intcomex_usd, items_count, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    recargo_reglas_usd, ganancia_intcomex_usd, items_count, created_at,
+                    version_number, version_tag, baseline_v0_amount, is_active_version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 est_id,
                 estimate_data["user_id"],
-                estimate_data.get("estimate_id_cisco", "N/A"),
+                est_cisco_id,
                 estimate_data.get("deal_id", "N/A"),
                 estimate_data["partner_name"],
                 estimate_data["client_final_name"],
@@ -486,7 +532,11 @@ class DatabaseManager:
                 estimate_data["recargo_reglas_usd"],
                 estimate_data["ganancia_intcomex_usd"],
                 len(items),
-                datetime.now().isoformat()
+                datetime.now().isoformat(),
+                ver_num,
+                ver_tag,
+                baseline_v0,
+                1
             ))
 
             for item in items:
@@ -517,17 +567,56 @@ class DatabaseManager:
         return est_id
 
     def get_user_kpis(self, user_id: str = None, is_admin: bool = False) -> Dict[str, Any]:
-        """Calculates global or personal KPIs for dashboard (files uploaded, totals, margins)."""
+        """Calculates global or personal KPIs for dashboard (files uploaded, totals, margins) deduplicated by estimate ID."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             if is_admin or user_id is None:
-                query = "SELECT COUNT(*) as total_files, COALESCE(SUM(total_cotizado_intcomex), 0) as total_revenue, COALESCE(SUM(ganancia_intcomex_usd), 0) as total_profit FROM estimates"
+                query = """
+                    SELECT 
+                        COUNT(DISTINCT estimate_id_cisco) as total_files,
+                        COALESCE(SUM(CASE WHEN is_active_version = 1 THEN total_cotizado_intcomex ELSE 0 END), 0) as total_revenue,
+                        COALESCE(SUM(CASE WHEN is_active_version = 1 THEN baseline_v0_amount ELSE 0 END), 0) as total_baseline,
+                        COALESCE(SUM(CASE WHEN is_active_version = 1 THEN ganancia_intcomex_usd ELSE 0 END), 0) as total_profit
+                    FROM estimates
+                """
                 cursor.execute(query)
             else:
-                query = "SELECT COUNT(*) as total_files, COALESCE(SUM(total_cotizado_intcomex), 0) as total_revenue, COALESCE(SUM(ganancia_intcomex_usd), 0) as total_profit FROM estimates WHERE user_id = ?"
+                query = """
+                    SELECT 
+                        COUNT(DISTINCT estimate_id_cisco) as total_files,
+                        COALESCE(SUM(CASE WHEN is_active_version = 1 THEN total_cotizado_intcomex ELSE 0 END), 0) as total_revenue,
+                        COALESCE(SUM(CASE WHEN is_active_version = 1 THEN baseline_v0_amount ELSE 0 END), 0) as total_baseline,
+                        COALESCE(SUM(CASE WHEN is_active_version = 1 THEN ganancia_intcomex_usd ELSE 0 END), 0) as total_profit
+                    FROM estimates 
+                    WHERE user_id = ?
+                """
                 cursor.execute(query, (user_id,))
             row = cursor.fetchone()
-            return dict(row)
+            d = dict(row)
+            # Failsafe fallback: if all records have is_active_version = 0 or NULL (e.g. legacy data before migration)
+            if d.get("total_revenue", 0) == 0 and d.get("total_files", 0) > 0:
+                if is_admin or user_id is None:
+                    cursor.execute("""
+                        SELECT 
+                            COALESCE(SUM(total_cotizado_intcomex), 0) as rev, 
+                            COALESCE(SUM(ganancia_intcomex_usd), 0) as prof,
+                            COALESCE(SUM(net_cisco_total), 0) as base
+                        FROM (SELECT * FROM estimates GROUP BY estimate_id_cisco)
+                    """)
+                else:
+                    cursor.execute("""
+                        SELECT 
+                            COALESCE(SUM(total_cotizado_intcomex), 0) as rev, 
+                            COALESCE(SUM(ganancia_intcomex_usd), 0) as prof,
+                            COALESCE(SUM(net_cisco_total), 0) as base
+                        FROM (SELECT * FROM estimates WHERE user_id = ? GROUP BY estimate_id_cisco)
+                    """, (user_id,))
+                sub = cursor.fetchone()
+                if sub:
+                    d["total_revenue"] = sub["rev"]
+                    d["total_profit"] = sub["prof"]
+                    d["total_baseline"] = sub["base"]
+            return d
 
     def get_estimates_list(self, user_id: str = None, is_admin: bool = False) -> List[Dict[str, Any]]:
         """Retrieves estimate history list filtered by user role isolation using fail-safe LEFT JOIN."""

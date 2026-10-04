@@ -11,8 +11,9 @@ export interface QuotationFileNameParams {
   internacionPct: number;
   marginPct: number;
   arancelPct?: number;
-  isRecalculated: boolean; // TRUE = RECALC, FALSE = CALC
+  isRecalculated: boolean; // Backwards compatible fallback
   isOnlyLicensing?: boolean; // TRUE = Solo licencias/intangibles (omite internación)
+  versionNumber?: number; // 0 = v0_RAW, 1 = v1, 2+ = v2, v3...
 }
 
 /**
@@ -36,9 +37,9 @@ export function isPureLicensingQuote(
 }
 
 /**
- * Genera el nombre de archivo estandarizado corporativo:
- * - Con hardware o mixto: partner_cliente_modeloequipos_Estimate_N°Estimate_I{int}M{margen}_CALC/RECALC_hh-mm_dd-mm-aa.xlsx
- * - Solo licencias: partner_cliente_modeloequipos_Estimate_N°Estimate_M{margen}_CALC/RECALC_hh-mm_dd-mm-aa.xlsx
+ * Genera el nombre de archivo estandarizado corporativo con versión (v0_RAW, v1, v2...):
+ * - Con hardware o mixto: partner_cliente_modeloequipos_Estimate_N°Estimate_I{int}M{margen}_v{num}_hh-mm_dd-mm-aa.xlsx
+ * - Solo licencias: partner_cliente_modeloequipos_Estimate_N°Estimate_M{margen}_v{num}_hh-mm_dd-mm-aa.xlsx
  */
 export function generateQuotationFileName(params: QuotationFileNameParams): string {
   const sanitize = (str: string) =>
@@ -72,12 +73,21 @@ export function generateQuotationFileName(params: QuotationFileNameParams): stri
   // - Si es solo licencias: "M5" (omite internación por no requerir aduana/flete)
   // - Si tiene hardware o mixto: "I7M5" (o "I7M7"), fusionados sin guión intermedio
   const tagComercial = params.isOnlyLicensing ? `M${maVal}` : `I${intVal}M${maVal}`;
-  const actionTag = params.isRecalculated ? 'RECALC' : 'CALC';
+
+  // Determinación de etiqueta de versión: v0_RAW, v1, v2...
+  let versionTag = params.isRecalculated ? 'v2' : 'v1';
+  if (params.versionNumber !== undefined) {
+    if (params.versionNumber === 0) {
+      versionTag = 'v0_RAW';
+    } else {
+      versionTag = `v${params.versionNumber}`;
+    }
+  }
 
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   const hora = `${pad(now.getHours())}-${pad(now.getMinutes())}`;
   const fecha = `${pad(now.getDate())}-${pad(now.getMonth() + 1)}-${String(now.getFullYear()).slice(-2)}`;
 
-  return `${partner}_${cliente}_${modeloEquipos}_Estimate_${cleanEst}_${tagComercial}_${actionTag}_${hora}_${fecha}.xlsx`;
+  return `${partner}_${cliente}_${modeloEquipos}_Estimate_${cleanEst}_${tagComercial}_${versionTag}_${hora}_${fecha}.xlsx`;
 }

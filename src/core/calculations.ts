@@ -579,7 +579,7 @@ export function getBaseFileNameWithoutExt(fileName: string): string {
   const name = fileName || 'Cotizacion_Cisco';
   const baseName = name.split(/[\\/]/).pop() || name;
   const withoutExt = baseName.replace(/\.xlsx?$/i, '');
-  const cleanBase = withoutExt.replace(/_(CALC|ORIGINAL|RECALC)(_[0-9\-_]+)?$/i, '');
+  const cleanBase = withoutExt.replace(/_(CALC|ORIGINAL|RECALC|v[0-9]+(_RAW)?|V[0-9]+)(_[0-9\-_]+)?$/i, '');
   return cleanBase || 'Cotizacion_Cisco';
 }
 
@@ -587,7 +587,7 @@ export function getBaseFileNameWithoutExt(fileName: string): string {
  * Generates output filename with dynamic timestamp:
  * Formato requerido: [NombreOriginalArchivo]_[suffix]_[HH-MM_DD-MM-YY].xlsx
  */
-export function suggestFileName(fileName: string, suffix: string = 'CALC'): string {
+export function suggestFileName(fileName: string, suffix: string = 'v1'): string {
   const base = getBaseFileNameWithoutExt(fileName);
   const timestamp = getCcwTimestamp();
   return `${base}_${suffix}_${timestamp}.xlsx`;

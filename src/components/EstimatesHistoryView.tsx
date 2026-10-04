@@ -18,6 +18,10 @@ import {
   requestEstimateAccess,
   resolveEstimateAccessRequest,
   FirebaseConfigModal,
+  getEstimateVersions,
+  loadEstimateVersionDetail,
+  EstimateVersionSummary,
+  EstimateVersionDetail,
 } from '../modules/cloud';
 import { useCiscoAutomatedStore } from '../core/store';
 import {
@@ -50,6 +54,9 @@ import {
   ExternalLink,
   Folder,
   FolderOpen,
+  Layers,
+  GitCompare,
+  TrendingUp,
 } from 'lucide-react';
 import { formatPartnerName, getUniqueFormattedPartners } from '../utils/partnerDbUtils';
 import { normalizeIsoTimestamp, extractYearMonth } from '../utils/dateUtils';
@@ -143,6 +150,114 @@ export function EstimatesHistoryView() {
   const [permissionsModalEstimate, setPermissionsModalEstimate] =
     useState<CloudEstimateRecord | null>(null);
   const [isFirebaseModalOpen, setIsFirebaseModalOpen] = useState(false);
+
+  // Version Selection & Inspection State for selectedEstimateDetail
+  const [selectedVersionTag, setSelectedVersionTag] = useState<string | null>(null);
+  const [estimateVersions, setEstimateVersions] = useState<EstimateVersionSummary[]>([]);
+  const [isLoadingVersionDetail, setIsLoadingVersionDetail] = useState(false);
+  const [activeVersionDetail, setActiveVersionDetail] = useState<EstimateVersionDetail | null>(null);
+  const [showVersionComparison, setShowVersionComparison] = useState(false);
+
+  // Sync versions whenever selectedEstimateDetail changes
+  useEffect(() => {
+    if (!selectedEstimateDetail) {
+      setSelectedVersionTag(null);
+      setEstimateVersions([]);
+      setActiveVersionDetail(null);
+      setShowVersionComparison(false);
+      return;
+    }
+
+    const initialTag =
+      selectedEstimateDetail.activeVersionTag ||
+      (selectedEstimateDetail.activeVersion === 0
+        ? 'v0_RAW'
+        : `v${selectedEstimateDetail.activeVersion || 1}`);
+    setSelectedVersionTag(initialTag);
+    setActiveVersionDetail(null);
+
+    // Initial local summaries if present
+    if (selectedEstimateDetail.versionsSummary && selectedEstimateDetail.versionsSummary.length > 0) {
+      setEstimateVersions(selectedEstimateDetail.versionsSummary);
+    }
+
+    // Fetch versions from subcollection on demand
+    let isCancelled = false;
+    getEstimateVersions(selectedEstimateDetail.id || selectedEstimateDetail.estimateId).then((res) => {
+      if (!isCancelled && res.success && res.data && res.data.length > 0) {
+        setEstimateVersions(res.data);
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedEstimateDetail]);
+
+  const handleSelectVersionTag = async (tag: string) => {
+    if (!selectedEstimateDetail) return;
+    setSelectedVersionTag(tag);
+    setIsLoadingVersionDetail(true);
+    try {
+      const res = await loadEstimateVersionDetail(
+        selectedEstimateDetail.id || selectedEstimateDetail.estimateId,
+        tag
+      );
+      if (res.success && res.data) {
+        setActiveVersionDetail(res.data);
+      } else {
+        showToast(res.error || 'No se pudo cargar la versión', 'error');
+      }
+    } catch (err: any) {
+      console.warn('Error cargando versión:', err);
+    } finally {
+      setIsLoadingVersionDetail(false);
+    }
+  };
+
+  const effectiveVersionList: EstimateVersionSummary[] = useMemo(() => {
+    if (!selectedEstimateDetail) return [];
+    if (estimateVersions.length > 0) return estimateVersions;
+    if (selectedEstimateDetail.versionsSummary && selectedEstimateDetail.versionsSummary.length > 0) {
+      return selectedEstimateDetail.versionsSummary;
+    }
+    const actVer = selectedEstimateDetail.activeVersion ?? 1;
+    const baseV0 = Number(
+      selectedEstimateDetail.baselineV0Amount ??
+        selectedEstimateDetail.financialSummary?.totalNetCisco ??
+        0
+    );
+    const curr = Number(
+      selectedEstimateDetail.currentAmount ??
+        selectedEstimateDetail.financialSummary?.totalCotizadoIntcomex ??
+        baseV0
+    );
+    const list: EstimateVersionSummary[] = [
+      {
+        versionNumber: 0,
+        versionTag: 'v0_RAW',
+        type: 'ORIGINAL_RAW',
+        totalAmount: baseV0,
+        netCiscoTotal: baseV0,
+        marginPct: 0,
+        itemsCount: selectedEstimateDetail.itemsCount || (selectedEstimateDetail.items || []).length,
+        createdAt: selectedEstimateDetail.createdAt,
+      },
+    ];
+    if (actVer > 0) {
+      list.push({
+        versionNumber: actVer,
+        versionTag: selectedEstimateDetail.activeVersionTag || `v${actVer}`,
+        type: 'EDITED',
+        totalAmount: curr,
+        netCiscoTotal: baseV0,
+        marginPct: selectedEstimateDetail.financialSummary?.margenPct ?? 5.0,
+        itemsCount: selectedEstimateDetail.itemsCount || (selectedEstimateDetail.items || []).length,
+        createdAt: selectedEstimateDetail.createdAt,
+      });
+    }
+    return list;
+  }, [selectedEstimateDetail, estimateVersions]);
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ text, type });
@@ -955,6 +1070,20 @@ export function EstimatesHistoryView() {
                                 <span>Público</span>
                               </span>
                             )}
+                            <span
+                              className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold font-mono ${
+                                est.activeVersion === 0
+                                  ? 'bg-slate-800 text-slate-300 border border-slate-700'
+                                  : est.activeVersion === 1
+                                  ? 'bg-blue-950/80 text-blue-300 border border-blue-700/50'
+                                  : 'bg-purple-950/80 text-purple-300 border border-purple-700/50'
+                              }`}
+                              title={`Versión activa: ${est.activeVersionTag || (est.activeVersion === 0 ? 'v0_RAW' : `v${est.activeVersion ?? 1}`)}${
+                                est.versionsCount ? ` (${est.versionsCount} versiones)` : ''
+                              }`}
+                            >
+                              {est.activeVersionTag || (est.activeVersion === 0 ? 'v0' : `v${est.activeVersion ?? 1}`)}
+                            </span>
                           </div>
                           {est.dealId && est.dealId !== 'NA' && (
                             <div className="text-[10px] text-slate-500 font-mono mt-0.5">
@@ -1606,118 +1735,422 @@ export function EstimatesHistoryView() {
 
             {/* Modal Body */}
             <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
-              {/* Financial KPI Highlights & Parámetros */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                  <span className="text-[10px] text-slate-400 uppercase font-bold">Net Cisco</span>
-                  <div className="text-lg font-black font-mono text-white mt-1">
-                    {fmtCurrency(selectedEstimateDetail.financialSummary?.totalNetCisco)}
-                  </div>
-                </div>
-                <div className="bg-slate-950 p-4 rounded-2xl border border-indigo-700/40">
-                  <span className="text-[10px] text-indigo-400 uppercase font-bold">
-                    Cotizado Intcomex
-                  </span>
-                  <div className="text-lg font-black font-mono text-emerald-400 mt-1">
-                    {fmtCurrency(selectedEstimateDetail.financialSummary?.totalCotizadoIntcomex)}
-                  </div>
-                </div>
-                <div className="bg-slate-950 p-4 rounded-2xl border border-amber-700/40">
-                  <span className="text-[10px] text-amber-400 uppercase font-bold">
-                    Margen / Profit
-                  </span>
-                  <div className="text-lg font-black font-mono text-amber-400 mt-1">
-                    {fmtCurrency(selectedEstimateDetail.financialSummary?.gananciaIntcomexUsd)}
-                  </div>
-                </div>
-                <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                  <span className="text-[10px] text-cyan-400 uppercase font-bold">Parámetros Aplicados</span>
-                  {(() => {
-                    const p = getEstimateParams(selectedEstimateDetail);
-                    return (
-                      <div className="flex items-center gap-1.5 mt-2 font-mono text-[11px] flex-wrap">
-                        <span
-                          className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40"
-                          title="Margen Intcomex"
-                        >
-                          M: {p.margen}%
-                        </span>
-                        <span
-                          className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-semibold border border-cyan-500/40"
-                          title="Costo de Internación"
-                        >
-                          Int: {p.internacion}%
-                        </span>
-                        <span
-                          className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/40"
-                          title="Arancel Aduanero"
-                        >
-                          Ar: {p.arancel}%
-                        </span>
-                      </div>
+              {/* Version Selector & Immutability Timeline */}
+              {(() => {
+                const isViewingV0 =
+                  selectedVersionTag === 'v0' || selectedVersionTag === 'v0_RAW';
+                const baseV0Amt = Number(
+                  selectedEstimateDetail.baselineV0Amount ??
+                    selectedEstimateDetail.financialSummary?.totalNetCisco ??
+                    0
+                );
+                const dispNet = activeVersionDetail
+                  ? activeVersionDetail.netCiscoTotal
+                  : isViewingV0
+                  ? baseV0Amt
+                  : Number(
+                      selectedEstimateDetail.financialSummary?.totalNetCisco ?? baseV0Amt
                     );
-                  })()}
-                </div>
-              </div>
+                const dispTot = activeVersionDetail
+                  ? activeVersionDetail.totalAmount
+                  : isViewingV0
+                  ? baseV0Amt
+                  : Number(
+                      selectedEstimateDetail.currentAmount ??
+                        selectedEstimateDetail.financialSummary?.totalCotizadoIntcomex ??
+                        baseV0Amt
+                    );
+                const dispProfit = isViewingV0
+                  ? 0
+                  : activeVersionDetail
+                  ? Math.max(
+                      0,
+                      activeVersionDetail.totalAmount - activeVersionDetail.netCiscoTotal
+                    )
+                  : Number(
+                      selectedEstimateDetail.financialSummary?.gananciaIntcomexUsd ?? 0
+                    );
+                const dispMargin = isViewingV0
+                  ? 0
+                  : activeVersionDetail
+                  ? activeVersionDetail.marginPct
+                  : Number(
+                      selectedEstimateDetail.financialSummary?.margenPct ?? 5.0
+                    );
+                const dispInt =
+                  activeVersionDetail?.internacionPct ??
+                  Number(
+                    selectedEstimateDetail.financialSummary?.params?.internacionPct ??
+                      7.0
+                  );
+                const dispAra =
+                  activeVersionDetail?.arancelPct ??
+                  Number(
+                    selectedEstimateDetail.financialSummary?.params?.arancelPct ??
+                      6.0
+                  );
+                const dispItems =
+                  activeVersionDetail?.items || selectedEstimateDetail.items || [];
+                const diffAmt = Math.max(0, dispTot - baseV0Amt);
+                const diffPct = baseV0Amt > 0 ? (diffAmt / baseV0Amt) * 100 : 0;
 
-              {/* Items Table */}
-              <div className="border border-slate-800 rounded-2xl overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-950 text-slate-400 text-[10px] uppercase font-bold">
-                    <tr>
-                      <th className="px-4 py-3">Línea</th>
-                      <th className="px-4 py-3">Part Number</th>
-                      <th className="px-4 py-3">Descripción</th>
-                      <th className="px-4 py-3 text-center">Clasificación</th>
-                      <th className="px-4 py-3 text-right">Cant</th>
-                      <th className="px-4 py-3 text-right">Venta Ext. USD</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 font-mono">
-                    {selectedEstimateDetail.items?.map((it, idx) => (
-                      <tr key={idx} className="hover:bg-slate-800/30">
-                        <td className="px-4 py-2.5 text-slate-400">{it.lineNumber || idx + 1}</td>
-                        <td className="px-4 py-2.5 font-bold text-indigo-300">{it.partNumber}</td>
-                        <td className="px-4 py-2.5 font-sans text-slate-300 max-w-[240px] truncate">
-                          {it.description}
-                        </td>
-                        <td className="px-4 py-2.5 text-center font-sans">
-                          {it.isIntangible ? (
-                            <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800/40 text-[10px] font-bold">
-                              Intangible
-                            </span>
-                          ) : it.llevaArancel ? (
-                            <span className="px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800/40 text-[10px] font-bold">
-                              Arancel 6%
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/40 text-[10px] font-bold">
-                              Hardware
-                            </span>
+                return (
+                  <>
+                    {/* Version Selector Bar */}
+                    <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center space-x-2">
+                          <Layers className="w-4 h-4 text-cyan-400" />
+                          <span className="text-xs font-bold text-slate-200">
+                            Historial de Versiones (v0 Inmutable + Recálculos)
+                          </span>
+                          {isLoadingVersionDetail && (
+                            <RefreshCw className="w-3.5 h-3.5 text-cyan-400 animate-spin" />
                           )}
-                        </td>
-                        <td className="px-4 py-2.5 text-right text-slate-200">{it.qty}</td>
-                        <td className="px-4 py-2.5 text-right font-bold text-emerald-400">
-                          {fmtCurrency(it.precioVentaExtendido)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {!isViewingV0 && (
+                            <button
+                              type="button"
+                              onClick={() => setShowVersionComparison(!showVersionComparison)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                                showVersionComparison
+                                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-sm'
+                                  : 'bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-800'
+                              }`}
+                            >
+                              <GitCompare className="w-3.5 h-3.5" />
+                              <span>
+                                {showVersionComparison ? 'Ocultar Comparativa v0' : 'Comparar v0 vs Versión'}
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                        {effectiveVersionList.map((ver) => {
+                          const isSelected = ver.versionTag === selectedVersionTag;
+                          const isVer0 =
+                            ver.versionNumber === 0 ||
+                            ver.versionTag === 'v0' ||
+                            ver.versionTag === 'v0_RAW';
+                          const isRecordActive =
+                            ver.versionNumber === (selectedEstimateDetail.activeVersion ?? 1);
+
+                          return (
+                            <button
+                              key={ver.versionTag}
+                              type="button"
+                              onClick={() => handleSelectVersionTag(ver.versionTag)}
+                              disabled={isLoadingVersionDetail}
+                              className={`group px-3 py-2 rounded-xl text-left border transition-all cursor-pointer flex-shrink-0 flex items-center gap-2.5 ${
+                                isSelected
+                                  ? isVer0
+                                    ? 'bg-slate-800/90 border-slate-500 ring-1 ring-slate-400 text-white shadow-md'
+                                    : 'bg-cyan-950/60 border-cyan-500 ring-1 ring-cyan-500/50 text-white shadow-md'
+                                  : 'bg-slate-900 hover:bg-slate-850 border-slate-800 text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              <span
+                                className={`px-2 py-0.5 rounded-md font-mono text-[11px] font-black uppercase ${
+                                  isVer0
+                                    ? 'bg-slate-700 text-slate-200'
+                                    : isSelected
+                                    ? 'bg-cyan-500 text-slate-950'
+                                    : 'bg-indigo-950 text-indigo-300 border border-indigo-800/40'
+                                }`}
+                              >
+                                {isVer0 ? 'v0 RAW' : ver.versionTag}
+                              </span>
+                              <div className="text-[11px] leading-tight">
+                                <div className="font-bold flex items-center gap-1.5">
+                                  <span>{isVer0 ? 'Base CCW Original' : `Margen ${ver.marginPct}%`}</span>
+                                  {isRecordActive && !isVer0 && (
+                                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                                      Activa
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="font-mono text-[10px] text-slate-400">
+                                  {fmtCurrency(ver.totalAmount)}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Version Comparison Card (v0 vs selected) */}
+                    {showVersionComparison && !isViewingV0 && (
+                      <div className="bg-gradient-to-r from-slate-950 via-cyan-950/20 to-slate-950 p-4 rounded-2xl border border-cyan-800/40 space-y-3 animate-in fade-in">
+                        <div className="flex items-center justify-between text-xs font-bold text-cyan-300">
+                          <div className="flex items-center gap-2">
+                            <GitCompare className="w-4 h-4 text-cyan-400" />
+                            <span>Comparativa Directa: Base Original CCW (v0) vs {selectedVersionTag}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            Auditoría de Inmutabilidad & Incremento Comercial
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                            <div className="text-[10px] text-slate-400 uppercase font-bold">
+                              Costo Base v0 (Sin Margen)
+                            </div>
+                            <div className="text-base font-black font-mono text-white mt-0.5">
+                              {fmtCurrency(baseV0Amt)}
+                            </div>
+                          </div>
+                          <div className="bg-slate-900/90 p-3 rounded-xl border border-indigo-700/40">
+                            <div className="text-[10px] text-indigo-400 uppercase font-bold">
+                              Cotizado {selectedVersionTag}
+                            </div>
+                            <div className="text-base font-black font-mono text-emerald-400 mt-0.5">
+                              {fmtCurrency(dispTot)}
+                            </div>
+                          </div>
+                          <div className="bg-slate-900/90 p-3 rounded-xl border border-cyan-700/40">
+                            <div className="text-[10px] text-cyan-400 uppercase font-bold flex items-center justify-between">
+                              <span>Incremento Comercial</span>
+                              <TrendingUp className="w-3.5 h-3.5 text-cyan-400" />
+                            </div>
+                            <div className="text-base font-black font-mono text-cyan-300 mt-0.5 flex items-baseline gap-2">
+                              <span>{fmtCurrency(diffAmt)}</span>
+                              <span className="text-xs text-cyan-400 font-bold">
+                                (+{diffPct.toFixed(1)}%)
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Financial KPI Highlights & Parámetros */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                      <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
+                        <span className="text-[10px] text-slate-400 uppercase font-bold">
+                          Net Cisco {isViewingV0 ? '(Costo Base)' : ''}
+                        </span>
+                        <div className="text-lg font-black font-mono text-white mt-1">
+                          {fmtCurrency(dispNet)}
+                        </div>
+                      </div>
+                      <div className="bg-slate-950 p-4 rounded-2xl border border-indigo-700/40">
+                        <span className="text-[10px] text-indigo-400 uppercase font-bold">
+                          {isViewingV0 ? 'Monto Base Original (v0)' : `Cotizado Intcomex (${selectedVersionTag})`}
+                        </span>
+                        <div className="text-lg font-black font-mono text-emerald-400 mt-1">
+                          {fmtCurrency(dispTot)}
+                        </div>
+                      </div>
+                      <div className="bg-slate-950 p-4 rounded-2xl border border-amber-700/40">
+                        <span className="text-[10px] text-amber-400 uppercase font-bold">
+                          Margen / Profit
+                        </span>
+                        <div className="text-lg font-black font-mono text-amber-400 mt-1">
+                          {isViewingV0 ? '$0.00 (v0 RAW)' : fmtCurrency(dispProfit)}
+                        </div>
+                      </div>
+                      <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
+                        <span className="text-[10px] text-cyan-400 uppercase font-bold">
+                          {isViewingV0 ? 'Estado de Versión' : 'Parámetros Aplicados'}
+                        </span>
+                        {isViewingV0 ? (
+                          <div className="mt-2 font-mono text-[11px] text-slate-400 flex items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-bold border border-slate-700">
+                              Sin margen (0%)
+                            </span>
+                            <span className="text-[10px] text-slate-500">Inmutable</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 mt-2 font-mono text-[11px] flex-wrap">
+                            <span
+                              className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40"
+                              title="Margen Intcomex"
+                            >
+                              M: {formatPctNumber(dispMargin, 5)}%
+                            </span>
+                            <span
+                              className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-semibold border border-cyan-500/40"
+                              title="Costo de Internación"
+                            >
+                              Int: {formatPctNumber(dispInt, 7)}%
+                            </span>
+                            <span
+                              className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/40"
+                              title="Arancel Aduanero"
+                            >
+                              Ar: {formatPctNumber(dispAra, 6)}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Items Table */}
+                    <div className="border border-slate-800 rounded-2xl overflow-hidden">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-950 text-slate-400 text-[10px] uppercase font-bold">
+                          <tr>
+                            <th className="px-4 py-3">Línea</th>
+                            <th className="px-4 py-3">Part Number</th>
+                            <th className="px-4 py-3">Descripción</th>
+                            <th className="px-4 py-3 text-center">Clasificación</th>
+                            <th className="px-4 py-3 text-right">Cant</th>
+                            {showVersionComparison && !isViewingV0 && (
+                              <th className="px-4 py-3 text-right text-slate-400">Net Base v0</th>
+                            )}
+                            <th className="px-4 py-3 text-right">
+                              {isViewingV0 ? 'Net Cisco Ext.' : 'Venta Ext. USD'}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60 font-mono">
+                          {dispItems.map((it, idx) => {
+                            const netUnit = it.originalNetCiscoUnit || it.netCiscoUnit || 0;
+                            const extAmount = isViewingV0
+                              ? netUnit * (it.qty || 1)
+                              : it.precioVentaExtendido;
+
+                            return (
+                              <tr key={idx} className="hover:bg-slate-800/30">
+                                <td className="px-4 py-2.5 text-slate-400">
+                                  {it.lineNumber || idx + 1}
+                                </td>
+                                <td className="px-4 py-2.5 font-bold text-indigo-300">
+                                  {it.partNumber}
+                                </td>
+                                <td className="px-4 py-2.5 font-sans text-slate-300 max-w-[240px] truncate">
+                                  {it.description}
+                                </td>
+                                <td className="px-4 py-2.5 text-center font-sans">
+                                  {it.isIntangible ? (
+                                    <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800/40 text-[10px] font-bold">
+                                      Intangible
+                                    </span>
+                                  ) : it.llevaArancel ? (
+                                    <span className="px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800/40 text-[10px] font-bold">
+                                      Arancel 6%
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/40 text-[10px] font-bold">
+                                      Hardware
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2.5 text-right text-slate-200">
+                                  {it.qty}
+                                </td>
+                                {showVersionComparison && !isViewingV0 && (
+                                  <td className="px-4 py-2.5 text-right text-slate-400">
+                                    {fmtCurrency(netUnit * (it.qty || 1))}
+                                  </td>
+                                )}
+                                <td className="px-4 py-2.5 text-right font-bold text-emerald-400">
+                                  {fmtCurrency(extAmount)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             {/* Modal Footer */}
             <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-end gap-3">
               <button
                 onClick={() => {
-                  handleLoadEstimate(selectedEstimateDetail);
+                  const isViewingV0 =
+                    selectedVersionTag === 'v0' || selectedVersionTag === 'v0_RAW';
+                  const baseV0Amt = Number(
+                    selectedEstimateDetail.baselineV0Amount ??
+                      selectedEstimateDetail.financialSummary?.totalNetCisco ??
+                      0
+                  );
+
+                  if (activeVersionDetail) {
+                    const customRecord: CloudEstimateRecord = {
+                      ...selectedEstimateDetail,
+                      activeVersion: activeVersionDetail.versionNumber,
+                      activeVersionTag: activeVersionDetail.versionTag,
+                      currentAmount: activeVersionDetail.totalAmount,
+                      baselineV0Amount: activeVersionDetail.netCiscoTotal,
+                      financialSummary: {
+                        totalNetCisco: activeVersionDetail.netCiscoTotal,
+                        totalCotizadoIntcomex: activeVersionDetail.totalAmount,
+                        gananciaIntcomexUsd: Math.max(
+                          0,
+                          activeVersionDetail.totalAmount - activeVersionDetail.netCiscoTotal
+                        ),
+                        margenPct: activeVersionDetail.marginPct,
+                        currency: 'USD',
+                        params: {
+                          ...selectedEstimateDetail.financialSummary?.params,
+                          margenPct: activeVersionDetail.marginPct,
+                          internacionPct:
+                            activeVersionDetail.internacionPct ??
+                            selectedEstimateDetail.financialSummary?.params?.internacionPct ??
+                            7,
+                          arancelPct:
+                            activeVersionDetail.arancelPct ??
+                            selectedEstimateDetail.financialSummary?.params?.arancelPct ??
+                            6,
+                        } as any,
+                      },
+                      items: activeVersionDetail.items,
+                      customOverrideMap: activeVersionDetail.customOverrideMap,
+                      fastTrackPromoMap: activeVersionDetail.fastTrackPromoMap,
+                    };
+                    handleLoadEstimate(customRecord);
+                  } else if (isViewingV0) {
+                    const v0Record: CloudEstimateRecord = {
+                      ...selectedEstimateDetail,
+                      activeVersion: 0,
+                      activeVersionTag: 'v0_RAW',
+                      currentAmount: baseV0Amt,
+                      baselineV0Amount: baseV0Amt,
+                      financialSummary: {
+                        totalNetCisco: baseV0Amt,
+                        totalCotizadoIntcomex: baseV0Amt,
+                        gananciaIntcomexUsd: 0,
+                        margenPct: 0,
+                        currency: 'USD',
+                        params: {
+                          ...selectedEstimateDetail.financialSummary?.params,
+                          margenPct: 0,
+                          internacionPct: 0,
+                          arancelPct: 0,
+                        } as any,
+                      },
+                      items: (selectedEstimateDetail.items || []).map((it) => ({
+                        ...it,
+                        costoInternacion: 0,
+                        costoArancel: 0,
+                        costoTotalUnitario: it.originalNetCiscoUnit || it.netCiscoUnit,
+                        precioVentaUnitario: it.originalNetCiscoUnit || it.netCiscoUnit,
+                        precioVentaExtendido: (it.originalNetCiscoUnit || it.netCiscoUnit) * (it.qty || 1),
+                      })),
+                    };
+                    handleLoadEstimate(v0Record);
+                  } else {
+                    handleLoadEstimate(selectedEstimateDetail);
+                  }
                   setSelectedEstimateDetail(null);
                 }}
                 className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 flex items-center space-x-2 cursor-pointer"
               >
                 <UploadCloud className="w-4 h-4" />
-                <span>Cargar en Cotizador CCW</span>
+                <span>
+                  {selectedVersionTag === 'v0' || selectedVersionTag === 'v0_RAW'
+                    ? 'Cargar Versión v0 (RAW CCW) en Cotizador'
+                    : `Cargar Versión ${selectedVersionTag || 'v1'} en Cotizador CCW`}
+                </span>
               </button>
             </div>
           </div>

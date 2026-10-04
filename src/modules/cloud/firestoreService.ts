@@ -24,6 +24,9 @@ import {
   CloudUserRecord,
   SharedSkuOverrideRecord,
   SharedSkuPackageRecord,
+  EstimateVersionSummary,
+  EstimateVersionDetail,
+  EstimateVersionInfo,
 } from './types';
 import {
   getEstimatesMirrorSnapshot,
@@ -157,7 +160,7 @@ export async function saveEstimateToCloud(
   const docId = buildEstimateDocId(record.estimateId, record.dealId, record.originalFileName);
   const nowIso = new Date().toISOString();
 
-  // 1. Check existing local record to preserve permissions/requests if updating
+  // 1. Check existing local record to preserve permissions, baseline, and versions
   const localList = getLocalEstimatesCache();
   const existingLocal = localList.find(
     (x) =>
@@ -172,11 +175,89 @@ export async function saveEstimateToCloud(
   );
   const normalizedUpdatedAt = nowIso;
 
+  // Determine active version number & tags
+  let versionNumber: number;
+  if (record.activeVersion !== undefined) {
+    versionNumber = record.activeVersion;
+  } else if (existingLocal?.activeVersion !== undefined) {
+    versionNumber = existingLocal.activeVersion === 0 ? 1 : existingLocal.activeVersion + 1;
+  } else {
+    versionNumber = 1;
+  }
+
+  const versionTag =
+    record.activeVersionTag || (versionNumber === 0 ? 'v0_RAW' : `v${versionNumber}`);
+
+  const baselineV0Amount = Number(
+    record.baselineV0Amount ??
+      existingLocal?.baselineV0Amount ??
+      record.financialSummary?.totalNetCisco ??
+      0
+  );
+
+  const currentAmount = Number(
+    record.currentAmount ??
+      record.financialSummary?.totalCotizadoIntcomex ??
+      baselineV0Amount
+  );
+
+  // Build version summary entry
+  const versionSummaryEntry: EstimateVersionSummary = {
+    versionNumber,
+    versionTag,
+    type: versionNumber === 0 ? 'ORIGINAL_RAW' : 'EDITED',
+    totalAmount: currentAmount,
+    netCiscoTotal: Number(record.financialSummary?.totalNetCisco || baselineV0Amount),
+    marginPct: Number(record.financialSummary?.margenPct ?? (versionNumber === 0 ? 0 : 5.0)),
+    internacionPct: record.financialSummary?.params?.internacionPct,
+    arancelPct: record.financialSummary?.params?.arancelPct,
+    itemsCount: record.itemsCount || (record.items || []).length,
+    createdAt: nowIso,
+    creatorUsername: record.creator?.username || 'anonymous',
+    creatorFullName: record.creator?.fullName || '',
+    originalFileName: record.originalFileName || '',
+  };
+
+  // Compile full versions summary list
+  const existingSummaries: EstimateVersionSummary[] = existingLocal?.versionsSummary
+    ? [...existingLocal.versionsSummary]
+    : [];
+
+  if (!existingSummaries.some((v) => v.versionNumber === 0) && baselineV0Amount > 0) {
+    existingSummaries.unshift({
+      versionNumber: 0,
+      versionTag: 'v0_RAW',
+      type: 'ORIGINAL_RAW',
+      totalAmount: baselineV0Amount,
+      netCiscoTotal: baselineV0Amount,
+      marginPct: 0,
+      internacionPct: 0,
+      arancelPct: 0,
+      itemsCount: record.itemsCount || (record.items || []).length,
+      createdAt: normalizedCreatedAt,
+      creatorUsername: record.creator?.username || 'system',
+      creatorFullName: 'BOM Cisco Original (CCW)',
+      originalFileName: record.originalFileName || '',
+      note: 'BOM Original CCW (Sin Márgenes)',
+    });
+  }
+
+  const filteredSummaries = existingSummaries.filter((v) => v.versionNumber !== versionNumber);
+  const updatedSummaries = [...filteredSummaries, versionSummaryEntry].sort(
+    (a, b) => a.versionNumber - b.versionNumber
+  );
+
   const mergedRecord: CloudEstimateRecord = {
     ...record,
     id: docId,
     createdAt: normalizedCreatedAt,
     updatedAt: normalizedUpdatedAt,
+    activeVersion: versionNumber,
+    activeVersionTag: versionTag,
+    baselineV0Amount,
+    currentAmount,
+    versionsCount: updatedSummaries.length,
+    versionsSummary: updatedSummaries,
     isRestricted:
       record.isRestricted !== undefined
         ? Boolean(record.isRestricted)
@@ -222,17 +303,62 @@ export async function saveEstimateToCloud(
           if (remoteData.accessRequests && (!mergedRecord.accessRequests || mergedRecord.accessRequests.length === 0)) {
             mergedRecord.accessRequests = remoteData.accessRequests;
           }
+          if (remoteData.baselineV0Amount && !mergedRecord.baselineV0Amount) {
+            mergedRecord.baselineV0Amount = remoteData.baselineV0Amount;
+          }
         }
       } catch (_) {}
     }
 
+    // 1. Write root document with active version metadata (used by Dashboard without duplicates)
     const { id: _omitId, ...payloadWithoutId } = {
       ...mergedRecord,
       syncedToCloud: true,
     };
     const sanitizedRecord = sanitizeForFirestore(payloadWithoutId);
-
     await withTimeout(setDoc(docRef, sanitizedRecord, { merge: true }), 8000);
+
+    // 2. Write subcollection version document (for audit history and rollback/comparison)
+    try {
+      const versionDocRef = doc(db, ESTIMATES_COLLECTION, docId, 'versions', versionTag);
+      const versionPayload = sanitizeForFirestore({
+        ...versionSummaryEntry,
+        estimateId: record.estimateId || 'NA',
+        items: record.items || [],
+        customOverrideMap: record.customOverrideMap || {},
+        fastTrackPromoMap: record.fastTrackPromoMap || {},
+        headerInfo: record.headerInfo,
+      });
+      await withTimeout(setDoc(versionDocRef, versionPayload, { merge: true }), 6000);
+
+      // If writing v1 and v0 is not yet in subcollection, ensure v0 is stored as immutable backup
+      if (versionNumber > 0 && baselineV0Amount > 0) {
+        const v0DocRef = doc(db, ESTIMATES_COLLECTION, docId, 'versions', 'v0');
+        const v0Snap = await withTimeout(getDoc(v0DocRef), 2000).catch(() => null);
+        if (!v0Snap || !v0Snap.exists()) {
+          const v0Payload = sanitizeForFirestore({
+            versionNumber: 0,
+            versionTag: 'v0_RAW',
+            type: 'ORIGINAL_RAW',
+            totalAmount: baselineV0Amount,
+            netCiscoTotal: baselineV0Amount,
+            marginPct: 0,
+            internacionPct: 0,
+            arancelPct: 0,
+            itemsCount: record.itemsCount || (record.items || []).length,
+            items: record.items || [],
+            createdAt: normalizedCreatedAt,
+            creatorUsername: record.creator?.username || 'system',
+            creatorFullName: 'BOM Cisco Original (CCW)',
+            originalFileName: record.originalFileName || '',
+            note: 'BOM Original CCW (Sin Márgenes)',
+          });
+          setDoc(v0DocRef, v0Payload, { merge: true }).catch(() => {});
+        }
+      }
+    } catch (vErr) {
+      console.warn('[Firestore Cloud Subcollection Version Warning]:', vErr);
+    }
 
     // Mark as synced in local cache
     const syncedRecord: CloudEstimateRecord = { ...mergedRecord, syncedToCloud: true };
@@ -248,6 +374,250 @@ export async function saveEstimateToCloud(
     };
   }
 }
+
+/**
+ * Saves the immutable original v0 raw BOM directly from Cisco CCW (0% margins).
+ * Guarantees that v0 is stored permanently and never overwritten by subsequent edits.
+ */
+export async function saveOriginalV0Estimate(
+  record: Omit<CloudEstimateRecord, 'id'>
+): Promise<{ success: boolean; id?: string; error?: string }> {
+  return await saveEstimateToCloud({
+    ...record,
+    activeVersion: 0,
+    activeVersionTag: 'v0_RAW',
+    baselineV0Amount: Number(record.financialSummary?.totalNetCisco || 0),
+    currentAmount: Number(record.financialSummary?.totalNetCisco || 0),
+  });
+}
+
+/**
+ * Saves an edited version (v1, v2, v3...) with updated margins, custom overrides, and pricing.
+ */
+export async function saveModifiedEstimateVersion(
+  record: Omit<CloudEstimateRecord, 'id'>,
+  customVersionNum?: number
+): Promise<{ success: boolean; id?: string; error?: string }> {
+  const versionNum = customVersionNum !== undefined ? customVersionNum : undefined;
+  return await saveEstimateToCloud({
+    ...record,
+    activeVersion: versionNum,
+  });
+}
+
+/**
+ * Inspects whether an Estimate ID already exists in Cloud / Local Cache,
+ * returning version status, active version, next version number, and baseline amount.
+ */
+export async function getEstimateVersionInfo(
+  estimateId?: string,
+  dealId?: string,
+  fileName?: string
+): Promise<EstimateVersionInfo> {
+  const docId = buildEstimateDocId(estimateId, dealId, fileName);
+  const localList = getLocalEstimatesCache();
+  const existingLocal = localList.find(
+    (x) =>
+      x.id === docId ||
+      (estimateId &&
+        estimateId !== 'NA' &&
+        x.estimateId?.trim().toUpperCase() === estimateId.trim().toUpperCase())
+  );
+
+  let remoteData: Partial<CloudEstimateRecord> | null = null;
+  const { db, isReady } = getFirestoreInstance();
+  if (isReady && db) {
+    try {
+      const snap = await withTimeout(getDoc(doc(db, ESTIMATES_COLLECTION, docId)), 3500);
+      if (snap.exists()) {
+        remoteData = snap.data() as Partial<CloudEstimateRecord>;
+      }
+    } catch (_) {}
+  }
+
+  const existing = remoteData || existingLocal;
+  if (!existing) {
+    return {
+      exists: false,
+      activeVersion: 0,
+      activeVersionTag: 'v0_RAW',
+      nextVersionNumber: 1,
+      nextVersionTag: 'v1',
+      baselineV0Amount: 0,
+      currentAmount: 0,
+      versionsCount: 0,
+      versionsSummary: [],
+      docId,
+    };
+  }
+
+  const activeVer = existing.activeVersion ?? 1;
+  const vCount =
+    existing.versionsCount ??
+    (existing.versionsSummary?.length || (activeVer > 0 ? activeVer : 1));
+  const nextVer = Math.max(activeVer, vCount) + 1;
+
+  return {
+    exists: true,
+    activeVersion: activeVer,
+    activeVersionTag:
+      existing.activeVersionTag || (activeVer === 0 ? 'v0_RAW' : `v${activeVer}`),
+    nextVersionNumber: nextVer,
+    nextVersionTag: `v${nextVer}`,
+    baselineV0Amount:
+      existing.baselineV0Amount ?? existing.financialSummary?.totalNetCisco ?? 0,
+    currentAmount:
+      existing.currentAmount ?? existing.financialSummary?.totalCotizadoIntcomex ?? 0,
+    versionsCount: vCount,
+    versionsSummary: existing.versionsSummary || [],
+    docId,
+  };
+}
+
+/**
+ * Retrieves all versions of a specific estimate (v0, v1, v2...) from subcollection or root summary.
+ */
+export async function getEstimateVersions(
+  docIdOrEstimateId: string
+): Promise<{ success: boolean; data: EstimateVersionSummary[]; error?: string }> {
+  const docId = docIdOrEstimateId.startsWith('est_')
+    ? docIdOrEstimateId
+    : buildEstimateDocId(docIdOrEstimateId);
+
+  const localList = getLocalEstimatesCache();
+  const existingLocal = localList.find((x) => x.id === docId || x.estimateId === docIdOrEstimateId);
+  const localSummaries = existingLocal?.versionsSummary || [];
+
+  try {
+    const { db, isReady } = getFirestoreInstance();
+    if (!isReady || !db) {
+      return { success: true, data: localSummaries };
+    }
+
+    const versionsColRef = collection(db, ESTIMATES_COLLECTION, docId, 'versions');
+    const snap = await withTimeout(getDocs(versionsColRef), 5000);
+    if (!snap.empty) {
+      const versions: EstimateVersionSummary[] = [];
+      snap.forEach((d) => {
+        const data = d.data();
+        const vNum =
+          data.versionNumber ??
+          (d.id === 'v0' || d.id === 'v0_RAW'
+            ? 0
+            : parseInt(d.id.replace('v', ''), 10) || 1);
+        versions.push({
+          versionNumber: vNum,
+          versionTag: data.versionTag || (vNum === 0 ? 'v0_RAW' : `v${vNum}`),
+          type: data.type || (vNum === 0 ? 'ORIGINAL_RAW' : 'EDITED'),
+          totalAmount: Number(data.totalAmount) || 0,
+          netCiscoTotal: Number(data.netCiscoTotal) || 0,
+          marginPct: Number(data.marginPct) || 0,
+          internacionPct: data.internacionPct,
+          arancelPct: data.arancelPct,
+          itemsCount: Number(data.itemsCount) || (data.items || []).length || 0,
+          createdAt: normalizeIsoTimestamp(data.createdAt),
+          creatorUsername: data.creatorUsername,
+          creatorFullName: data.creatorFullName,
+          originalFileName: data.originalFileName,
+          note: data.note,
+        });
+      });
+      versions.sort((a, b) => a.versionNumber - b.versionNumber);
+      return { success: true, data: versions };
+    }
+
+    return { success: true, data: localSummaries };
+  } catch (err: any) {
+    return { success: true, data: localSummaries, error: err?.message };
+  }
+}
+
+/**
+ * Loads the full detail (including items and overrides) of a specific version from the subcollection.
+ */
+export async function loadEstimateVersionDetail(
+  docIdOrEstimateId: string,
+  versionId: string
+): Promise<{ success: boolean; data?: EstimateVersionDetail; error?: string }> {
+  const docId = docIdOrEstimateId.startsWith('est_')
+    ? docIdOrEstimateId
+    : buildEstimateDocId(docIdOrEstimateId);
+
+  try {
+    const { db, isReady } = getFirestoreInstance();
+    if (isReady && db) {
+      const vRef = doc(db, ESTIMATES_COLLECTION, docId, 'versions', versionId);
+      const snap = await withTimeout(getDoc(vRef), 5000);
+      if (snap.exists()) {
+        const d = snap.data();
+        const vNum =
+          d.versionNumber ??
+          (versionId === 'v0' || versionId === 'v0_RAW'
+            ? 0
+            : parseInt(versionId.replace('v', ''), 10) || 1);
+        return {
+          success: true,
+          data: {
+            id: snap.id,
+            estimateId: docIdOrEstimateId,
+            versionNumber: vNum,
+            versionTag: d.versionTag || versionId,
+            type: d.type || (vNum === 0 ? 'ORIGINAL_RAW' : 'EDITED'),
+            totalAmount: Number(d.totalAmount) || 0,
+            netCiscoTotal: Number(d.netCiscoTotal) || 0,
+            marginPct: Number(d.marginPct) || 0,
+            internacionPct: d.internacionPct,
+            arancelPct: d.arancelPct,
+            itemsCount: Number(d.itemsCount) || (d.items || []).length || 0,
+            items: d.items || [],
+            customOverrideMap: d.customOverrideMap || {},
+            fastTrackPromoMap: d.fastTrackPromoMap || {},
+            headerInfo: d.headerInfo,
+            createdAt: normalizeIsoTimestamp(d.createdAt),
+            creatorUsername: d.creatorUsername,
+            creatorFullName: d.creatorFullName,
+            originalFileName: d.originalFileName,
+            note: d.note,
+          },
+        };
+      }
+    }
+
+    // Fallback: check local root doc
+    const localList = getLocalEstimatesCache();
+    const existing = localList.find((x) => x.id === docId || x.estimateId === docIdOrEstimateId);
+    if (existing) {
+      return {
+        success: true,
+        data: {
+          id: versionId,
+          estimateId: existing.estimateId || docId,
+          versionNumber: existing.activeVersion ?? 1,
+          versionTag: existing.activeVersionTag ?? 'v1',
+          type: 'EDITED',
+          totalAmount:
+            existing.currentAmount ?? existing.financialSummary?.totalCotizadoIntcomex ?? 0,
+          netCiscoTotal:
+            existing.baselineV0Amount ?? existing.financialSummary?.totalNetCisco ?? 0,
+          marginPct: existing.financialSummary?.margenPct ?? 5.0,
+          itemsCount: existing.itemsCount ?? (existing.items || []).length,
+          items: existing.items || [],
+          customOverrideMap: existing.customOverrideMap,
+          fastTrackPromoMap: existing.fastTrackPromoMap,
+          headerInfo: existing.headerInfo,
+          createdAt: existing.createdAt || new Date().toISOString(),
+          creatorUsername: existing.creator?.username,
+          creatorFullName: existing.creator?.fullName,
+        },
+      };
+    }
+
+    return { success: false, error: 'Versión no encontrada' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Error cargando detalle de versión' };
+  }
+}
+
 
 /**
  * Fetches CCW Estimates from Firestore on-demand using getDocs().
@@ -341,7 +711,29 @@ export async function getCloudEstimates(
             ? `EST:${l.estimateId.trim().toUpperCase()}`
             : `ID:${l.id}`;
         if (!dedupMap.has(key)) {
-          dedupMap.set(key, l);
+          const actVer = l.activeVersion !== undefined ? l.activeVersion : 1;
+          const actVerTag = l.activeVersionTag || (actVer === 0 ? 'v0_RAW' : `v${actVer}`);
+          const baseV0 = Number(
+            l.baselineV0Amount ??
+              l.financialSummary?.totalNetCisco ??
+              l.financialSummary?.totalCotizadoIntcomex ??
+              0
+          );
+          const curAmt = Number(
+            l.currentAmount ??
+              l.financialSummary?.totalCotizadoIntcomex ??
+              baseV0
+          );
+          dedupMap.set(key, {
+            ...l,
+            activeVersion: actVer,
+            activeVersionTag: actVerTag,
+            baselineV0Amount: baseV0,
+            currentAmount: curAmt,
+            versionsCount:
+              l.versionsCount ??
+              (l.versionsSummary?.length || (actVer > 0 ? actVer : 1)),
+          });
         }
       }
       const mergedLocal = Array.from(dedupMap.values()).sort((a, b) =>
@@ -373,11 +765,36 @@ export async function getCloudEstimates(
       const data = docSnap.data() as Omit<CloudEstimateRecord, 'id'>;
       const normalizedCreatedAt = normalizeIsoTimestamp(data.createdAt);
       const normalizedUpdatedAt = normalizeIsoTimestamp(data.updatedAt || data.createdAt);
+
+      const activeVersion = data.activeVersion !== undefined ? data.activeVersion : 1;
+      const activeVersionTag =
+        data.activeVersionTag || (activeVersion === 0 ? 'v0_RAW' : `v${activeVersion}`);
+      const baselineV0Amount = Number(
+        data.baselineV0Amount ??
+          data.financialSummary?.totalNetCisco ??
+          data.financialSummary?.totalCotizadoIntcomex ??
+          0
+      );
+      const currentAmount = Number(
+        data.currentAmount ??
+          data.financialSummary?.totalCotizadoIntcomex ??
+          baselineV0Amount
+      );
+      const versionsCount =
+        data.versionsCount ??
+        (data.versionsSummary?.length || (activeVersion > 0 ? activeVersion : 1));
+
       remoteList.push({
         ...data,
         id: docSnap.id,
         createdAt: normalizedCreatedAt,
         updatedAt: normalizedUpdatedAt,
+        activeVersion,
+        activeVersionTag,
+        baselineV0Amount,
+        currentAmount,
+        versionsCount,
+        versionsSummary: data.versionsSummary || [],
         isRestricted: Boolean(data.isRestricted),
         allowedUsers: Array.isArray(data.allowedUsers) ? data.allowedUsers : [],
         accessRequests: Array.isArray(data.accessRequests) ? data.accessRequests : [],
@@ -408,9 +825,33 @@ export async function getCloudEstimates(
           }
         }
         const winner = candidateTime > existingTime ? r : existing;
+        const highestVer = Math.max(existing.activeVersion ?? 1, r.activeVersion ?? 1);
+        const resolvedBaseline =
+          existing.baselineV0Amount || r.baselineV0Amount || winner.baselineV0Amount;
+        const resolvedCurrent =
+          winner.currentAmount || winner.financialSummary?.totalCotizadoIntcomex || 0;
+
+        // Merge versions summary lists if present
+        const sumMap = new Map<number, EstimateVersionSummary>();
+        (existing.versionsSummary || []).forEach((v) => sumMap.set(v.versionNumber, v));
+        (r.versionsSummary || []).forEach((v) => sumMap.set(v.versionNumber, v));
+        const mergedSummaries = Array.from(sumMap.values()).sort(
+          (a, b) => a.versionNumber - b.versionNumber
+        );
+
         dedupMap.set(key, {
           ...winner,
           id: existing.id?.startsWith('est_') ? existing.id : r.id?.startsWith('est_') ? r.id : winner.id,
+          activeVersion: highestVer,
+          activeVersionTag: winner.activeVersionTag || `v${highestVer}`,
+          baselineV0Amount: resolvedBaseline,
+          currentAmount: resolvedCurrent,
+          versionsCount: Math.max(
+            mergedSummaries.length,
+            existing.versionsCount || 1,
+            r.versionsCount || 1
+          ),
+          versionsSummary: mergedSummaries,
           isRestricted: Boolean(existing.isRestricted || r.isRestricted),
           allowedUsers: mergedAllowed,
           accessRequests: Array.from(mergedReqsMap.values()),

@@ -20,6 +20,8 @@ import {
 import {
   CloudEstimateRecord,
   saveEstimateToCloud,
+  saveOriginalV0Estimate,
+  getEstimateVersionInfo,
   SharedSkuOverrideRecord,
   getSharedSkuRules,
   publishSharedSkuRules,
@@ -137,6 +139,12 @@ interface CiscoAutomatedState {
   isMiningFastTrackWarningModalOpen: boolean;
   setIsMiningFastTrackWarningModalOpen: (open: boolean) => void;
 
+  // Multi-Version State (v0 RAW vs v1..vN Calculated)
+  estimateVersionNumber: number;
+  setEstimateVersionNumber: (v: number) => void;
+  estimateVersionTag: string;
+  baselineV0Amount: number;
+
   processFileBuffer: (buffer: ArrayBuffer, fileName: string) => Promise<void>;
   setRowRule: (rowIdx: number, rule: OverrideRuleType, sku?: string) => Promise<void>;
   cycleRowRule: (rowIdx: number) => Promise<void>;
@@ -154,6 +162,9 @@ export interface SaveEstimateCloudOptions {
   modelName?: string;
   originalFileName?: string;
   isRestricted?: boolean;
+  versionNumber?: number;
+  versionTag?: string;
+  note?: string;
 }
 
 const CiscoAutomatedContext = createContext<CiscoAutomatedState | null>(null);
@@ -193,6 +204,11 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
   const [isRecalculated, setIsRecalculated] = useState<boolean>(false);
   const [detectedAudit, setDetectedAudit] = useState<DetectedAuditInfo | null>(null);
   const [isDetectedAuditModalOpen, setIsDetectedAuditModalOpen] = useState<boolean>(false);
+
+  // Multi-Version State (v0 RAW vs v1..vN Calculated)
+  const [estimateVersionNumber, setEstimateVersionNumber] = useState<number>(1);
+  const [estimateVersionTag, setEstimateVersionTag] = useState<string>('v1');
+  const [baselineV0Amount, setBaselineV0Amount] = useState<number>(0);
 
   // Mining & Industrial Conditions Audit
   const [miningAuditData, setMiningAuditData] = useState<AuditReport | null>(null);
@@ -427,12 +443,93 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
 
         const activeInitialParams = resolvedParams;
 
+        // 3.3. Arquitectura Multi-Versión: Comprobar si el Estimate ya existe en Firestore / Caché
+        const rawEstId = (rawResult?.headerInfo?.estimateId || '').trim();
+        let currentVerNum = 1;
+        let currentVerTag = 'v1';
+        let baseV0Cost = rawResult?.originalProductTotal || 0;
+
+        if (rawEstId && rawEstId.toUpperCase() !== 'NA' && rawEstId.toUpperCase() !== 'ESTIMATE') {
+          try {
+            const verInfo = await getEstimateVersionInfo(rawEstId, rawResult?.headerInfo?.dealId, fileName);
+            if (!verInfo.exists) {
+              // Estimate nuevo: guardar automáticamente v0 (RAW inmutable CCW) como respaldo contable
+              const rawV0Payload: Omit<CloudEstimateRecord, 'id'> = {
+                dealId: rawResult?.headerInfo?.dealId || 'NA',
+                estimateId: rawEstId,
+                partnerName: partner,
+                clientFinalName: rawResult?.headerInfo?.customerName || 'Cliente Final',
+                originalFileName: fileName,
+                createdAt: new Date().toISOString(),
+                activeVersion: 0,
+                activeVersionTag: 'v0_RAW',
+                baselineV0Amount: baseV0Cost,
+                currentAmount: baseV0Cost,
+                creator: {
+                  username: currentUser?.username || 'system',
+                  fullName: currentUser?.full_name || 'Cisco CCW Import',
+                  role: currentUser?.role || 'pm',
+                  email: currentUser?.email || '',
+                },
+                financialSummary: {
+                  totalNetCisco: baseV0Cost,
+                  totalCotizadoIntcomex: baseV0Cost,
+                  gananciaIntcomexUsd: 0,
+                  margenPct: 0,
+                  currency: 'USD',
+                  params: DEFAULT_PARAMS,
+                },
+                headerInfo: rawResult.headerInfo,
+                itemsCount: rawResult.items.length,
+                customOverrideMap: {},
+                items: rawResult.items.map((it) => ({
+                  rowIdx: it.rowIdx,
+                  lineNumber: it.lineNumber || '',
+                  partNumber: it.partNumber || '',
+                  description: it.description || '',
+                  qty: it.qty || 1,
+                  unitListPrice: it.unitListPrice || 0,
+                  netCiscoUnit: it.netCiscoUnit || 0,
+                  discPct: it.discPct || 0,
+                  transformedLeadTime: it.transformedLeadTime || '',
+                  overrideType: it.isIntangible ? 'intangible' : it.llevaArancel ? 'arancel' : 'equipo',
+                  isIntangible: Boolean(it.isIntangible),
+                  llevaArancel: Boolean(it.llevaArancel),
+                  costoInternacion: 0,
+                  costoArancel: 0,
+                  costoTotalUnitario: it.netCiscoUnit || 0,
+                  precioVentaUnitario: it.netCiscoUnit || 0,
+                  precioVentaExtendido: (it.netCiscoUnit || 0) * (it.qty || 1),
+                })),
+              };
+              saveOriginalV0Estimate(rawV0Payload).catch((e) =>
+                console.warn('Background v0 auto-save warning:', e)
+              );
+              currentVerNum = 1;
+              currentVerTag = 'v1';
+            } else {
+              // Estimate ya existe: la siguiente iteración es v2, v3, etc.
+              currentVerNum = verInfo.nextVersionNumber;
+              currentVerTag = verInfo.nextVersionTag;
+              if (verInfo.baselineV0Amount > 0) {
+                baseV0Cost = verInfo.baselineV0Amount;
+              }
+              setIsRecalculated(true);
+            }
+          } catch (verErr) {
+            console.warn('Error verificando versión de estimate:', verErr);
+          }
+        }
+        setEstimateVersionNumber(currentVerNum);
+        setEstimateVersionTag(currentVerTag);
+        setBaselineV0Amount(baseV0Cost);
+
         if (rawResult?.detectedAudit?.isRecalculated) {
           setIsRecalculated(true);
           setDetectedAudit(rawResult.detectedAudit);
           setIsDetectedAuditModalOpen(true);
         } else {
-          setIsRecalculated(false);
+          setIsRecalculated(currentVerNum > 1);
           setDetectedAudit(null);
           setIsDetectedAuditModalOpen(false);
           setParams(resolvedParams);
@@ -831,6 +928,17 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         setCurrentView('quoter');
         setActiveQuoterTab('table');
 
+        // Multi-Version State Restoration
+        const actVer = record.activeVersion ?? 1;
+        const actVerTag = record.activeVersionTag || (actVer === 0 ? 'v0_RAW' : `v${actVer}`);
+        const baseV0 = Number(
+          record.baselineV0Amount ?? record.financialSummary?.totalNetCisco ?? totalNetCisco
+        );
+        setEstimateVersionNumber(actVer);
+        setEstimateVersionTag(actVerTag);
+        setBaselineV0Amount(baseV0);
+        setIsRecalculated(actVer > 1);
+
         // Evaluar condiciones minería
         const auditReport = executeSafeMiningAudit({
           headerInfo: record.headerInfo || { customerName: record.partnerName || 'Intcomex Partner', companyName: record.clientFinalName || 'Cliente Final' },
@@ -938,6 +1046,12 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         `${processedResult.headerInfo.estimateId || 'Estimate'}.xlsx`
       ).trim();
 
+      const resolvedVersionNum =
+        options?.versionNumber !== undefined ? options.versionNumber : estimateVersionNumber;
+      const resolvedVersionTag =
+        options?.versionTag || (resolvedVersionNum === 0 ? 'v0_RAW' : `v${resolvedVersionNum}`);
+      const resolvedBaseline = baselineV0Amount > 0 ? baselineV0Amount : totalNetCisco;
+
       const cloudPayload: Omit<CloudEstimateRecord, 'id'> = {
         dealId: processedResult.headerInfo.dealId || 'NA',
         estimateId: processedResult.headerInfo.estimateId || 'NA',
@@ -947,6 +1061,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         originalFileName: resolvedFileName,
         createdAt: new Date().toISOString(),
         isRestricted: options?.isRestricted,
+        activeVersion: resolvedVersionNum,
+        activeVersionTag: resolvedVersionTag,
+        baselineV0Amount: resolvedBaseline,
+        currentAmount: totalVenta,
         creator: {
           username: currentUser?.username || 'anonymous',
           fullName: currentUser?.full_name || 'Usuario Intcomex',
@@ -998,7 +1116,13 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         })),
       };
 
-      return await saveEstimateToCloud(cloudPayload);
+      const res = await saveEstimateToCloud(cloudPayload);
+      if (res.success) {
+        setEstimateVersionNumber(resolvedVersionNum);
+        setEstimateVersionTag(resolvedVersionTag);
+        setBaselineV0Amount(resolvedBaseline);
+      }
+      return res;
     },
     [
       processedResult,
@@ -1008,6 +1132,8 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       params,
       customOverrideMap,
       fastTrackPromoMap,
+      estimateVersionNumber,
+      baselineV0Amount,
     ]
   );
 
@@ -1117,6 +1243,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       setMiningFastTrackWarningData,
       isMiningFastTrackWarningModalOpen,
       setIsMiningFastTrackWarningModalOpen,
+      estimateVersionNumber,
+      setEstimateVersionNumber,
+      estimateVersionTag,
+      baselineV0Amount,
       isProcessing,
       errorMessage,
       activeQuoterTab,
@@ -1172,6 +1302,9 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       setIsMiningAlertModalOpen,
       miningFastTrackWarningData,
       isMiningFastTrackWarningModalOpen,
+      estimateVersionNumber,
+      estimateVersionTag,
+      baselineV0Amount,
       isProcessing,
       errorMessage,
       activeQuoterTab,

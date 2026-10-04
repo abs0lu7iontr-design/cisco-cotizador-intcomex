@@ -67,7 +67,12 @@ export function DownloadModal({
   isRecalculated,
   isOnlyLicensing,
 }: DownloadModalProps) {
-  const { saveCurrentEstimateToCloud, processedResult } = useCiscoAutomatedStore();
+  const {
+    saveCurrentEstimateToCloud,
+    processedResult,
+    estimateVersionNumber,
+    estimateVersionTag,
+  } = useCiscoAutomatedStore();
   const isDesktop = isDesktopApp();
 
   const computeCorporateFilename = (
@@ -80,14 +85,15 @@ export function DownloadModal({
     const isRecalc = Boolean(
       isRecalculated ||
       (activeParams && ((!isOnlyLicensing && activeParams.internacionPct !== 7.0) || activeParams.margenPct !== 5.0)) ||
-      (customOverrides && Object.keys(customOverrides).length > 0)
+      (customOverrides && Object.keys(customOverrides).length > 0) ||
+      (estimateVersionNumber > 1)
     );
 
     let tech = mName || defaultModel || 'Cisco';
     if (!mName && !defaultModel && defaultFilename) {
       const cleanBase = defaultFilename.replace(/\.[^/.]+$/, '');
       const parts = cleanBase.split(/[_.\s-]+/);
-      if (parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|i\d+m\d+|\d+)$/i)) {
+      if (parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|i\d+m\d+|\d+|v\d+)$/i)) {
         tech = parts[2];
       }
     }
@@ -102,6 +108,7 @@ export function DownloadModal({
       marginPct: activeParams?.margenPct ?? 5.0,
       isRecalculated: isRecalc,
       isOnlyLicensing,
+      versionNumber: estimateVersionNumber,
     });
   };
 
@@ -288,12 +295,15 @@ export function DownloadModal({
         modelName: modelName.trim() || defaultModel || 'Cisco',
         originalFileName: cleanFile,
         isRestricted,
+        versionNumber: estimateVersionNumber,
+        versionTag: estimateVersionTag,
       });
       if (cloudRes.success) {
+        const vBadge = estimateVersionTag || `v${estimateVersionNumber}`;
         setCloudSaveNote(
           isRestricted
-            ? '🔒 Guardado en Historial Cloud con acceso restringido (requiere permiso para ver detalle).'
-            : '☁️ Guardado automáticamente en Historial Cloud (visible para todos los usuarios).'
+            ? `🔒 Guardado en Historial Cloud (${vBadge}) con acceso restringido.`
+            : `☁️ Guardado automáticamente en Historial Cloud (${vBadge} - visible para el equipo).`
         );
       }
     } catch (e) {
