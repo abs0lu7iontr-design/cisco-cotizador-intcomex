@@ -48,6 +48,7 @@ import { applyTheme, getSavedThemeId } from './core/themeEngine';
 import { useSessionInactivity, SessionInactivityModal } from './modules/security';
 import { SharedSkuManagerModal, SkuOverrideAuthorizationModal } from './modules/skuOverrides';
 import { EstimateDiffModal } from './modules/estimate';
+import { copyEstimateEmailSummaryToClipboard } from './core/emailClipboardHelper';
 
 import {
   FileSpreadsheet,
@@ -144,6 +145,7 @@ function AppContent() {
   // Cloud & Save States
   const [isSavingCloud, setIsSavingCloud] = useState(false);
   const [cloudToast, setCloudToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [isCopiedEmail, setIsCopiedEmail] = useState(false);
 
   // Modal States
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
@@ -200,6 +202,34 @@ function AppContent() {
       setTimeout(() => setCloudToast(null), 5000);
     } finally {
       setIsSavingCloud(false);
+    }
+  };
+
+  const handleCopyEmailSummary = async () => {
+    if (!processedResult) return;
+    try {
+      const success = await copyEstimateEmailSummaryToClipboard(processedResult, detectedPartner);
+      if (success) {
+        setIsCopiedEmail(true);
+        setCloudToast({
+          message: '📋 Resumen comercial copiado al portapapeles con formato Outlook/HTML y saludo dinámico.',
+          type: 'success',
+        });
+        setTimeout(() => setIsCopiedEmail(false), 3000);
+        setTimeout(() => setCloudToast(null), 4500);
+      } else {
+        setCloudToast({
+          message: 'No se pudo copiar el resumen al portapapeles.',
+          type: 'error',
+        });
+        setTimeout(() => setCloudToast(null), 4000);
+      }
+    } catch (err: any) {
+      setCloudToast({
+        message: `Error al copiar: ${err?.message || 'Error desconocido'}`,
+        type: 'error',
+      });
+      setTimeout(() => setCloudToast(null), 4000);
     }
   };
 
@@ -451,6 +481,8 @@ function AppContent() {
           onDownloadClick={() => setIsDownloadModalOpen(true)}
           onSaveCloudClick={handleSaveCloud}
           isSavingCloud={isSavingCloud}
+          onCopyEmailClick={handleCopyEmailSummary}
+          isCopiedEmail={isCopiedEmail}
           onDsvClick={handleDsvClick}
           onBoClick={() => setIsBoModalOpen(true)}
           onFastTrackClick={() => setIsFastTrackAdminModalOpen(true)}

@@ -24,6 +24,8 @@ export interface EstimateHeaderInfo {
   dealId: string;
   priceList: string;
   date: string;
+  endUser?: string;
+  quoteName?: string;
 }
 
 export interface EstimateLineItem {
@@ -92,6 +94,8 @@ export interface ProcessedEstimateResult {
   workbookBuffer?: ArrayBuffer;
   detectedAudit?: DetectedAuditInfo | null;
   isPreviouslyProcessed?: boolean;
+  versionTag?: string;
+  financialSummary?: any;
   priorParameters?: {
     margin?: number;
     internacion?: number;

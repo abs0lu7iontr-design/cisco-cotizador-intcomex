@@ -20,6 +20,8 @@ import {
   Palette,
   Share2,
   Pickaxe,
+  Mail,
+  Check,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI, INTCOMEX_LOGO_DATA_URI } from '../core/brandingLogos';
 import { useAppTheme } from '../context/ThemeContext';
@@ -39,6 +41,8 @@ interface NavbarProps {
   miningAuditReport?: any;
   onThemeClick?: () => void;
   onClearClick: () => void;
+  onCopyEmailClick?: () => void;
+  isCopiedEmail?: boolean;
   onToggleSidebar?: () => void;
   isSidebarOpen?: boolean;
   onToggleParamSidebar?: () => void;
@@ -62,6 +66,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   miningAuditReport,
   onThemeClick,
   onClearClick,
+  onCopyEmailClick,
+  isCopiedEmail = false,
   onToggleSidebar,
   isSidebarOpen = true,
   onToggleParamSidebar,
@@ -290,6 +296,28 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <UploadCloud className="w-4 h-4 text-cyan-100" />
               )}
               <span>{isSavingCloud ? 'Guardando...' : 'Guardar en la Nube'}</span>
+            </button>
+          )}
+
+          {/* Copy Email Summary Button (Outlook HTML) */}
+          {hasData && onCopyEmailClick && (
+            <button
+              id="btn-copy-email-summary"
+              onClick={onCopyEmailClick}
+              disabled={isProcessing}
+              className={`inline-flex items-center space-x-1.5 text-xs font-bold px-3.5 py-2 rounded-xl border transition-all cursor-pointer shadow-md ${
+                isCopiedEmail
+                  ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-600/30'
+                  : 'bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 border-indigo-700/50 hover:text-white shadow-indigo-950/20'
+              }`}
+              title="Copiar resumen comercial estilizado para Outlook/Gmail con saludo dinámico según la hora"
+            >
+              {isCopiedEmail ? (
+                <Check className="w-4 h-4 text-white" />
+              ) : (
+                <Mail className="w-4 h-4 text-indigo-400" />
+              )}
+              <span>{isCopiedEmail ? '¡Copiado!' : 'Copiar para Correo'}</span>
             </button>
           )}
 
