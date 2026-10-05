@@ -18,6 +18,7 @@ import {
   ChevronRight,
   ChevronLeft,
   Menu,
+  Truck,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { NavViewId } from '../core/store';
@@ -29,6 +30,7 @@ interface SidebarProps {
   onLogout: () => void;
   isOpen?: boolean;
   onToggleOpen?: () => void;
+  activeBoCount?: number;
 }
 
 export function Sidebar({
@@ -38,6 +40,7 @@ export function Sidebar({
   onLogout,
   isOpen = true,
   onToggleOpen,
+  activeBoCount,
 }: SidebarProps) {
   const isAdmin = currentUser.role === 'admin';
 
@@ -77,6 +80,13 @@ export function Sidebar({
       id: 'estimates' as NavViewId,
       label: 'Historial Estimates',
       icon: History,
+      section: 'main',
+    },
+    {
+      id: 'bo_tracking' as NavViewId,
+      label: 'Tracking BO',
+      icon: Truck,
+      badge: activeBoCount !== undefined && activeBoCount > 0 ? activeBoCount : undefined,
       section: 'main',
     },
     ...(isAdmin
@@ -146,7 +156,7 @@ export function Sidebar({
               <button
                 key={item.id}
                 onClick={() => onSelectView(item.id)}
-                className={`p-2.5 rounded-xl transition-all cursor-pointer block ${
+                className={`p-2.5 rounded-xl transition-all cursor-pointer block relative ${
                   isActive
                     ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
                     : 'text-slate-400 hover:text-white hover:bg-slate-900'
@@ -154,6 +164,9 @@ export function Sidebar({
                 title={item.label}
               >
                 <Icon className="w-5 h-5" />
+                {item.badge !== undefined && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-slate-950 animate-pulse" />
+                )}
               </button>
             );
           })}
@@ -262,7 +275,14 @@ export function Sidebar({
                   />
                   <span className="truncate">{item.label}</span>
                 </div>
-                {isActive && <ChevronRight className="w-3.5 h-3.5 shrink-0 opacity-80" />}
+                <div className="flex items-center space-x-1.5 shrink-0">
+                  {item.badge !== undefined && (
+                    <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                      {item.badge}
+                    </span>
+                  )}
+                  {isActive && <ChevronRight className="w-3.5 h-3.5 shrink-0 opacity-80" />}
+                </div>
               </button>
             );
           })}

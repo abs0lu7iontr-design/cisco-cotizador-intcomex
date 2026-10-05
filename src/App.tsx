@@ -33,6 +33,8 @@ import {
   BoLineItem,
   findSkuInCatalog,
   getLocalBoSkuCache,
+  BoTrackingView,
+  getBoTrackings,
 } from './modules/bo';
 import { DashboardView } from './components/DashboardView';
 import { UploadView } from './components/UploadView';
@@ -146,6 +148,18 @@ function AppContent() {
   const [isSavingCloud, setIsSavingCloud] = useState(false);
   const [cloudToast, setCloudToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isCopiedEmail, setIsCopiedEmail] = useState(false);
+
+  // Active Back Order (BO) Count for Sidebar Badge
+  const [activeBoCount, setActiveBoCount] = useState<number>(0);
+
+  useEffect(() => {
+    getBoTrackings()
+      .then((records) => {
+        const count = records.filter((r) => r.currentStage !== 'DELIVERED').length;
+        setActiveBoCount(count);
+      })
+      .catch(() => {});
+  }, [currentView]);
 
   // Modal States
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
@@ -420,6 +434,7 @@ function AppContent() {
         initialLines={boLines}
         assignedBodega={boLines.length > 0 ? boLines[0].bodega : 'E1'}
         onClose={() => setIsBoModalOpen(false)}
+        onRegisterTracking={() => setCurrentView('bo_tracking')}
       />
 
       {/* Estimate Version History & Snapshot Diff Modal */}
@@ -469,6 +484,7 @@ function AppContent() {
         onLogout={logout}
         isOpen={isNavSidebarOpen}
         onToggleOpen={() => setIsNavSidebarOpen((prev) => !prev)}
+        activeBoCount={activeBoCount}
       />
 
       {/* Main Content Area */}
@@ -562,6 +578,12 @@ function AppContent() {
           {currentView === 'estimates' && (
             <ErrorBoundary fallbackTitle="Error en Historial de Cotizaciones">
               <EstimatesHistoryView />
+            </ErrorBoundary>
+          )}
+
+          {currentView === 'bo_tracking' && (
+            <ErrorBoundary fallbackTitle="Error en Tracking y Ciclo de Vida BO">
+              <BoTrackingView />
             </ErrorBoundary>
           )}
 

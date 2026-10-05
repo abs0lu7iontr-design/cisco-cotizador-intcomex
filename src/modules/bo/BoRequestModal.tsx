@@ -36,6 +36,7 @@ import {
   Cloud,
   RefreshCw,
   Upload,
+  Truck,
 } from 'lucide-react';
 
 interface Props {
@@ -44,6 +45,7 @@ interface Props {
   initialLines: BoLineItem[];
   assignedBodega?: 'E1' | 'ED';
   onClose: () => void;
+  onRegisterTracking?: () => void;
 }
 
 export const BoRequestModal: React.FC<Props> = ({
@@ -51,6 +53,7 @@ export const BoRequestModal: React.FC<Props> = ({
   initialClientName,
   initialLines,
   onClose,
+  onRegisterTracking,
 }) => {
   const [recipientEmail, setRecipientEmail] = useState(DEFAULT_BO_EMAIL_TO);
   const [ccEmail, setCcEmail] = useState(DEFAULT_BO_EMAIL_CC);
@@ -859,6 +862,21 @@ export const BoRequestModal: React.FC<Props> = ({
           </button>
 
           <div className="flex items-center gap-2.5">
+            {onRegisterTracking && (
+              <button
+                type="button"
+                onClick={() => {
+                  onRegisterTracking();
+                  onClose();
+                }}
+                className="px-4 py-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-950/20"
+                title="Ir al Tablero de Seguimiento y Ciclo de Vida de Órdenes BO"
+              >
+                <Truck className="w-3.5 h-3.5 text-amber-400" />
+                <span>Tracking BO</span>
+              </button>
+            )}
+
             <button
               onClick={handleOpenOutlook}
               className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-xs text-white rounded-xl border border-zinc-700 transition-colors flex items-center gap-1.5 cursor-pointer"

@@ -46,6 +46,7 @@ export type NavViewId =
   | 'dsv'
   | 'configuriator'
   | 'estimates'
+  | 'bo_tracking'
   | 'users'
   | 'audit'
   | 'settings';

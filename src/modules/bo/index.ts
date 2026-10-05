@@ -6,3 +6,6 @@ export * from './boTypes';
 export * from './boEmailHelper';
 export * from './boSkuCatalogService';
 export * from './BoRequestModal';
+export * from './boTrackingTypes';
+export * from './boTrackingService';
+export * from './BoTrackingView';

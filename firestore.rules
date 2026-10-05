@@ -9,7 +9,7 @@ rules_version = '2';
 // backed by the `users` collection and local failsafe cache rather than
 // Firebase Authentication (`request.auth` is null for standard Web/Desktop
 // client operations). Rules below remove any 30-day Test Mode timestamp
-// expiration, enforce collection-level isolation (7 explicit collections),
+// expiration, enforce collection-level isolation (8 explicit collections),
 // validate payload schemas and field bounds on both create and update,
 // and deny all other paths by default.
 //
@@ -96,6 +96,34 @@ rules_version = '2';
 //   - sku: string (required)
 //   - updatedAt: string (ISO 8601)
 //   - updatedBy: string (optional)
+//
+// Collection 8: bo_order_tracking/{trackingId}
+//   - id: string
+//   - estimateId: string (required)
+//   - estimateVersionTag: string
+//   - dealId: string
+//   - partnerName: string
+//   - endCustomerName: string
+//   - clientPoNumber: string (required)
+//   - ciscoSoNumber: string (optional)
+//   - courier: string ('FedEx' | 'UPS' | 'DHL' | 'Otro')
+//   - courierTrackingNumber: string (optional)
+//   - courierTrackingUrl: string (optional)
+//   - currentStage: string (required)
+//   - estimatedShipDate: string (optional)
+//   - estimatedArrivalDate: string (optional)
+//   - actualDeliveryDate: string (optional)
+//   - createdAt: string (ISO 8601)
+//   - updatedAt: string (ISO 8601)
+//   - lastDailyReviewAt: string (optional)
+//   - totalSaleUsd: number (optional)
+//   - grossProfitUsd: number (optional)
+//   - marginPct: number (optional)
+//   - internacionUsd: number (optional)
+//   - arancelUsd: number (optional)
+//   - itemsCount: number (optional)
+//   - bodegaDestino: string (optional)
+//   - notes: list (optional)
 //
 // ===============================================================
 
@@ -196,6 +224,19 @@ service cloud.firestore {
         data.sku.size() <= 500;
     }
 
+    function isValidBoOrderTracking(data) {
+      return isValidPayloadSize(data) &&
+        'estimateId' in data &&
+        'clientPoNumber' in data &&
+        'currentStage' in data &&
+        data.estimateId is string &&
+        data.estimateId.size() <= 500 &&
+        data.clientPoNumber is string &&
+        data.clientPoNumber.size() <= 500 &&
+        data.currentStage is string &&
+        data.currentStage.size() <= 200;
+    }
+
     // ------------------------------------------------------------------------
     // 1. COLECCIÓN ESTIMATES (Cotizaciones CCW)
     // ------------------------------------------------------------------------
@@ -269,6 +310,15 @@ service cloud.firestore {
     match /cisco_bo_sku_catalog/{skuKey} {
       allow read: if true;
       allow create, update: if isValidBoSkuCatalog(request.resource.data);
+      allow delete: if isAdmin() || !isAuthenticated();
+    }
+
+    // ------------------------------------------------------------------------
+    // 8. COLECCIÓN BO_ORDER_TRACKING (Seguimiento Logístico de Back Orders)
+    // ------------------------------------------------------------------------
+    match /bo_order_tracking/{trackingId} {
+      allow read: if true;
+      allow create, update: if isValidBoOrderTracking(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
 
