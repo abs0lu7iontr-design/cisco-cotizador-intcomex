@@ -359,13 +359,13 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         <div className="absolute -top-24 -left-24 w-48 h-48 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-emerald-600/15 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Circular Seal Logo & Header */}
+        {/* Official Intcomex Metallic Brand Logo & Header */}
         <div className="text-center mb-7 relative z-10">
-          <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-slate-950 p-2 shadow-xl shadow-indigo-600/20 mb-3 border-2 border-indigo-500/30 overflow-hidden hover:scale-105 transition-transform">
+          <div className="inline-flex items-center justify-center w-24 h-24 rounded-2xl bg-slate-950 p-2 shadow-2xl shadow-indigo-600/20 mb-3 border-2 border-slate-700/80 overflow-hidden hover:scale-105 transition-transform">
             <img
               src={CISCO_AUTOMATED_SEAL_DATA_URI}
               alt="Cisco Automated Seal Logo"
-              className="w-full h-full object-contain rounded-full"
+              className="w-full h-full object-contain rounded-xl"
             />
           </div>
           <h1 className="text-2xl font-black tracking-tight text-white">Cisco Automated</h1>

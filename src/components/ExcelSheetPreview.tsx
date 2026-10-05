@@ -287,11 +287,11 @@ export const ExcelSheetPreview: React.FC<ExcelSheetPreviewProps> = ({
         {/* Intcomex Header Metadata */}
         <div className="p-6 rounded-2xl bg-slate-950/70 border border-slate-800/80 shadow-inner flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-center space-x-4">
-            <div className="h-10 px-3 py-1 bg-white rounded-xl flex items-center justify-center shadow-md">
+            <div className="h-11 w-11 bg-slate-900 border border-slate-700/80 rounded-xl p-1 flex items-center justify-center shadow-md overflow-hidden shrink-0">
               <img
                 src={INTCOMEX_LOGO_DATA_URI}
                 alt="Intcomex Logo"
-                className="h-7 w-auto object-contain"
+                className="w-full h-full object-contain rounded-lg"
               />
             </div>
             <div>

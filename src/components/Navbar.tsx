@@ -21,7 +21,7 @@ import {
   Share2,
   Pickaxe,
 } from 'lucide-react';
-import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
+import { CISCO_AUTOMATED_SEAL_DATA_URI, INTCOMEX_LOGO_DATA_URI } from '../core/brandingLogos';
 import { useAppTheme } from '../context/ThemeContext';
 import { DsvPartnerUploader } from '../modules/dsv/components/DsvPartnerUploader';
 
@@ -90,12 +90,12 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           )}
 
-          {/* Circular Branding Logo */}
-          <div className="w-9 h-9 rounded-full bg-slate-950 p-0.5 border border-indigo-500/40 flex items-center justify-center shrink-0 shadow-md overflow-hidden">
+          {/* Official Intcomex Metallic Brand Logo */}
+          <div className="w-9 h-9 rounded-xl bg-slate-950 p-0.5 border border-slate-700/80 flex items-center justify-center shrink-0 shadow-md overflow-hidden hover:border-slate-500 transition-colors">
             <img
               src={CISCO_AUTOMATED_SEAL_DATA_URI}
-              alt="Seal"
-              className="w-full h-full object-contain rounded-full"
+              alt="Intcomex Logo"
+              className="w-full h-full object-contain rounded-lg"
             />
           </div>
 
@@ -312,6 +312,28 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Download className="w-4 h-4" />
             <span>Descargar Excel</span>
           </button>
+
+          {/* Top-Right Official Intcomex Metallic Badge */}
+          <div
+            className="flex items-center space-x-2 pl-2 border-l border-slate-800 shrink-0"
+            title="Intcomex Chile - Distribuidor Oficial Cisco"
+          >
+            <div className="w-8 h-8 rounded-lg bg-slate-950 p-0.5 border border-slate-700/80 flex items-center justify-center shadow-md overflow-hidden hover:border-slate-500 transition-colors">
+              <img
+                src={INTCOMEX_LOGO_DATA_URI}
+                alt="Nuevo Logo Intcomex"
+                className="w-full h-full object-contain rounded-md"
+              />
+            </div>
+            <div className="hidden xl:flex flex-col text-left">
+              <span className="text-[10px] font-black text-slate-300 tracking-wider uppercase leading-none">
+                INTCOMEX
+              </span>
+              <span className="text-[9px] font-semibold text-slate-500 leading-tight">
+                Cisco Partner
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </header>

@@ -129,11 +129,11 @@ export function Sidebar({
         </button>
 
         {/* Brand Icon */}
-        <div className="w-10 h-10 rounded-full bg-slate-900 p-1 border border-slate-700 flex items-center justify-center mb-5 overflow-hidden shadow-md">
+        <div className="w-10 h-10 rounded-xl bg-slate-900 p-1 border border-slate-700/80 flex items-center justify-center mb-5 overflow-hidden shadow-md hover:border-slate-500 transition-colors">
           <img
             src={CISCO_AUTOMATED_SEAL_DATA_URI}
             alt="Cisco Automated"
-            className="w-full h-full object-contain rounded-full"
+            className="w-full h-full object-contain rounded-lg"
           />
         </div>
 
@@ -176,11 +176,11 @@ export function Sidebar({
       {/* Brand Header */}
       <div className="p-4 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center space-x-3 overflow-hidden">
-          <div className="w-10 h-10 rounded-full bg-slate-900 p-1 border-2 border-indigo-500/30 flex items-center justify-center shrink-0 shadow-md overflow-hidden">
+          <div className="w-10 h-10 rounded-xl bg-slate-900 p-1 border-2 border-slate-700/80 flex items-center justify-center shrink-0 shadow-md overflow-hidden hover:border-slate-500 transition-colors">
             <img
               src={CISCO_AUTOMATED_SEAL_DATA_URI}
               alt="Cisco Automated Logo"
-              className="w-full h-full object-contain rounded-full"
+              className="w-full h-full object-contain rounded-lg"
             />
           </div>
           <div className="overflow-hidden">
