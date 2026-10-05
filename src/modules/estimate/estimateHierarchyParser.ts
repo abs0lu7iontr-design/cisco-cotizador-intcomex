@@ -109,27 +109,42 @@ export function parseEstimateWithHierarchy(rawRows: any[][]): ProcessedEstimateL
     }
 
     const calculatedSimple = unitNetCcw * qty;
+    const upperSku = (partNumber || '').trim().toUpperCase();
+    const lowerDesc = (description || '').trim().toLowerCase();
+    const isCiscoServiceOrPrepaid =
+      upperSku.startsWith('CON-') ||
+      upperSku.startsWith('CON') ||
+      upperSku.startsWith('SVS-') ||
+      upperSku.startsWith('CX-') ||
+      upperSku.startsWith('CXE-') ||
+      upperSku.startsWith('CXS-') ||
+      upperSku.startsWith('DCN-') ||
+      upperSku.startsWith('C1') ||
+      lowerDesc.includes('smartnet') ||
+      lowerDesc.includes('sntc') ||
+      lowerDesc.includes('prepaid');
 
     // Caso A: Líneas con precio donde el ExtNet refleja el plazo total
     if (extNetCcw > 0 && calculatedSimple > 0) {
       const ratio = extNetCcw / calculatedSimple;
 
-      if (ratio > 1.05) {
-        // Suscripción periódica detectada (12, 24, 36, 60 meses)
+      if (ratio > 1.05 && !isCiscoServiceOrPrepaid) {
+        // Suscripción periódica Meraki/Cloud detectada (12, 24, 36, 60 meses)
         isPeriodicSubscription = true;
         detectedDurationMonths = Math.round(ratio);
         realUnitCost = extNetCcw / (qty > 0 ? qty : 1);
       } else {
-        // Hardware estándar o licencia DNA con Unit Net ya consolidado
-        realUnitCost = unitNetCcw;
-        detectedDurationMonths = inheritedParentTerm > 1 && !lineNum.endsWith('.0') ? inheritedParentTerm : 1;
+        // Hardware estándar, licencias consolidadas o Servicios Cisco SNT (prepagos por plazo)
+        isPeriodicSubscription = false;
+        realUnitCost = (ratio > 1.05 && extNetCcw > 0) ? (extNetCcw / (qty > 0 ? qty : 1)) : unitNetCcw;
+        detectedDurationMonths = ratio > 1.05 ? Math.round(ratio) : (inheritedParentTerm > 1 && !lineNum.endsWith('.0') ? inheritedParentTerm : 1);
       }
     } 
     // Caso B: Líneas a costo cero ($0.00) incluidas en suscripciones (ej. LIC-MT-E-INCL)
     else if (extNetCcw === 0 && unitNetCcw === 0) {
       realUnitCost = 0;
       detectedDurationMonths = inheritedParentTerm;
-      isPeriodicSubscription = inheritedParentTerm > 1;
+      isPeriodicSubscription = !isCiscoServiceOrPrepaid && inheritedParentTerm > 1;
     }
 
     processedLines.push({

@@ -676,9 +676,15 @@ export function recalculateEstimateResult(
       /Billing\s*Model\s*[-:]\s*Prepaid/i.test(item.description || '') ||
       /Prepaid\s*Term/i.test(item.description || '') ||
       /\bPrepaid\b/i.test(item.description || '') ||
+      /smartnet/i.test(item.description || '') ||
+      /\bsntc\b/i.test(item.description || '') ||
       cleanSkuKey.startsWith('C1') ||
       cleanSkuKey.startsWith('SVS-') ||
       cleanSkuKey.startsWith('CON-') ||
+      cleanSkuKey.startsWith('CON') ||
+      cleanSkuKey.startsWith('CX-') ||
+      cleanSkuKey.startsWith('CXE-') ||
+      cleanSkuKey.startsWith('CXS-') ||
       cleanSkuKey.startsWith('DCN-');
 
     const isPeriodic =

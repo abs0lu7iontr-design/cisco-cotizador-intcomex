@@ -814,7 +814,7 @@ export async function parseEstimateWorkbook(
       continue; // Strictly prohibited from calculating margins, totals or goal seek
     }
 
-    const sku = partNumStr.toUpperCase();
+    const sku = partNumStr.trim().toUpperCase();
     const smartAccount = getDistinctColumnString(worksheet, r, colMap.colSmart) || '-';
     const serviceDuration = getDistinctColumnString(worksheet, r, colMap.colDur) || '---';
 
@@ -924,8 +924,20 @@ export async function parseEstimateWorkbook(
       /Billing\s*Model\s*[-:]\s*Prepaid/i.test(nextDesc1) ||
       /Prepaid\s*Term/i.test(nextDesc1) ||
       /\bPrepaid\b/i.test(nextDesc1) ||
+      /smartnet/i.test(nextDesc1) ||
+      /\bsntc\b/i.test(nextDesc1) ||
       /Billing\s*Model\s*[-:]\s*Prepaid/i.test(description) ||
-      /Prepaid\s*Term/i.test(description);
+      /Prepaid\s*Term/i.test(description) ||
+      /smartnet/i.test(description) ||
+      /\bsntc\b/i.test(description) ||
+      sku.startsWith('CON-') ||
+      sku.startsWith('CON') ||
+      sku.startsWith('SVS-') ||
+      sku.startsWith('CX-') ||
+      sku.startsWith('CXE-') ||
+      sku.startsWith('CXS-') ||
+      sku.startsWith('C1') ||
+      sku.startsWith('DCN-');
 
     // Si el total extendido en CCW es igual al unitario por cantidad (ratio <= 1.05),
     // el Unit Net de Cisco YA ES el total por el plazo (Prepaid / Lump-sum consolidado).
@@ -1005,9 +1017,12 @@ export async function parseEstimateWorkbook(
       });
     } else {
       const standardDiscount = getDistinctColumnNumeric(worksheet, r, colMap.colDisc);
-      const baseNetCost = rawNetCiscoUnit > 0
-        ? rawNetCiscoUnit
-        : (unitListPrice > 0 ? unitListPrice * (1 - (standardDiscount / 100)) : 0);
+      if (!hasPromo && !isPreviouslyProcessed && hierLine && hierLine.realUnitCost > 0) {
+        netCiscoUnit = hierLine.realUnitCost;
+      }
+      const baseNetCost = netCiscoUnit > 0
+        ? netCiscoUnit
+        : (rawNetCiscoUnit > 0 ? rawNetCiscoUnit : (unitListPrice > 0 ? unitListPrice * (1 - (standardDiscount / 100)) : 0));
       originalProductTotal += baseNetCost * qty;
 
       const rowOverride = overrides ? (overrides[r] ?? (sku ? (overrides as any)[sku] : undefined)) : undefined;
@@ -1562,7 +1577,7 @@ export async function generateOptimizedWorkbook(
 
     worksheet.addImage(logoImageId, {
       tl: { col: 0, row: 0 },
-      ext: { width: 140, height: 28 },
+      ext: { width: 143, height: 20 },
       editAs: 'oneCell',
     });
   } catch (e) {
@@ -1905,4 +1920,305 @@ export async function createSampleEstimateWorkbook(): Promise<{
     arrayBuffer,
     fileName: 'Intcomex_BancoDeChile_Estimate_CiscoCCW_2026.xlsx',
   };
+}
+
+/**
+ * SYNTHESIZER: Builds an official 7-column Intcomex quotation workbook directly from
+ * ProcessedEstimateResult (used when downloading estimates restored from Cloud History where raw CCW buffer is null).
+ * Includes official logo, layout, Arial typography, formatting, and formulas.
+ */
+export async function synthesizeOfficialEstimateWorkbook(
+  result: ProcessedEstimateResult,
+  params: QuoteParameters,
+  overrides?: Record<number, OverrideRuleType>
+): Promise<ArrayBuffer> {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Price Estimate');
+
+  worksheet.views = [{ showGridLines: false }];
+
+  // 1. Column Widths
+  worksheet.columns = [
+    { width: 14 }, // Line Number
+    { width: 26 }, // Part Number
+    { width: 48 }, // Description
+    { width: 24 }, // Estimated Lead Time
+    { width: 12 }, // Qty
+    { width: 18 }, // Unit Net Price
+    { width: 20 }, // Extended Net Price
+  ];
+
+  // 2. Inject Intcomex Logo (Top-Left)
+  try {
+    const logoImageId = workbook.addImage({
+      base64: INTCOMEX_LOGO_RAW_BASE64,
+      extension: 'png',
+    });
+
+    worksheet.addImage(logoImageId, {
+      tl: { col: 0, row: 0 },
+      ext: { width: 143, height: 20 },
+      editAs: 'oneCell',
+    });
+  } catch (e) {
+    console.warn('Synthesizer logo injection note:', e);
+  }
+
+  // 3. Header Metadata
+  const headerInfo: EstimateHeaderInfo = result.headerInfo || {
+    companyName: 'Intcomex',
+    customerName: 'Cliente Final',
+    estimateId: 'ESTIMATE',
+    dealId: 'NA',
+    date: new Date().toLocaleDateString('es-CL'),
+    priceList: 'GLOBAL PRICE LIST',
+    address: '',
+    city: '',
+    country: '',
+    phone: '',
+  };
+
+  const titleCell = worksheet.getCell('A2');
+  titleCell.value = 'Price Estimate';
+  titleCell.font = { name: 'Arial', size: 15, bold: true, color: { argb: 'FF0F172A' } };
+  titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  worksheet.mergeCells('A2:G2');
+
+  // Row 3: Creator | Partner
+  const creatorName = (headerInfo.customerName || '').trim();
+  const companyName = (headerInfo.companyName || '').trim();
+  worksheet.getCell('A3').value = [creatorName, companyName].filter(Boolean).join(' | ') || 'Intcomex';
+  worksheet.getCell('A3').font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FF0F172A' } };
+  worksheet.getCell('A3').alignment = { horizontal: 'left', vertical: 'middle' };
+  worksheet.mergeCells('A3:D3');
+
+  // Row 4: Address
+  const cleanCity = (headerInfo.city || '').replace(/,?\s*0-0/g, '').trim();
+  const fullAddress = [headerInfo.address, cleanCity, headerInfo.country].filter(Boolean).join(', ');
+  if (fullAddress) {
+    worksheet.getCell('A4').value = fullAddress;
+    worksheet.getCell('A4').font = { name: 'Arial', size: 9, color: { argb: 'FF334155' } };
+    worksheet.getCell('A4').alignment = { horizontal: 'left', vertical: 'middle' };
+    worksheet.mergeCells('A4:D4');
+  }
+
+  // Row 5: Phone
+  if (headerInfo.phone) {
+    worksheet.getCell('A5').value = headerInfo.phone;
+    worksheet.getCell('A5').font = { name: 'Arial', size: 9, color: { argb: 'FF475569' } };
+    worksheet.getCell('A5').alignment = { horizontal: 'left', vertical: 'middle' };
+    worksheet.mergeCells('A5:D5');
+  }
+
+  // Row 7: Legal Disclaimer
+  const noticeCell = worksheet.getCell('A7');
+  noticeCell.value =
+    'Price Estimate for planning and information purposes only and is not a binding offer from Cisco.';
+  noticeCell.font = { name: 'Arial', size: 9, bold: true, color: { argb: 'FFBE123C' } };
+  noticeCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+  worksheet.mergeCells('A7:G7');
+
+  // Rows 8-10: Date & Metadata
+  const cleanDate = (headerInfo.date || '').replace(/^date:\s*/i, '').trim();
+  worksheet.getCell('A8').value = 'Date: ' + (cleanDate || new Date().toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }));
+  worksheet.getCell('A8').font = { name: 'Arial', size: 9, bold: true, color: { argb: 'FF334155' } };
+
+  worksheet.getCell('E8').value = 'Estimate ID:';
+  worksheet.getCell('E8').font = { name: 'Arial', size: 9, bold: true, color: { argb: 'FF334155' } };
+  worksheet.getCell('E8').alignment = { horizontal: 'right', vertical: 'middle' };
+  worksheet.getCell('F8').value = headerInfo.estimateId || 'N/A';
+  worksheet.getCell('F8').font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FF0F172A' } };
+  worksheet.getCell('F8').alignment = { horizontal: 'left', vertical: 'middle' };
+  worksheet.mergeCells('F8:G8');
+
+  worksheet.getCell('E9').value = 'Deal ID:';
+  worksheet.getCell('E9').font = { name: 'Arial', size: 9, bold: true, color: { argb: 'FF334155' } };
+  worksheet.getCell('E9').alignment = { horizontal: 'right', vertical: 'middle' };
+  worksheet.getCell('F9').value = headerInfo.dealId || 'N/A';
+  worksheet.getCell('F9').font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FF0F172A' } };
+  worksheet.getCell('F9').alignment = { horizontal: 'left', vertical: 'middle' };
+  worksheet.mergeCells('F9:G9');
+
+  worksheet.getCell('E10').value = 'Price List:';
+  worksheet.getCell('E10').font = { name: 'Arial', size: 9, bold: true, color: { argb: 'FF334155' } };
+  worksheet.getCell('E10').alignment = { horizontal: 'right', vertical: 'middle' };
+  worksheet.getCell('F10').value = headerInfo.priceList || 'GLOBAL PRICE LIST';
+  worksheet.getCell('F10').font = { name: 'Arial', size: 8.5, color: { argb: 'FF334155' } };
+  worksheet.getCell('F10').alignment = { horizontal: 'left', vertical: 'middle' };
+  worksheet.mergeCells('F10:G10');
+
+  // Row 12: Notice
+  worksheet.getCell('G12').value = 'All prices are shown in USD';
+  worksheet.getCell('G12').font = { name: 'Arial', size: 8.5, italic: true, color: { argb: 'FF475569' } };
+  worksheet.getCell('G12').alignment = { horizontal: 'right', vertical: 'middle' };
+
+  // 4. Table Headers on Row 13
+  const EXPORT_HEADER_ROW = 13;
+  const headers7 = [
+    'Line Number',
+    'Part Number',
+    'Description',
+    'Estimated Lead Time (Days)',
+    'Qty',
+    'Unit Net Price',
+    'Extended Net Price',
+  ];
+
+  const headerRow = worksheet.getRow(EXPORT_HEADER_ROW);
+  headerRow.height = 26;
+  for (let c = 1; c <= 7; c++) {
+    const cell = headerRow.getCell(c);
+    cell.value = headers7[c - 1];
+    cell.font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FF1F1F1F' } };
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFD9D9D9' },
+    };
+    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FF94A3B8' } },
+      bottom: { style: 'medium', color: { argb: 'FF475569' } },
+      left: { style: 'thin', color: { argb: 'FF94A3B8' } },
+      right: { style: 'thin', color: { argb: 'FF94A3B8' } },
+    };
+  }
+
+  // 5. Line Items
+  const items = result.items || [];
+  const completeBorder: Partial<ExcelJS.Borders> = {
+    top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+  };
+
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx];
+    const r = EXPORT_HEADER_ROW + 1 + idx;
+    const row = worksheet.getRow(r);
+    const isAlternate = idx % 2 === 1;
+    const isMain = isMainLineItem(item ? item.lineNumber : '1.0');
+
+    if (item.isInfoRow) {
+      row.getCell(1).value = '';
+      row.getCell(2).value = String(item.description || '').trim();
+      row.getCell(3).value = '';
+      row.getCell(4).value = '';
+      row.getCell(5).value = '';
+      row.getCell(6).value = '';
+      row.getCell(7).value = '';
+      row.height = 20;
+
+      for (let c = 1; c <= 7; c++) {
+        const cell = row.getCell(c);
+        cell.border = completeBorder;
+        if (isAlternate) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+        }
+      }
+      row.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+      try {
+        worksheet.mergeCells(r, 2, r, 7);
+      } catch (_) {}
+      const mergedCell = row.getCell(2);
+      mergedCell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: false, indent: 1 };
+      mergedCell.font = { name: 'Arial', size: 8.5, italic: true, color: { argb: 'FF595959' } };
+      continue;
+    }
+
+    row.getCell(1).value = String(item.lineNumber || '').trim();
+    row.getCell(2).value = String(item.partNumber || '').trim();
+    row.getCell(3).value = String(item.description || '').trim();
+    row.getCell(4).value = String(item.transformedLeadTime || '').trim();
+    row.getCell(5).value = typeof item.qty === 'number' && !isNaN(item.qty) ? item.qty : 1;
+    row.getCell(6).value = Number(item.precioVentaUnitario) || 0;
+    row.getCell(7).value = Number(item.precioVentaExtendido) || 0;
+
+    const descStr = String(row.getCell(3).value || '');
+    const lines = Math.max(1, Math.ceil(descStr.length / 36));
+    row.height = lines > 1 ? Math.max(22, lines * 16) : 22;
+
+    for (let c = 1; c <= 7; c++) {
+      const cell = row.getCell(c);
+      cell.border = completeBorder;
+
+      if (isAlternate) {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF8FAFC' },
+        };
+      }
+
+      if (c === 1) {
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.font = { name: 'Arial', size: 9, bold: isMain, color: { argb: isMain ? 'FF000000' : 'FF475569' } };
+      } else if (c === 2) {
+        cell.alignment = { vertical: 'middle', horizontal: 'left', indent: isMain ? 0 : 1 };
+        cell.font = { name: 'Arial', size: 9, bold: isMain, color: { argb: isMain ? 'FF000000' : 'FF334155' } };
+      } else if (c === 3) {
+        cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true, indent: isMain ? 0 : 1 };
+        cell.font = { name: 'Arial', size: 9, bold: false, color: { argb: 'FF1E293B' } };
+      } else if (c === 4) {
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.font = { name: 'Arial', size: 8.5, bold: false, color: { argb: 'FF64748B' } };
+      } else if (c === 5) {
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.font = { name: 'Arial', size: 9, bold: false, color: { argb: 'FF0F172A' } };
+        cell.numFmt = '0';
+      } else if (c === 6 || c === 7) {
+        cell.alignment = { vertical: 'middle', horizontal: 'right' };
+        cell.font = { name: 'Arial', size: 9, bold: false, color: { argb: 'FF0F172A' } };
+        cell.numFmt = '"$"#,##0.00';
+      }
+    }
+  }
+
+  // 6. Total Row
+  const totalRowIndex = EXPORT_HEADER_ROW + items.length + 1;
+  const totalRow = worksheet.getRow(totalRowIndex);
+  totalRow.height = 26;
+  for (let c = 1; c <= 7; c++) {
+    const cell = totalRow.getCell(c);
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFF1F5F9' },
+    };
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FF94A3B8' } },
+      bottom: { style: 'double', color: { argb: 'FF0F172A' } },
+      left: c === 1 ? { style: 'thin', color: { argb: 'FFCBD5E1' } } : undefined,
+      right: c === 7 ? { style: 'thin', color: { argb: 'FFCBD5E1' } } : undefined,
+    };
+    if (c === 1) {
+      cell.value = '';
+    } else if (c === 2) {
+      cell.value = 'Price Total:';
+      cell.alignment = { vertical: 'middle', horizontal: 'left' };
+      cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+    } else if (c === 7) {
+      const firstDataRow = EXPORT_HEADER_ROW + 1;
+      const lastDataRow = totalRowIndex - 1;
+      cell.value = {
+        formula: `SUM(G${firstDataRow}:G${lastDataRow})`,
+        result: result.calculatedProductTotal,
+      };
+      cell.alignment = { vertical: 'middle', horizontal: 'right' };
+      cell.font = { name: 'Arial', size: 10.5, bold: true, color: { argb: 'FF0F172A' } };
+      cell.numFmt = '"$"#,##0.00';
+    }
+  }
+
+  // 7. Validity footer
+  const validityRow = totalRowIndex + 2;
+  worksheet.getCell(`A${validityRow}`).value = 'Oferta válida por 30 días calendario a contar de la fecha de emisión.';
+  worksheet.getCell(`A${validityRow}`).font = { name: 'Arial', size: 8.5, italic: true, color: { argb: 'FF475569' } };
+  worksheet.getCell(`A${validityRow}`).alignment = { vertical: 'middle', horizontal: 'left' };
+
+  sanitizeWorkbookForExport(workbook);
+
+  const buf = await workbook.xlsx.writeBuffer();
+  return buf instanceof ArrayBuffer ? buf : (new Uint8Array(buf).buffer as ArrayBuffer);
 }

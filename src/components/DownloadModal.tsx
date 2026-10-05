@@ -3,7 +3,6 @@
 // ============================================================================
 
 import React, { useState, useEffect } from 'react';
-import * as XLSX from 'xlsx';
 import {
   Download,
   FolderOpen,
@@ -22,7 +21,7 @@ import {
   Unlock,
   Cloud,
 } from 'lucide-react';
-import { generateOptimizedWorkbook } from '../core/excelEngine';
+import { generateOptimizedWorkbook, synthesizeOfficialEstimateWorkbook } from '../core/excelEngine';
 import { QuoteParameters, OverrideRuleType, EstimateHeaderInfo } from '../core/types';
 import { getCcwTimestamp, suggestFileName } from '../core/calculations';
 import { generateQuotationFileName } from '../core/exportUtils';
@@ -214,61 +213,15 @@ export function DownloadModal({
     if (workbookBuffer && workbookBuffer.byteLength > 0) {
       return workbookBuffer;
     }
-    // Fallback for estimates restored from Cloud History (synthesize clean .xlsx workbook)
-    const wb = XLSX.utils.book_new();
-    const rows: any[][] = [
-      ['CISCO AUTOMATED v2.1 - COTIZACIÓN OFICIAL INTCOMEX'],
-      ['Estimate ID:', headerInfo?.estimateId || 'NA', 'Deal ID:', headerInfo?.dealId || 'NA'],
-      ['Partner / Canal:', partnerName || 'Intcomex', 'Cliente Final:', clientName || 'Cliente Final'],
-      [
-        'Parámetros Aplicados:',
-        `Internación: ${params.internacionPct}% | Arancel: ${params.arancelPct}% | Margen: ${params.margenPct}%`,
-      ],
-      [],
-      [
-        'Line #',
-        'Part Number',
-        'Description',
-        'Qty',
-        'Unit List Price (USD)',
-        'Discount %',
-        'Net Cisco Unit (USD)',
-        'Clasificación',
-        'Venta Unitaria Intcomex (USD)',
-        'Venta Extendida Intcomex (USD)',
-      ],
-    ];
-    for (const it of processedResult?.items || []) {
-      rows.push([
-        it.lineNumber || '',
-        it.partNumber || '',
-        it.description || '',
-        it.qty || 1,
-        it.unitListPrice || 0,
-        it.discPct || 0,
-        it.netCiscoUnit || 0,
-        it.isIntangible ? 'Intangible' : it.llevaArancel ? 'Arancel 6%' : 'Hardware',
-        it.precioVentaUnitario || 0,
-        it.precioVentaExtendido || 0,
-      ]);
+    // Official synthesis fallback for estimates restored from Cloud History (preserves logo, 7 columns, formulas)
+    if (processedResult) {
+      return await synthesizeOfficialEstimateWorkbook(
+        processedResult,
+        params,
+        customOverrides
+      );
     }
-    rows.push([]);
-    rows.push([
-      '',
-      '',
-      'TOTAL COTIZADO INTCOMEX (USD)',
-      '',
-      '',
-      '',
-      processedResult?.originalProductTotal || 0,
-      '',
-      '',
-      processedResult?.calculatedProductTotal || 0,
-    ]);
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb, ws, 'Estimate');
-    const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    return out as ArrayBuffer;
+    throw new Error('No hay datos disponibles para generar la cotización.');
   };
 
   // Traditional browser download fallback (Web environment)
