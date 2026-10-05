@@ -18,6 +18,7 @@ import {
   TrendingUp,
   Clock,
   Calendar,
+  Cloud,
 } from 'lucide-react';
 import {
   getFastTrackStats,
@@ -26,6 +27,8 @@ import {
   setFastTrackAuditEnabled,
   getAllFastTrackItems,
   setFastTrackValidUntil,
+  syncFastTrackFromCloud,
+  resetToMasterSeed,
 } from './fastTrackDb';
 import { parseFastTrackExcel } from './fastTrackParser';
 import { FastTrackProduct, FastTrackDbStats } from './types';
@@ -248,6 +251,49 @@ export function FastTrackAdminModal({
     }
   };
 
+  const handleSyncCloud = async () => {
+    setIsProcessing(true);
+    setFeedbackMessage(null);
+    try {
+      const res = await syncFastTrackFromCloud(false);
+      await refreshData();
+      setFeedbackMessage({
+        type: 'success',
+        text: `☁️ Sincronización completada: ${res.count} SKUs activos desde ${res.source === 'firestore' ? 'Cloud Firestore' : 'Catálogo Blindado'}.`,
+      });
+    } catch (err: any) {
+      setFeedbackMessage({
+        type: 'error',
+        text: `Error al sincronizar con la nube: ${err?.message || err}`,
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleResetMasterSeed = async () => {
+    if (!window.confirm('¿Restablecer al Catálogo Maestro Oficial blindado de Cisco Fast Track?')) {
+      return;
+    }
+    setIsProcessing(true);
+    setFeedbackMessage(null);
+    try {
+      const res = await resetToMasterSeed();
+      await refreshData();
+      setFeedbackMessage({
+        type: 'success',
+        text: `🛡️ Catálogo blindado restablecido (${res.count} SKUs oficiales sincronizados en la nube).`,
+      });
+    } catch (err: any) {
+      setFeedbackMessage({
+        type: 'error',
+        text: `Error al restablecer catálogo: ${err?.message || err}`,
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleValidUntilChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     const timestamp = val ? new Date(val + 'T23:59:59').getTime() : null;
@@ -421,12 +467,21 @@ export function FastTrackAdminModal({
 
             {/* Catalog Info Card */}
             <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-2">
-              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Catálogo Almacenado
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  Catálogo Almacenado
+                </div>
+                {stats.totalSkus > 0 && (
+                  <span className="flex items-center space-x-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Blindado</span>
+                  </span>
+                )}
               </div>
               <div>
-                <div className="text-2xl font-black text-white font-mono">
-                  {stats.totalSkus.toLocaleString()}
+                <div className="text-2xl font-black text-white font-mono flex items-baseline space-x-1.5">
+                  <span>{stats.totalSkus.toLocaleString()}</span>
+                  <span className="text-xs text-slate-400 font-sans font-normal">SKUs</span>
                 </div>
                 <div className="text-[11px] text-slate-400 truncate">
                   {stats.fileName || 'Sin catálogo cargado'}
@@ -485,6 +540,26 @@ export function FastTrackAdminModal({
             >
               <Upload className="w-4 h-4" />
               <span>{isProcessing ? 'Procesando Catálogo...' : 'Cargar / Actualizar Excel Fast Track'}</span>
+            </button>
+
+            <button
+              onClick={handleSyncCloud}
+              disabled={isProcessing}
+              title="Descargar y sincronizar el catálogo Fast Track desde Google Cloud Firestore"
+              className="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-2xl bg-indigo-950/70 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-700/50 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+            >
+              <Cloud className="w-4 h-4 text-indigo-400" />
+              <span>Sincronizar Nube</span>
+            </button>
+
+            <button
+              onClick={handleResetMasterSeed}
+              disabled={isProcessing}
+              title="Restablecer el catálogo al Catálogo Maestro Oficial blindado de Cisco"
+              className="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-2xl bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/50 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Restaurar Catálogo Blindado</span>
             </button>
 
             {stats.totalSkus > 0 && (

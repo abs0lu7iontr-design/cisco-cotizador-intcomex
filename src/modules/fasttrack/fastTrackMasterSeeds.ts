@@ -1,0 +1,396 @@
+// ============================================================================
+// CISCO AUTOMATED - MASTER SEED CATALOG FOR CISCO FAST TRACK (INTCOMEX)
+// ============================================================================
+// Zero-state failsafe and baseline armor: guarantees that Fast Track catalog
+// is NEVER empty (0 items) upon fresh deployment, browser storage reset, or domain shift.
+// Administrators can overwrite or update anytime by uploading a newer official .xlsx.
+// ============================================================================
+
+import { FastTrackProduct } from './types';
+
+export const FAST_TRACK_MASTER_METADATA = {
+  fileName: 'Catalogo_Oficial_FastTrack_Cisco_Intcomex.xlsx',
+  promotionCode: 'PP-Fast-2026-CHILE-FY26',
+  promotionTitle: 'Cisco Fast Track Program FY26 - Intcomex Chile',
+  // Vigencia amplia para blindaje garantizado hasta que el admin cargue una planilla más reciente
+  validFrom: new Date('2025-08-01T00:00:00.000Z').getTime(),
+  validUntil: new Date('2027-07-31T23:59:59.000Z').getTime(),
+  updatedAt: new Date('2026-01-15T12:00:00.000Z').getTime(),
+};
+
+export const FAST_TRACK_MASTER_SEEDS: FastTrackProduct[] = [
+  // --------------------------------------------------------------------------
+  // Catalyst 9200L & 9200 Series Switches
+  // --------------------------------------------------------------------------
+  {
+    partNumber: 'C9200L-24P-4G-E',
+    distributorDiscount: 64.5,
+    description: 'Catalyst 9200L 24-port PoE+, 4 x 1G, Network Essentials',
+    listPrice: 2580,
+    promoNetPrice: 915.90,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C9200L-48P-4G-E',
+    distributorDiscount: 65.0,
+    description: 'Catalyst 9200L 48-port PoE+, 4 x 1G, Network Essentials',
+    listPrice: 4450,
+    promoNetPrice: 1557.50,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C9200L-24T-4G-E',
+    distributorDiscount: 64.0,
+    description: 'Catalyst 9200L 24-port Data, 4 x 1G, Network Essentials',
+    listPrice: 1850,
+    promoNetPrice: 666.00,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C9200L-48T-4G-E',
+    distributorDiscount: 64.5,
+    description: 'Catalyst 9200L 48-port Data, 4 x 1G, Network Essentials',
+    listPrice: 3350,
+    promoNetPrice: 1189.25,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C9200L-24P-4X-E',
+    distributorDiscount: 65.5,
+    description: 'Catalyst 9200L 24-port PoE+, 4 x 10G, Network Essentials',
+    listPrice: 3100,
+    promoNetPrice: 1069.50,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C9200L-48P-4X-E',
+    distributorDiscount: 66.0,
+    description: 'Catalyst 9200L 48-port PoE+, 4 x 10G, Network Essentials',
+    listPrice: 5200,
+    promoNetPrice: 1768.00,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C9200-24P-E',
+    distributorDiscount: 63.5,
+    description: 'Catalyst 9200 24-port PoE+, Network Essentials',
+    listPrice: 3600,
+    promoNetPrice: 1314.00,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C9200-48P-E',
+    distributorDiscount: 64.0,
+    description: 'Catalyst 9200 48-port PoE+, Network Essentials',
+    listPrice: 6100,
+    promoNetPrice: 2196.00,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+
+  // --------------------------------------------------------------------------
+  // Catalyst 9300 Series Switches
+  // --------------------------------------------------------------------------
+  {
+    partNumber: 'C9300-24P-A',
+    distributorDiscount: 63.0,
+    description: 'Catalyst 9300 24-port PoE+, Network Advantage',
+    listPrice: 6200,
+    promoNetPrice: 2294.00,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C9300-48P-A',
+    distributorDiscount: 63.5,
+    description: 'Catalyst 9300 48-port PoE+, Network Advantage',
+    listPrice: 9800,
+    promoNetPrice: 3577.00,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C9300-24T-A',
+    distributorDiscount: 62.5,
+    description: 'Catalyst 9300 24-port Data, Network Advantage',
+    listPrice: 4900,
+    promoNetPrice: 1837.50,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C9300-48T-A',
+    distributorDiscount: 63.0,
+    description: 'Catalyst 9300 48-port Data, Network Advantage',
+    listPrice: 8200,
+    promoNetPrice: 3034.00,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C9300L-24P-4X-A',
+    distributorDiscount: 64.0,
+    description: 'Catalyst 9300L 24p PoE+, 4x10G Uplink, Network Advantage',
+    listPrice: 4500,
+    promoNetPrice: 1620.00,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C9300L-48P-4X-A',
+    distributorDiscount: 64.5,
+    description: 'Catalyst 9300L 48p PoE+, 4x10G Uplink, Network Advantage',
+    listPrice: 7400,
+    promoNetPrice: 2627.00,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+
+  // --------------------------------------------------------------------------
+  // Meraki Cloud Managed Switches (MS Series)
+  // --------------------------------------------------------------------------
+  {
+    partNumber: 'MS130-24P-HW',
+    distributorDiscount: 65.0,
+    description: 'Meraki MS130-24P Cloud Managed 24-Port Gigabit 370W PoE Switch',
+    listPrice: 1895,
+    promoNetPrice: 663.25,
+    category: 'Meraki Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'MS130-48P-HW',
+    distributorDiscount: 65.5,
+    description: 'Meraki MS130-48P Cloud Managed 48-Port Gigabit 370W PoE Switch',
+    listPrice: 3495,
+    promoNetPrice: 1205.78,
+    category: 'Meraki Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'MS130-24T-HW',
+    distributorDiscount: 64.0,
+    description: 'Meraki MS130-24T Cloud Managed 24-Port Gigabit Switch',
+    listPrice: 1295,
+    promoNetPrice: 466.20,
+    category: 'Meraki Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'MS130-48T-HW',
+    distributorDiscount: 64.5,
+    description: 'Meraki MS130-48T Cloud Managed 48-Port Gigabit Switch',
+    listPrice: 2495,
+    promoNetPrice: 885.73,
+    category: 'Meraki Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'MS250-24P-HW',
+    distributorDiscount: 63.0,
+    description: 'Meraki MS250-24P L3 Cloud Managed 24-Port PoE+ Switch',
+    listPrice: 3200,
+    promoNetPrice: 1184.00,
+    category: 'Meraki Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'MS250-48P-HW',
+    distributorDiscount: 63.5,
+    description: 'Meraki MS250-48P L3 Cloud Managed 48-Port PoE+ Switch',
+    listPrice: 5600,
+    promoNetPrice: 2044.00,
+    category: 'Meraki Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+
+  // --------------------------------------------------------------------------
+  // Meraki & Catalyst Wireless Access Points (MR / Catalyst APs)
+  // --------------------------------------------------------------------------
+  {
+    partNumber: 'MR36-HW',
+    distributorDiscount: 68.5,
+    description: 'Meraki MR36 Wi-Fi 6 Cloud Managed Indoor Access Point',
+    listPrice: 695,
+    promoNetPrice: 218.93,
+    category: 'Meraki Wireless',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'MR44-HW',
+    distributorDiscount: 68.5,
+    description: 'Meraki MR44 Wi-Fi 6 High Performance Indoor Access Point',
+    listPrice: 1045,
+    promoNetPrice: 329.18,
+    category: 'Meraki Wireless',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'MR46-HW',
+    distributorDiscount: 67.0,
+    description: 'Meraki MR46 Wi-Fi 6 Multi-gigabit Indoor Access Point',
+    listPrice: 1445,
+    promoNetPrice: 476.85,
+    category: 'Meraki Wireless',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'MR56-HW',
+    distributorDiscount: 66.0,
+    description: 'Meraki MR56 Ultra High Performance Wi-Fi 6 Indoor AP',
+    listPrice: 1845,
+    promoNetPrice: 627.30,
+    category: 'Meraki Wireless',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'MR76-HW',
+    distributorDiscount: 66.5,
+    description: 'Meraki MR76 Outdoor Wi-Fi 6 Cloud Managed AP',
+    listPrice: 1295,
+    promoNetPrice: 433.83,
+    category: 'Meraki Wireless',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'CW9164I-MR',
+    distributorDiscount: 65.0,
+    description: 'Cisco Catalyst CW9164I Wi-Fi 6E Dual-Band Tri-Radio AP',
+    listPrice: 1450,
+    promoNetPrice: 507.50,
+    category: 'Catalyst Wireless',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'CW9166I-MR',
+    distributorDiscount: 65.0,
+    description: 'Cisco Catalyst CW9166I Wi-Fi 6E Enterprise Campus AP',
+    listPrice: 1850,
+    promoNetPrice: 647.50,
+    category: 'Catalyst Wireless',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+
+  // --------------------------------------------------------------------------
+  // Cisco Business Switches (CBS / Catalyst 1000)
+  // --------------------------------------------------------------------------
+  {
+    partNumber: 'CBS350-24P-4G',
+    distributorDiscount: 66.0,
+    description: 'Cisco Business 350 Series 24-Port Gigabit PoE Managed Switch',
+    listPrice: 890,
+    promoNetPrice: 302.60,
+    category: 'Cisco Business',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'CBS350-48P-4G',
+    distributorDiscount: 66.5,
+    description: 'Cisco Business 350 Series 48-Port Gigabit PoE Managed Switch',
+    listPrice: 1650,
+    promoNetPrice: 552.75,
+    category: 'Cisco Business',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'CBS350-24T-4G',
+    distributorDiscount: 65.0,
+    description: 'Cisco Business 350 Series 24-Port Gigabit Managed Switch',
+    listPrice: 580,
+    promoNetPrice: 203.00,
+    category: 'Cisco Business',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'CBS350-48T-4G',
+    distributorDiscount: 65.5,
+    description: 'Cisco Business 350 Series 48-Port Gigabit Managed Switch',
+    listPrice: 1050,
+    promoNetPrice: 362.25,
+    category: 'Cisco Business',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C1000-24P-4G-L',
+    distributorDiscount: 65.0,
+    description: 'Cisco Catalyst 1000 Series 24-Port PoE+, 4x 1G SFP',
+    listPrice: 1450,
+    promoNetPrice: 507.50,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C1000-48P-4G-L',
+    distributorDiscount: 65.5,
+    description: 'Cisco Catalyst 1000 Series 48-Port PoE+, 4x 1G SFP',
+    listPrice: 2550,
+    promoNetPrice: 879.75,
+    category: 'Catalyst Switching',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+
+  // --------------------------------------------------------------------------
+  // Cisco Routers & Meraki Security (ISR 1100 / MX)
+  // --------------------------------------------------------------------------
+  {
+    partNumber: 'C1111-4P',
+    distributorDiscount: 64.0,
+    description: 'Cisco 1100 Series Integrated Services Router, 4-Port GE LAN PoE',
+    listPrice: 1120,
+    promoNetPrice: 403.20,
+    category: 'Cisco Routers',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C1111-8P',
+    distributorDiscount: 64.0,
+    description: 'Cisco 1100 Series Integrated Services Router, 8-Port GE LAN PoE',
+    listPrice: 1680,
+    promoNetPrice: 604.80,
+    category: 'Cisco Routers',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'C1121-4P',
+    distributorDiscount: 64.5,
+    description: 'Cisco 1121 Series Integrated Services Router with 4-Port Switch',
+    listPrice: 1350,
+    promoNetPrice: 479.25,
+    category: 'Cisco Routers',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'MX67-HW',
+    distributorDiscount: 65.0,
+    description: 'Meraki MX67 Cloud Managed Security & SD-WAN Appliance',
+    listPrice: 695,
+    promoNetPrice: 243.25,
+    category: 'Meraki Security',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'MX68-HW',
+    distributorDiscount: 65.0,
+    description: 'Meraki MX68 Cloud Managed Security Appliance with PoE',
+    listPrice: 1045,
+    promoNetPrice: 365.75,
+    category: 'Meraki Security',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+  {
+    partNumber: 'MX85-HW',
+    distributorDiscount: 64.0,
+    description: 'Meraki MX85 Cloud Managed High-Throughput Security Appliance',
+    listPrice: 2495,
+    promoNetPrice: 898.20,
+    category: 'Meraki Security',
+    updatedAt: FAST_TRACK_MASTER_METADATA.updatedAt,
+  },
+];

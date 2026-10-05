@@ -9,7 +9,7 @@ rules_version = '2';
 // backed by the `users` collection and local failsafe cache rather than
 // Firebase Authentication (`request.auth` is null for standard Web/Desktop
 // client operations). Rules below remove any 30-day Test Mode timestamp
-// expiration, enforce collection-level isolation (8 explicit collections),
+// expiration, enforce collection-level isolation (9 explicit collections),
 // validate payload schemas and field bounds on both create and update,
 // and deny all other paths by default.
 //
@@ -125,6 +125,11 @@ rules_version = '2';
 //   - bodegaDestino: string (optional)
 //   - notes: list (optional)
 //
+// Collection 9: cisco_fast_track_catalog/{docId}
+//   - Fast Track catalog metadata and chunked products for cloud synchronization
+//   - Metadata document ('metadata'): totalSkus, lastUpdated, validFrom, validUntil, promotionCode, promotionTitle, fileName, chunksCount
+//   - Chunk documents ('chunk_N'): chunkIndex, totalChunks, items (list of products), updatedAt
+//
 // ===============================================================
 
 service cloud.firestore {
@@ -237,6 +242,10 @@ service cloud.firestore {
         data.currentStage.size() <= 200;
     }
 
+    function isValidFastTrackCatalog(data) {
+      return data is map && isValidPayloadSize(data);
+    }
+
     // ------------------------------------------------------------------------
     // 1. COLECCIÓN ESTIMATES (Cotizaciones CCW)
     // ------------------------------------------------------------------------
@@ -319,6 +328,15 @@ service cloud.firestore {
     match /bo_order_tracking/{trackingId} {
       allow read: if true;
       allow create, update: if isValidBoOrderTracking(request.resource.data);
+      allow delete: if isAdmin() || !isAuthenticated();
+    }
+
+    // ------------------------------------------------------------------------
+    // 9. COLECCIÓN CISCO_FAST_TRACK_CATALOG (Catálogo Fast Track y Metadatos)
+    // ------------------------------------------------------------------------
+    match /cisco_fast_track_catalog/{docId} {
+      allow read: if true;
+      allow create, update: if isValidFastTrackCatalog(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
 
