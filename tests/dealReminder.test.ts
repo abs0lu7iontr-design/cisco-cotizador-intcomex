@@ -11,6 +11,8 @@ import {
   calculateDealAging,
   DEAL_ESCALATION_METADATA,
   DEAL_STATUS_METADATA,
+  checkDealPopupDue,
+  calculateNextSnoozeDate,
 } from '../src/modules/bo/dealReminderTypes';
 import {
   generateDealReminderEmail,
@@ -27,6 +29,8 @@ import {
   addDealHistoryNote,
   deleteDealReminder,
   createDealReminderFromEstimate,
+  snoozeDealReminder,
+  markDealDiscountsApproved,
 } from '../src/modules/bo/dealReminderService';
 import { ProcessedEstimateResult } from '../src/core/types';
 
@@ -231,6 +235,82 @@ function runTests() {
   assert(dealFromEstimate.estimatedTotalUsd === 92400.0, 'Total solución en USD vinculado');
   assert(dealFromEstimate.escalationChannel === 'AM_CISCO', 'Canal AM Cisco configurado');
   assert(dealFromEstimate.status === 'PENDING_APPROVAL', 'Estado inicial PENDING_APPROVAL');
+
+  // --------------------------------------------------------------------------
+  // TEST 6: Pop-up Proactivo en Horarios Clave (12:00 Medio Día y 17:30 Fin de Jornada)
+  // --------------------------------------------------------------------------
+  console.log('\n--- 6. Evaluación de Pop-up Proactivo (12:00 y 17:30) ---');
+
+  // Deal escalado ayer a las 15:00
+  const yesterdayEscalated = new Date(2026, 9, 6, 15, 0, 0); // Martes 6 Oct 2026
+  const dealEscalatedYesterday: DealReminderRecord = {
+    ...sampleDealAm,
+    id: 'DEAL-POPUP-TEST',
+    dealId: 'DEAL-774411',
+    escalatedAt: yesterdayEscalated.toISOString(),
+  };
+
+  // Escenario A: Al otro día a las 12:15 (Horario Medio Día)
+  const nextDayMidday = new Date(2026, 9, 7, 12, 15, 0); // Miércoles 7 Oct 12:15
+  const popupMidday = checkDealPopupDue(dealEscalatedYesterday, nextDayMidday);
+  assert(popupMidday.isDue, 'Deal escalado ayer activa Pop-up a mediodía (12:15)');
+  assert(popupMidday.slot === 'midday', 'Slot identificado correctamente como midday');
+  assert(popupMidday.slotTitle.includes('Medio Día'), 'Título de slot refleja Medio Día (12:00)');
+
+  // Escenario B: Al otro día a las 17:40 (Horario Fin de Jornada)
+  const nextDayEvening = new Date(2026, 9, 7, 17, 40, 0); // Miércoles 7 Oct 17:40
+  const popupEvening = checkDealPopupDue(dealEscalatedYesterday, nextDayEvening);
+  assert(popupEvening.isDue, 'Deal escalado ayer activa Pop-up al fin de jornada (17:40)');
+  assert(popupEvening.slot === 'end_of_day', 'Slot identificado correctamente como end_of_day');
+  assert(popupEvening.slotTitle.includes('Fin de Jornada'), 'Título de slot refleja Fin de Jornada (17:30)');
+
+  // Escenario C: Deal escalado hoy recién en la mañana (ej. hace 1.5 horas, a las 10:00 y son las 11:30)
+  const todayMorning = new Date(2026, 9, 7, 10, 0, 0);
+  const dealEscalatedToday: DealReminderRecord = {
+    ...sampleDealAm,
+    id: 'DEAL-TODAY',
+    escalatedAt: todayMorning.toISOString(),
+  };
+  const checkEarlyToday = new Date(2026, 9, 7, 11, 30, 0);
+  const popupEarly = checkDealPopupDue(dealEscalatedToday, checkEarlyToday);
+  assert(!popupEarly.isDue, 'Deal escalado hoy en la mañana no debe alertar antes del horario objetivo');
+
+  // --------------------------------------------------------------------------
+  // TEST 7: Mecanismo de Snooze ("Recordar más tarde" / "X") y Detención Permanente
+  // --------------------------------------------------------------------------
+  console.log('\n--- 7. Snooze ("Recordar más tarde" / "X") y Detención al Aprobar ---');
+
+  // Cálculo de snooze a mediodía -> debe posponer para las 17:30 de hoy
+  const snoozeFromMidday = calculateNextSnoozeDate('midday', nextDayMidday);
+  assert(snoozeFromMidday.getHours() === 17 && snoozeFromMidday.getMinutes() === 30, 'Snooze desde mediodía programa a las 17:30 de hoy');
+
+  // Cálculo de snooze al fin de jornada (Miércoles 17:40) -> debe posponer para mañana a las 12:00
+  const snoozeFromEvening = calculateNextSnoozeDate('end_of_day', nextDayEvening);
+  assert(snoozeFromEvening.getDate() === nextDayEvening.getDate() + 1, 'Snooze desde fin de jornada pasa al día siguiente');
+  assert(snoozeFromEvening.getHours() === 12 && snoozeFromEvening.getMinutes() === 0, 'Snooze desde fin de jornada fija hora a las 12:00');
+
+  // Cálculo de snooze al fin de jornada un Viernes -> debe saltar sábado y domingo hasta el Lunes a las 12:00
+  const fridayEvening = new Date(2026, 9, 9, 17, 45, 0); // Viernes 9 Octubre 2026
+  assert(fridayEvening.getDay() === 5, 'Verificado que es día Viernes');
+  const snoozeWeekend = calculateNextSnoozeDate('end_of_day', fridayEvening);
+  assert(snoozeWeekend.getDay() === 1, 'Snooze de fin de semana avanza a Lunes (day 1)');
+  assert(snoozeWeekend.getHours() === 12 && snoozeWeekend.getMinutes() === 0, 'Snooze de fin de semana fija Lunes a las 12:00');
+
+  // Poner el Deal en Snooze y verificar que checkDealPopupDue retorne isDue: false
+  saveLocalDealRemindersCache([dealEscalatedYesterday]);
+  snoozeDealReminder(dealEscalatedYesterday.id, snoozeFromMidday.toISOString(), 'pm_test', 'Pospuesto con botón X');
+  const dealAfterSnooze = getLocalDealRemindersCache().find((d) => d.id === dealEscalatedYesterday.id)!;
+  assert(Boolean(dealAfterSnooze.snoozedUntil), 'deal.snoozedUntil persistido correctamente');
+  const popupWhileSnoozed = checkDealPopupDue(dealAfterSnooze, new Date(nextDayMidday.getTime() + 30 * 60 * 1000));
+  assert(!popupWhileSnoozed.isDue, 'Deal en snooze activo NO muestra pop-up');
+
+  // Aprobar descuentos y verificar que los pop-ups se DETENGAN DEFINITIVAMENTE
+  markDealDiscountsApproved(dealEscalatedYesterday.id, 'pm_test', 'Descuentos formalmente aprobados por Cisco');
+  const dealAfterApproved = getLocalDealRemindersCache().find((d) => d.id === dealEscalatedYesterday.id)!;
+  assert(dealAfterApproved.status === 'APPROVED', 'Estado cambiado a APPROVED');
+  assert(Boolean(dealAfterApproved.discountsApprovedAt), 'discountsApprovedAt registrado');
+  const popupAfterApproval = checkDealPopupDue(dealAfterApproved, nextDayEvening);
+  assert(!popupAfterApproval.isDue, 'Deal con descuentos aprobados DETIENE pop-ups permanentemente ("parar los pop up")');
 
   console.log(`\n🎉 ¡TODAS LAS PRUEBAS DE RECORDADOR Y NOTIFICADOR DE DEALS COMPLETADAS AL 100%! (${passed}/${total})`);
 }

@@ -35,6 +35,8 @@ import {
   getLocalBoSkuCache,
   BoTrackingView,
   getBoTrackings,
+  DealReminderAlertModal,
+  useDealReminderAlerts,
 } from './modules/bo';
 import { DashboardView } from './components/DashboardView';
 import { UploadView } from './components/UploadView';
@@ -151,6 +153,14 @@ function AppContent() {
 
   // Active Back Order (BO) Count for Sidebar Badge
   const [activeBoCount, setActiveBoCount] = useState<number>(0);
+
+  // Proactive Deal Reminder Pop-up Monitor (Midday 12:00 & End of Day 17:30)
+  const {
+    dueDeals: reminderDueDeals,
+    isAlertOpen: isDealAlertOpen,
+    closeAlert: closeDealAlert,
+    refreshAlerts: refreshDealAlerts,
+  } = useDealReminderAlerts();
 
   useEffect(() => {
     getBoTrackings()
@@ -435,6 +445,14 @@ function AppContent() {
         assignedBodega={boLines.length > 0 ? boLines[0].bodega : 'E1'}
         onClose={() => setIsBoModalOpen(false)}
         onRegisterTracking={() => setCurrentView('bo_tracking')}
+      />
+
+      {/* Global Proactive Deal Reminder Pop-up (12:00 Midday & 17:30 End-of-Day) */}
+      <DealReminderAlertModal
+        deals={reminderDueDeals}
+        isOpen={isDealAlertOpen}
+        onClose={closeDealAlert}
+        onRefreshData={refreshDealAlerts}
       />
 
       {/* Estimate Version History & Snapshot Diff Modal */}

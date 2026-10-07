@@ -18,6 +18,7 @@ import {
   DealEscalationChannel,
   DealReminderStatus,
   DealHistoryNote,
+  checkDealPopupDue,
 } from './dealReminderTypes';
 import { ProcessedEstimateResult } from '../../core/types';
 
@@ -296,6 +297,130 @@ export async function recordDealReminderSent(dealId: string, author: string): Pr
   };
 
   await saveDealReminder(updatedDeal);
+}
+
+/**
+ * Pospone (Snooze) un recordatorio de Deal hasta una fecha/hora específica.
+ * Si el usuario presiona "Recordar más tarde" o la "X", se pospone automáticamente.
+ */
+export async function snoozeDealReminder(
+  dealId: string,
+  snoozeUntilIso: string,
+  author: string,
+  reason: string = 'Recordatorio pospuesto'
+): Promise<void> {
+  const allDeals = getLocalDealRemindersCache();
+  const deal = allDeals.find((d) => d.id === dealId);
+  if (!deal) return;
+
+  const nowIso = new Date().toISOString();
+  const snoozeFormatted = new Date(snoozeUntilIso).toLocaleTimeString('es-CL', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  const newNote: DealHistoryNote = {
+    id: `hist-${Date.now()}`,
+    date: nowIso,
+    author: author || 'Usuario',
+    action: 'NOTE_ADDED',
+    comment: `${reason} hasta las ${snoozeFormatted} (${new Date(snoozeUntilIso).toLocaleDateString('es-CL')}).`,
+  };
+
+  const updatedDeal: DealReminderRecord = {
+    ...deal,
+    snoozedUntil: snoozeUntilIso,
+    lastPopupDismissedAt: nowIso,
+    updatedAt: nowIso,
+    history: [newNote, ...(deal.history || [])],
+  };
+
+  await saveDealReminder(updatedDeal);
+}
+
+/**
+ * Marca los descuentos del Deal como formalmente aprobados por Cisco.
+ * Esta acción DETIENE definitivamente los pop-ups para este Deal ("parar los pop up").
+ */
+export async function markDealDiscountsApproved(
+  dealId: string,
+  author: string,
+  note: string = 'Descuentos aprobados por Cisco'
+): Promise<void> {
+  const allDeals = getLocalDealRemindersCache();
+  const deal = allDeals.find((d) => d.id === dealId);
+  if (!deal) return;
+
+  const nowIso = new Date().toISOString();
+  const newNote: DealHistoryNote = {
+    id: `hist-${Date.now()}`,
+    date: nowIso,
+    author: author || 'Usuario',
+    action: 'STATUS_CHANGED',
+    comment: `✅ ${note}. Pop-ups de recordatorio finalizados.`,
+  };
+
+  const updatedDeal: DealReminderRecord = {
+    ...deal,
+    status: 'APPROVED',
+    discountsApprovedAt: nowIso,
+    snoozedUntil: undefined,
+    updatedAt: nowIso,
+    history: [newNote, ...(deal.history || [])],
+  };
+
+  await saveDealReminder(updatedDeal);
+}
+
+/**
+ * Retorna todos los Deals que actualmente requieren mostrar un Pop-up en Cisco Automated
+ */
+export async function getDealsDueForPopup(now: Date = new Date()): Promise<DealReminderRecord[]> {
+  const allDeals = await getDealReminders();
+  return allDeals.filter((d) => checkDealPopupDue(d, now).isDue);
+}
+
+/**
+ * Dispara la notificación offline por correo a través del endpoint de Cloudflare Pages
+ * Destinatario por defecto: mauricio.skill@intcomex.com
+ */
+export async function triggerOfflineEmailNotification(
+  deal: DealReminderRecord,
+  recipientEmail: string = 'mauricio.skill@intcomex.com'
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const res = await fetch('/api/deal-reminder-cron', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dealId: deal.dealId,
+        recipientEmail: recipientEmail.trim() || deal.notificationEmail || 'mauricio.skill@intcomex.com',
+        partnerName: deal.partnerName,
+        endCustomerName: deal.endCustomerName,
+        escalationChannel: deal.escalationChannel,
+        amContactName: deal.amContactName,
+        vfTicketNumber: deal.vfTicketNumber,
+        notes: deal.notes,
+        estimatedTotalUsd: deal.estimatedTotalUsd,
+      }),
+    });
+
+    if (res.ok) {
+      const data = (await res.json()) as any;
+      return { success: true, message: data.message || 'Correo offline despachado exitosamente.' };
+    }
+
+    const errData = (await res.json().catch(() => ({}))) as any;
+    return {
+      success: false,
+      message: errData.error || `Error HTTP ${res.status} despachando correo offline.`,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: err?.message || 'Error de red contactando servicio de correo Cloudflare.',
+    };
+  }
 }
 
 /**

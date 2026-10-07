@@ -38,6 +38,7 @@ import {
   DEAL_ESCALATION_METADATA,
   DEAL_STATUS_METADATA,
   calculateDealAging,
+  checkDealPopupDue,
 } from './dealReminderTypes';
 import {
   getDealReminders,
@@ -47,8 +48,10 @@ import {
   addDealHistoryNote,
   deleteDealReminder,
   createDealReminderFromEstimate,
+  triggerOfflineEmailNotification,
 } from './dealReminderService';
 import { copyDealReminderToClipboard, getDealTimeGreeting } from './dealEmailHelper';
+import { DealReminderAlertModal } from './DealReminderAlertModal';
 import { useCiscoAutomatedStore } from '../../core/store';
 
 interface DealReminderViewProps {
@@ -64,6 +67,10 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
   const [channelFilter, setChannelFilter] = useState<string>('ALL'); // 'ALL' | 'AM_CISCO' | 'VELOCITY_HUB'
   const [statusFilter, setStatusFilter] = useState<string>('ALL'); // 'ALL' | 'PENDING' | 'OVERDUE' | 'APPROVED'
   const [copiedDealId, setCopiedDealId] = useState<string | null>(null);
+  const [sendingEmailDealId, setSendingEmailDealId] = useState<string | null>(null);
+  const [isTestingOfflineCron, setIsTestingOfflineCron] = useState(false);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [previewDealForAlertModal, setPreviewDealForAlertModal] = useState<DealReminderRecord | null>(null);
 
   // Modales
   const [isNewDealModalOpen, setIsNewDealModalOpen] = useState(false);
@@ -235,6 +242,44 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
     if (!window.confirm('¿Estás seguro de eliminar este recordatorio de Deal?')) return;
     await deleteDealReminder(id);
     await loadData();
+    showToast('Recordatorio eliminado.', 'info');
+  };
+
+  const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success', duration = 4500) => {
+    setToastMessage({ text, type });
+    setTimeout(() => setToastMessage(null), duration);
+  };
+
+  // Enviar recordatorio offline vía Cloudflare Edge Function a mauricio.skill@intcomex.com
+  const handleTestOfflineEmail = async (targetDeal?: DealReminderRecord) => {
+    const dealToUse = targetDeal || deals[0];
+    if (!dealToUse) {
+      showToast('No hay Deals registrados para probar la notificación.', 'error');
+      return;
+    }
+
+    if (targetDeal) {
+      setSendingEmailDealId(targetDeal.id);
+    } else {
+      setIsTestingOfflineCron(true);
+    }
+
+    try {
+      const res = await triggerOfflineEmailNotification(dealToUse, 'mauricio.skill@intcomex.com');
+      if (res.success) {
+        showToast(`📧 Recordatorio offline enviado a mauricio.skill@intcomex.com (Deal: ${dealToUse.dealId})`, 'success');
+      } else {
+        showToast(`Aviso: ${res.message}`, 'info');
+      }
+    } catch (err: any) {
+      showToast(`Error de envío: ${err?.message || 'Error de conexión'}`, 'error');
+    } finally {
+      if (targetDeal) {
+        setSendingEmailDealId(null);
+      } else {
+        setIsTestingOfflineCron(false);
+      }
+    }
   };
 
   // Filtrado de Deals
@@ -392,6 +437,17 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
               <span>Exportar CSV</span>
+            </button>
+
+            {/* Probar Correo Offline a mauricio.skill@intcomex.com */}
+            <button
+              onClick={() => handleTestOfflineEmail()}
+              disabled={isTestingOfflineCron || deals.length === 0}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-sky-950/60 hover:bg-sky-900/80 text-sky-300 border border-sky-600/40 text-xs font-semibold rounded-xl transition-all cursor-pointer shadow-sm"
+              title="Probar envío automático offline por correo a mauricio.skill@intcomex.com"
+            >
+              <Send className={`w-3.5 h-3.5 text-sky-400 ${isTestingOfflineCron ? 'animate-spin' : ''}`} />
+              <span>{isTestingOfflineCron ? 'Enviando...' : 'Probar Email Offline'}</span>
             </button>
 
             <button
@@ -660,6 +716,27 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
                     >
                       {isCopied ? <Check className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
                       <span>{isCopied ? '¡Copiado para Outlook!' : 'Copiar Correo Recordatorio'}</span>
+                    </button>
+
+                    {/* Botón Simular Pop-up Alerta */}
+                    <button
+                      onClick={() => setPreviewDealForAlertModal(deal)}
+                      className="inline-flex items-center space-x-1.5 px-3 py-2 bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border border-amber-600/40 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+                      title="Probar ventana emergente (Pop-up) con opciones de posponer y aprobar"
+                    >
+                      <Bell className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Simular Pop-up</span>
+                    </button>
+
+                    {/* Botón Despachar Email Offline */}
+                    <button
+                      onClick={() => handleTestOfflineEmail(deal)}
+                      disabled={sendingEmailDealId === deal.id}
+                      className="inline-flex items-center space-x-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-sky-500/30 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+                      title="Enviar recordatorio offline inmediato a mauricio.skill@intcomex.com"
+                    >
+                      <Send className={`w-3.5 h-3.5 text-sky-400 ${sendingEmailDealId === deal.id ? 'animate-spin' : ''}`} />
+                      <span>{sendingEmailDealId === deal.id ? 'Enviando...' : 'Email Offline'}</span>
                     </button>
 
                     {/* Botón Convertir a Seguimiento BO */}
@@ -1022,6 +1099,31 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Modal Interactivo de Simulación / Vista Previa de Pop-up Alerta */}
+      {previewDealForAlertModal && (
+        <DealReminderAlertModal
+          deals={[previewDealForAlertModal]}
+          isOpen={true}
+          onClose={() => setPreviewDealForAlertModal(null)}
+          onRefreshData={loadData}
+        />
+      )}
+
+      {/* Floating Toast Feedback */}
+      {toastMessage && (
+        <div
+          className={`fixed bottom-6 right-6 z-50 flex items-center space-x-2.5 px-4 py-3 rounded-2xl shadow-2xl border text-xs font-semibold backdrop-blur-md animate-fade-in ${
+            toastMessage.type === 'error'
+              ? 'bg-rose-950/90 border-rose-600/50 text-rose-200'
+              : toastMessage.type === 'info'
+                ? 'bg-sky-950/90 border-sky-600/50 text-sky-200'
+                : 'bg-emerald-950/90 border-emerald-600/50 text-emerald-200'
+          }`}
+        >
+          <span>{toastMessage.text}</span>
         </div>
       )}
     </div>

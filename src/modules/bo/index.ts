@@ -13,3 +13,5 @@ export * from './dealReminderTypes';
 export * from './dealReminderService';
 export * from './dealEmailHelper';
 export * from './DealReminderView';
+export * from './DealReminderAlertModal';
+export * from './useDealReminderAlerts';
