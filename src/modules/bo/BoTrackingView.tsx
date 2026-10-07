@@ -29,6 +29,7 @@ import {
   Send,
   Edit2,
   Trash2,
+  Bell,
 } from 'lucide-react';
 import {
   BoOrderTrackingRecord,
@@ -48,11 +49,14 @@ import {
   deleteBoTracking,
   createBoTrackingRecordFromEstimate,
 } from './boTrackingService';
+import { DealReminderView } from './DealReminderView';
+import { DealReminderRecord } from './dealReminderTypes';
 import { useCiscoAutomatedStore } from '../../core/store';
 
 export function BoTrackingView() {
   const { currentUser, processedResult, detectedPartner } = useCiscoAutomatedStore();
 
+  const [activeTab, setActiveTab] = useState<'orders' | 'deal_reminders'>('orders');
   const [orders, setOrders] = useState<BoOrderTrackingRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -332,19 +336,70 @@ export function BoTrackingView() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-slate-950 text-slate-100 overflow-y-auto">
-      {/* Header Section */}
-      <div className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md px-6 py-5 sticky top-0 z-20">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center space-x-3">
-              <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-400 shadow-inner">
-                <Truck className="w-6 h-6" />
-              </div>
+      {/* Top Module Subnav Tabs: Logística BO vs Recordador de Deals */}
+      <div className="bg-slate-950/95 border-b border-slate-800 px-6 pt-3 flex items-center justify-between sticky top-0 z-30 backdrop-blur-md">
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setActiveTab('orders')}
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 flex items-center space-x-2 transition-all cursor-pointer ${
+              activeTab === 'orders'
+                ? 'border-amber-500 text-amber-400 bg-amber-500/10 rounded-t-xl'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 rounded-t-xl'
+            }`}
+          >
+            <Truck className="w-4 h-4" />
+            <span>Seguimiento Logístico de Órdenes BO</span>
+            {stats.activeCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800/50">
+                {stats.activeCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('deal_reminders')}
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 flex items-center space-x-2 transition-all cursor-pointer ${
+              activeTab === 'deal_reminders'
+                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10 rounded-t-xl'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 rounded-t-xl'
+            }`}
+          >
+            <Bell className="w-4 h-4" />
+            <span>Recordador & Notificador de DEALS (AM / VF)</span>
+          </button>
+        </div>
+      </div>
+
+      {activeTab === 'deal_reminders' ? (
+        <DealReminderView
+          onConvertToBo={(deal: DealReminderRecord) => {
+            setNewOrderForm((prev) => ({
+              ...prev,
+              dealId: deal.dealId,
+              partnerName: deal.partnerName,
+              endCustomerName: deal.endCustomerName,
+              estimateId: deal.estimateId || prev.estimateId,
+              totalSaleUsd: deal.estimatedTotalUsd || prev.totalSaleUsd,
+            }));
+            setActiveTab('orders');
+            setIsNewOrderModalOpen(true);
+          }}
+        />
+      ) : (
+        <>
+          {/* Header Section */}
+          <div className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md px-6 py-5 sticky top-[45px] z-20">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div>
-                <div className="flex items-center space-x-2.5">
-                  <h1 className="text-xl font-black tracking-tight text-white">
-                    Tracking & Ciclo de Vida de Órdenes BO
-                  </h1>
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-400 shadow-inner">
+                    <Truck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2.5">
+                      <h1 className="text-xl font-black tracking-tight text-white">
+                        Tracking & Ciclo de Vida de Órdenes BO
+                      </h1>
                   <span className="bg-amber-950/80 text-amber-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-amber-700/50">
                     Fulfillment Pipeline
                   </span>
@@ -869,6 +924,8 @@ export function BoTrackingView() {
           </div>
         )}
       </div>
+    </>
+  )}
 
       {/* MODAL 1: Bitácora y Notas Diarias */}
       {selectedOrderForNotes && (

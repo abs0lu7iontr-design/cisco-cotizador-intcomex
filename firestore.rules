@@ -9,7 +9,7 @@ rules_version = '2';
 // backed by the `users` collection and local failsafe cache rather than
 // Firebase Authentication (`request.auth` is null for standard Web/Desktop
 // client operations). Rules below remove any 30-day Test Mode timestamp
-// expiration, enforce collection-level isolation (9 explicit collections),
+// expiration, enforce collection-level isolation (10 explicit collections),
 // validate payload schemas and field bounds on both create and update,
 // and deny all other paths by default.
 //
@@ -130,6 +130,29 @@ rules_version = '2';
 //   - Metadata document ('metadata'): totalSkus, lastUpdated, validFrom, validUntil, promotionCode, promotionTitle, fileName, chunksCount
 //   - Chunk documents ('chunk_N'): chunkIndex, totalChunks, items (list of products), updatedAt
 //
+// Collection 10: deal_reminders/{reminderId}
+//   - Recordatorios y seguimiento comercial de Deals escalados a AM Cisco o Velocity Hub
+//   - dealId: string (required)
+//   - partnerName: string (required)
+//   - endCustomerName: string (required)
+//   - escalationChannel: string ('AM_CISCO' | 'VELOCITY_HUB') (required)
+//   - status: string ('PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'INFO_REQUIRED' | 'CONVERTED_TO_BO')
+//   - escalatedAt: string (ISO 8601)
+//   - notes: string (optional)
+//   - history: list (historial de recordatorios y cambios de estado)
+//   - reminderCount: number
+//   - lastReminderSentAt: string (ISO 8601, optional)
+//   - amContactName: string (optional)
+//   - amContactEmail: string (optional)
+//   - vfTicketNumber: string (optional)
+//   - targetDiscountPct: number (optional)
+//   - estimatedTotalUsd: number (optional)
+//   - estimateId: string (optional)
+//   - createdAt: string (ISO 8601)
+//   - updatedAt: string (ISO 8601)
+//   - createdBy: string (optional)
+//   - archived: bool (optional)
+//
 // ===============================================================
 
 service cloud.firestore {
@@ -246,6 +269,15 @@ service cloud.firestore {
       return data is map && isValidPayloadSize(data);
     }
 
+    function isValidDealReminder(data) {
+      return data is map &&
+        isValidPayloadSize(data) &&
+        'dealId' in data && data.dealId is string && data.dealId.size() <= 500 &&
+        'partnerName' in data && data.partnerName is string && data.partnerName.size() <= 500 &&
+        'endCustomerName' in data && data.endCustomerName is string && data.endCustomerName.size() <= 500 &&
+        'escalationChannel' in data && data.escalationChannel is string && data.escalationChannel.size() <= 100;
+    }
+
     // ------------------------------------------------------------------------
     // 1. COLECCIÓN ESTIMATES (Cotizaciones CCW)
     // ------------------------------------------------------------------------
@@ -337,6 +369,15 @@ service cloud.firestore {
     match /cisco_fast_track_catalog/{docId} {
       allow read: if true;
       allow create, update: if isValidFastTrackCatalog(request.resource.data);
+      allow delete: if isAdmin() || !isAuthenticated();
+    }
+
+    // ------------------------------------------------------------------------
+    // 10. COLECCIÓN DEAL_REMINDERS (Seguimiento y Recordatorios de Deals Cisco)
+    // ------------------------------------------------------------------------
+    match /deal_reminders/{reminderId} {
+      allow read: if true;
+      allow create, update: if isValidDealReminder(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
 

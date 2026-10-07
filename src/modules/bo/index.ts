@@ -9,3 +9,7 @@ export * from './BoRequestModal';
 export * from './boTrackingTypes';
 export * from './boTrackingService';
 export * from './BoTrackingView';
+export * from './dealReminderTypes';
+export * from './dealReminderService';
+export * from './dealEmailHelper';
+export * from './DealReminderView';
