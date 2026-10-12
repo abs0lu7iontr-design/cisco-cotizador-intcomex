@@ -155,9 +155,9 @@ export function getEstimatesMirrorSnapshot(): CloudEstimateRecord[] {
     const rawMirror = localStorage.getItem(LOCAL_ESTIMATES_MIRROR_KEY) || '';
     const rawLegacy = localStorage.getItem(LOCAL_ESTIMATES_LEGACY_KEY) || '';
 
-    // Fast path: if storage strings haven't changed, preserve referential equality
+    // Fast path: if storage strings haven't changed, preserve referential equality strictly
     const currentHash = `${rawPrimary}:::${rawVault}:::${rawMirror}:::${rawLegacy}`;
-    if (currentHash === cachedHash && cachedSnapshot.length > 0) {
+    if (cachedHash !== null && currentHash === cachedHash) {
       return cachedSnapshot;
     }
 
@@ -229,41 +229,41 @@ export function getEstimatesMirrorSnapshot(): CloudEstimateRecord[] {
       ...legacyMapped,
     ]);
 
-    // Self-healing: if any redundant key is missing data, restore it immediately
-    const serializedMerged = JSON.stringify(merged.slice(0, 300));
-    let needsHeal = false;
-
-    if (!rawVault || rawVault.length < serializedMerged.length) {
-      try {
-        localStorage.setItem(LOCAL_ESTIMATES_VAULT_KEY, serializedMerged);
-        needsHeal = true;
-      } catch (_) {}
-    }
-    if (!rawPrimary || rawPrimary.length < serializedMerged.length) {
-      try {
-        localStorage.setItem(LOCAL_ESTIMATES_PRIMARY_KEY, serializedMerged);
-        needsHeal = true;
-      } catch (_) {}
-    }
-    if (!rawMirror || rawMirror.length < serializedMerged.length) {
-      try {
-        localStorage.setItem(LOCAL_ESTIMATES_MIRROR_KEY, serializedMerged);
-        needsHeal = true;
-      } catch (_) {}
-    }
-
-    // Read final state after self-healing so cachedHash matches subsequent calls perfectly
-    const postPrimary = localStorage.getItem(LOCAL_ESTIMATES_PRIMARY_KEY) || '';
-    const postVault = localStorage.getItem(LOCAL_ESTIMATES_VAULT_KEY) || '';
-    const postMirror = localStorage.getItem(LOCAL_ESTIMATES_MIRROR_KEY) || '';
-    const postLegacy = localStorage.getItem(LOCAL_ESTIMATES_LEGACY_KEY) || '';
-
-    cachedHash = `${postPrimary}:::${postVault}:::${postMirror}:::${postLegacy}`;
+    cachedHash = currentHash;
     cachedSnapshot = merged;
     return cachedSnapshot;
   } catch (_) {
     return cachedSnapshot;
   }
+}
+
+/**
+ * Self-healing routine for redundant local storage tiers.
+ * Safely invoked outside React render lifecycle to prevent infinite render loops.
+ */
+export function healEstimatesMirrorVaults(): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const rawPrimary = localStorage.getItem(LOCAL_ESTIMATES_PRIMARY_KEY) || '';
+    const rawVault = localStorage.getItem(LOCAL_ESTIMATES_VAULT_KEY) || '';
+    const rawMirror = localStorage.getItem(LOCAL_ESTIMATES_MIRROR_KEY) || '';
+
+    const best = [rawPrimary, rawVault, rawMirror].reduce(
+      (max, cur) => (cur.length > max.length ? cur : max),
+      ''
+    );
+    if (!best || best.length <= 2) return;
+
+    if (!rawPrimary || rawPrimary.length < best.length) {
+      try { localStorage.setItem(LOCAL_ESTIMATES_PRIMARY_KEY, best); } catch (_) {}
+    }
+    if (!rawVault || rawVault.length < best.length) {
+      try { localStorage.setItem(LOCAL_ESTIMATES_VAULT_KEY, best); } catch (_) {}
+    }
+    if (!rawMirror || rawMirror.length < best.length) {
+      try { localStorage.setItem(LOCAL_ESTIMATES_MIRROR_KEY, best); } catch (_) {}
+    }
+  } catch (_) {}
 }
 
 const SERVER_SNAPSHOT: CloudEstimateRecord[] = [];

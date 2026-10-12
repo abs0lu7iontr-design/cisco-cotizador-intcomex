@@ -91,7 +91,7 @@ export function isPeriodicSubscriptionLine(row: DsvBomRowRaw): boolean {
   const normDesc = String(row.description || '').toUpperCase();
   const isPrepaidTerm =
     normDesc.includes('PREPAID') ||
-    upperSku.startsWith('C1') ||
+    ((upperSku.startsWith('C1-') || /^C1[AFP]/.test(upperSku)) && !/^C1\d{3}/.test(upperSku)) ||
     upperSku.startsWith('DCN-') ||
     upperSku.includes('-DNA') ||
     upperSku.startsWith('DNA-') ||

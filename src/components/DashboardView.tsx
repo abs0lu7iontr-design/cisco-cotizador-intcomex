@@ -78,8 +78,8 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
 
   // 2. Analytical Filter States — Default is 'month' (Mensual) so estimates are always visible upon opening
   const [periodFilter, setPeriodFilter] = useState<DashboardPeriodFilter>('month');
-  const currentYearStr = String(new Date().getFullYear());
-  const currentMonthStr = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const currentYearStr = useMemo(() => String(new Date().getFullYear()), []);
+  const currentMonthStr = useMemo(() => new Date().toISOString().slice(0, 7), []);
 
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthStr);
   const [quarterMode, setQuarterMode] = useState<QuarterMode>('rolling_3m');
@@ -486,7 +486,7 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
 
         <div className="flex items-center flex-wrap gap-2.5">
           <button
-            onClick={() => syncMirrorWithFirebase(true, 'all')}
+            onClick={() => syncMirrorWithFirebase(true)}
             disabled={isSyncingCloud}
             className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold flex items-center gap-2 border border-slate-700 hover:border-cyan-500/40 transition-all cursor-pointer disabled:opacity-50"
             title="Sincronizar Snapshot Espejo con Firebase Firestore"

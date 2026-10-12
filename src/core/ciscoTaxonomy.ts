@@ -13,7 +13,7 @@ const CISCO_SERVICE_REGEX = /^(CON|CX|CXE|CXS|SVS|AS|ASF|HT|HTS|SP|SPA|SOL|TRN|E
 // Cisco ONE (C1- y prefijos C1), Spaces (SPACES-), Network Term (NETWORK-), Subscriptions (SUB-),
 // AnyConnect (AC-), ISE, AMP, ESA, SMA, e-Delivery (L-) y Software Subscription (S-)
 const CISCO_LICENSE_PREFIX_REGEX =
-  /^(LIC|A-FLEX|A-SPK|A-WX|DUO|UMB|TE|IS|CDO|APPD|FSO|DCN|ACI|SF|SEC|AC|ISE|AMP|ESA|SMA|NETWORK|SPACES|SUB)-|^C1(-|[A-Z0-9])|^L-(LIC|ISE|AC|FPR|ASA)|^S-(SW|SUB)/i;
+  /^(LIC|A-FLEX|A-SPK|A-WX|DUO|UMB|TE|IS|CDO|APPD|FSO|DCN|ACI|SF|SEC|AC|ISE|AMP|ESA|SMA|NETWORK|SPACES|SUB)-|^C1(-|[AFP][A-Z0-9])(?!\d{2})|^L-(LIC|ISE|AC|FPR|ASA)|^S-(SW|SUB)/i;
 
 // 2. Infijos y sufijos de licenciamiento por término
 // Cubre: -DNA-, -CAT- (Catalyst Center), -SUB-, -TERM-, -LIC, -SAAS y vigencias multianuales (1Y, 3Y, 5Y, 7Y)
@@ -57,6 +57,20 @@ export function isCiscoLicenseSku(sku: string, description: string = '', duratio
   // Si es un contrato de soporte técnico/servicios, se clasifica como servicio, no como licencia de software
   if (isCiscoServiceSku(normSku, normDesc)) {
     return false;
+  }
+
+  // Modelos de Hardware Cisco que inician con C1 (Catalyst 1000, 1200, 1300 y routers Cisco 1100)
+  // son estrictamente equipos físicos, NO suites de software Cisco ONE.
+  if (/^C1\d{3}/i.test(normSku)) {
+    const hasExplicitLicenseMarker =
+      CISCO_LICENSE_INFIX_SUFFIX_REGEX.test(normSku) ||
+      normDesc.includes('TERM LICENSE') ||
+      normDesc.includes('DNA ESSENTIALS') ||
+      normDesc.includes('DNA ADVANTAGE') ||
+      normDesc.includes('SUBSCRIPTION');
+    if (!hasExplicitLicenseMarker) {
+      return false;
+    }
   }
 
   // Coincidencia por prefijo oficial de familia SaaS / Cloud / Cisco ONE

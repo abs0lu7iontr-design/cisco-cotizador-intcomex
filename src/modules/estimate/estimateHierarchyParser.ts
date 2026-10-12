@@ -119,7 +119,7 @@ export function parseEstimateWithHierarchy(rawRows: any[][]): ProcessedEstimateL
       upperSku.startsWith('CXE-') ||
       upperSku.startsWith('CXS-') ||
       upperSku.startsWith('DCN-') ||
-      upperSku.startsWith('C1') ||
+      ((upperSku.startsWith('C1-') || /^C1[AFP]/.test(upperSku)) && !/^C1\d{3}/.test(upperSku)) ||
       lowerDesc.includes('smartnet') ||
       lowerDesc.includes('sntc') ||
       lowerDesc.includes('prepaid');

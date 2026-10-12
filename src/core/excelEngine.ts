@@ -936,7 +936,7 @@ export async function parseEstimateWorkbook(
       sku.startsWith('CX-') ||
       sku.startsWith('CXE-') ||
       sku.startsWith('CXS-') ||
-      sku.startsWith('C1') ||
+      ((sku.startsWith('C1-') || /^C1[AFP]/.test(sku)) && !/^C1\d{3}/.test(sku)) ||
       sku.startsWith('DCN-');
 
     // Si el total extendido en CCW es igual al unitario por cantidad (ratio <= 1.05),

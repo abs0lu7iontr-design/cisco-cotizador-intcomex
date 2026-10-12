@@ -40,13 +40,18 @@ export function checkIsIntangible(sku: string, description: string): boolean {
   const upperSku = (sku || '').trim().toUpperCase();
   const lowerDesc = (description || '').trim().toLowerCase();
 
+  // Differentiate Cisco ONE software licenses (C1-, C1A, C1F, C1P) from C1 physical hardware switches & routers (C1000, C1100, C1200, C1300)
+  const isC1Hardware = /^C1\d{3}/.test(upperSku);
+  const isCiscoOneLicenseSku =
+    (upperSku.startsWith('C1-') || /^C1[AFP][A-Z0-9]/.test(upperSku)) && !isC1Hardware;
+
   // Pure standalone license & subscription SKU patterns
   const isPureStandaloneLicenseSku =
     upperSku.startsWith('CON-') ||
     upperSku.startsWith('CON') ||
     upperSku.startsWith('L-') ||
     upperSku.startsWith('LIC-') ||
-    upperSku.startsWith('C1') ||
+    isCiscoOneLicenseSku ||
     upperSku.startsWith('SVS-') ||
     upperSku.startsWith('CX-') ||
     upperSku.startsWith('CXE-') ||
@@ -59,30 +64,39 @@ export function checkIsIntangible(sku: string, description: string): boolean {
     upperSku.includes('-SUB') ||
     upperSku.includes('A-FLEX');
 
-  // Tier 1: Hardware Pre-Filter (Highest Priority: Force Tangible/Equipo)
-  if (!isPureStandaloneLicenseSku) {
-    const hardwareKeywords = [
-      'catalyst',
-      'switch',
-      'router',
-      'port poe',
-      'port data',
-      'blank',
-      'module',
-      'cable',
-      'rack',
-      'power supply',
-      'hardware',
-      'chassis',
-      'access point',
-      'transceiver',
-      'fan',
-      'power cord',
-      'stack',
-    ];
+  const hardwareKeywords = [
+    'catalyst',
+    'switch',
+    'router',
+    'port poe',
+    'port data',
+    'blank',
+    'module',
+    'cable',
+    'rack',
+    'power supply',
+    'hardware',
+    'chassis',
+    'access point',
+    'transceiver',
+    'fan',
+    'power cord',
+    'stack',
+  ];
 
-    if (hardwareKeywords.some((keyword) => lowerDesc.includes(keyword))) {
-      return false; // Physical hardware -> Tangible
+  // Tier 1: Hardware Pre-Filter (Highest Priority: Force Tangible/Equipo)
+  // Physical hardware models like Catalyst 1000/1200/1300 and Cisco 1100 are strictly tangible
+  if (isC1Hardware || !isPureStandaloneLicenseSku) {
+    if (hardwareKeywords.some((keyword) => lowerDesc.includes(keyword)) || isC1Hardware) {
+      // If SKU is C1 hardware and not an explicit term license, force tangible
+      const isExplicitLicenseDesc =
+        lowerDesc.includes('term license') ||
+        lowerDesc.includes('dna essentials') ||
+        lowerDesc.includes('dna advantage') ||
+        lowerDesc.includes('subscription');
+      if (!isExplicitLicenseDesc) {
+        return false; // Physical hardware -> Tangible
+      }
     }
   }
 
@@ -629,7 +643,7 @@ export function isCloudSubscriptionSku(sku: string, descriptionRowAhead?: string
     cleanSku.startsWith('CXE-') || 
     cleanSku.startsWith('CXS-') || 
     cleanSku.startsWith('L-') || 
-    cleanSku.startsWith('C1') || 
+    ((cleanSku.startsWith('C1-') || /^C1[AFP]/.test(cleanSku)) && !/^C1\d{3}/.test(cleanSku)) || 
     cleanSku.startsWith('DCN-') || 
     cleanSku.includes('-DNA') || 
     cleanSku.startsWith('DNA-') ||
@@ -678,7 +692,7 @@ export function recalculateEstimateResult(
       /\bPrepaid\b/i.test(item.description || '') ||
       /smartnet/i.test(item.description || '') ||
       /\bsntc\b/i.test(item.description || '') ||
-      cleanSkuKey.startsWith('C1') ||
+      ((cleanSkuKey.startsWith('C1-') || /^C1[AFP]/.test(cleanSkuKey)) && !/^C1\d{3}/.test(cleanSkuKey)) ||
       cleanSkuKey.startsWith('SVS-') ||
       cleanSkuKey.startsWith('CON-') ||
       cleanSkuKey.startsWith('CON') ||
