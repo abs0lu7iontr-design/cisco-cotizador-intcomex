@@ -876,12 +876,14 @@ export async function parseEstimateWorkbook(
       isPeriodicSubscription = healedSandia;
     }
 
+    const effectiveLineNumber = lineNumStr || `${items.length + 1}.0`;
+
     // Caso Sub-líneas a costo $0.00 (cables incluidos CAB-*, fuentes PWR-*, sub-licencias de fábrica o contenedores .0 a costo 0)
     if (rawNetCiscoUnit === 0 && rawExtCost === 0) {
       const rowOverride = overrides ? (overrides[r] ?? (sku ? (overrides as any)[sku] : undefined)) : undefined;
       const normRule = normalizeOverrideRule(rowOverride);
       const defaultIsIntangible = checkIsIntangible(sku, description);
-      const defaultLlevaArancel = checkLlevaArancel(sku);
+      const defaultLlevaArancel = checkLlevaArancel(sku, description, effectiveLineNumber);
       const isIntangible =
         normRule === 'intangible'
           ? true
@@ -897,7 +899,7 @@ export async function parseEstimateWorkbook(
 
       items.push({
         rowIdx: r,
-        lineNumber: lineNumStr || `${items.length + 1}.0`,
+        lineNumber: effectiveLineNumber,
         partNumber: partNumStr,
         smartAccountMandatory: smartAccount,
         description: finalDescription,
@@ -1004,7 +1006,7 @@ export async function parseEstimateWorkbook(
 
       items.push({
         rowIdx: r,
-        lineNumber: lineNumStr || `${items.length + 1}.0`,
+        lineNumber: effectiveLineNumber,
         partNumber: partNumStr,
         smartAccountMandatory: smartAccount,
         description: finalDescription,
@@ -1040,13 +1042,21 @@ export async function parseEstimateWorkbook(
       originalProductTotal += baseNetCost * qty;
 
       const rowOverride = overrides ? (overrides[r] ?? (sku ? (overrides as any)[sku] : undefined)) : undefined;
-      const calculated = calculateLineItemCosts(netCiscoUnit, qty, sku, description, params, rowOverride);
+      const calculated = calculateLineItemCosts(
+        netCiscoUnit,
+        qty,
+        sku,
+        description,
+        params,
+        rowOverride,
+        effectiveLineNumber
+      );
 
       calculatedProductTotal += calculated.precioVentaExtendido;
 
       items.push({
         rowIdx: r,
-        lineNumber: lineNumStr || `${items.length + 1}.0`,
+        lineNumber: effectiveLineNumber,
         partNumber: partNumStr,
         smartAccountMandatory: smartAccount,
         description: finalDescription,

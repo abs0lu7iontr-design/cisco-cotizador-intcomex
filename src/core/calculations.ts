@@ -5,8 +5,24 @@
 import { QuoteParameters, OverrideRuleType, ProcessedEstimateResult } from './types';
 import { generateQuotationFileName, isPureLicensingQuote } from './exportUtils';
 import { isCiscoIntangibleSku } from './ciscoTaxonomy';
+import {
+  isCiscoAccessorySku,
+  isMotherLineFormat,
+  isEolAccessoryOrProductSku,
+  isMainHardwareChassisSku,
+  NON_EOL_CISCO_ACCESSORIES_CATALOG,
+  NON_EOL_CISCO_ACCESSORIES_SET,
+} from './ciscoAccessoriesCatalog';
 
-export { isPureLicensingQuote };
+export {
+  isPureLicensingQuote,
+  isCiscoAccessorySku,
+  isMotherLineFormat,
+  isEolAccessoryOrProductSku,
+  isMainHardwareChassisSku,
+  NON_EOL_CISCO_ACCESSORIES_CATALOG,
+  NON_EOL_CISCO_ACCESSORIES_SET,
+};
 
 /**
  * Redondeo financiero estricto. Previene el error IEEE 754 de Javascript.
@@ -45,7 +61,7 @@ export function checkIsIntangible(sku: string, description: string): boolean {
   const isCiscoOneLicenseSku =
     (upperSku.startsWith('C1-') || /^C1[AFP][A-Z0-9]/.test(upperSku)) && !isC1Hardware;
 
-  // Cables, power cords (CAB-ACI, CAB-C13, CAB-C14, CAB-C15, etc.), power supplies, transceivers and blanks are strictly physical hardware
+  // Cables, antennas, power cords (CAB-ACI, CAB-C13, CAB-C14, CAB-C15, etc.), power supplies, transceivers, brackets, modules and blanks are strictly physical hardware
   const isPhysicalAccessoryOrCable =
     upperSku.startsWith('CAB-') ||
     upperSku.includes('-CAB-') ||
@@ -56,7 +72,8 @@ export function checkIsIntangible(sku: string, description: string): boolean {
     upperSku.startsWith('SFP-') ||
     upperSku.startsWith('QSFP-') ||
     upperSku.startsWith('GLC-') ||
-    upperSku.endsWith('-BLANK');
+    upperSku.endsWith('-BLANK') ||
+    isCiscoAccessorySku(upperSku, lowerDesc);
 
   // Pure standalone license & subscription SKU patterns
   const isPureStandaloneLicenseSku =
@@ -98,6 +115,10 @@ export function checkIsIntangible(sku: string, description: string): boolean {
     'fan',
     'power cord',
     'stack',
+    'antenna',
+    'antena',
+    'bracket',
+    'injector',
   ];
 
   // Tier 1: Hardware Pre-Filter (Highest Priority: Force Tangible/Equipo)
@@ -176,11 +197,42 @@ export function checkIsIntangible(sku: string, description: string): boolean {
 }
 
 /**
- * Checks if a line item applies customs duty (Arancel 6%).
- * Default: SKUs ending with '='.
+ * Checks if a line item applies customs duty (Arancel 6% + Internación 7%):
+ * 1. Any non-intangible SKU ending with '=' ALWAYS carries Arancel (whether mother or child line).
+ * 2. Any non-EOL Cisco/Meraki Accessory (Antennas, Cables, SFPs/Transceivers, Power Supplies,
+ *    PoE Injectors, Brackets/Mounts, Stacking Kits, Expansion Modules, Fans, Blanks) that appears
+ *    in MOTHER LINE format ("1.0", "2.0", "3.0", "4.0", "5", "6", "7", "8"... to infinity)
+ *    ALWAYS carries Arancel even if it does NOT end with '='.
+ * 3. Accessories in CHILD LINE format ("1.1", "1.2", "2.1", "1.0.1", etc.) without '=' do NOT
+ *    carry Arancel (they are bundled inside a parent hardware chassis -> EQUIPO / TANGIBLE).
+ * 4. Main Equipment (Switches, Routers, APs, Firewalls, Controllers, Cameras, Phones, Servers)
+ *    in Mother Line format without '=' do NOT carry Arancel (they are EQUIPO / TANGIBLE).
  */
-export function checkLlevaArancel(sku: string): boolean {
-  return (sku || '').trim().endsWith('=');
+export function checkLlevaArancel(
+  sku: string,
+  description: string = '',
+  lineNumber?: string
+): boolean {
+  const trimmedSku = (sku || '').trim();
+  if (!trimmedSku) return false;
+
+  // Licencias y servicios intangibles nunca llevan arancel por defecto
+  if (checkIsIntangible(trimmedSku, description)) {
+    return false;
+  }
+
+  // Regla 1: Si termina en '=', siempre lleva arancel (repuesto/spare/accesorio explícito)
+  if (trimmedSku.endsWith('=')) {
+    return true;
+  }
+
+  // Regla 2: Si está en formato Línea Madre (1.0, 2.0, 3.0, 4.0, 5, 6, 7, 8... al infinito)
+  // y pertenece a la lista/clasificador infinito de Accesorios Cisco/Meraki No-EOL, lleva arancel
+  if (isMotherLineFormat(lineNumber) && isCiscoAccessorySku(trimmedSku, description)) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -223,10 +275,11 @@ export function calculateLineItemCosts(
   sku: string,
   description: string,
   params: QuoteParameters,
-  override?: OverrideRuleType | string
+  override?: OverrideRuleType | string,
+  lineNumber?: string
 ) {
   let isIntangible = checkIsIntangible(sku, description);
-  let llevaArancel = checkLlevaArancel(sku);
+  let llevaArancel = checkLlevaArancel(sku, description, lineNumber);
 
   // Apply normalized manual 3-state override if present
   const normOverride = normalizeOverrideRule(override);
@@ -419,6 +472,7 @@ export function solveGoalSeekParameters(
     qty: number; 
     partNumber: string; 
     description: string; 
+    lineNumber?: string;
     rowIdx?: number; 
     isInfoRow?: boolean;
     unitListPrice?: number;
@@ -476,7 +530,8 @@ export function solveGoalSeekParameters(
           item.partNumber,
           item.description,
           p,
-          rowOverride
+          rowOverride,
+          item.lineNumber
         );
         sum += res.precioVentaExtendido;
       }
@@ -732,7 +787,7 @@ export function recalculateEstimateResult(
       // Sub-línea a costo $0.00 (ej. cables incluidos CAB-ACI, fuentes PWR-*, o sub-licencias LIC-MT-E-INCL)
       const normRule = normalizeOverrideRule(override);
       const defaultIsIntangible = checkIsIntangible(item.partNumber, item.description);
-      const defaultLlevaArancel = checkLlevaArancel(item.partNumber);
+      const defaultLlevaArancel = checkLlevaArancel(item.partNumber, item.description, item.lineNumber);
       const isIntangible =
         normRule === 'intangible'
           ? true
@@ -792,7 +847,8 @@ export function recalculateEstimateResult(
         item.partNumber,
         item.description,
         params,
-        override
+        override,
+        item.lineNumber
       );
 
       originalProductTotal += baseNetCiscoUnit * item.qty;

@@ -92,6 +92,7 @@ import {
   PsirtAdvisory,
 } from '../ciscoApi';
 import { useCiscoAutomatedStore } from '../../core/store';
+import { checkIsIntangible, checkLlevaArancel } from '../../core/calculations';
 import { CloudEstimateRecord } from '../cloud';
 import { saveDesktopExcelFile, isDesktopApp } from '../../core/desktopBridge';
 import {
@@ -844,15 +845,12 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
         : `${parentCounter}.0.${childCounter}`;
 
       const pNum = (row.partNumber || '').toUpperCase();
+      const rowDesc = row.notes || row.partNumber || '';
       const isIntangible =
-        Boolean(row.durationMonths) ||
-        pNum.includes('-DNA-') ||
-        pNum.startsWith('DNA-') ||
-        pNum.startsWith('LIC-') ||
-        pNum.startsWith('CON-') ||
-        pNum.startsWith('L-') ||
-        pNum.startsWith('SVS-');
-      const llevaArancel = !isIntangible;
+        Boolean(row.durationMonths) || checkIsIntangible(pNum, rowDesc);
+      const llevaArancel = isIntangible
+        ? false
+        : checkLlevaArancel(pNum, rowDesc, lineNumber);
 
       const unitListGpl = row.estimatedUnitListUsd || 0;
       const rowDiscPct = isPureGplMode

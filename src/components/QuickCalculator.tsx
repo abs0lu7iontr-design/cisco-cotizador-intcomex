@@ -18,7 +18,7 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ params }) => {
   const [qty, setQty] = useState<number>(2);
   const [leadDays, setLeadDays] = useState<number>(35);
 
-  const calculated = calculateLineItemCosts(netPrice, qty, partNumber, description, params);
+  const calculated = calculateLineItemCosts(netPrice, qty, partNumber, description, params, undefined, '1.0');
   const leadTimeFormatted = formatLeadTime(leadDays) || 'Stock / En Blanco (≤ 2 días)';
 
   const formatCurrency = (val: number) => {
