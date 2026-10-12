@@ -8,14 +8,15 @@
 // 2. Cuando un SKU termina en '=' (repuesto/spare), la probabilidad de que venga en formato Línea Madre
 //    (1.0, 2.0, 3.0, etc.) es del 100%, y SIEMPRE lleva ARANCEL (6% Arancel + 7% Internación).
 // 3. Si un accesorio vigente No-EOL (Antena, Cable, Transceiver SFP/QSFP, Fuente PWR, Inyector PoE,
-//    Kit de Montaje/Bracket, Kit de Apilamiento, Módulo de Expansión/NIM, Ventilador, Blank)
+//    Kit de Montaje/Bracket, Kit de Apilamiento, Módulo de Expansión/NIM, Ventilador, Blank,
+//    Cámara MV, Sensor MT, Teléfono IP CP/DP, Room Bar / Endpoint Webex CS-*)
 //    aparece en formato Línea Madre (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0... al infinito)
 //    incluso SIN el signo '=', SIEMPRE lleva ARANCEL (6% Arancel + 7% Internación).
 // 4. Si el mismo accesorio aparece como Sub-Línea Hija (1.1, 1.2, 2.1, 1.0.1, etc.) SIN '=',
 //    es parte del chasis padre -> EQUIPO / TANGIBLE (7% Internación, 0% Arancel).
-// 5. Equipos Principales (Switches, Routers, Access Points, Firewalls, Controladoras,
-//    Cámaras, Sensores, Teléfonos IP, Barras de Video, Servidores UCS) NUNCA son accesorios,
-//    por lo que en línea madre (1.0, 2.0, 3.0, 4.0, 5.0, 6.0...) sin '=' son EQUIPO (7% Internación, 0% Arancel).
+// 5. Equipos Principales de Red/Cómputo (Switches, Routers, Access Points, Firewalls, Controladoras,
+//    Servidores UCS) NUNCA son accesorios, por lo que en línea madre (1.0, 2.0, 3.0, 4.0, 5.0, 6.0...)
+//    sin '=' son EQUIPO (7% Internación, 0% Arancel).
 // ============================================================================
 
 import { MODULAR_EOL_CATALOG_2026 } from '../modules/configuriator/rules';
@@ -27,7 +28,8 @@ export type CiscoAccessoryCategory =
   | 'TRANSCEIVERS'
   | 'ENERGIA_FUENTES_INYECTORES'
   | 'MONTAJE_VENTILACION_BLANKS'
-  | 'MODULOS_EXPANSION_ACCESORIOS';
+  | 'MODULOS_EXPANSION_ACCESORIOS'
+  | 'CAMARAS_SENSORES_TELEFONOS_ROOMBAR';
 
 export interface CiscoAccessoryCatalogEntry {
   sku: string;
@@ -79,6 +81,15 @@ export const KNOWN_EOL_ACCESSORY_SKUS: ReadonlySet<string> = new Set([
   'C3850-NM-8-10G',
   'C3KX-NM-1G',
   'C3KX-NM-10G',
+  // Cámaras y Teléfonos IP EOL (Legacy 7900 / MV Gen 1)
+  'CP-7942G',
+  'CP-7962G',
+  'CP-7945G',
+  'CP-7965G',
+  'MV12W-HW',
+  'MV12N-HW',
+  'MV21-HW',
+  'MV71-HW',
 ]);
 
 /**
@@ -686,6 +697,144 @@ export const NON_EOL_CISCO_ACCESSORIES_CATALOG: Record<CiscoAccessoryCategory, r
     'HS-WL-562-S-US',
     'HS-W-321-C-USB',
   ],
+
+  CAMARAS_SENSORES_TELEFONOS_ROOMBAR: [
+    // Cámaras Meraki MV Vigentes (Indoor & Outdoor Gen 2 / Gen 3)
+    'MV2-HW',
+    'MV2',
+    'MV12WE-HW',
+    'MV12WE',
+    'MV13-HW',
+    'MV13',
+    'MV13M-HW',
+    'MV13M',
+    'MV22X-HW',
+    'MV22X',
+    'MV23M-HW',
+    'MV23M',
+    'MV23X-HW',
+    'MV23X',
+    'MV32-HW',
+    'MV32',
+    'MV33-HW',
+    'MV33',
+    'MV33M-HW',
+    'MV33M',
+    'MV52-HW',
+    'MV52',
+    'MV63-HW',
+    'MV63',
+    'MV63M-HW',
+    'MV63M',
+    'MV63X-HW',
+    'MV63X',
+    'MV72X-HW',
+    'MV72X',
+    'MV73M-HW',
+    'MV73M',
+    'MV73X-HW',
+    'MV73X',
+    'MV84X-HW',
+    'MV84X',
+    'MV93-HW',
+    'MV93',
+    'MV93M-HW',
+    'MV93M',
+    'MV93X-HW',
+    'MV93X',
+    // Sensores Meraki MT Vigentes (Ambientales, Puertas, Agua, Calidad de Aire, Energía)
+    'MT10-HW',
+    'MT10',
+    'MT11-HW',
+    'MT11',
+    'MT12-HW',
+    'MT12',
+    'MT14-HW',
+    'MT14',
+    'MT15-HW',
+    'MT15',
+    'MT20-HW',
+    'MT20',
+    'MT30-HW',
+    'MT30',
+    'MT40-HW',
+    'MT40',
+    'MA-SFP-MT11-1',
+    'MA-CBL-MT12-1',
+    'MA-CBL-MT12-2',
+    // Teléfonos IP Cisco Vigentes (Series DP-9800, CP-9800, CP-8800, CP-7800, CP-6800, DECT & Conferencia)
+    'DP-9841-K9',
+    'DP-9851-K9',
+    'DP-9861-K9',
+    'DP-9871-K9',
+    'CP-9841-K9',
+    'CP-9851-K9',
+    'CP-9861-K9',
+    'CP-9871-K9',
+    'CP-8811-K9',
+    'CP-8811-3PCC-K9',
+    'CP-8841-K9',
+    'CP-8841-3PCC-K9',
+    'CP-8845-K9',
+    'CP-8845-3PCC-K9',
+    'CP-8851-K9',
+    'CP-8851-3PCC-K9',
+    'CP-8861-K9',
+    'CP-8861-3PCC-K9',
+    'CP-8865-K9',
+    'CP-8865-3PCC-K9',
+    'CP-8875-K9',
+    'CP-8875NR-K9',
+    'CP-8832-K9',
+    'CP-8832-3PCC-K9',
+    'CP-8821-K9-BUN',
+    'CP-7811-K9',
+    'CP-7811-3PCC-K9',
+    'CP-7821-K9',
+    'CP-7821-3PCC-K9',
+    'CP-7841-K9',
+    'CP-7841-3PCC-K9',
+    'CP-7861-K9',
+    'CP-7861-3PCC-K9',
+    'CP-7832-K9',
+    'CP-7832-3PCC-K9',
+    'CP-6821-3PCC-K9',
+    'CP-6841-3PCC-K9',
+    'CP-6851-3PCC-K9',
+    'CP-6861-3PCC-K9',
+    'CP-6871-3PCC-K9',
+    'DBS-210-3PC-K9',
+    'CP-6825-3PC-K9',
+    'ATA191-K9',
+    'ATA191-3PW-K9',
+    // Room Bar, Room Kit, Board Pro, Desk Pro, Codecs, Cámaras PTZ y Touch Panels Webex Vigentes
+    'CS-BAR-T-K9',
+    'CS-BAR-T-C-K9',
+    'CS-BARPRO-K9',
+    'CS-BARPRO-C-K9',
+    'CS-BAR-BYOD-K9',
+    'CS-KIT-EQ-K9',
+    'CS-KIT-EQX-K9',
+    'CS-KITPLUS-K9',
+    'CS-KITPRO-K9',
+    'CS-KITMINI-K9',
+    'CS-CODEC-EQ-K9',
+    'CS-CODEC-PRO-K9',
+    'CS-CODEC-PLUS-K9',
+    'CS-BRD55P-K9',
+    'CS-BRD75P-K9',
+    'CS-BRD55P-G2-K9',
+    'CS-BRD75P-G2-K9',
+    'CS-DESKPRO-K9',
+    'CS-DESK-K9',
+    'CS-DESKMINI-K9',
+    'CS-CAM-PTZ4K',
+    'CS-QUADCAM2',
+    'CS-T10-TS-K9',
+    'CS-T10-WM-K9',
+    'CS-T10-TS-L-K9',
+    'CS-T10-WM-L-K9',
+  ],
 };
 
 /**
@@ -700,7 +849,7 @@ export const NON_EOL_CISCO_ACCESSORIES_SET: ReadonlySet<string> = new Set(
 /**
  * Expresiones Regulares de cobertura infinita para identificar CUALQUIER accesorio
  * Cisco / Meraki vigente (Antenas, Cables, Transceivers, Fuentes, Inyectores, Kits de Montaje,
- * Kits de Stacking, Módulos de Expansión, Ventiladores, Blanks).
+ * Kits de Stacking, Módulos de Expansión, Ventiladores, Blanks, Cámaras, Sensores, Teléfonos IP, Room Bar).
  */
 export const CISCO_ACCESSORY_INFINITE_PATTERNS: readonly RegExp[] = [
   // 1. ANTENAS y Accesorios RF
@@ -792,13 +941,21 @@ export const CISCO_ACCESSORY_INFINITE_PATTERNS: readonly RegExp[] = [
   /^CP-(8800|9800)-[A-Z0-9-]*?(KEM|WMK)/i,
   /^CS-(MIC|WALLMOUNT|T10)[-A-Z0-9]+/i,
   /^(CP-)?HS-(WL|W)-\d+[-A-Z0-9]*/i,
+
+  // 7. CÁMARAS (MV), SENSORES (MT), TELÉFONOS IP (CP/DP) Y ROOM BAR / COLABORACIÓN WEBEX (CS-*)
+  /^MV([12356789]\d|2)[A-Z0-9-]*/i,
+  /^MT(10|11|12|14|15|20|30|40)(-HW)?$/i,
+  /^(CP|DP)-(68\d\d|78\d\d|88\d\d|98\d\d)[A-Z0-9-]*/i,
+  /^DBS-\d{3}[-A-Z0-9]*/i,
+  /^ATA19\d[-A-Z0-9]*/i,
+  /^CS-(BAR|BARPRO|KIT|CODEC|BRD|BOARD|DESK|ROOM|CAM|QUADCAM|T10|TOUCH|MIC|WALLMOUNT)[A-Z0-9-]*/i,
 ];
 
 /**
- * Expresiones Regulares de EQUIPOS PRINCIPALES (NO son accesorios).
- * Protege switches, routers, access points, firewalls, controladoras, cámaras,
- * sensores, teléfonos IP, barras de colaboración y servidores UCS para que NUNCA
- * sean confundidos con accesorios cuando están en línea madre (1.0, 2.0, 3.0...) sin '='.
+ * Expresiones Regulares de EQUIPOS PRINCIPALES DE RED Y CÓMPUTO (NO son accesorios).
+ * Protege switches, routers, access points, firewalls, controladoras inalámbricas y servidores UCS
+ * para que NUNCA sean confundidos con accesorios cuando están en línea madre (1.0, 2.0, 3.0...) sin '='.
+ * Nota: Cámaras (MV), Sensores (MT), Teléfonos IP (CP/DP) y Room Bar (CS-*) SÍ se consideran accesorios.
  */
 const MAIN_EQUIPMENT_CHASSIS_EXCLUSION_PATTERNS: readonly RegExp[] = [
   // Switches Catalyst, Nexus, Meraki MS, Industrial IE, Business CBS/C1200/C1300
@@ -831,14 +988,6 @@ const MAIN_EQUIPMENT_CHASSIS_EXCLUSION_PATTERNS: readonly RegExp[] = [
   /^ASA55\d\d/i,
   /^FMC\d{4}/i,
   /^SNS-\d{4}/i,
-
-  // Meraki Cameras (MV) & Sensors (MT)
-  /^MV([12356789]\d|2)\b/i,
-  /^MT(10|11|12|14|15|20|30|40)\b/i,
-
-  // IP Phones & Collaboration Endpoints (Room Bar, Codec, Board, Desk)
-  /^CP-(68\d\d|78\d\d|88\d\d|98\d\d)-[A-Z0-9-]+/i, // Excluyendo CP-8800-*-KEM / WMK
-  /^CS-(BAR|KIT|BOARD|DESK|CODEC|ROOM)[A-Z0-9-]*/i,
 
   // UCS Servers & Catalyst Center Appliances
   /^UCSC?-C\d{3}/i,
@@ -895,14 +1044,14 @@ export function isEolAccessoryOrProductSku(sku: string): boolean {
 }
 
 /**
- * Determina si un SKU es un Equipo Principal (Switch, Router, AP, Firewall, Controladora,
- * Cámara, Sensor, Teléfono IP, Barra de Colaboración, Servidor UCS).
+ * Determina si un SKU es un Equipo Principal de Red/Cómputo (Switch, Router, AP, Firewall,
+ * Controladora Inalámbrica, Servidor UCS).
  */
 export function isMainHardwareChassisSku(sku: string): boolean {
   const cleanSku = (sku || '').trim().toUpperCase().replace(/=$/, '');
   if (!cleanSku) return false;
 
-  // Excepciones de accesorios que comparten prefijo con chasis (ej. N9K-C9300-ACK / RMK, CP-8800-A-KEM / WMK, C9800-AC-RM-19)
+  // Excepciones de accesorios que comparten prefijo con chasis (ej. N9K-C9300-ACK / RMK, C9800-AC-RM-19)
   if (
     /-(ACK|RMK|ACC-KIT|4PT-KIT|STACK-KIT\d*|BLANK|RCKMNT|KEM|WMK)$/i.test(cleanSku) ||
     /-RM-19/i.test(cleanSku)
@@ -922,6 +1071,7 @@ export function isMainHardwareChassisSku(sku: string): boolean {
  * - Fuentes de Poder, Inyectores PoE y Cubos/Adaptadores de Energía
  * - Kits de Montaje, Brackets de AP, Rieles de Rack/DIN, Ventiladores (Fans) y Tapas Ciegas (Blanks)
  * - Módulos de Expansión (NM, NIM, SM-X), Kits de Apilamiento (Stack Kits), Tarjetas de Línea y Accesorios Webex
+ * - Cámaras (MV), Sensores (MT), Teléfonos IP (CP/DP) y Room Bar / Endpoints de Colaboración (CS-*)
  */
 export function isCiscoAccessorySku(sku: string, description: string = ''): boolean {
   const cleanSku = (sku || '').trim().toUpperCase().replace(/=$/, '');
@@ -956,7 +1106,7 @@ export function isCiscoAccessorySku(sku: string, description: string = ''): bool
     return false;
   }
 
-  // 3. Excluir Equipos Principales (Switches, Routers, APs, Firewalls, Cámaras, Teléfonos, Servidores)
+  // 3. Excluir Equipos Principales (Switches, Routers, APs, Firewalls, Controladoras, Servidores UCS)
   if (isMainHardwareChassisSku(cleanSku)) {
     return false;
   }
@@ -997,6 +1147,14 @@ export function isCiscoAccessorySku(sku: string, description: string = ''): bool
     'blank module',
     'blank cover',
     'key expansion module',
+    'ip phone',
+    'desk phone',
+    'room bar',
+    'room kit',
+    'varifocal camera',
+    'smart camera',
+    'humidity sensor',
+    'environmental sensor',
   ];
 
   if (accessoryDescKeywords.some((kw) => lowerDesc.includes(kw))) {

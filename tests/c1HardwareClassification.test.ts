@@ -377,6 +377,15 @@ const representativeAccessories = [
   { sku: 'C9200L-STACK-KIT', desc: 'Catalyst 9200L Stack Module', lineMother: '31.0', lineChild: '31.1' },
   { sku: 'C-NIM-2T', desc: '2-port 100M/1G RJ45/SFP NIM', lineMother: '32.0', lineChild: '32.1' },
   { sku: 'NIM-4FXO', desc: '4-Port Network Interface Module - FXO (Universal)', lineMother: '33.0', lineChild: '33.1' },
+  // Cámaras, Sensores, Teléfonos IP y Room Bar / Colaboración (sin '=') -> SON ACCESORIOS
+  { sku: 'MV22X-HW', desc: 'Meraki MV22X Indoor Varifocal Camera', lineMother: '34.0', lineChild: '34.1' },
+  { sku: 'MV63X-HW', desc: 'Meraki MV63X Outdoor Varifocal Bullet Camera', lineMother: '35.0', lineChild: '35.1' },
+  { sku: 'MT10-HW', desc: 'Meraki MT10 Indoor Temperature and Humidity Sensor', lineMother: '36.0', lineChild: '36.1' },
+  { sku: 'MT14-HW', desc: 'Meraki MT14 Indoor Air Quality Sensor', lineMother: '37.0', lineChild: '37.1' },
+  { sku: 'CP-8845-K9', desc: 'Cisco IP Phone 8845', lineMother: '38.0', lineChild: '38.1' },
+  { sku: 'DP-9861-K9', desc: 'Cisco Desk Phone 9861', lineMother: '39.0', lineChild: '39.1' },
+  { sku: 'CS-BAR-T-K9', desc: 'Cisco Room Bar', lineMother: '40.0', lineChild: '40.1' },
+  { sku: 'CS-KIT-EQ-K9', desc: 'Cisco Room Kit EQ', lineMother: '41.0', lineChild: '41.1' },
 ];
 
 for (const acc of representativeAccessories) {
@@ -440,11 +449,7 @@ const mainEquipmentOnMotherLines = [
   { sku: 'MR46-HW', desc: 'Meraki MR46 Wi-Fi 6 Indoor AP', line: '8.0' },
   { sku: 'FPR1010-NGFW-K9', desc: 'Cisco Firepower 1010 NGFW Appliance', line: '9.0' },
   { sku: 'C9800-L-F-K9', desc: 'Cisco Catalyst 9800-L Wireless Controller Fiber', line: '10.0' },
-  { sku: 'MV22X-HW', desc: 'Meraki MV22X Indoor Varifocal Camera', line: '11.0' },
-  { sku: 'MT10-HW', desc: 'Meraki MT10 Indoor Temperature and Humidity Sensor', line: '12.0' },
-  { sku: 'CP-8845-K9', desc: 'Cisco IP Phone 8845', line: '13.0' },
-  { sku: 'CS-BAR-T-K9', desc: 'Cisco Room Bar', line: '14.0' },
-  { sku: 'UCSC-C220-M7S', desc: 'UCS C220 M7 Rack Server', line: '15.0' },
+  { sku: 'UCSC-C220-M7S', desc: 'UCS C220 M7 Rack Server', line: '11.0' },
 ];
 
 for (const eq of mainEquipmentOnMotherLines) {
@@ -459,7 +464,7 @@ for (const eq of mainEquipmentOnMotherLines) {
     `El equipo principal ${eq.sku} en línea madre (${eq.line}) sin '=' NO debe llevar arancel`
   );
 }
-console.log(`✅ ${mainEquipmentOnMotherLines.length} Equipos Principales verificados: en Línea Madre (1.0..15.0) sin '=' son EQUIPO (0% Arancel).`);
+console.log(`✅ ${mainEquipmentOnMotherLines.length} Equipos Principales verificados: en Línea Madre (1.0..11.0) sin '=' son EQUIPO (0% Arancel).`);
 
 // 6.4 Verificación de exclusión de SKUs End-of-Life (EOL) del catálogo de accesorios No-EOL 2026
 const eolAccessorySkus = [
@@ -470,6 +475,8 @@ const eolAccessorySkus = [
   'GLC-SX-MM',
   'CAB-STACK-50CM',
   'C3850-NM-4-1G',
+  'CP-7942G',
+  'MV21-HW',
 ];
 for (const eolSku of eolAccessorySkus) {
   assert.strictEqual(
