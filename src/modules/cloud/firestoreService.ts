@@ -32,13 +32,38 @@ import {
   getEstimatesMirrorSnapshot,
   saveEstimatesMirrorSnapshot,
   getMirrorLastSyncTimestamp,
+  getDeletedEstimateIds,
+  addDeletedEstimateId,
 } from '../../hooks/useEstimatesMirror';
 import { normalizeIsoTimestamp } from '../../utils/dateUtils';
 
 const ESTIMATES_COLLECTION = 'estimates';
 const DSV_COLLECTION = 'dsv_records';
 
+// Claves de Bóveda Redundante Multi-Capa para Registros DSV
 const LOCAL_DSV_BACKUP_KEY = 'cisco_cloud_dsv_cache_v2';
+const LOCAL_DSV_VAULT_KEY = 'cisco_dsv_permanent_vault_v1';
+const LOCAL_DSV_LEGACY_KEY = 'cisco_dsv_backup_cache_v1';
+const LOCAL_DSV_DELETED_KEY = 'cisco_dsv_deleted_ids_v1';
+
+export function getDeletedDsvIds(): Set<string> {
+  try {
+    if (typeof localStorage === 'undefined') return new Set();
+    const raw = localStorage.getItem(LOCAL_DSV_DELETED_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function addDeletedDsvId(id: string): void {
+  try {
+    if (typeof localStorage === 'undefined' || !id) return;
+    const current = getDeletedDsvIds();
+    current.add(id.trim());
+    localStorage.setItem(LOCAL_DSV_DELETED_KEY, JSON.stringify(Array.from(current)));
+  } catch {}
+}
 
 // ----------------------------------------------------------------------------
 // Local Storage Cache & Mirror Snapshot Helpers (0ms Instant Load + Failsafe)
@@ -52,12 +77,26 @@ function saveLocalEstimatesCache(list: CloudEstimateRecord[], markSyncedNow: boo
 }
 
 // Re-export mirror snapshot helpers for backwards-compatible consumers
-export { getEstimatesMirrorSnapshot, getMirrorLastSyncTimestamp };
+export { getEstimatesMirrorSnapshot, getMirrorLastSyncTimestamp, getDeletedEstimateIds, addDeletedEstimateId };
 
 function getLocalDsvCache(): CloudDsvRecord[] {
   try {
-    const raw = localStorage.getItem(LOCAL_DSV_BACKUP_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (typeof localStorage === 'undefined') return [];
+    const deletedIds = getDeletedDsvIds();
+    const rawV2 = localStorage.getItem(LOCAL_DSV_BACKUP_KEY);
+    const rawVault = localStorage.getItem(LOCAL_DSV_VAULT_KEY);
+    const rawLegacy = localStorage.getItem(LOCAL_DSV_LEGACY_KEY);
+
+    const listV2: CloudDsvRecord[] = rawV2 ? JSON.parse(rawV2) : [];
+    const listVault: CloudDsvRecord[] = rawVault ? JSON.parse(rawVault) : [];
+    const listLegacy: CloudDsvRecord[] = rawLegacy ? JSON.parse(rawLegacy) : [];
+
+    const map = new Map<string, CloudDsvRecord>();
+    for (const r of [...listLegacy, ...listVault, ...listV2]) {
+      if (!r || !r.id || deletedIds.has(r.id)) continue;
+      map.set(r.id, r);
+    }
+    return Array.from(map.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   } catch (_) {
     return [];
   }
@@ -65,7 +104,13 @@ function getLocalDsvCache(): CloudDsvRecord[] {
 
 function saveLocalDsvCache(list: CloudDsvRecord[]) {
   try {
-    localStorage.setItem(LOCAL_DSV_BACKUP_KEY, JSON.stringify(list));
+    if (typeof localStorage === 'undefined') return;
+    const deletedIds = getDeletedDsvIds();
+    const cleanList = list.filter((r) => r && r.id && !deletedIds.has(r.id)).slice(0, 500);
+    const serialized = JSON.stringify(cleanList);
+    localStorage.setItem(LOCAL_DSV_BACKUP_KEY, serialized);
+    localStorage.setItem(LOCAL_DSV_VAULT_KEY, serialized);
+    localStorage.setItem(LOCAL_DSV_LEGACY_KEY, serialized);
   } catch (_) {}
 }
 
@@ -1125,20 +1170,26 @@ export async function resolveEstimateAccessRequest(
 }
 
 /**
- * Deletes an estimate document from Firestore and local cache.
+ * Deletes an estimate document from Firestore and local cache with permanent tombstone tracking.
  */
 export async function deleteCloudEstimate(
   docId: string,
   estimateId?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // 1. Remove from local cache
+    // 1. Register permanent tombstone so it never resurrects
+    addDeletedEstimateId(docId);
+    if (estimateId && estimateId !== 'NA') {
+      addDeletedEstimateId(estimateId);
+    }
+
+    // 2. Remove from local cache
     const localList = getLocalEstimatesCache().filter(
       (x) => x.id !== docId && !(estimateId && estimateId !== 'NA' && x.estimateId === estimateId)
     );
     saveLocalEstimatesCache(localList);
 
-    // 2. Remove from Firestore
+    // 3. Remove from Firestore
     const { db, isReady } = getFirestoreInstance();
     if (isReady && db) {
       if (!docId.startsWith('cloud-est-')) {
@@ -1160,11 +1211,11 @@ export async function deleteCloudEstimate(
 }
 
 // ----------------------------------------------------------------------------
-// 2. DSV (DIRECT SHIP VENDOR) CLOUD SERVICE
+// 2. DSV (DIRECT SHIP VENDOR) CLOUD SERVICE (WITH MULTI-TIER VAULT & AUTO-SYNC)
 // ----------------------------------------------------------------------------
 
 /**
- * Saves a generated DSV record to Firestore 'dsv_records' collection.
+ * Saves a generated DSV record to Firestore 'dsv_records' collection with redundant vault persistence.
  */
 export async function saveDsvToCloud(
   record: Omit<CloudDsvRecord, 'id'>
@@ -1172,13 +1223,14 @@ export async function saveDsvToCloud(
   try {
     const { db, isReady, error } = getFirestoreInstance();
 
-    // 1. Local Cache Persistence
-    const localList = getLocalDsvCache();
+    // 1. Local Cache Persistence in Multi-Tier Vault
+    const cleanCreatedAt = record.createdAt || new Date().toISOString();
     const localId = 'cloud-dsv-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
-    const newRecordWithId: CloudDsvRecord = { ...record, id: localId };
+    const newRecordWithId: CloudDsvRecord = { ...record, id: localId, createdAt: cleanCreatedAt };
     
-    const updatedLocal = [newRecordWithId, ...localList.filter((x) => x.soNumber !== record.soNumber || x.dealId !== record.dealId)];
-    saveLocalDsvCache(updatedLocal.slice(0, 100));
+    const localList = getLocalDsvCache();
+    const updatedLocal = [newRecordWithId, ...localList.filter((x) => x.id !== localId && (x.soNumber !== record.soNumber || x.dealId !== record.dealId))];
+    saveLocalDsvCache(updatedLocal);
 
     // 2. Firestore Cloud Persistence
     if (!isReady || !db) {
@@ -1192,11 +1244,17 @@ export async function saveDsvToCloud(
     const colRef = collection(db, DSV_COLLECTION);
     const sanitizedRecord = sanitizeForFirestore({
       ...record,
-      createdAt: record.createdAt || new Date().toISOString(),
+      createdAt: cleanCreatedAt,
     });
-    const docRef = await withTimeout(addDoc(colRef, sanitizedRecord), 3000);
+    const docRef = await withTimeout(addDoc(colRef, sanitizedRecord), 6000);
 
-    return { success: true, id: docRef.id };
+    // Actualizar ID local con el ID real de Firestore
+    if (docRef?.id) {
+      const confirmedList = updatedLocal.map((item) => (item.id === localId ? { ...item, id: docRef.id } : item));
+      saveLocalDsvCache(confirmedList);
+    }
+
+    return { success: true, id: docRef ? docRef.id : localId };
   } catch (err: any) {
     console.warn('[Firestore Cloud Warning - saveDsv]:', err);
     return {
@@ -1207,14 +1265,15 @@ export async function saveDsvToCloud(
 }
 
 /**
- * Fetches DSV Records from Firestore on-demand using getDocs().
+ * Fetches DSV Records from Firestore on-demand using getDocs() with smart bidirectional merge.
  */
 export async function getCloudDsvs(
-  limitCount: number = 50
+  limitCount: number = 200
 ): Promise<{ success: boolean; data: CloudDsvRecord[]; error?: string }> {
   try {
     const { db, isReady, error } = getFirestoreInstance();
     const localCache = getLocalDsvCache();
+    const deletedIds = getDeletedDsvIds();
 
     if (!isReady || !db) {
       return {
@@ -1226,22 +1285,45 @@ export async function getCloudDsvs(
 
     const colRef = collection(db, DSV_COLLECTION);
     const q = query(colRef, orderBy('createdAt', 'desc'), limit(limitCount));
-    const snapshot = await withTimeout(getDocs(q), 2500);
+    const snapshot = await withTimeout(getDocs(q), 6000);
 
     const remoteList: CloudDsvRecord[] = [];
     snapshot.forEach((docSnap) => {
       const data = docSnap.data() as Omit<CloudDsvRecord, 'id'>;
+      if (deletedIds.has(docSnap.id)) {
+        // Purgar de Firestore en segundo plano si está tombstoned
+        deleteDoc(doc(db, DSV_COLLECTION, docSnap.id)).catch(() => {});
+        return;
+      }
       remoteList.push({
         ...data,
         id: docSnap.id,
       });
     });
 
-    const remoteKeys = new Set(remoteList.map((r) => `${r.soNumber}__${r.createdAt}`));
-    const nonDuplicatedLocal = localCache.filter((l) => !remoteKeys.has(`${l.soNumber}__${l.createdAt}`));
-    const merged = [...remoteList, ...nonDuplicatedLocal];
+    const remoteKeys = new Set(remoteList.map((r) => r.id));
+    const nonDuplicatedLocal = localCache.filter((l) => !remoteKeys.has(l.id) && !deletedIds.has(l.id));
 
-    saveLocalDsvCache(merged.slice(0, 100));
+    // Auto-sincronizar registros locales pendientes a Firestore
+    if (nonDuplicatedLocal.length > 0) {
+      for (const pending of nonDuplicatedLocal) {
+        if (pending.id.startsWith('cloud-dsv-')) {
+          const { id: _omit, ...payload } = pending;
+          addDoc(colRef, sanitizeForFirestore(payload)).then((newDoc) => {
+            if (newDoc?.id) {
+              const current = getLocalDsvCache().map((x) => (x.id === pending.id ? { ...x, id: newDoc.id } : x));
+              saveLocalDsvCache(current);
+            }
+          }).catch(() => {});
+        }
+      }
+    }
+
+    const merged = [...remoteList, ...nonDuplicatedLocal].sort((a, b) =>
+      (b.createdAt || '').localeCompare(a.createdAt || '')
+    );
+
+    saveLocalDsvCache(merged);
 
     return { success: true, data: merged };
   } catch (err: any) {
@@ -1255,19 +1337,24 @@ export async function getCloudDsvs(
 }
 
 /**
- * Deletes a DSV document from Firestore and local cache.
+ * Deletes a DSV document from Firestore and local cache with permanent tombstone tracking.
  */
 export async function deleteCloudDsv(
   docId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // 1. Registrar lápida para evitar resurrección
+    addDeletedDsvId(docId);
+
+    // 2. Eliminar de caché local
     const localList = getLocalDsvCache().filter((x) => x.id !== docId);
     saveLocalDsvCache(localList);
 
+    // 3. Eliminar de Firestore
     const { db, isReady } = getFirestoreInstance();
     if (isReady && db && !docId.startsWith('cloud-dsv-')) {
       const docRef = doc(db, DSV_COLLECTION, docId);
-      await withTimeout(deleteDoc(docRef), 2000);
+      await withTimeout(deleteDoc(docRef), 3000);
     }
 
     return { success: true };
@@ -1467,11 +1554,50 @@ export async function deleteCloudUser(
 // ----------------------------------------------------------------------------
 const SHARED_SKU_COLLECTION = 'shared_sku_rules';
 const LOCAL_SHARED_SKU_BACKUP_KEY = 'cisco_shared_sku_rules_cache_v2';
+const LOCAL_SHARED_SKU_VAULT_KEY = 'cisco_shared_sku_permanent_vault_v1';
+const LOCAL_SHARED_SKU_LEGACY_KEY = 'cisco_shared_sku_rules_cache_v1';
+const LOCAL_SHARED_SKU_DELETED_KEY = 'cisco_shared_sku_deleted_ids_v1';
+
+export function getDeletedSharedSkuIds(): Set<string> {
+  try {
+    if (typeof localStorage === 'undefined') return new Set();
+    const raw = localStorage.getItem(LOCAL_SHARED_SKU_DELETED_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function addDeletedSharedSkuId(sku: string): void {
+  try {
+    if (typeof localStorage === 'undefined' || !sku) return;
+    const current = getDeletedSharedSkuIds();
+    const clean = sku.trim().toUpperCase();
+    current.add(clean);
+    localStorage.setItem(LOCAL_SHARED_SKU_DELETED_KEY, JSON.stringify(Array.from(current)));
+  } catch {}
+}
 
 export function getLocalSharedSkuCache(): SharedSkuOverrideRecord[] {
   try {
-    const raw = localStorage.getItem(LOCAL_SHARED_SKU_BACKUP_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (typeof localStorage === 'undefined') return [];
+    const deletedIds = getDeletedSharedSkuIds();
+    const rawV2 = localStorage.getItem(LOCAL_SHARED_SKU_BACKUP_KEY);
+    const rawVault = localStorage.getItem(LOCAL_SHARED_SKU_VAULT_KEY);
+    const rawLegacy = localStorage.getItem(LOCAL_SHARED_SKU_LEGACY_KEY);
+
+    const listV2: SharedSkuOverrideRecord[] = rawV2 ? JSON.parse(rawV2) : [];
+    const listVault: SharedSkuOverrideRecord[] = rawVault ? JSON.parse(rawVault) : [];
+    const listLegacy: SharedSkuOverrideRecord[] = rawLegacy ? JSON.parse(rawLegacy) : [];
+
+    const map = new Map<string, SharedSkuOverrideRecord>();
+    for (const r of [...listLegacy, ...listVault, ...listV2]) {
+      if (!r || !r.sku) continue;
+      const cleanSku = r.sku.trim().toUpperCase();
+      if (deletedIds.has(cleanSku)) continue;
+      map.set(cleanSku, { ...r, sku: cleanSku });
+    }
+    return Array.from(map.values());
   } catch (_) {
     return [];
   }
@@ -1479,7 +1605,13 @@ export function getLocalSharedSkuCache(): SharedSkuOverrideRecord[] {
 
 export function saveLocalSharedSkuCache(rules: SharedSkuOverrideRecord[]) {
   try {
-    localStorage.setItem(LOCAL_SHARED_SKU_BACKUP_KEY, JSON.stringify(rules));
+    if (typeof localStorage === 'undefined') return;
+    const deletedIds = getDeletedSharedSkuIds();
+    const cleanList = rules.filter((r) => r && r.sku && !deletedIds.has(r.sku.trim().toUpperCase()));
+    const serialized = JSON.stringify(cleanList);
+    localStorage.setItem(LOCAL_SHARED_SKU_BACKUP_KEY, serialized);
+    localStorage.setItem(LOCAL_SHARED_SKU_VAULT_KEY, serialized);
+    localStorage.setItem(LOCAL_SHARED_SKU_LEGACY_KEY, serialized);
   } catch (_) {}
 }
 
@@ -1513,7 +1645,7 @@ export async function publishSharedSkuRules(
       createdAt: r.createdAt || new Date().toISOString(),
     }));
 
-    // 1. Update local cache
+    // 1. Update local cache redundantly
     const existingLocal = getLocalSharedSkuCache();
     const cleanSkus = new Set(cleanRules.map((r) => r.sku));
     const mergedLocal = [
@@ -1528,7 +1660,7 @@ export async function publishSharedSkuRules(
       for (const rule of cleanRules) {
         const safeDocId = encodeURIComponent(rule.sku).replace(/\./g, '%2E');
         const ruleDocRef = doc(db, SHARED_SKU_COLLECTION, safeDocId);
-        await withTimeout(setDoc(ruleDocRef, sanitizeForFirestore(rule), { merge: true }), 2500);
+        await withTimeout(setDoc(ruleDocRef, sanitizeForFirestore(rule), { merge: true }), 3500);
       }
     }
 
@@ -1546,7 +1678,7 @@ export async function publishSharedSkuRules(
 }
 
 /**
- * Retrieves all shared SKU overrides from Firestore & local backup
+ * Retrieves all shared SKU overrides from Firestore & local backup with auto-sync
  */
 export async function getSharedSkuRules(): Promise<{
   success: boolean;
@@ -1555,6 +1687,7 @@ export async function getSharedSkuRules(): Promise<{
 }> {
   try {
     const localCache = getLocalSharedSkuCache();
+    const deletedIds = getDeletedSharedSkuIds();
     const { db, isReady, error } = getFirestoreInstance();
 
     if (!isReady || !db) {
@@ -1562,7 +1695,7 @@ export async function getSharedSkuRules(): Promise<{
     }
 
     const colRef = collection(db, SHARED_SKU_COLLECTION);
-    const snapshot = await withTimeout(getDocs(colRef), 3000);
+    const snapshot = await withTimeout(getDocs(colRef), 4000);
 
     const remoteList: SharedSkuOverrideRecord[] = [];
     snapshot.forEach((docSnap) => {
@@ -1576,20 +1709,36 @@ export async function getSharedSkuRules(): Promise<{
         rawSku = docSnap.id;
       }
 
+      const finalSku = (rawSku || docSnap.id).toUpperCase();
+      if (deletedIds.has(finalSku)) {
+        // Purgar de Firestore si está tombstoned
+        deleteDoc(doc(db, SHARED_SKU_COLLECTION, docSnap.id)).catch(() => {});
+        return;
+      }
+
       remoteList.push({
         ...data,
         id: docSnap.id,
-        sku: (rawSku || docSnap.id).toUpperCase(),
+        sku: finalSku,
         rule: normalizeRuleValue(data.rule),
         previousType: data.previousType || 'Hardware',
       });
     });
 
     const remoteSkus = new Set(remoteList.map((r) => r.sku));
-    const nonDuplicatedLocal = localCache.filter((l) => !remoteSkus.has(l.sku));
-    const merged = [...remoteList, ...nonDuplicatedLocal];
+    const nonDuplicatedLocal = localCache.filter((l) => !remoteSkus.has(l.sku) && !deletedIds.has(l.sku));
 
+    // Auto-sincronizar reglas locales pendientes a Firestore
+    if (nonDuplicatedLocal.length > 0) {
+      for (const rule of nonDuplicatedLocal) {
+        const safeDocId = encodeURIComponent(rule.sku).replace(/\./g, '%2E');
+        setDoc(doc(db, SHARED_SKU_COLLECTION, safeDocId), sanitizeForFirestore(rule), { merge: true }).catch(() => {});
+      }
+    }
+
+    const merged = [...remoteList, ...nonDuplicatedLocal];
     saveLocalSharedSkuCache(merged);
+
     return { success: true, data: merged };
   } catch (err: any) {
     console.warn('[Firestore Cloud Warning - getSharedSkuRules]:', err);
@@ -1602,20 +1751,41 @@ export async function getSharedSkuRules(): Promise<{
 }
 
 /**
- * Deletes a shared SKU rule from Firestore & local cache
+ * Deletes a shared SKU rule from Firestore & local cache with permanent tombstone tracking
  */
 export async function deleteSharedSkuRule(
   sku: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const cleanSku = sku.trim().toUpperCase();
+    // 1. Registrar lápida (tombstone)
+    addDeletedSharedSkuId(cleanSku);
+
+    // 2. Eliminar de caché local redundante
     const localList = getLocalSharedSkuCache().filter((r) => r.sku !== cleanSku);
     saveLocalSharedSkuCache(localList);
 
+    // 3. Eliminar de overrides en memoria y vault
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const rawOverrides = localStorage.getItem('cisco_sku_overrides_v2');
+        if (rawOverrides) {
+          const parsed = JSON.parse(rawOverrides);
+          delete parsed[cleanSku];
+          localStorage.setItem('cisco_sku_overrides_v2', JSON.stringify(parsed));
+          localStorage.setItem('cisco_sku_overrides_vault_v1', JSON.stringify(parsed));
+        }
+      }
+    } catch (_) {}
+
+    // 4. Eliminar de Firestore con docId codificado correcto
     const { db, isReady } = getFirestoreInstance();
     if (isReady && db) {
-      const docRef = doc(db, SHARED_SKU_COLLECTION, cleanSku);
-      await withTimeout(deleteDoc(docRef), 2000);
+      const safeDocId = encodeURIComponent(cleanSku).replace(/\./g, '%2E');
+      await withTimeout(deleteDoc(doc(db, SHARED_SKU_COLLECTION, safeDocId)), 3000);
+      if (safeDocId !== cleanSku) {
+        deleteDoc(doc(db, SHARED_SKU_COLLECTION, cleanSku)).catch(() => {});
+      }
     }
 
     return { success: true };

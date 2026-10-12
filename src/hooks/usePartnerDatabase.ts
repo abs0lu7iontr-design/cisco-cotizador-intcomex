@@ -15,21 +15,27 @@ export interface PartnerRecord {
   updatedAt?: number;
 }
 
-const LOCAL_STORAGE_PARTNERS_KEY = 'cisco_partners_xcl_cache_v1';
+export const LOCAL_STORAGE_PARTNERS_KEY = 'cisco_partners_xcl_cache_v1';
+export const LOCAL_STORAGE_PARTNERS_VAULT_KEY = 'cisco_partners_xcl_vault_v1';
 
 /**
  * Hook de autocompletado y sincronización Local-First para códigos XCL de Partners.
  * Proporciona respuesta en 0ms desde la caché local y sincronización reactiva con Firestore.
  */
 export function usePartnerDatabase(originalBomName: string) {
-  // Inicialización inmediata desde LocalStorage (Local-First)
+  // Inicialización inmediata desde LocalStorage multi-capa (Local-First)
   const [partners, setPartners] = useState<PartnerRecord[]>(() => {
     try {
-      const cached = localStorage.getItem(LOCAL_STORAGE_PARTNERS_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed)) return parsed;
-      }
+      const cached1 = localStorage.getItem(LOCAL_STORAGE_PARTNERS_KEY);
+      const cached2 = localStorage.getItem(LOCAL_STORAGE_PARTNERS_VAULT_KEY);
+      const p1: PartnerRecord[] = cached1 ? JSON.parse(cached1) : [];
+      const p2: PartnerRecord[] = cached2 ? JSON.parse(cached2) : [];
+      const map = new Map<string, PartnerRecord>();
+      [...p2, ...p1].forEach((p) => {
+        if (p && p.resellerName) map.set(p.resellerName.toUpperCase(), p);
+      });
+      const merged = Array.from(map.values());
+      if (merged.length > 0) return merged;
     } catch (_) {}
     return [];
   });
@@ -74,7 +80,9 @@ export function usePartnerDatabase(originalBomName: string) {
               loaded.forEach((p) => map.set(p.resellerName.toUpperCase(), p));
               const merged = Array.from(map.values());
               try {
-                localStorage.setItem(LOCAL_STORAGE_PARTNERS_KEY, JSON.stringify(merged));
+                const serialized = JSON.stringify(merged);
+                localStorage.setItem(LOCAL_STORAGE_PARTNERS_KEY, serialized);
+                localStorage.setItem(LOCAL_STORAGE_PARTNERS_VAULT_KEY, serialized);
               } catch (_) {}
               return merged;
             });
@@ -159,7 +167,9 @@ export function usePartnerDatabase(originalBomName: string) {
       const filtered = prev.filter((p) => p.resellerName.toUpperCase() !== cleanName.toUpperCase());
       const updated = [...filtered, { resellerName: cleanName, xclCode: cleanXcl, updatedAt: Date.now() }];
       try {
-        localStorage.setItem(LOCAL_STORAGE_PARTNERS_KEY, JSON.stringify(updated));
+        const serialized = JSON.stringify(updated);
+        localStorage.setItem(LOCAL_STORAGE_PARTNERS_KEY, serialized);
+        localStorage.setItem(LOCAL_STORAGE_PARTNERS_VAULT_KEY, serialized);
       } catch (_) {}
       return updated;
     });

@@ -8,6 +8,7 @@ import { doc, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
 import { QuoteParameters } from '../../core/types';
 import { getPartnerDocId } from '../../utils/partnerDbUtils';
 import { getFirestoreInstance } from './firebaseConfig';
+import { sanitizeForFirestore } from './firestoreService';
 
 export type ParamProfileScope = 'partner' | 'global';
 export type ParamDurationType = 'permanent' | '15_days' | '30_days' | 'end_of_month';
@@ -25,6 +26,8 @@ export interface ParamProfileRecord {
 }
 
 const LOCAL_STORAGE_PROFILES_KEY = 'cisco_partner_param_profiles_v2';
+const LOCAL_STORAGE_PROFILES_VAULT_KEY = 'cisco_partner_param_profiles_vault_v1';
+const LOCAL_STORAGE_PROFILES_DELETED_KEY = 'cisco_partner_param_profiles_deleted_ids_v1';
 export const GLOBAL_DOC_ID = '__GLOBAL_PARAMS__';
 
 export const DEFAULT_FACTORY_PARAMS: QuoteParameters = {
@@ -33,25 +36,68 @@ export const DEFAULT_FACTORY_PARAMS: QuoteParameters = {
   margenPct: 5.0,
 };
 
+export function getDeletedParamProfileIds(): Set<string> {
+  try {
+    if (typeof localStorage === 'undefined') return new Set();
+    const raw = localStorage.getItem(LOCAL_STORAGE_PROFILES_DELETED_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function addDeletedParamProfileId(id: string): void {
+  try {
+    if (typeof localStorage === 'undefined' || !id) return;
+    const current = getDeletedParamProfileIds();
+    current.add(id.trim());
+    localStorage.setItem(LOCAL_STORAGE_PROFILES_DELETED_KEY, JSON.stringify(Array.from(current)));
+  } catch {}
+}
+
 /**
- * Obtiene la caché local de perfiles
+ * Obtiene la caché local de perfiles con fusión redundante multi-capa
  */
 export function getLocalProfilesCache(): Record<string, ParamProfileRecord> {
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY);
-    return raw ? JSON.parse(raw) : {};
+    if (typeof localStorage === 'undefined') return {};
+    const deletedIds = getDeletedParamProfileIds();
+    const rawV2 = localStorage.getItem(LOCAL_STORAGE_PROFILES_KEY);
+    const rawVault = localStorage.getItem(LOCAL_STORAGE_PROFILES_VAULT_KEY);
+
+    const parsedV2: Record<string, ParamProfileRecord> = rawV2 ? JSON.parse(rawV2) : {};
+    const parsedVault: Record<string, ParamProfileRecord> = rawVault ? JSON.parse(rawVault) : {};
+
+    const merged = { ...parsedVault, ...parsedV2 };
+    for (const k of Object.keys(merged)) {
+      if (deletedIds.has(k)) {
+        delete merged[k];
+      }
+    }
+    return merged;
   } catch {
     return {};
   }
 }
 
 /**
- * Guarda la caché local de perfiles
+ * Guarda la caché local de perfiles en todas las capas de almacenamiento redundante
  */
 export function saveLocalProfilesCache(cache: Record<string, ParamProfileRecord>) {
   try {
-    const raw = JSON.stringify(cache);
+    if (typeof localStorage === 'undefined') return;
+    const deletedIds = getDeletedParamProfileIds();
+    const cleanCache: Record<string, ParamProfileRecord> = {};
+    for (const [k, v] of Object.entries(cache)) {
+      if (!deletedIds.has(k)) {
+        cleanCache[k] = v;
+      }
+    }
+
+    const raw = JSON.stringify(cleanCache);
     localStorage.setItem(LOCAL_STORAGE_PROFILES_KEY, raw);
+    localStorage.setItem(LOCAL_STORAGE_PROFILES_VAULT_KEY, raw);
+
     const pyApi = typeof window !== 'undefined' ? (window as any).pywebview?.api : null;
     if (pyApi && typeof pyApi.save_partner_profiles === 'function') {
       Promise.resolve(pyApi.save_partner_profiles(raw)).catch(() => {});
@@ -175,12 +221,12 @@ export async function saveParamProfile(options: {
   cache[docId] = record;
   saveLocalProfilesCache(cache);
 
-  // 2. Persistir en Firestore de forma segura
+  // 2. Persistir en Firestore de forma segura con sanitización
   try {
     const { db, isReady, error } = getFirestoreInstance();
     if (isReady && db) {
       const docRef = doc(db, 'partner_custom_params', docId);
-      await withFailsafeTimeout(setDoc(docRef, record, { merge: true }), 2500);
+      await withFailsafeTimeout(setDoc(docRef, sanitizeForFirestore(record), { merge: true }), 4000);
       return { success: true, record };
     } else {
       return { success: true, record, error: error ? `Guardado local (${error})` : undefined };
@@ -192,7 +238,7 @@ export async function saveParamProfile(options: {
 }
 
 /**
- * Elimina o revoca un perfil de parámetros activo
+ * Elimina o revoca un perfil de parámetros activo con registro de lápida (tombstone)
  */
 export async function deleteParamProfile(options: {
   scope: ParamProfileScope;
@@ -201,17 +247,20 @@ export async function deleteParamProfile(options: {
   const { scope, partnerName } = options;
   const docId = scope === 'partner' && partnerName ? getPartnerDocId(partnerName) : GLOBAL_DOC_ID;
 
-  // 1. Borrar de caché local
+  // 1. Registrar lápida para evitar resurrección
+  addDeletedParamProfileId(docId);
+
+  // 2. Borrar de caché local redundante
   const cache = getLocalProfilesCache();
   delete cache[docId];
   saveLocalProfilesCache(cache);
 
-  // 2. Borrar de Firestore si está disponible
+  // 3. Borrar de Firestore si está disponible
   try {
     const { db, isReady } = getFirestoreInstance();
     if (isReady && db) {
       const docRef = doc(db, 'partner_custom_params', docId);
-      await withFailsafeTimeout(deleteDoc(docRef), 2000);
+      await withFailsafeTimeout(deleteDoc(docRef), 3000);
     }
     return { success: true };
   } catch (err: any) {
@@ -262,7 +311,7 @@ export async function resolveActiveParams(partnerName?: string): Promise<{
       const { db, isReady } = getFirestoreInstance();
       if (isReady && db) {
         const docRef = doc(db, 'partner_custom_params', partnerDocId);
-        const snap = await withFailsafeTimeout(getDoc(docRef), 1200);
+        const snap = await withFailsafeTimeout(getDoc(docRef), 3500);
 
         if (snap && snap.exists()) {
           const cloudData = snap.data() as ParamProfileRecord;
@@ -294,7 +343,7 @@ export async function resolveActiveParams(partnerName?: string): Promise<{
     const { db, isReady } = getFirestoreInstance();
     if (isReady && db) {
       const globalDocRef = doc(db, 'partner_custom_params', GLOBAL_DOC_ID);
-      const globalSnap = await withFailsafeTimeout(getDoc(globalDocRef), 1200);
+      const globalSnap = await withFailsafeTimeout(getDoc(globalDocRef), 3500);
 
       if (globalSnap && globalSnap.exists()) {
         const globalCloudData = globalSnap.data() as ParamProfileRecord;

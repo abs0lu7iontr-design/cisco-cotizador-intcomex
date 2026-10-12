@@ -14,7 +14,29 @@ export const LOCAL_ESTIMATES_PRIMARY_KEY = 'cisco_cloud_estimates_cache_v2';
 export const LOCAL_ESTIMATES_VAULT_KEY = 'cisco_estimates_permanent_vault_v1';
 export const LOCAL_ESTIMATES_MIRROR_KEY = 'cisco_cloud_estimates_local_mirror_v1';
 export const LOCAL_ESTIMATES_LEGACY_KEY = 'cisco_estimates_history_v2';
+export const LOCAL_ESTIMATES_DELETED_KEY = 'cisco_estimates_deleted_ids_v1';
 export const LOCAL_MIRROR_SYNC_TS_KEY = 'cisco_cloud_estimates_mirror_sync_ts';
+
+export function getDeletedEstimateIds(): Set<string> {
+  try {
+    if (typeof localStorage === 'undefined') return new Set();
+    const raw = localStorage.getItem(LOCAL_ESTIMATES_DELETED_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function addDeletedEstimateId(idOrEstimateId: string): void {
+  try {
+    if (typeof localStorage === 'undefined' || !idOrEstimateId) return;
+    const current = getDeletedEstimateIds();
+    const clean = idOrEstimateId.trim();
+    current.add(clean);
+    current.add(clean.toUpperCase());
+    localStorage.setItem(LOCAL_ESTIMATES_DELETED_KEY, JSON.stringify(Array.from(current)));
+  } catch {}
+}
 
 let cachedHash: string | null = null;
 let cachedSnapshot: CloudEstimateRecord[] = [];
@@ -25,6 +47,7 @@ let cachedSnapshot: CloudEstimateRecord[] = [];
  */
 function mergeAndDeduplicateEstimates(records: CloudEstimateRecord[]): CloudEstimateRecord[] {
   const map = new Map<string, CloudEstimateRecord>();
+  const deletedIds = getDeletedEstimateIds();
 
   for (const r of records) {
     if (!r || typeof r !== 'object') continue;
@@ -33,6 +56,14 @@ function mergeAndDeduplicateEstimates(records: CloudEstimateRecord[]): CloudEsti
     const dealId = String(r.dealId || '').trim();
     const fName = String(r.originalFileName || '').trim();
     const docId = String(r.id || '').trim();
+
+    // Skip tombstoned (deleted) records to prevent unwanted resurrection
+    if (
+      (docId && (deletedIds.has(docId) || deletedIds.has(docId.toUpperCase()))) ||
+      (estId && estId.toUpperCase() !== 'NA' && (deletedIds.has(estId) || deletedIds.has(estId.toUpperCase())))
+    ) {
+      continue;
+    }
 
     // Skip sample / demo placeholders
     if (
@@ -252,7 +283,7 @@ export function saveEstimatesMirrorSnapshot(
     if (typeof localStorage === 'undefined') return;
 
     // Deduplicate and normalize timestamps
-    const cleanList = mergeAndDeduplicateEstimates(list).slice(0, 300);
+    const cleanList = mergeAndDeduplicateEstimates(list).slice(0, 1000);
     const serialized = JSON.stringify(cleanList);
 
     // Save redundantly to all 3 vault keys

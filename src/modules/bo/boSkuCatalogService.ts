@@ -24,6 +24,7 @@ export interface BoSkuCatalogRecord {
 
 const BO_SKU_COLLECTION = 'cisco_bo_sku_catalog';
 const LOCAL_BO_SKU_CACHE_KEY = 'cisco_bo_sku_catalog_cache_v1';
+const LOCAL_BO_SKU_VAULT_KEY = 'cisco_bo_sku_catalog_vault_v1';
 
 let memoryBoSkuCache: Record<string, string> = {};
 
@@ -35,16 +36,17 @@ export function normalizePartNumberKey(pn: string): string {
 }
 
 /**
- * Obtiene el catálogo de SKUs en memoria desde LocalStorage (o fallback en memoria)
+ * Obtiene el catálogo de SKUs en memoria desde LocalStorage multi-capa (o fallback en memoria)
  */
 export function getLocalBoSkuCache(): Record<string, string> {
   try {
     if (typeof localStorage !== 'undefined') {
-      const raw = localStorage.getItem(LOCAL_BO_SKU_CACHE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (typeof parsed === 'object' && parsed !== null) return parsed;
-      }
+      const raw1 = localStorage.getItem(LOCAL_BO_SKU_CACHE_KEY);
+      const raw2 = localStorage.getItem(LOCAL_BO_SKU_VAULT_KEY);
+      const p1 = raw1 ? JSON.parse(raw1) : {};
+      const p2 = raw2 ? JSON.parse(raw2) : {};
+      const merged = { ...memoryBoSkuCache, ...p2, ...p1 };
+      if (Object.keys(merged).length > 0) return merged;
     }
     return memoryBoSkuCache;
   } catch (_) {
@@ -53,13 +55,15 @@ export function getLocalBoSkuCache(): Record<string, string> {
 }
 
 /**
- * Guarda el mapa en LocalStorage (y en memoria fallback)
+ * Guarda el mapa en LocalStorage redundante (y en memoria fallback)
  */
 export function saveLocalBoSkuCache(map: Record<string, string>) {
   memoryBoSkuCache = { ...map };
   try {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(LOCAL_BO_SKU_CACHE_KEY, JSON.stringify(map));
+      const serialized = JSON.stringify(map);
+      localStorage.setItem(LOCAL_BO_SKU_CACHE_KEY, serialized);
+      localStorage.setItem(LOCAL_BO_SKU_VAULT_KEY, serialized);
     }
   } catch (_) {}
 }
