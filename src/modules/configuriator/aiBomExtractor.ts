@@ -23,6 +23,7 @@ import {
   validateOfficialCiscoSku,
   detectClientRequestedPowerCord,
   resolvePowerCordSubItem,
+  resolveChassisRule,
   CiscoProductFamily,
   SubItemConfig,
   PowerCordStandard,
@@ -87,16 +88,45 @@ export interface ExtractedRequirementResult {
 
 const SYSTEM_INSTRUCTION = `
 Eres el Arquitecto Senior de Preventa Técnica "ConfigurIAtor" de Cisco e Intcomex Chile (Año 2026).
-Tu prioridad absoluta es comprender solicitudes en LENGUAJE NATURAL (correos, chats, requerimientos técnicos) o CAPTURAS DE PANTALLA / FOTOS (tablas CCW, cotizaciones, diagramas, listas de equipos) de CUALQUIER familia del portafolio completo de Cisco y Meraki, y transformarlas en una estructura jerárquica **MADRE-HIJO (Parent-Child Assembly)** 100% compatible con Cisco Commerce Workspace (CCW) y 100% VIGENTE EN 2026 (CERO SKUs con End-of-Sale / EOL).
+Tu prioridad absoluta es comprender solicitudes en LENGUAJE NATURAL (correos, chats, requerimientos técnicos, frases imprecisas o coloquiales) o CAPTURAS DE PANTALLA / FOTOS (tablas CCW, cotizaciones, diagramas, listas de equipos) de CUALQUIER familia del portafolio completo de Cisco y Meraki, y transformarlas en una estructura jerárquica **MADRE-HIJO (Parent-Child Assembly)** 100% compatible con Cisco Commerce Workspace (CCW) y 100% VIGENTE EN 2026 (CERO SKUs con End-of-Sale / EOL).
 
-REGLAS OBLIGATORIAS DE COHERENCIA TÉCNICA, REVISIÓN EOL (CISCO & MERAKI), VALORES DE LISTA Y PREVENTA CCW CHILE (2026):
+REGLAS OBLIGATORIAS DE COHERENCIA TÉCNICA, DEDUCCIÓN PREVENTA ANTE SOLICITUDES IMPRECISAS, REVISIÓN EOL (CISCO & MERAKI), VALORES DE LISTA Y PREVENTA CCW CHILE (2026):
+
 0. REGLA #0 — COHERENCIA INTELIGENTE ANTE ERRORES DE CLIENTES Y CERO ALUCINACIONES:
-   - Los clientes frecuentemente cometen errores de tipeo, abrevian códigos o mezclan nomenclaturas al pedir equipos (ej. escriben "C9200-24P-4G-E" mezclando C9200 modular con -4G fijo, o "C9200-24P" sin sufijo, o "2960X-24PS" sin WS-C, o "C9580-24P-4G-E").
+   - Los clientes frecuentemente cometen errores de tipeo, abrevian códigos o mezclan nomenclaturas al pedir equipos (ej. escriben "C9200-24P-4G-E" mezclando C9200 modular con -4G fijo, o "C9200-24P" sin sufijo, o "2960X-24PS" sin WS-C, o "catalis 9200", o "meraky 48 poe").
    - **NUNCA inventes un Part Number que no exista en CCW, pero SIEMPRE entrega un Part Number oficial 100% COHERENTE con lo que pide el cliente**:
      * Analiza la intención técnica del cliente: cantidad de puertos (8, 16, 24, 48), PoE+ (370W), Full PoE+ (740W) o solo Datos (T), Uplinks fijos (4x1G = 4G, 4x10G = 4X) o Modulares (C9200-24P-E + C9200-NM-4X / C9300-24P-E + C9300-NM-8X), y familia (Catalyst vs Meraki).
      * Coloca el texto o código original del cliente en "rawMentionedSku".
      * En "suggestedActiveSku" entrega SIEMPRE el Part Number oficial vigente en CCW que cumpla exactamente las especificaciones solicitadas (ej. "C9200L-24P-4G-E", "C9200-24P-E", "C9300-24P-E", "MS130-SWITCHES:MS130-24P" o "MS225-48FP-HW").
-     * Si el código del cliente tenía un error de tipeo o no existe tal cual en CCW, marca "isNonExistentSku": true y explica en "eolReason" la corrección coherente aplicada.
+     * Si el código del cliente tenía un error de tipeo o no existe tal cual en CCW, marca "isNonExistentSku": true (o "wasCorrectedFromClientTypo": true si es una corrección evidente de formato) y explica en "eolReason" la corrección coherente aplicada.
+
+0.1 REGLA #0.1 — RESOLUCIÓN DEDUCTIVA Y DIMENSIONAMIENTO ANTE SOLICITUDES GENÉRICAS, COLOQUIALES O POCO ESPECÍFICAS:
+   - Cuando el cliente formula requerimientos incompletos o de negocio sin un modelo puntual, NUNCA devuelvas una lista vacía ni falles. Aplica la siguiente MATRIZ DEDUCTIVA DE ARQUITECTURA PREVENTA CISCO 2026:
+     * A) **"switch 24 poe" / "sw 24 poe" / "switch 24 bocas poe" (Sin especificar modelo ni uplinks)**:
+       -> Deducir el estándar de oro de acceso empresarial para oficinas y sucursales: **"C9200L-24P-4G-E"** (Catalyst 9200L 24P PoE+ 370W, 4x1G SFP). Sub-hijos obligatorios: "C9200L-DNA-E-24-3Y" (Prepaid Term 36 meses), "PWR-C5-600WAC", cable Norma Chile "CAB-ACA" y "C9200L-NW-E-24".
+     * B) **"switch 48 poe" / "sw 48 poe" / "switch 48 bocas"**:
+       -> Deducir **"C9200L-48P-4G-E"** (o **"C9200L-48FP-4G-E"** si menciona Full PoE / 740W). Sub-hijos: "C9200L-DNA-E-48-3Y", fuente, cable "CAB-ACA" y Network Essentials.
+     * C) **Mención de "con fibra", "enlace fibra", "10G", "SFP+"**:
+       -> Deducir switch con uplinks 4x10G SFP+: **"C9200L-24P-4X-E"** o **"C9200L-48P-4X-E"** (o C9300 con C9300-NM-8X) y sugerir transceivers vigentes "SFP-10G-SR-S".
+     * D) **Dimensionamiento por Puestos / Usuarios (ej. "oficina para 15 usuarios", "sucursal 20 personas")**:
+       -> Deducir switch de 24 bocas PoE+ **"C9200L-24P-4G-E"** (holgura para PCs, telefonía y APs) y opcionalmente 1-2 APs Wi-Fi 6 ("CW9162I-MR" o "MR46-HW").
+       -> Si son >30 personas: Deducir switch de 48 bocas PoE+ **"C9200L-48P-4G-E"**.
+     * E) **Mención de "Capa 3", "enrutamiento dinámico", "OSPF", "BGP", "Core"**:
+       -> Deducir nivel Advantage: **"C9300-24P-A"** (con C9300-NM-8X) o **"C9200L-24P-4G-A"** con licenseTier: "Advantage".
+     * F) **Mención de "pyme", "económico", "barato", "CBS"**:
+       -> Deducir línea Small Business Cisco Catalyst 1300 / 1200: **"C1300-24P-4G"** o **"C1200-24P-4G"**.
+     * G) **Mención de "Meraki", "cloud", "dashboard en la nube"**:
+       -> Deducir familia Meraki: **"MS130-SWITCHES:MS130-24P"** con "LIC-MS130-24-3Y" o **"MS130-SWITCHES:MS130-48P"** con "LIC-MS130-48-3Y" (y MS225-48FP-HW si piden Full PoE).
+     * H) **Mención de "minera", "faena", "industrial", "riel DIN", "polvo", "vibración"**:
+       -> Deducir switch industrial (deviceType: "industrial_switch"): **"IE-3300-8P2S-E"** (PoE+) o **"IE-3400-8P2S-E"** (Rugged Full PoE).
+     * I) **Mención de "servidor", "virtualización", "UCS", "C220"**:
+       -> Deducir servidor Rack UCS M7 (deviceType: "server_ucs"): **"UCSC-C220-M7S"** con doble fuente y cable "CAB-ACA".
+     * J) **Mención de "firewall", "seguridad perimetral", "VPN", "NGFW"**:
+       -> Deducir Secure Firewall: **"FPR1010-NGFW-K9"** (hasta 50-70 usuarios) o **"FPR1120-NGFW-K9"** o Meraki **"MX68-HW"**.
+     * K) **Mención de "apilar", "stack", "switches en stack"**:
+       -> Activar includeStacking: true e incluir en sub-hijos **"C9200L-STACK-KIT"** (o C9300-STACK-KIT).
+     * L) **Explicar la deducción técnica en "notes"**:
+       -> Escribe una nota clara y ejecutiva en el campo "notes" explicando por qué se seleccionó ese equipo y qué supuestos preventa se aplicaron (ej. "Se dedujo Catalyst 9200L 24P PoE+ 4x1G con DNA Essentials 3Y y cable CAB-ACA Norma Chile al solicitar switch de acceso estándar").
 
 1. REGLA #1 — EXTRACCIÓN DE VALORES DE LISTA (LIST PRICE), PRECIOS NETOS Y ANÁLISIS DE DESCUENTOS (%):
    - Si el cliente incluye en su texto o en la captura de pantalla (ej. captura de CCW Estimate o tabla Excel) los **Valores de Lista (Unit List Price)**, **Precios Netos (Unit Net Price)** o **Porcentajes de Descuento (% Discount)**:
@@ -259,6 +289,8 @@ async function callGeminiProvider(
           preferredModel === 'gemini-3.7-flash' ? 'gemini-3.6-flash' : preferredModel,
           'gemini-3.6-flash',
           'gemini-3.8-flash',
+          'gemini-3.1-pro',
+          'gemini-2.5-pro',
           'gemini-3.5-flash-lite',
           'gemini-flash-lite-latest',
           'gemini-3.7-flash',
@@ -268,15 +300,17 @@ async function callGeminiProvider(
         new Set([
           preferredModel,
           'gemini-3.7-flash',
-          'gemini-3.6-flash',
           'gemini-3.8-flash',
+          'gemini-3.1-pro',
+          'gemini-2.5-pro',
+          'gemini-3.6-flash',
           'gemini-3.5-flash-lite',
           'gemini-flash-lite-latest',
         ].filter(Boolean))
       );
 
   const userPrompt = input.text?.trim()
-    ? `Analiza la siguiente solicitud comercial en lenguaje natural (y la imagen adjunta si existe). Extrae todos los equipos Cisco o Meraki (Switching, Industrial IE, Servidores UCS, Nexus, Seguridad, Colaboración, Wi-Fi), reemplaza cualquier SKU en EOL por su equivalente oficial 100% vigente en CCW, aplica por defecto el cable de poder Norma Chile / Italia (CAB-IT: CAB-ACA / CAB-TA-IT / MA-PWR-CORD-IT) salvo que pidan otro, y genera su estructura completa Madre-Hijo (suggestedActiveSku + aiSubItems) en JSON:\n\n"${input.text.trim()}"`
+    ? `Analiza minuciosamente la siguiente solicitud comercial en lenguaje natural (y la imagen adjunta si existe). Aplica deducción técnica preventa Cisco 2026 ante requerimientos imprecisos o coloquiales (ej: "sw 24 poe", "para 20 usuarios", "con fibra", "catalis 9200"). Extrae todos los equipos Cisco o Meraki (Switching, Industrial IE, Servidores UCS, Nexus, Seguridad, Colaboración, Wi-Fi), reemplaza cualquier SKU en EOL por su equivalente oficial 100% vigente en CCW, aplica por defecto el cable de poder Norma Chile / Italia (CAB-IT: CAB-ACA / CAB-TA-IT / MA-PWR-CORD-IT) salvo que pidan otro, y genera su estructura completa Madre-Hijo (suggestedActiveSku + aiSubItems) en JSON explicando el razonamiento en "notes":\n\n"${input.text.trim()}"`
     : `Analiza minuciosamente esta captura de pantalla / imagen. Extrae todos los equipos, SKUs o requerimientos Cisco/Meraki que aparezcan en la imagen, reemplaza cualquier SKU con EOL por su equivalente 100% vigente, aplica por defecto el cable de poder Norma Chile / Italia (CAB-IT: CAB-ACA / CAB-TA-IT) y genera su estructura completa Madre-Hijo (suggestedActiveSku + aiSubItems) en JSON.`;
 
   const parts: any[] = [];
@@ -293,8 +327,9 @@ async function callGeminiProvider(
   let lastModelError = '';
 
   for (const modelName of modelCascade) {
+    const timeoutMs = modelName.includes('pro') ? 13000 : 8500;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8500);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(cleanKey)}`;
@@ -314,7 +349,8 @@ async function callGeminiProvider(
           ],
           generationConfig: {
             responseMimeType: 'application/json',
-            temperature: 0.1,
+            temperature: 0.05,
+            maxOutputTokens: 8192,
           },
         }),
       });
@@ -472,6 +508,27 @@ async function callOpenAiCompatibleProvider(
   return parsed;
 }
 
+export function healClientTypoString(raw: string): string {
+  let t = (raw || '').trim();
+  t = t
+    .replace(/\bcatalis\b/gi, 'Catalyst')
+    .replace(/\bcat\s*9200\b/gi, 'Catalyst 9200')
+    .replace(/\bmeraky\b/gi, 'Meraki')
+    .replace(/\bsw\s*24\b/gi, 'switch 24 puertos')
+    .replace(/\bsw\s*48\b/gi, 'switch 48 puertos')
+    .replace(/\bsw\s*8\b/gi, 'switch 8 puertos')
+    .replace(/\bbocas\b/gi, 'puertos')
+    .replace(/\bc9200-24p-4g-e\b/gi, 'C9200L-24P-4G-E')
+    .replace(/\bc9200-48p-4g-e\b/gi, 'C9200L-48P-4G-E')
+    .replace(/\bc9200-24p\b(?!\w)/gi, 'C9200L-24P-4G-E')
+    .replace(/\bc9200-48p\b(?!\w)/gi, 'C9200L-48P-4G-E')
+    .replace(/\b2960\s*con\s*fibra\b/gi, 'WS-C2960X-24PS-L 10G')
+    .replace(/\b2960\b(?!\w)/gi, 'WS-C2960X-24PS-L')
+    .replace(/\b3850\b(?!\w)/gi, 'WS-C3850-24P-L')
+    .replace(/\b3650\b(?!\w)/gi, 'WS-C3650-24PD-L');
+  return t;
+}
+
 // ============================================================================
 // MOTOR DETERMINISTA LOCAL DE PREVENTA CISCO (RESPALDO INTEGRAL)
 // ============================================================================
@@ -500,7 +557,8 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
     };
   }
 
-  const segments = cleanText
+  const healedText = healClientTypoString(cleanText);
+  const segments = healedText
     .split(
       /\r?\n|;|(?:\s+y\s+(?=\d+\s*(?:switch|ap|access|router|firewall|servidor|server|ucs|nexus|ie-|industrial|tel[eé]fono|phone|room|webex|licencia|c9|ws-|mr|mx|ms|isr|cbs|dp-|cp-|cs-)))/i
     )
@@ -656,6 +714,8 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
     const mentionsServer = /\bservidor(?:es)?\b|\bserver\b|\bucs\b|\bm7\b|\bc220\b|\bc240\b/i.test(seg);
     const mentionsNexus = /\bnexus\b|\bn9k\b|\bdata\s*center\s+switch\b|\btor\s+switch\b/i.test(seg);
     const mentionsCollab = /\btel[eé]fono(?:s)?\b|\bip\s*phone\b|\bvideoconferencia\b|\broom\s*bar\b|\bwebex\b|\bcolaboraci[oó]n\b/i.test(seg);
+    const capacityMatch = seg.match(/\b(\d{1,3})\s*(?:usuarios?|personas?|puestos?|empleados?)\b/i);
+    const mentionsCapacity = Boolean(capacityMatch);
     const mentionsSwitch = /\bswitch(?:es)?\b|\bbocas\b|\bpuertos\b|\bcatalyst\b|\bmeraki\s+ms\b/i.test(seg);
     const mentionsAp = /\b(?:ap|aps|access\s*points?|wifi|wi-fi|inal[aá]mbric[oa]|meraki\s+mr)\b/i.test(seg);
     const mentionsRouter = /\brouter(?:s)?\b|\bisr\b|\bwan\b|\bsucursal\b/i.test(seg);
@@ -684,7 +744,7 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
         powerCordStandard,
         clientRequestedPowerCord,
         clientPowerCordLabel,
-        notes: seg.slice(0, 120),
+        notes: `Switch Industrial Rugged IE (${isPoe ? 'PoE+' : 'Datos'}) para riel DIN / ambiente rudo`,
       });
     } else if (mentionsServer) {
       const is2Ru = /\b2ru\b|\b2u\b|\bc240\b|\balto\s+almacenamiento\b/i.test(seg);
@@ -702,7 +762,7 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
         powerCordStandard,
         clientRequestedPowerCord,
         clientPowerCordLabel,
-        notes: seg.slice(0, 120),
+        notes: `Servidor Cisco UCS M7 (${is2Ru ? 'C240 2RU' : 'C220 1RU'}) con fuentes redundantes`,
       });
     } else if (mentionsNexus) {
       extractedItems.push({
@@ -719,7 +779,7 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
         powerCordStandard,
         clientRequestedPowerCord,
         clientPowerCordLabel,
-        notes: seg.slice(0, 120),
+        notes: 'Switch Data Center Cisco Nexus 9300 FX3 (48x 10/25G + 6x 100G)',
       });
     } else if (mentionsCollab) {
       const isVideoBar = /\bvideo\b|\bsala\b|\broom\b|\bbar\b|\bkit\b/i.test(seg);
@@ -737,14 +797,22 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
         powerCordStandard,
         clientRequestedPowerCord,
         clientPowerCordLabel,
-        notes: seg.slice(0, 120),
+        notes: isVideoBar ? 'Cisco Webex Room Bar para sala de reuniones' : 'Teléfono IP Cisco Desk Phone 9851',
       });
-    } else if (mentionsSwitch) {
-      const ports: 8 | 16 | 24 | 48 = /\b48\s*(?:bocas|puertos|ports|p\b|t\b)/i.test(seg) ? 48 : 24;
+    } else if (mentionsSwitch || mentionsCapacity) {
+      const userCount = capacityMatch ? Number(capacityMatch[1]) : 0;
+      const ports: 8 | 16 | 24 | 48 =
+        userCount > 24
+          ? 48
+          : /\b48\s*(?:bocas|puertos|ports|p\b|t\b)/i.test(seg)
+            ? 48
+            : /\b8\s*(?:bocas|puertos|ports|p\b|t\b)/i.test(seg)
+              ? 8
+              : 24;
       const explicitlyNoPoe = /\bsin\s+poe\b|\bdata\s+only\b|\bsolo\s+datos\b/i.test(seg);
       const isPoe = explicitlyNoPoe ? false : true;
       const isFullPoe = /\bfull\s*poe\b|\b740w\b|\bfp\b/i.test(seg);
-      const is10G = /\b10\s*g\b|\bsfp\+\b|\b4x\b/i.test(seg);
+      const is10G = /\b10\s*g\b|\bsfp\+\b|\b4x\b|\bfibra\b/i.test(seg);
       const is9300 = /\b9300\b|\bcore\b/i.test(seg);
       const isSmb = /\bsmb\b|\becon[oó]mico\b|\bc1200\b|\bc1300\b|\bcbs\b/i.test(seg);
       const isMerakiSwitch = /\bmeraki\b|\bms130\b|\bms225\b/i.test(seg);
@@ -763,9 +831,13 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
         suggestedSku = `C9300-${ports}${isPoe ? 'P' : 'T'}-${tierCode}`;
       } else {
         const poeCode = !isPoe ? 'T' : isFullPoe && ports === 48 ? 'FP' : 'P';
-        const uplinkCode = is10G ? '10G' : '4G';
-        suggestedSku = `C9200L-${ports}${poeCode}-${uplinkCode === '10G' ? '4X' : '4G'}-${tierCode}`;
+        const uplinkCode = is10G ? '4X' : '4G';
+        suggestedSku = `C9200L-${ports}${poeCode}-${uplinkCode}-${tierCode}`;
       }
+
+      const noteText = capacityMatch
+        ? `Dimensionamiento para ${userCount} usuarios con Catalyst 9200L ${ports}P PoE+ y cable CAB-ACA Norma Chile.`
+        : `Deducción preventa Cisco 2026: Catalyst 9200L ${ports}P ${isPoe ? 'PoE+' : 'Data'} (${is10G ? '10G SFP+' : '1G SFP'}) con DNA Essentials 3Y.`;
 
       extractedItems.push({
         id: `item-${Date.now()}-${idx}-sw`,
@@ -788,7 +860,7 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
         clientRequestedPowerCord,
         clientPowerCordLabel,
         merakiLicenseMode,
-        notes: seg.slice(0, 120),
+        notes: noteText,
       });
     } else if (mentionsAp) {
       const isWifi6E = /\b6e\b|\b9164\b|\b9166\b/i.test(seg);
@@ -803,7 +875,7 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
         termYears,
         quantity,
         merakiLicenseMode,
-        notes: seg.slice(0, 120),
+        notes: isWifi6E ? 'Access Point Catalyst Wi-Fi 6E (CW9164I)' : 'Access Point Meraki Wi-Fi 6 (MR46-HW)',
       });
     } else if (mentionsRouter) {
       extractedItems.push({
@@ -820,7 +892,7 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
         powerCordStandard,
         clientRequestedPowerCord,
         clientPowerCordLabel,
-        notes: seg.slice(0, 120),
+        notes: 'Router Catalyst Edge C8200 con cable CAB-ACA Norma Chile',
       });
     } else if (mentionsFirewall) {
       const isMerakiMx = /\bmeraki\b|\bmx\b/i.test(upper);
@@ -838,13 +910,32 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
         clientRequestedPowerCord,
         clientPowerCordLabel,
         merakiLicenseMode,
-        notes: seg.slice(0, 120),
+        notes: isMerakiMx ? 'Firewall Meraki MX68 Cloud Security' : 'Cisco Secure Firewall FPR1010 NGFW',
       });
     }
   };
 
   segments.forEach((seg, idx) => processSegment(seg, idx));
-  if (extractedItems.length === 0) processSegment(cleanText, 0);
+  if (extractedItems.length === 0) processSegment(healedText, 0);
+
+  // Sintetizar sub-líneas Hijo oficiales para todos los ítems generados localmente
+  for (const it of extractedItems) {
+    if (!it.aiSubItems || it.aiSubItems.length === 0) {
+      const chassisRule = resolveChassisRule(it.suggestedActiveSku || '');
+      if (chassisRule) {
+        it.aiSubItems = chassisRule.defaultSubItems({
+          licenseTier: it.licenseTier,
+          termYears: it.termYears || 3,
+          includeStackingKit: it.includeStacking,
+          includeRedundantPsu: it.includeRedundantPsu,
+          includeSmartNet: it.includeSmartNet,
+          smartNetLevel: it.smartNetLevel || '8x5xNBD',
+          powerCordStandard: it.powerCordStandard,
+          merakiLicenseMode: it.merakiLicenseMode || 'subscription',
+        });
+      }
+    }
+  }
 
   return {
     clientName: 'Cliente',
@@ -1173,6 +1264,23 @@ export function postProcessExtractedResult(
         })
       : undefined;
 
+    let finalSubs = normalizedAiSubs;
+    if ((!finalSubs || finalSubs.length === 0) && suggested) {
+      const chassisRule = resolveChassisRule(suggested);
+      if (chassisRule) {
+        finalSubs = chassisRule.defaultSubItems({
+          licenseTier: tier,
+          termYears: item.termYears && item.termYears > 0 ? item.termYears : 3,
+          includeStackingKit: includeStacking,
+          includeRedundantPsu: item.includeRedundantPsu,
+          includeSmartNet,
+          smartNetLevel: item.smartNetLevel || '8x5xNBD',
+          powerCordStandard,
+          merakiLicenseMode: item.merakiLicenseMode || 'subscription',
+        });
+      }
+    }
+
     if (targetToLearn && !isNonExistentSku) {
       saveLearnedCiscoSku({
         sku: targetToLearn,
@@ -1180,7 +1288,7 @@ export function postProcessExtractedResult(
         family: familyGuess,
         isEol: false,
         officialUrl: item.officialCiscoUrl,
-        defaultSubSkus: normalizedAiSubs && normalizedAiSubs.length > 0 ? normalizedAiSubs : undefined,
+        defaultSubSkus: finalSubs && finalSubs.length > 0 ? finalSubs : undefined,
         updatedAt: new Date().toISOString(),
       });
     }
@@ -1205,7 +1313,7 @@ export function postProcessExtractedResult(
       clientRequestedPowerCord,
       clientPowerCordLabel,
       merakiLicenseMode: item.merakiLicenseMode || 'subscription',
-      aiSubItems: normalizedAiSubs,
+      aiSubItems: finalSubs,
     };
   });
 

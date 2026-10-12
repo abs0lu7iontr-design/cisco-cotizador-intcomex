@@ -151,6 +151,17 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
   const [dacSpeedFilter, setDacSpeedFilter] = useState<string>('ALL');
   const [actionToast, setActionToast] = useState<string | null>(null);
 
+  // Control de colapso de tablas para interfaz minimalista (CCW 10 Columnas & Sub-SKUs Hijos)
+  const [isCcwTableCollapsed, setIsCcwTableCollapsed] = useState<boolean>(false);
+  const [collapsedChildrenByIdx, setCollapsedChildrenByIdx] = useState<Record<number, boolean>>({});
+
+  const toggleChildCollapse = useCallback((idx: number) => {
+    setCollapsedChildrenByIdx((prev) => ({
+      ...prev,
+      [idx]: !prev[idx],
+    }));
+  }, []);
+
   // Configuración Multi-API y Rotación de Tokens
   const [aiSettings, setAiSettings] = useState<AiConfigSettings>(() => loadAiSettings());
   const [isApiModalOpen, setIsApiModalOpen] = useState<boolean>(false);
@@ -1140,123 +1151,145 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
   const totalParents = assembledRows.filter((r) => r.isParent).length;
   const totalChildren = assembledRows.filter((r) => !r.isParent).length;
 
+  const areAllTablesCollapsed = useMemo(() => {
+    if (!isCcwTableCollapsed) return false;
+    const items = extractionResult?.items || [];
+    if (items.length === 0) return isCcwTableCollapsed;
+    return items.every((_, idx) => Boolean(collapsedChildrenByIdx[idx]));
+  }, [isCcwTableCollapsed, extractionResult, collapsedChildrenByIdx]);
+
+  const handleToggleAllTables = useCallback(() => {
+    if (areAllTablesCollapsed) {
+      setIsCcwTableCollapsed(false);
+      setCollapsedChildrenByIdx({});
+    } else {
+      setIsCcwTableCollapsed(true);
+      const all: Record<number, boolean> = {};
+      (extractionResult?.items || []).forEach((_, idx) => {
+        all[idx] = true;
+      });
+      setCollapsedChildrenByIdx(all);
+    }
+  }, [areAllTablesCollapsed, extractionResult]);
+
   return (
-    <div className="max-w-[1600px] mx-auto space-y-6" onPaste={handlePaste}>
-      {/* Banner Oficial de Instrucción Cisco CCW */}
-      <div className="bg-gradient-to-r from-emerald-950/90 via-slate-900 to-indigo-950/90 border border-emerald-500/40 rounded-2xl p-4 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-start space-x-3.5">
-          <div className="p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 shrink-0 mt-0.5">
-            <ShieldCheck className="w-6 h-6" />
+    <div className="max-w-[1600px] mx-auto space-y-4" onPaste={handlePaste}>
+      {/* Encabezado Minimalista y Ejecutivo */}
+      <div className="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-4 shadow-lg backdrop-blur flex flex-col md:flex-row md:items-center md:justify-between gap-3.5">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-300 shrink-0">
+            <Bot className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-black uppercase tracking-wider text-emerald-300">
-                Regla Crítica de Ensamblado Madre-Hijo Cisco CCW &bull; Norma Chile (CAB-IT)
+              <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
+                ConfigurIAtor
+              </h2>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-950 text-indigo-300 border border-indigo-700/50">
+                Arquitecto Preventa Cisco &bull; CCW 2026
               </span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30">
-                100% Vigente 2026 &bull; Estado VALID (Verde)
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-700/40">
+                🇨🇱 Norma Chile (CAB-IT)
+              </span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                {learnedSkusCount} SKUs Cero EOL
               </span>
             </div>
-            <p className="text-xs sm:text-sm text-slate-200 mt-1 leading-relaxed">
-              En la ventana <strong>'BOM Upload'</strong> de Cisco CCW mantén marcada la opción:{' '}
-              <span className="px-2 py-0.5 rounded bg-emerald-900/80 border border-emerald-400/50 text-emerald-200 font-mono font-bold">
-                ☑ Import Lines as assembled configurations
-              </span>
-              . Por defecto se incluye el cable de poder <strong>Norma Chile / Italia (CAB-IT: CAB-ACA / CAB-TA-IT)</strong>.
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Dimensionamiento preventa y jerarquía Madre-Hijo (Catalyst, Meraki, IE, UCS M7, Nexus, FPR, Colab)
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+        {/* Toolbar de Acciones Ejecutivas */}
+        <div className="flex flex-wrap items-center gap-1.5 text-xs shrink-0">
+          {/* APIs Cisco (7) */}
           <button
+            type="button"
             onClick={() => setIsCiscoSuiteModalOpen(true)}
-            className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition-all cursor-pointer shadow-sm"
+            className="px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-cyan-300 border border-cyan-800/50 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5"
             title="Ver las 7 APIs Oficiales de Cisco (OAuth2 M2M, PSIRT, Datafoundation-POE, CX Cloud)"
           >
-            <ShieldCheck className="w-4 h-4 text-cyan-400" />
-            <span>Cisco APIs (7 Activas)</span>
+            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Cisco APIs (7)</span>
           </button>
 
+          {/* APIs IA & Rotación */}
           <button
+            type="button"
             onClick={() => setIsApiModalOpen(true)}
-            className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-indigo-300 border border-indigo-500/40 text-xs font-bold transition-all cursor-pointer shadow-sm"
+            className="px-2.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-indigo-300 border border-indigo-800/50 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5"
+            title="Gestionar claves API y proveedores IA (Gemini, OpenRouter, Groq, DeepSeek)"
           >
-            <KeyRound className="w-4 h-4 text-indigo-400" />
-            <span>APIs & Rotación ({activeKeysCount} IA activas)</span>
+            <KeyRound className="w-3.5 h-3.5 text-indigo-400" />
+            <span>IA Keys ({activeKeysCount})</span>
           </button>
-        </div>
-      </div>
 
-      {/* Encabezado Principal del Módulo */}
-      <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div className="flex items-center space-x-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 shadow-inner">
-            <Bot className="w-7 h-7" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">
-                ConfigurIAtor &bull; Full Cisco &amp; Meraki AI Architect (Madre-Hijo CCW)
-              </h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-950 text-emerald-300 border border-emerald-700/50">
-                Gemini 3.7 Flash (Texto) &bull; 3.6/3.8 Flash (Visión)
-              </span>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-950/80 text-cyan-300 border border-cyan-700/40 flex items-center gap-1">
-                <Globe className="w-3 h-3" />
-                <span>Catálogo Vigente 2026 ({learnedSkusCount} SKUs &bull; Cero EOL)</span>
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 mt-1">
-              Cotiza Switching Catalyst, Meraki Cloud, Switches Industriales IE, Servidores UCS M7, Data Center Nexus, Seguridad FPR/MX y Colaboración DP-9800/Room Bar con cable <strong>CAB-IT (Norma Chile)</strong> por defecto.
-            </p>
-          </div>
-        </div>
-
-        {/* Controles ejecutivos: Ocultar/Mostrar barras, Limpiar BOM y Badge Portafolio */}
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          {/* Toggle Barra 1: Solicitud en Lenguaje Natural */}
+          {/* Toggle Panel Solicitud IA */}
           <button
             type="button"
             onClick={() => setIsPromptPanelOpen((prev) => !prev)}
-            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+            className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
               isPromptPanelOpen
-                ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
-                : 'bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border-indigo-600/50 shadow-md shadow-indigo-950/40'
+                ? 'bg-slate-950 hover:bg-slate-800 text-slate-300 border-slate-800'
+                : 'bg-indigo-950 text-indigo-300 border-indigo-600/60 shadow-sm'
             }`}
-            title={
-              isPromptPanelOpen
-                ? 'Ocultar barra de Solicitud en Lenguaje Natural (Más espacio para la cotización)'
-                : 'Mostrar barra de Solicitud en Lenguaje Natural'
-            }
+            title={isPromptPanelOpen ? 'Ocultar panel de solicitud para mayor espacio' : 'Mostrar panel de solicitud'}
           >
             {isPromptPanelOpen ? (
               <>
                 <EyeOff className="w-3.5 h-3.5 text-slate-400" />
-                <span>Ocultar Solicitud IA</span>
+                <span>Ocultar Solicitud</span>
               </>
             ) : (
               <>
                 <Eye className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Mostrar Solicitud IA</span>
+                <span>Ver Solicitud</span>
               </>
             )}
           </button>
 
-          {/* Toggle Barra 2: Módulos Principales (Sidebar de la aplicación) */}
+          {/* Toggle Colapsar / Expandir Todas las Tablas */}
+          {assembledRows.length > 0 && (
+            <button
+              type="button"
+              onClick={handleToggleAllTables}
+              className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                areAllTablesCollapsed
+                  ? 'bg-emerald-950 text-emerald-300 border-emerald-600/60'
+                  : 'bg-slate-950 hover:bg-slate-800 text-slate-300 border-slate-800'
+              }`}
+              title={
+                areAllTablesCollapsed
+                  ? 'Expandir todas las tablas (CCW y Sub-SKUs Hijos)'
+                  : 'Ocultar/colapsar todas las tablas para vista ultra compacta'
+              }
+            >
+              {areAllTablesCollapsed ? (
+                <>
+                  <ChevronDown className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Expandir Tablas</span>
+                </>
+              ) : (
+                <>
+                  <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Ocultar Tablas</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Toggle Barra Lateral de la Aplicación */}
           {onToggleNavSidebar && (
             <button
               type="button"
               onClick={onToggleNavSidebar}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                 isNavSidebarOpen
-                  ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
-                  : 'bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border-emerald-600/50 shadow-md shadow-emerald-950/40'
+                  ? 'bg-slate-950 hover:bg-slate-800 text-slate-300 border-slate-800'
+                  : 'bg-emerald-950 text-emerald-300 border-emerald-600/60 shadow-sm'
               }`}
-              title={
-                isNavSidebarOpen
-                  ? 'Ocultar barra lateral de Módulos Principales (Visión ultra limpia a pantalla completa)'
-                  : 'Mostrar barra lateral de Módulos Principales'
-              }
+              title={isNavSidebarOpen ? 'Ocultar barra de módulos (Pantalla completa)' : 'Mostrar barra de módulos'}
             >
               {isNavSidebarOpen ? (
                 <>
@@ -1266,31 +1299,42 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
               ) : (
                 <>
                   <PanelLeftOpen className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Mostrar Módulos</span>
+                  <span>Módulos</span>
                 </>
               )}
             </button>
           )}
 
+          {/* Botón Clear BOM */}
           {(inputText || pastedImage || assembledRows.length > 0) && (
             <button
               type="button"
               onClick={handleClearAllBom}
-              className="px-3.5 py-1.5 rounded-xl bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-700/50 font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+              className="px-2.5 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/50 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-all"
               title="Limpiar solicitud y BOM actual para comenzar uno nuevo"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Limpiar / Nuevo BOM (Clear)</span>
+              <span>Limpiar</span>
             </button>
           )}
-
-          <div className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 flex items-center gap-2">
-            <Cpu className="w-3.5 h-3.5 text-emerald-400" />
-            <span>
-              Portafolio: <strong className="text-emerald-300">Catalyst &bull; Meraki &bull; IE &bull; UCS M7 &bull; Nexus &bull; FPR &bull; Colab</strong>
-            </span>
-          </div>
         </div>
+      </div>
+
+      {/* Regla CCW Minimalista (1 Línea Elegante) */}
+      <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-xl px-3.5 py-2 flex items-center justify-between text-xs text-slate-300 gap-3">
+        <div className="flex items-center gap-2 overflow-hidden">
+          <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span className="truncate text-[11px]">
+            <strong className="text-emerald-300">Norma CCW:</strong> En 'BOM Upload' marcar{' '}
+            <code className="px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-200 text-[10px] font-mono">
+              ☑ Import Lines as assembled configurations
+            </code>{' '}
+            &bull; Incluye cable Chile <strong className="text-emerald-300">CAB-IT (CAB-ACA/TA-IT)</strong>.
+          </span>
+        </div>
+        <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shrink-0">
+          VALID 2026
+        </span>
       </div>
 
       {/* Barra Resumida cuando el Panel 1 de Solicitud IA está Oculto */}
@@ -1375,7 +1419,7 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                 </button>
               </div>
 
-            {/* Ejemplos rápidos para todo el portafolio */}
+            {/* Chips rápidos de sugerencia */}
             <div className="flex items-center gap-1.5 flex-wrap">
               <button
                 type="button"
@@ -1384,10 +1428,10 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                     'Cotizar 1 switch Catalyst WS-C2960X-24PS-L con licencia por 3 años'
                   )
                 }
-                className="px-2 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 text-[10px] font-bold text-emerald-300 border border-emerald-600/50 cursor-pointer transition-colors"
-                title="Probar solicitud de 1 equipo EOL (WS-C2960X-24PS-L) con entrega de 3+ propuestas al 100% de homologación, Valor GPL (Sin Descuentos) y orden de prioridad"
+                className="px-2 py-0.5 rounded-md bg-emerald-950/60 hover:bg-emerald-900/80 text-[10px] font-medium text-emerald-300 border border-emerald-700/40 cursor-pointer transition-colors"
+                title="Probar solicitud EOL (WS-C2960X-24PS-L -> C9200L) con 3 propuestas GPL"
               >
-                Ej. 1 Equipo EOL (3 Propuestas GPL 100%)
+                EOL 2960X &rarr; C9200L
               </button>
               <button
                 type="button"
@@ -1396,10 +1440,10 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                     'Cotizar 1 switch Meraki MS210-48FP con licencia por 3 años'
                   )
                 }
-                className="px-2 py-1 rounded-lg bg-amber-950/70 hover:bg-amber-900/80 text-[10px] font-bold text-amber-300 border border-amber-700/50 cursor-pointer transition-colors"
-                title="Cargar caso Meraki MS210-48FP (EOL -> 3 Propuestas Homologadas con Valor GPL)"
+                className="px-2 py-0.5 rounded-md bg-amber-950/50 hover:bg-amber-900/70 text-[10px] font-medium text-amber-300 border border-amber-700/40 cursor-pointer transition-colors"
+                title="Cargar caso Meraki MS210-48FP con 3 propuestas homologadas"
               >
-                Ej. MS210-48FP (3 Propuestas)
+                Meraki MS210
               </button>
               <button
                 type="button"
@@ -1408,10 +1452,10 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                     'Mauricio, cotízame 2 switches de 24 bocas PoE Catalyst con 12 APs Wi-Fi 6 y licencia por 3 años'
                   )
                 }
-                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-indigo-300 border border-slate-700 cursor-pointer transition-colors"
+                className="px-2 py-0.5 rounded-md bg-slate-800/80 hover:bg-slate-700 text-[10px] font-medium text-indigo-300 border border-slate-700 cursor-pointer transition-colors"
                 title="Cargar caso Switching + Wi-Fi con cálculo PoE en vivo"
               >
-                Ej. 24P + 12 APs
+                24P PoE + Wi-Fi 6
               </button>
               <button
                 type="button"
@@ -1420,10 +1464,10 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                     'Necesito 1 servidor UCS C220-M6S, 2 switches industriales IE-2000-8TC-B PoE para faena minera, 1 firewall ASA5508-X y 10 teléfonos IP CP-7841-K9 por 3 años con SmartNet'
                   )
                 }
-                className="px-2 py-1 rounded-lg bg-indigo-950/70 hover:bg-indigo-900/80 text-[10px] font-bold text-indigo-300 border border-indigo-700/50 cursor-pointer transition-colors"
-                title="Probar Servidores UCS M7, Switches Industriales IE, Firewall FPR, Colaboración DP-9800 y SmartNet"
+                className="px-2 py-0.5 rounded-md bg-indigo-950/50 hover:bg-indigo-900/70 text-[10px] font-medium text-indigo-300 border border-indigo-700/40 cursor-pointer transition-colors"
+                title="Probar UCS M7, Switches Industriales IE, Firewall FPR y Colaboración"
               >
-                Ej. UCS + IE + FW + Colab
+                UCS M7 + Minería IE
               </button>
             </div>
           </div>
@@ -1697,6 +1741,29 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
 
               {assembledRows.length > 0 && (
                 <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleToggleAllTables}
+                    className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all cursor-pointer"
+                    title={
+                      areAllTablesCollapsed
+                        ? 'Expandir todas las tablas (CCW y Sub-SKUs Hijos)'
+                        : 'Ocultar/colapsar todas las tablas'
+                    }
+                  >
+                    {areAllTablesCollapsed ? (
+                      <>
+                        <ChevronDown className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Expandir Tablas</span>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Ocultar Tablas</span>
+                      </>
+                    )}
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleAuditAllCiscoApis}
@@ -2877,67 +2944,110 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                         </div>
                       )}
 
-                      {/* Sub-líneas HIJAS ensambladas */}
+                      {/* Sub-líneas HIJAS ensambladas con opción de colapso */}
                       {childRows.length > 0 && (
                         <div className="pl-3 border-l-2 border-indigo-500/50 space-y-1.5 pt-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">
-                              ↳ Componentes HIJOS ensamblados automáticamente ({childRows.length}):
-                            </div>
-                            {parentRow?.isGoldenTemplate && (
-                              <span className="text-[9px] font-bold text-amber-300/90 bg-amber-950/70 px-1.5 py-0.5 rounded border border-amber-600/40 flex items-center gap-1">
-                                <Crown className="w-2.5 h-2.5 text-amber-400" />
-                                <span>Árbol CCW Oficial Verificado</span>
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">
+                                ↳ Componentes HIJOS ensamblados ({childRows.length}):
                               </span>
-                            )}
-                          </div>
-                          {childRows.map((sub, cIdx) => (
-                            <div
-                              key={sub.rowId}
-                              className="flex items-center justify-between text-[11px] text-slate-300 bg-slate-900/70 px-2.5 py-1.5 rounded-lg border border-slate-800/80"
-                            >
-                              <div className="flex items-center space-x-2 overflow-hidden">
-                                <span className="px-1.5 py-0.5 rounded bg-indigo-950/90 text-indigo-300 border border-indigo-700/40 text-[9px] font-bold uppercase shrink-0">
-                                  HIJO #{cIdx + 1}
+                              {parentRow?.isGoldenTemplate && (
+                                <span className="text-[9px] font-bold text-amber-300/90 bg-amber-950/70 px-1.5 py-0.5 rounded border border-amber-600/40 flex items-center gap-1">
+                                  <Crown className="w-2.5 h-2.5 text-amber-400" />
+                                  <span>Árbol CCW Oficial Verificado</span>
                                 </span>
-                                <ArrowRight className="w-3 h-3 text-indigo-400 shrink-0" />
-                                <span className="font-mono font-bold text-indigo-200 shrink-0">
-                                  {sub.partNumber}
-                                </span>
-                                <span className="text-slate-400 truncate max-w-[280px]">
-                                  {sub.notes}
-                                </span>
-                              </div>
-                              <div className="flex items-center space-x-3 font-mono text-[11px] shrink-0">
-                                <span className="text-emerald-300">Qty: {sub.quantity}</span>
-                                {sub.durationMonths && (
-                                  <span className="text-cyan-300">
-                                    {sub.durationMonths}M ({sub.billingModel})
-                                  </span>
-                                )}
-                                {typeof sub.estimatedTotalListUsd === 'number' &&
-                                  sub.estimatedTotalListUsd > 0 && (
-                                    <span className="text-slate-300 text-[10px]">
-                                      Lista: US${' '}
-                                      {sub.estimatedTotalListUsd.toLocaleString('en-US', {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2,
-                                      })}
-                                    </span>
-                                  )}
-                                {typeof sub.estimatedTotalNetUsd === 'number' &&
-                                  sub.estimatedTotalNetUsd > 0 && (
-                                    <span className="text-emerald-300 text-[10px] font-bold">
-                                      Neto ({sub.clientDiscountPct ?? 38}%): US${' '}
-                                      {sub.estimatedTotalNetUsd.toLocaleString('en-US', {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2,
-                                      })}
-                                    </span>
-                                  )}
-                              </div>
+                              )}
                             </div>
-                          ))}
+
+                            <button
+                              type="button"
+                              onClick={() => toggleChildCollapse(idx)}
+                              className="px-2 py-0.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-[10px] font-bold text-slate-400 hover:text-slate-200 border border-slate-800 flex items-center gap-1 cursor-pointer transition-colors"
+                              title={
+                                collapsedChildrenByIdx[idx]
+                                  ? 'Expandir detalle de sub-SKUs hijos'
+                                  : 'Ocultar/colapsar sub-SKUs hijos'
+                              }
+                            >
+                              {collapsedChildrenByIdx[idx] ? (
+                                <>
+                                  <ChevronDown className="w-3 h-3 text-indigo-400" />
+                                  <span>Ver {childRows.length} Hijos</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronUp className="w-3 h-3 text-slate-400" />
+                                  <span>Ocultar Hijos</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          {collapsedChildrenByIdx[idx] ? (
+                            /* Vista Minimalista Colapsada de Sub-SKUs */
+                            <div className="flex items-center gap-1.5 flex-wrap py-1">
+                              {childRows.map((sub) => (
+                                <span
+                                  key={sub.rowId}
+                                  className="px-2 py-0.5 rounded-md bg-slate-900/90 border border-slate-800 text-[10px] font-mono text-indigo-200 flex items-center gap-1"
+                                  title={`${sub.notes} • Qty: ${sub.quantity}`}
+                                >
+                                  <span className="text-slate-500 font-sans text-[9px]">{sub.quantity}x</span>
+                                  <span>{sub.partNumber}</span>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            /* Vista Detallada de Filas Hijas */
+                            childRows.map((sub, cIdx) => (
+                              <div
+                                key={sub.rowId}
+                                className="flex items-center justify-between text-[11px] text-slate-300 bg-slate-900/70 px-2.5 py-1.5 rounded-lg border border-slate-800/80"
+                              >
+                                <div className="flex items-center space-x-2 overflow-hidden">
+                                  <span className="px-1.5 py-0.5 rounded bg-indigo-950/90 text-indigo-300 border border-indigo-700/40 text-[9px] font-bold uppercase shrink-0">
+                                    HIJO #{cIdx + 1}
+                                  </span>
+                                  <ArrowRight className="w-3 h-3 text-indigo-400 shrink-0" />
+                                  <span className="font-mono font-bold text-indigo-200 shrink-0">
+                                    {sub.partNumber}
+                                  </span>
+                                  <span className="text-slate-400 truncate max-w-[280px]">
+                                    {sub.notes}
+                                  </span>
+                                </div>
+                                <div className="flex items-center space-x-3 font-mono text-[11px] shrink-0">
+                                  <span className="text-emerald-300">Qty: {sub.quantity}</span>
+                                  {sub.durationMonths && (
+                                    <span className="text-cyan-300">
+                                      {sub.durationMonths}M ({sub.billingModel})
+                                    </span>
+                                  )}
+                                  {typeof sub.estimatedTotalListUsd === 'number' &&
+                                    sub.estimatedTotalListUsd > 0 && (
+                                      <span className="text-slate-300 text-[10px]">
+                                        Lista: US${' '}
+                                        {sub.estimatedTotalListUsd.toLocaleString('en-US', {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}
+                                      </span>
+                                    )}
+                                  {typeof sub.estimatedTotalNetUsd === 'number' &&
+                                    sub.estimatedTotalNetUsd > 0 && (
+                                      <span className="text-emerald-300 text-[10px] font-bold">
+                                        Neto ({sub.clientDiscountPct ?? 38}%): US${' '}
+                                        {sub.estimatedTotalNetUsd.toLocaleString('en-US', {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}
+                                      </span>
+                                    )}
+                                </div>
+                              </div>
+                            ))
+                          )}
                         </div>
                       )}
                     </div>
@@ -2951,6 +3061,8 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
           <CcwPreviewTable
             assembledRows={assembledRows}
             clientName={clientName}
+            isTableCollapsed={isCcwTableCollapsed}
+            onToggleTableCollapse={() => setIsCcwTableCollapsed((prev) => !prev)}
           />
         </div>
       </div>
