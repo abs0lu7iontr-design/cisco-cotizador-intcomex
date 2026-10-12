@@ -8,6 +8,7 @@ import { isCiscoIntangibleSku } from './ciscoTaxonomy';
 import {
   isCiscoAccessorySku,
   isMotherLineFormat,
+  normalizeCcwLineNumber,
   isEolAccessoryOrProductSku,
   isMainHardwareChassisSku,
   NON_EOL_CISCO_ACCESSORIES_CATALOG,
@@ -18,6 +19,7 @@ export {
   isPureLicensingQuote,
   isCiscoAccessorySku,
   isMotherLineFormat,
+  normalizeCcwLineNumber,
   isEolAccessoryOrProductSku,
   isMainHardwareChassisSku,
   NON_EOL_CISCO_ACCESSORIES_CATALOG,
@@ -198,15 +200,16 @@ export function checkIsIntangible(sku: string, description: string): boolean {
 
 /**
  * Checks if a line item applies customs duty (Arancel 6% + Internación 7%):
- * 1. Any non-intangible SKU ending with '=' ALWAYS carries Arancel (whether mother or child line).
+ * 1. When a SKU ends with '=' (spare/repuesto), the probability that it comes in Mother Line format
+ *    ("1.0", "2.0", "3.0", "4.0", "5.0", "6.0", etc.) is 100%, and it ALWAYS carries Arancel.
  * 2. Any non-EOL Cisco/Meraki Accessory (Antennas, Cables, SFPs/Transceivers, Power Supplies,
  *    PoE Injectors, Brackets/Mounts, Stacking Kits, Expansion Modules, Fans, Blanks) that appears
- *    in MOTHER LINE format ("1.0", "2.0", "3.0", "4.0", "5", "6", "7", "8"... to infinity)
+ *    in MOTHER LINE format ("1.0", "2.0", "3.0", "4.0", "5.0", "6.0", "7.0", "8.0", "9.0", "10.0", "11.0"... to infinity)
  *    ALWAYS carries Arancel even if it does NOT end with '='.
  * 3. Accessories in CHILD LINE format ("1.1", "1.2", "2.1", "1.0.1", etc.) without '=' do NOT
  *    carry Arancel (they are bundled inside a parent hardware chassis -> EQUIPO / TANGIBLE).
  * 4. Main Equipment (Switches, Routers, APs, Firewalls, Controllers, Cameras, Phones, Servers)
- *    in Mother Line format without '=' do NOT carry Arancel (they are EQUIPO / TANGIBLE).
+ *    in Mother Line format ("1.0", "2.0", "3.0", "4.0", "5.0", "6.0"...) without '=' do NOT carry Arancel (EQUIPO).
  */
 export function checkLlevaArancel(
   sku: string,
@@ -221,12 +224,12 @@ export function checkLlevaArancel(
     return false;
   }
 
-  // Regla 1: Si termina en '=', siempre lleva arancel (repuesto/spare/accesorio explícito)
+  // Regla 1: Si termina en '=', el 100% de las veces es formato línea madre (1.0, 2.0, 3.0...) y lleva arancel
   if (trimmedSku.endsWith('=')) {
     return true;
   }
 
-  // Regla 2: Si está en formato Línea Madre (1.0, 2.0, 3.0, 4.0, 5, 6, 7, 8... al infinito)
+  // Regla 2: Si está en formato Línea Madre (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0... al infinito)
   // y pertenece a la lista/clasificador infinito de Accesorios Cisco/Meraki No-EOL, lleva arancel
   if (isMotherLineFormat(lineNumber) && isCiscoAccessorySku(trimmedSku, description)) {
     return true;
@@ -431,17 +434,13 @@ export function calculateMerakiLicenseCosts(
 }
 
 /**
- * Determines if a line item is a Main Item (e.g. 1.0, 2.0, 3.0, 1) or Sub-item (e.g. 1.0.1, 1.1)
+ * Determines if a line item is a Main / Mother Item ("1.0", "2.0", "3.0", "4.0", "5.0", "6.0", "10.0"... to infinity)
+ * vs Sub-item ("1.0.1", "1.1", "2.1").
  */
 export function isMainLineItem(lineNumber: string): boolean {
   if (!lineNumber) return true;
-  const clean = String(lineNumber).trim();
-  // Main items: "1", "2", "1.0", "2.0", "10.0"
-  if (/^\d+(\.0)?$/.test(clean)) {
-    return true;
-  }
-  // Sub-items: "1.0.1", "1.1", "2.1.3", "1.0.1.1"
-  return false;
+  const normalized = normalizeCcwLineNumber(lineNumber);
+  return /^\d+\.0$/.test(normalized);
 }
 
 export interface GoalSeekResult {
@@ -754,6 +753,7 @@ export function recalculateEstimateResult(
     }
 
     const rowIdx = item.rowIdx;
+    const normalizedLineNumber = normalizeCcwLineNumber(item.lineNumber) || item.lineNumber;
     const cleanSkuKey = (item.partNumber || '').trim().toUpperCase();
     const hasPromo = Boolean(promoPrices && promoPrices[rowIdx] !== undefined);
     const baseNetCiscoUnit = item.originalNetCiscoUnit ?? item.netCiscoUnit;
@@ -787,7 +787,7 @@ export function recalculateEstimateResult(
       // Sub-línea a costo $0.00 (ej. cables incluidos CAB-ACI, fuentes PWR-*, o sub-licencias LIC-MT-E-INCL)
       const normRule = normalizeOverrideRule(override);
       const defaultIsIntangible = checkIsIntangible(item.partNumber, item.description);
-      const defaultLlevaArancel = checkLlevaArancel(item.partNumber, item.description, item.lineNumber);
+      const defaultLlevaArancel = checkLlevaArancel(item.partNumber, item.description, normalizedLineNumber);
       const isIntangible =
         normRule === 'intangible'
           ? true
@@ -802,6 +802,7 @@ export function recalculateEstimateResult(
           : defaultLlevaArancel;
       return {
         ...item,
+        lineNumber: normalizedLineNumber,
         isIntangible,
         llevaArancel,
         costoInternacion: 0,
@@ -829,6 +830,7 @@ export function recalculateEstimateResult(
 
       return {
         ...item,
+        lineNumber: normalizedLineNumber,
         netCiscoUnit: meraki.netCiscoUnitCalculated,
         realUnitCost: meraki.costoTotalUnitario,
         discPct: effectiveDisc,
@@ -848,7 +850,7 @@ export function recalculateEstimateResult(
         item.description,
         params,
         override,
-        item.lineNumber
+        normalizedLineNumber
       );
 
       originalProductTotal += baseNetCiscoUnit * item.qty;
@@ -856,6 +858,7 @@ export function recalculateEstimateResult(
 
       return {
         ...item,
+        lineNumber: normalizedLineNumber,
         netCiscoUnit,
         isFastTrackPromo: hasPromo,
         ...calculated,

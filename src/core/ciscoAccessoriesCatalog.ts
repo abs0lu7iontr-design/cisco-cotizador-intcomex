@@ -2,16 +2,20 @@
 // CISCO AUTOMATED v2.1 - NON-EOL CISCO & MERAKI ACCESSORIES CATALOG & CLASSIFIER
 // Catálogo exhaustivo + Clasificador Infinito de Accesorios Físicos Vigentes (No-EOL 2026)
 // Regla de Negocio:
-// 1. Si un accesorio vigente (Antena, Cable, Transceiver SFP/QSFP, Fuente PWR, Inyector PoE,
+// 1. En Cisco CCW, TODAS las Líneas Madres (ya sean Hardware Principal, Accesorios o Suscripciones)
+//    tienen SIEMPRE el formato "1.0", "2.0", "3.0", "4.0", "5.0", "6.0", "7.0", "8.0", "9.0", "10.0", "11.0"...
+//    hasta el infinito (NUNCA "1", "2", "3", "4", "5").
+// 2. Cuando un SKU termina en '=' (repuesto/spare), la probabilidad de que venga en formato Línea Madre
+//    (1.0, 2.0, 3.0, etc.) es del 100%, y SIEMPRE lleva ARANCEL (6% Arancel + 7% Internación).
+// 3. Si un accesorio vigente No-EOL (Antena, Cable, Transceiver SFP/QSFP, Fuente PWR, Inyector PoE,
 //    Kit de Montaje/Bracket, Kit de Apilamiento, Módulo de Expansión/NIM, Ventilador, Blank)
-//    aparece en formato Línea Madre (1.0, 2.0, 3.0, 4.0, 5, 6, 7, 8... al infinito),
-//    SIEMPRE lleva ARANCEL (6% Arancel + 7% Internación), incluso si NO tiene el signo '='.
-// 2. Si el mismo accesorio aparece como Sub-Línea Hija (1.1, 1.2, 2.1, 1.0.1, etc.) SIN '=',
+//    aparece en formato Línea Madre (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0... al infinito)
+//    incluso SIN el signo '=', SIEMPRE lleva ARANCEL (6% Arancel + 7% Internación).
+// 4. Si el mismo accesorio aparece como Sub-Línea Hija (1.1, 1.2, 2.1, 1.0.1, etc.) SIN '=',
 //    es parte del chasis padre -> EQUIPO / TANGIBLE (7% Internación, 0% Arancel).
-// 3. Si cualquier accesorio o repuesto termina en '=', SIEMPRE lleva ARANCEL (6% + 7%).
-// 4. Equipos Principales (Switches, Routers, Access Points, Firewalls, Controladoras,
+// 5. Equipos Principales (Switches, Routers, Access Points, Firewalls, Controladoras,
 //    Cámaras, Sensores, Teléfonos IP, Barras de Video, Servidores UCS) NUNCA son accesorios,
-//    por lo que en línea madre 1.0, 2.0, 3.0 sin '=' son EQUIPO (7% Internación, 0% Arancel).
+//    por lo que en línea madre (1.0, 2.0, 3.0, 4.0, 5.0, 6.0...) sin '=' son EQUIPO (7% Internación, 0% Arancel).
 // ============================================================================
 
 import { MODULAR_EOL_CATALOG_2026 } from '../modules/configuriator/rules';
@@ -844,15 +848,36 @@ const MAIN_EQUIPMENT_CHASSIS_EXCLUSION_PATTERNS: readonly RegExp[] = [
 ];
 
 /**
- * Verifica si el número de línea corresponde al formato de LÍNEA MADRE (Main Line):
- * Ejemplos válidos: "1.0", "2.0", "3.0", "4.0", "5.0", ..., "1", "2", "3", "4", "5", "6", "7", "8"... hasta el infinito.
- * Ejemplos NO válidos (Sub-líneas hijas): "1.1", "1.2", "2.1", "3.4", "1.0.1", "2.1.3".
+ * Normaliza el número de línea de un Estimate CCW para garantizar que toda Línea Madre
+ * (ya sea Hardware, Accesorio o Suscripción) tenga siempre el formato "1.0", "2.0", "3.0",
+ * "4.0", "5.0", "6.0", "7.0", "8.0", "9.0", "10.0", "11.0"... (y nunca "1", "2", "3", "4", "5"
+ * ni con coma decimal "1,0", "2,0").
+ */
+export function normalizeCcwLineNumber(lineNumber?: string | number): string {
+  if (lineNumber === undefined || lineNumber === null) return '';
+  if (typeof lineNumber === 'number' && !isNaN(lineNumber) && lineNumber >= 0) {
+    if (Number.isInteger(lineNumber)) return `${lineNumber}.0`;
+    return String(lineNumber);
+  }
+  const clean = String(lineNumber).trim().replace(/,/g, '.');
+  if (!clean) return '';
+  if (/^\d+$/.test(clean)) {
+    return `${clean}.0`;
+  }
+  return clean;
+}
+
+/**
+ * Verifica si el número de línea corresponde estrictamente al formato de LÍNEA MADRE (Main Line):
+ * Formato exclusivo válido: "1.0", "2.0", "3.0", "4.0", "5.0", "6.0", "7.0", "8.0", "9.0", "10.0", "11.0"... hasta el infinito
+ * (también soporta si viene con coma "1,0", "2,0", "3,0").
+ * NUNCA "1", "2", "3", "4", "5" sin ".0", y NUNCA sub-líneas hijas ("1.1", "1.2", "2.1", "3.4", "1.0.1").
  */
 export function isMotherLineFormat(lineNumber?: string): boolean {
   if (lineNumber === undefined || lineNumber === null) return false;
-  const clean = String(lineNumber).trim();
+  const clean = String(lineNumber).trim().replace(/,/g, '.');
   if (!clean) return false;
-  return /^\d+(\.0)?$/.test(clean);
+  return /^\d+\.0$/.test(clean);
 }
 
 /**

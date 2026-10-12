@@ -279,29 +279,50 @@ assert.strictEqual(
 console.log('✅ Referencia referencialmente idéntica con datos verificada (snapshotWithData1 === snapshotWithData2).');
 
 // ----------------------------------------------------------------------------
-// 6. Verificación de Regla de Accesorios en Formato Línea Madre (1.0, 2.0, 3.0, 4.0, 5, 6, 7, 8... al infinito)
-//    - Accesorios No-EOL en Línea Madre (1.0, 2.0, 3.0, 5.0, 5, 6, 7, 8, 50.0, 100...) SIN '=' -> ARANCEL (6% + 7%)
+// 6. Verificación de Regla de Accesorios en Formato Línea Madre (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0... al infinito)
+//    - TODAS las Líneas Madres son siempre 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0... (NUNCA 1, 2, 3, 4, 5)
+//    - Cuando termina en '=', la probabilidad de que sea Línea Madre (1.0, 2.0, 3.0, etc.) es 100% -> ARANCEL (6% + 7%)
+//    - Accesorios No-EOL en Línea Madre (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0...) SIN '=' -> ARANCEL (6% + 7%)
 //    - Accesorios No-EOL en Sub-Línea Hija (1.1, 1.2, 2.1, 3.4, 5.1...) SIN '=' -> EQUIPO / TANGIBLE (0% Arancel, 7% Internación)
-//    - Accesorios con '=' en cualquier línea (1.0 o 1.1) -> ARANCEL (6% + 7%)
 //    - Equipos Principales (Switches, Routers, APs, Firewalls, Cámaras, Teléfonos, Servidores) en Línea Madre SIN '=' -> EQUIPO (0% Arancel)
 //    - Accesorios EOL excluidos del catálogo No-EOL 2026
 // ----------------------------------------------------------------------------
 import {
   isCiscoAccessorySku,
   isMotherLineFormat,
+  normalizeCcwLineNumber,
   isEolAccessoryOrProductSku,
   NON_EOL_CISCO_ACCESSORIES_SET,
 } from '../src/core/calculations';
 
-console.log('\n--- 6. Verificación de Formato Línea Madre (1.0, 2.0, 3.0, 5, 6, 7, 8... al infinito) para Accesorios No-EOL ---');
+console.log('\n--- 6. Verificación de Formato Línea Madre (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0... al infinito) para Accesorios No-EOL ---');
 
-// 6.1 Formato de línea madre infinito vs sub-líneas hijas
-const motherLineNumbers = ['1.0', '2.0', '3.0', '4.0', '5.0', '1', '2', '3', '4', '5', '6', '7', '8', '15.0', '42', '100.0', '9999'];
+// 6.1 Formato estricto de línea madre (N.0) vs enteros sin .0 y sub-líneas hijas
+const motherLineNumbers = [
+  '1.0', '2.0', '3.0', '4.0', '5.0', '6.0', '7.0', '8.0', '9.0', '10.0', '11.0', '15.0', '42.0', '100.0', '9999.0',
+  '1,0', '2,0', '3,0',
+];
 for (const ln of motherLineNumbers) {
   assert.strictEqual(
     isMotherLineFormat(ln),
     true,
-    `El número de línea "${ln}" debe ser reconocido como formato Línea Madre`
+    `El número de línea "${ln}" debe ser reconocido como formato Línea Madre (N.0)`
+  );
+}
+
+// Los enteros sin ".0" ("1", "2", "3", "4", "5") NUNCA son formato válido sin normalizar,
+// y normalizeCcwLineNumber siempre los convierte a "1.0", "2.0", "3.0", "4.0", "5.0"
+const nonFormattedIntegers = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'];
+for (const rawInt of nonFormattedIntegers) {
+  assert.strictEqual(
+    isMotherLineFormat(rawInt),
+    false,
+    `El entero crudo "${rawInt}" sin .0 NO es formato válido de línea madre CCW`
+  );
+  assert.strictEqual(
+    normalizeCcwLineNumber(rawInt),
+    `${rawInt}.0`,
+    `normalizeCcwLineNumber("${rawInt}") debe normalizar siempre a "${rawInt}.0"`
   );
 }
 
@@ -313,48 +334,48 @@ for (const ln of childLineNumbers) {
     `El número de línea "${ln}" debe ser reconocido como Sub-Línea Hija (NO madre)`
   );
 }
-console.log('✅ Detector infinito de Línea Madre (1.0..N.0 y 1..N) vs Sub-Línea Hija verificado.');
+console.log('✅ Detector infinito de Línea Madre estricta (1.0, 2.0, 3.0, 4.0, 5.0, 6.0..N.0) vs Sub-Línea Hija verificado.');
 
-// 6.2 Accesorios de todas las familias (Antenas, Cables, Transceivers, Fuentes/Inyectores, Brackets/Montaje, Módulos/Stack Kits)
+// 6.2 Accesorios de todas las familias en Líneas Madres (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0...)
 const representativeAccessories = [
   // Antenas (sin '=')
   { sku: 'C-ANT9101', desc: 'Ceiling Mount Omni Self-Identifying Antenna with 4-Port N', lineMother: '1.0', lineChild: '1.1' },
   { sku: 'C-ANT9102', desc: 'Wall Mount Omni Antenna with 4-Port RP-TNC', lineMother: '2.0', lineChild: '2.1' },
   { sku: 'CW-ANT-O1-NS-00', desc: 'Catalyst Wireless Omni Antenna', lineMother: '3.0', lineChild: '3.1' },
-  { sku: 'AIR-ANT2524DW-R', desc: '2.4 GHz 2 dBi/5 GHz 4 dBi Dipole Ant., White, RP-TNC', lineMother: '5.0', lineChild: '5.1' },
-  { sku: 'MA-ANT-3-A6', desc: 'Meraki Dual-Band Omni Antennas (RP-TNC)', lineMother: '5', lineChild: '5.2' },
-  { sku: 'MA-ANT-20', desc: 'Meraki Dual-Band Omni Antennas', lineMother: '6', lineChild: '6.1' },
-  { sku: '5G-ANTM-O-4-B', desc: '5G Outdoor Dipole Antenna', lineMother: '7', lineChild: '7.1' },
+  { sku: 'AIR-ANT2524DW-R', desc: '2.4 GHz 2 dBi/5 GHz 4 dBi Dipole Ant., White, RP-TNC', lineMother: '4.0', lineChild: '4.1' },
+  { sku: 'MA-ANT-3-A6', desc: 'Meraki Dual-Band Omni Antennas (RP-TNC)', lineMother: '5.0', lineChild: '5.2' },
+  { sku: 'MA-ANT-20', desc: 'Meraki Dual-Band Omni Antennas', lineMother: '6.0', lineChild: '6.1' },
+  { sku: '5G-ANTM-O-4-B', desc: '5G Outdoor Dipole Antenna', lineMother: '7.0', lineChild: '7.1' },
   // Cables (sin '=')
-  { sku: 'CAB-ACI', desc: 'AC Power Cord (Italy), C13, CEI 23-16, 2.5m', lineMother: '8', lineChild: '8.1' },
+  { sku: 'CAB-ACI', desc: 'AC Power Cord (Italy), C13, CEI 23-16, 2.5m', lineMother: '8.0', lineChild: '8.1' },
   { sku: 'CAB-C13-C14-2M', desc: 'Power Cord Jumper, C13-C14 Connectors, 2 Meter Length', lineMother: '9.0', lineChild: '9.1' },
-  { sku: 'CAB-C15-CBN', desc: 'Cabinet Jumper Power Cord, 250 VAC 13A, C14-C15 Connectors', lineMother: '10', lineChild: '10.1' },
+  { sku: 'CAB-C15-CBN', desc: 'Cabinet Jumper Power Cord, 250 VAC 13A, C14-C15 Connectors', lineMother: '10.0', lineChild: '10.1' },
   { sku: 'STACK-T1-50CM', desc: '50CM Type 1 Stacking Cable', lineMother: '11.0', lineChild: '11.1' },
-  { sku: 'SFP-H10GB-CU3M', desc: '10GBASE-CU SFP+ Cable 3 Meter', lineMother: '12', lineChild: '12.1' },
+  { sku: 'SFP-H10GB-CU3M', desc: '10GBASE-CU SFP+ Cable 3 Meter', lineMother: '12.0', lineChild: '12.1' },
   { sku: 'MA-PWR-CORD-IT', desc: 'Meraki AC Power Cord for Italy/Chile', lineMother: '13.0', lineChild: '13.1' },
   // Transceivers (sin '=')
   { sku: 'GLC-TE', desc: '1000BASE-T SFP transceiver module for Category 5 copper wire', lineMother: '14.0', lineChild: '14.1' },
-  { sku: 'GLC-SX-MMD', desc: '1000BASE-SX SFP transceiver module, MMF, 850nm, DOM', lineMother: '15', lineChild: '15.1' },
+  { sku: 'GLC-SX-MMD', desc: '1000BASE-SX SFP transceiver module, MMF, 850nm, DOM', lineMother: '15.0', lineChild: '15.1' },
   { sku: 'SFP-10G-SR', desc: '10GBASE-SR SFP Module', lineMother: '16.0', lineChild: '16.1' },
-  { sku: 'QSFP-100G-SR4-S', desc: '100GBASE SR4 QSFP Transceiver, MPO, 100m over OM4 MMF', lineMother: '17', lineChild: '17.1' },
+  { sku: 'QSFP-100G-SR4-S', desc: '100GBASE SR4 QSFP Transceiver, MPO, 100m over OM4 MMF', lineMother: '17.0', lineChild: '17.1' },
   { sku: 'MA-SFP-10GB-SR', desc: 'Meraki 10G Base SR Multi-Mode', lineMother: '18.0', lineChild: '18.1' },
   // Fuentes e Inyectores PoE (sin '=')
   { sku: 'PWR-C1-715WAC-P', desc: '715W AC 80+ platinum Config 1 Power Supply', lineMother: '19.0', lineChild: '19.1' },
-  { sku: 'AIR-PWRINJ6', desc: 'Power Injector (802.3at) for Aironet Access Points', lineMother: '20', lineChild: '20.1' },
+  { sku: 'AIR-PWRINJ6', desc: 'Power Injector (802.3at) for Aironet Access Points', lineMother: '20.0', lineChild: '20.1' },
   { sku: 'MA-INJ-4', desc: 'Meraki 802.3at PoE Injector', lineMother: '21.0', lineChild: '21.1' },
-  { sku: 'CW-INJ-8', desc: 'Cisco Catalyst Wireless PoE Injector', lineMother: '22', lineChild: '22.1' },
+  { sku: 'CW-INJ-8', desc: 'Cisco Catalyst Wireless PoE Injector', lineMother: '22.0', lineChild: '22.1' },
   // Brackets, Montaje, Ventiladores y Blanks (sin '=')
   { sku: 'AIR-AP-BRACKET-1', desc: '802.11 AP Low Profile Mounting Bracket (Default)', lineMother: '23.0', lineChild: '23.1' },
-  { sku: 'CW-MNT-ART1-00', desc: 'Catalyst Wireless Articulating Mount Kit', lineMother: '24', lineChild: '24.1' },
+  { sku: 'CW-MNT-ART1-00', desc: 'Catalyst Wireless Articulating Mount Kit', lineMother: '24.0', lineChild: '24.1' },
   { sku: 'MA-MNT-MR-17', desc: 'Meraki Mount Kit for MR', lineMother: '25.0', lineChild: '25.1' },
-  { sku: 'C9200-ACC-KIT-19', desc: '19 inch Rack Mount Kit for Catalyst 9200', lineMother: '26', lineChild: '26.1' },
+  { sku: 'C9200-ACC-KIT-19', desc: '19 inch Rack Mount Kit for Catalyst 9200', lineMother: '26.0', lineChild: '26.1' },
   { sku: 'FAN-T2', desc: 'Cisco Type 2 Fan Module', lineMother: '27.0', lineChild: '27.1' },
-  { sku: 'C9200-STACK-BLANK', desc: 'Catalyst 9200 Blank Stack Module', lineMother: '28', lineChild: '28.1' },
+  { sku: 'C9200-STACK-BLANK', desc: 'Catalyst 9200 Blank Stack Module', lineMother: '28.0', lineChild: '28.1' },
   // Módulos de Expansión y Stack Kits (sin '=')
   { sku: 'C9200-NM-4X', desc: 'Catalyst 9200 4 x 10G Network Module', lineMother: '29.0', lineChild: '29.1' },
-  { sku: 'C9300-NM-8X', desc: 'Catalyst 9300 8 x 10GE Network Module', lineMother: '30', lineChild: '30.1' },
+  { sku: 'C9300-NM-8X', desc: 'Catalyst 9300 8 x 10GE Network Module', lineMother: '30.0', lineChild: '30.1' },
   { sku: 'C9200L-STACK-KIT', desc: 'Catalyst 9200L Stack Module', lineMother: '31.0', lineChild: '31.1' },
-  { sku: 'C-NIM-2T', desc: '2-port 100M/1G RJ45/SFP NIM', lineMother: '32', lineChild: '32.1' },
+  { sku: 'C-NIM-2T', desc: '2-port 100M/1G RJ45/SFP NIM', lineMother: '32.0', lineChild: '32.1' },
   { sku: 'NIM-4FXO', desc: '4-Port Network Interface Module - FXO (Universal)', lineMother: '33.0', lineChild: '33.1' },
 ];
 
@@ -365,7 +386,7 @@ for (const acc of representativeAccessories) {
     `El SKU ${acc.sku} debe ser reconocido como Accesorio Cisco/Meraki No-EOL`
   );
 
-  // En Línea Madre (1.0, 2.0, 3.0, 5, 6, 7, 8...) SIN '=' -> DEBE cobrar Arancel (6% + 7%)
+  // En Línea Madre (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0...) SIN '=' -> DEBE cobrar Arancel (6% + 7%)
   assert.strictEqual(
     checkLlevaArancel(acc.sku, acc.desc, acc.lineMother),
     true,
@@ -407,22 +428,22 @@ for (const acc of representativeAccessories) {
 }
 console.log(`✅ ${representativeAccessories.length} accesorios representativos verificados en Línea Madre (ARANCEL) vs Sub-Línea Hija (EQUIPO).`);
 
-// 6.3 Equipos Principales en Línea Madre (1.0, 2.0, 3.0, 5, 6, 7, 8...) SIN '=' NUNCA llevan Arancel
+// 6.3 Equipos Principales en Línea Madre (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0...) SIN '=' NUNCA llevan Arancel
 const mainEquipmentOnMotherLines = [
   { sku: 'C1300-24P-4G', desc: 'Catalyst 1300 24-port GE, PoE, 4x1G SFP', line: '1.0' },
   { sku: 'C9200L-24P-4G-E', desc: 'Catalyst 9200L 24-port PoE+, 4 x 1G, Network Essentials', line: '2.0' },
   { sku: 'C9300-48P-A', desc: 'Catalyst 9300 48-port PoE+, Network Advantage', line: '3.0' },
   { sku: 'MS130-24P-HW', desc: 'Meraki MS130 24-Port PoE Switch', line: '4.0' },
-  { sku: 'C8200-1N-4T', desc: 'Cisco Catalyst 8200 Series Edge Platform', line: '5' },
-  { sku: 'C1111-8P', desc: 'ISR 1100 8 Ports Dual GE WAN Ethernet Router', line: '6' },
-  { sku: 'CW9162I-ROW', desc: 'Catalyst 9162I AP Wi-Fi 6E', line: '7' },
-  { sku: 'MR46-HW', desc: 'Meraki MR46 Wi-Fi 6 Indoor AP', line: '8' },
+  { sku: 'C8200-1N-4T', desc: 'Cisco Catalyst 8200 Series Edge Platform', line: '5.0' },
+  { sku: 'C1111-8P', desc: 'ISR 1100 8 Ports Dual GE WAN Ethernet Router', line: '6.0' },
+  { sku: 'CW9162I-ROW', desc: 'Catalyst 9162I AP Wi-Fi 6E', line: '7.0' },
+  { sku: 'MR46-HW', desc: 'Meraki MR46 Wi-Fi 6 Indoor AP', line: '8.0' },
   { sku: 'FPR1010-NGFW-K9', desc: 'Cisco Firepower 1010 NGFW Appliance', line: '9.0' },
   { sku: 'C9800-L-F-K9', desc: 'Cisco Catalyst 9800-L Wireless Controller Fiber', line: '10.0' },
-  { sku: 'MV22X-HW', desc: 'Meraki MV22X Indoor Varifocal Camera', line: '11' },
-  { sku: 'MT10-HW', desc: 'Meraki MT10 Indoor Temperature and Humidity Sensor', line: '12' },
+  { sku: 'MV22X-HW', desc: 'Meraki MV22X Indoor Varifocal Camera', line: '11.0' },
+  { sku: 'MT10-HW', desc: 'Meraki MT10 Indoor Temperature and Humidity Sensor', line: '12.0' },
   { sku: 'CP-8845-K9', desc: 'Cisco IP Phone 8845', line: '13.0' },
-  { sku: 'CS-BAR-T-K9', desc: 'Cisco Room Bar', line: '14' },
+  { sku: 'CS-BAR-T-K9', desc: 'Cisco Room Bar', line: '14.0' },
   { sku: 'UCSC-C220-M7S', desc: 'UCS C220 M7 Rack Server', line: '15.0' },
 ];
 

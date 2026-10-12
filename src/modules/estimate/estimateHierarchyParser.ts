@@ -25,10 +25,11 @@ function parseSafeNum(val: any): number {
 }
 
 function normalizeLineNumber(value: any): string {
-  // Excel/CCW sometimes stores a displayed "1.0" as numeric 1; retain its
-  // major-line meaning instead of dropping it as an invalid hierarchy value.
+  // Excel/CCW Mother Lines are ALWAYS "1.0", "2.0", "3.0", "4.0", "5.0", "6.0"... never "1", "2", "3".
   if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return `${value}.0`;
-  return String(value || '').trim();
+  const clean = String(value || '').trim().replace(/,/g, '.');
+  if (/^\d+$/.test(clean)) return `${clean}.0`;
+  return clean;
 }
 
 export function parseEstimateWithHierarchy(rawRows: any[][]): ProcessedEstimateLine[] {

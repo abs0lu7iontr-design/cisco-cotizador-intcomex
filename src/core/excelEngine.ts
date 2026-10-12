@@ -270,20 +270,30 @@ function getDistinctColumnString(
   return getCellString(cell);
 }
 
-/** CCW may store a displayed line such as 1.0 as a numeric 1 with a number format. */
+/**
+ * CCW Mother Lines are ALWAYS "1.0", "2.0", "3.0", "4.0", "5.0", "6.0", "7.0", "8.0", "9.0", "10.0", "11.0"...
+ * never "1", "2", "3", "4", "5". If Excel stores a displayed "1.0" as numeric 1 or "1,0",
+ * normalize it to "1.0" while preserving child lines ("1.1", "1.2", "2.1", "1.0.1").
+ */
 function getLineNumberString(worksheet: ExcelJS.Worksheet, rowNumber: number, colNumber: number): string {
   if (!colNumber || colNumber <= 0) return '';
   const cell = worksheet.getCell(rowNumber, colNumber);
   if (!cell || (cell.isMerged && cell.master && cell.master.address !== cell.address)) return '';
 
   try {
-    const displayed = (cell.text || '').trim();
-    if (/^\d+(\.\d+)*$/.test(displayed)) return displayed;
+    const displayed = (cell.text || '').trim().replace(/,/g, '.');
+    if (/^\d+$/.test(displayed)) return `${displayed}.0`;
+    if (/^\d+(\.\d+)+$/.test(displayed)) return displayed;
   } catch (_) {}
 
   const value = cell.value;
-  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return `${value}.0`;
-  return getCellString(cell);
+  if (typeof value === 'number' && !isNaN(value) && value >= 0) {
+    if (Number.isInteger(value)) return `${value}.0`;
+    return String(value);
+  }
+  const rawStr = getCellString(cell).trim().replace(/,/g, '.');
+  if (/^\d+$/.test(rawStr)) return `${rawStr}.0`;
+  return rawStr;
 }
 
 function getDistinctColumnNumeric(
