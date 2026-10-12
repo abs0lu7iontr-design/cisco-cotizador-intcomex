@@ -45,24 +45,38 @@ export function checkIsIntangible(sku: string, description: string): boolean {
   const isCiscoOneLicenseSku =
     (upperSku.startsWith('C1-') || /^C1[AFP][A-Z0-9]/.test(upperSku)) && !isC1Hardware;
 
+  // Cables, power cords (CAB-ACI, CAB-C13, CAB-C14, CAB-C15, etc.), power supplies, transceivers and blanks are strictly physical hardware
+  const isPhysicalAccessoryOrCable =
+    upperSku.startsWith('CAB-') ||
+    upperSku.includes('-CAB-') ||
+    upperSku.startsWith('PWR-') ||
+    upperSku.startsWith('MA-PWR-') ||
+    upperSku.startsWith('STACK-') ||
+    upperSku.startsWith('FAN-') ||
+    upperSku.startsWith('SFP-') ||
+    upperSku.startsWith('QSFP-') ||
+    upperSku.startsWith('GLC-') ||
+    upperSku.endsWith('-BLANK');
+
   // Pure standalone license & subscription SKU patterns
   const isPureStandaloneLicenseSku =
-    upperSku.startsWith('CON-') ||
-    upperSku.startsWith('CON') ||
-    upperSku.startsWith('L-') ||
-    upperSku.startsWith('LIC-') ||
-    isCiscoOneLicenseSku ||
-    upperSku.startsWith('SVS-') ||
-    upperSku.startsWith('CX-') ||
-    upperSku.startsWith('CXE-') ||
-    upperSku.startsWith('CXS-') ||
-    upperSku.startsWith('DCN-') ||
-    upperSku.startsWith('NETWORK-') ||
-    upperSku.includes('-DNA-') ||
-    upperSku.includes('DNA-') ||
-    upperSku.includes('-NW-') ||
-    upperSku.includes('-SUB') ||
-    upperSku.includes('A-FLEX');
+    !isPhysicalAccessoryOrCable &&
+    (upperSku.startsWith('CON-') ||
+      upperSku.startsWith('CON') ||
+      upperSku.startsWith('L-') ||
+      upperSku.startsWith('LIC-') ||
+      isCiscoOneLicenseSku ||
+      upperSku.startsWith('SVS-') ||
+      upperSku.startsWith('CX-') ||
+      upperSku.startsWith('CXE-') ||
+      upperSku.startsWith('CXS-') ||
+      upperSku.startsWith('DCN-') ||
+      upperSku.startsWith('NETWORK-') ||
+      upperSku.includes('-DNA-') ||
+      upperSku.includes('DNA-') ||
+      upperSku.includes('-NW-') ||
+      upperSku.includes('-SUB') ||
+      upperSku.includes('A-FLEX'));
 
   const hardwareKeywords = [
     'catalyst',
@@ -73,6 +87,8 @@ export function checkIsIntangible(sku: string, description: string): boolean {
     'blank',
     'module',
     'cable',
+    'cord',
+    'jumper',
     'rack',
     'power supply',
     'hardware',
@@ -85,10 +101,14 @@ export function checkIsIntangible(sku: string, description: string): boolean {
   ];
 
   // Tier 1: Hardware Pre-Filter (Highest Priority: Force Tangible/Equipo)
-  // Physical hardware models like Catalyst 1000/1200/1300 and Cisco 1100 are strictly tangible
-  if (isC1Hardware || !isPureStandaloneLicenseSku) {
-    if (hardwareKeywords.some((keyword) => lowerDesc.includes(keyword)) || isC1Hardware) {
-      // If SKU is C1 hardware and not an explicit term license, force tangible
+  // Cables, accessories, C1 switches/routers, and physical hardware are strictly tangible
+  if (isPhysicalAccessoryOrCable || isC1Hardware || !isPureStandaloneLicenseSku) {
+    if (
+      isPhysicalAccessoryOrCable ||
+      isC1Hardware ||
+      hardwareKeywords.some((keyword) => lowerDesc.includes(keyword))
+    ) {
+      // If SKU is physical accessory or C1 hardware and not an explicit term license, force tangible
       const isExplicitLicenseDesc =
         lowerDesc.includes('term license') ||
         lowerDesc.includes('dna essentials') ||
@@ -709,10 +729,22 @@ export function recalculateEstimateResult(
     const durationMonths = isPeriodic ? (item.detectedDurationMonths ?? item.months ?? 1) : 1;
 
     if (item.realUnitCost === 0 && (item.unitListPrice === 0 || item.netCiscoUnit === 0)) {
-      // Sub-línea a costo $0.00 (ej. LIC-MT-E-INCL)
+      // Sub-línea a costo $0.00 (ej. cables incluidos CAB-ACI, fuentes PWR-*, o sub-licencias LIC-MT-E-INCL)
       const normRule = normalizeOverrideRule(override);
-      const isIntangible = normRule === 'intangible' ? true : (normRule === 'arancel' || normRule === 'equipo' ? false : (item.isIntangible ?? true));
-      const llevaArancel = normRule === 'arancel';
+      const defaultIsIntangible = checkIsIntangible(item.partNumber, item.description);
+      const defaultLlevaArancel = checkLlevaArancel(item.partNumber);
+      const isIntangible =
+        normRule === 'intangible'
+          ? true
+          : normRule === 'arancel' || normRule === 'equipo'
+          ? false
+          : defaultIsIntangible;
+      const llevaArancel =
+        normRule === 'arancel'
+          ? true
+          : normRule === 'intangible' || normRule === 'equipo'
+          ? false
+          : defaultLlevaArancel;
       return {
         ...item,
         isIntangible,

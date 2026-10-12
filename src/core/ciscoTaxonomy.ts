@@ -27,6 +27,11 @@ export function isCiscoServiceSku(sku: string, description: string = ''): boolea
   const normSku = String(sku || '').trim().toUpperCase();
   const normDesc = String(description || '').trim().toUpperCase();
 
+  // Cables, fuentes y accesorios físicos Cisco NUNCA son contratos de servicio
+  if (/^(CAB-|PWR-|MA-PWR-|STACK-|FAN-|SFP-|QSFP-|GLC-)/i.test(normSku)) {
+    return false;
+  }
+
   if (CISCO_SERVICE_REGEX.test(normSku) || normSku.includes('-SNT') || normSku.startsWith('SNT-')) {
     return true;
   }
@@ -53,6 +58,11 @@ export function isCiscoServiceSku(sku: string, description: string = ''): boolea
 export function isCiscoLicenseSku(sku: string, description: string = '', durationMonths: number = 0): boolean {
   const normSku = String(sku || '').trim().toUpperCase();
   const normDesc = String(description || '').trim().toUpperCase();
+
+  // Cables, fuentes y accesorios físicos Cisco (CAB-*, PWR-*, etc.) NUNCA son licencias de software
+  if (/^(CAB-|PWR-|MA-PWR-|STACK-|FAN-|SFP-|QSFP-|GLC-)/i.test(normSku)) {
+    return false;
+  }
 
   // Si es un contrato de soporte técnico/servicios, se clasifica como servicio, no como licencia de software
   if (isCiscoServiceSku(normSku, normDesc)) {

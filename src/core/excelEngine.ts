@@ -22,6 +22,8 @@ import {
   safeParseFloat,
   normalizeOverrideRule,
   roundFinancial,
+  checkIsIntangible,
+  checkLlevaArancel,
 } from './calculations';
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../lib/intcomexLogoBase64';
 import { generateQuotationFileName, isPureLicensingQuote } from './exportUtils';
@@ -874,12 +876,24 @@ export async function parseEstimateWorkbook(
       isPeriodicSubscription = healedSandia;
     }
 
-    // Caso Sub-líneas a costo $0.00 (como LIC-MT-E-INCL o contenedores .0 a costo 0)
+    // Caso Sub-líneas a costo $0.00 (cables incluidos CAB-*, fuentes PWR-*, sub-licencias de fábrica o contenedores .0 a costo 0)
     if (rawNetCiscoUnit === 0 && rawExtCost === 0) {
       const rowOverride = overrides ? (overrides[r] ?? (sku ? (overrides as any)[sku] : undefined)) : undefined;
       const normRule = normalizeOverrideRule(rowOverride);
-      const isIntangible = normRule === 'intangible' ? true : (normRule === 'arancel' || normRule === 'equipo' ? false : true);
-      const llevaArancel = normRule === 'arancel';
+      const defaultIsIntangible = checkIsIntangible(sku, description);
+      const defaultLlevaArancel = checkLlevaArancel(sku);
+      const isIntangible =
+        normRule === 'intangible'
+          ? true
+          : normRule === 'arancel' || normRule === 'equipo'
+          ? false
+          : defaultIsIntangible;
+      const llevaArancel =
+        normRule === 'arancel'
+          ? true
+          : normRule === 'intangible' || normRule === 'equipo'
+          ? false
+          : defaultLlevaArancel;
 
       items.push({
         rowIdx: r,

@@ -3,11 +3,12 @@ import {
   checkIsIntangible,
   checkLlevaArancel,
   calculateLineItemCosts,
+  recalculateEstimateResult,
 } from '../src/core/calculations';
 import { isCiscoLicenseSku, isCiscoIntangibleSku } from '../src/core/ciscoTaxonomy';
 import { getEstimatesMirrorSnapshot, saveEstimatesMirrorSnapshot } from '../src/hooks/useEstimatesMirror';
 
-console.log('🧪 Iniciando Suite de Verificación de Clasificación C1 (Hardware vs Software) y Snapshot Espejo...');
+console.log('🧪 Iniciando Suite de Verificación de Clasificación C1, Cables CAB-X (con/sin =) y Snapshot Espejo...');
 
 // ----------------------------------------------------------------------------
 // 1. Verificación del caso exacto reportado por el usuario: C1300-24P-4G
@@ -70,9 +71,144 @@ for (const hw of hardwareCases) {
 }
 
 // ----------------------------------------------------------------------------
-// 3. Verificación de Licencias Cisco ONE genuinas (C1-, C1A, C1F, C1P)
+// 3. Verificación de Cables CAB-X (CAB-ACI, CAB-C13, CAB-C14, CAB-C15, etc.)
+//    - Sin signo '=' al final: Tangible (Hardware / Equipo: 7% internación, 0% arancel)
+//    - Con signo '=' al final: Arancel (7% internación + 6% arancel)
+//    - A costo $0.00 (sub-línea hija en CCW): mantiene su clasificación física (Tangible o Arancel, NUNCA Intangible)
 // ----------------------------------------------------------------------------
-console.log('\n--- 3. Verificación de Licencias Genuinas Cisco ONE (Intangibles) ---');
+console.log('\n--- 3. Verificación de Cables CAB-X (CAB-ACI, CAB-C13, CAB-C14, CAB-C15) con y sin signo = ---');
+const cableSkus = [
+  { sku: 'CAB-ACI', desc: 'AC Power Cord (Italy), C13, CEI 23-16, 2.5m' },
+  { sku: 'CAB-C13-C14-2M', desc: 'Power Cord Jumper, C13-C14 Connectors, 2 Meter Length' },
+  { sku: 'CAB-C13-CBN', desc: 'Cabinet Jumper Power Cord, 250 VAC 10A, C14-C13 Connectors' },
+  { sku: 'CAB-C14-C15', desc: 'Jumper Cord 250VAC 10A C14-C15' },
+  { sku: 'CAB-C15-CBN', desc: 'Cabinet Jumper Power Cord, 250 VAC 13A, C14-C15 Connectors' },
+  { sku: 'CAB-ACA', desc: 'AC Power Cord (Italy/Chile), C13, CEI 23-16, 2.5m' },
+  { sku: 'CAB-TA-IT', desc: 'Italy AC Type A Power Cable' },
+];
+
+for (const cab of cableSkus) {
+  // Caso A: Sin '=' -> Tangible / Equipo (7% internación, 0% arancel)
+  assert.strictEqual(
+    checkIsIntangible(cab.sku, cab.desc),
+    false,
+    `${cab.sku} (sin =) debe ser TANGIBLE (Hardware), jamás Intangible`
+  );
+  assert.strictEqual(
+    checkLlevaArancel(cab.sku),
+    false,
+    `${cab.sku} (sin =) no debe llevar arancel`
+  );
+  const calcHardware = calculateLineItemCosts(100, 1, cab.sku, cab.desc, {
+    internacionPct: 7.0,
+    arancelPct: 6.0,
+    margenPct: 5.0,
+  });
+  assert.strictEqual(calcHardware.isIntangible, false);
+  assert.strictEqual(calcHardware.llevaArancel, false);
+  assert.strictEqual(calcHardware.costoInternacion, 7.0, `${cab.sku} debe llevar 7% internación`);
+  assert.strictEqual(calcHardware.costoArancel, 0.0, `${cab.sku} sin = debe llevar 0% arancel`);
+
+  // Caso B: Con '=' -> Arancel (7% internación + 6% arancel)
+  const skuWithEqual = `${cab.sku}=`;
+  assert.strictEqual(
+    checkIsIntangible(skuWithEqual, cab.desc),
+    false,
+    `${skuWithEqual} (con =) debe ser TANGIBLE`
+  );
+  assert.strictEqual(
+    checkLlevaArancel(skuWithEqual),
+    true,
+    `${skuWithEqual} (con =) DEBE llevar arancel (6%)`
+  );
+  const calcArancel = calculateLineItemCosts(100, 1, skuWithEqual, cab.desc, {
+    internacionPct: 7.0,
+    arancelPct: 6.0,
+    margenPct: 5.0,
+  });
+  assert.strictEqual(calcArancel.isIntangible, false);
+  assert.strictEqual(calcArancel.llevaArancel, true);
+  assert.strictEqual(calcArancel.costoInternacion, 7.0, `${skuWithEqual} debe llevar 7% internación`);
+  assert.strictEqual(calcArancel.costoArancel, 6.0, `${skuWithEqual} debe llevar 6% arancel`);
+
+  console.log(`✅ Cable verificado: ${cab.sku} -> EQUIPO (Hardware) | ${skuWithEqual} -> ARANCEL (+6%)`);
+}
+
+// Verificación en Sub-líneas a costo $0.00 (ej. línea 2.1 CAB-ACI incluida en switch C1300-24P-4G)
+const mockResultWithZeroCostCables = recalculateEstimateResult(
+  {
+    fileName: 'test.xlsx',
+    originalProductTotal: 684.67,
+    calculatedProductTotal: 787.0,
+    params: { internacionPct: 7.0, arancelPct: 6.0, margenPct: 5.0 },
+    items: [
+      {
+        rowIdx: 21,
+        lineNumber: '2.1',
+        partNumber: 'CAB-ACI',
+        description: 'AC Power Cord (Italy), C13, CEI 23-16, 2.5m',
+        qty: 18,
+        unitListPrice: 0,
+        netCiscoUnit: 0,
+        realUnitCost: 0,
+        discPct: 0,
+        isIntangible: true, // Incluso si venía mal clasificado antes, debe autocurarse a false (Equipo)
+        llevaArancel: false,
+        costoInternacion: 0,
+        costoArancel: 0,
+        costoTotalUnitario: 0,
+        precioVentaUnitario: 0,
+        precioVentaExtendido: 0,
+      } as any,
+      {
+        rowIdx: 22,
+        lineNumber: '2.2',
+        partNumber: 'CAB-C13-C14-2M=',
+        description: 'Power Cord Jumper, C13-C14 Connectors, 2 Meter Length',
+        qty: 2,
+        unitListPrice: 0,
+        netCiscoUnit: 0,
+        realUnitCost: 0,
+        discPct: 0,
+        isIntangible: true,
+        llevaArancel: false,
+        costoInternacion: 0,
+        costoArancel: 0,
+        costoTotalUnitario: 0,
+        precioVentaUnitario: 0,
+        precioVentaExtendido: 0,
+      } as any,
+    ],
+  } as any,
+  { internacionPct: 7.0, arancelPct: 6.0, margenPct: 5.0 }
+);
+
+assert.strictEqual(
+  mockResultWithZeroCostCables.items[0].isIntangible,
+  false,
+  'Sub-línea $0.00 CAB-ACI debe clasificarse como EQUIPO (isIntangible: false), NO como Intangible'
+);
+assert.strictEqual(
+  mockResultWithZeroCostCables.items[0].llevaArancel,
+  false,
+  'Sub-línea $0.00 CAB-ACI sin = no lleva arancel'
+);
+assert.strictEqual(
+  mockResultWithZeroCostCables.items[1].isIntangible,
+  false,
+  'Sub-línea $0.00 CAB-C13-C14-2M= debe tener isIntangible: false'
+);
+assert.strictEqual(
+  mockResultWithZeroCostCables.items[1].llevaArancel,
+  true,
+  'Sub-línea $0.00 CAB-C13-C14-2M= con = debe clasificarse como ARANCEL (llevaArancel: true)'
+);
+console.log('✅ Sub-líneas $0.00 de cables CAB-ACI y CAB-C13-C14-2M= verificadas (EQUIPO y ARANCEL respectivamente).');
+
+// ----------------------------------------------------------------------------
+// 4. Verificación de Licencias Cisco ONE genuinas (C1-, C1A, C1F, C1P)
+// ----------------------------------------------------------------------------
+console.log('\n--- 4. Verificación de Licencias Genuinas Cisco ONE (Intangibles) ---');
 const ciscoOneLicenses = [
   { sku: 'C1-N9K-X', desc: 'Cisco ONE Foundation Suite for Nexus 9000' },
   { sku: 'C1A1TC4P1-3Y', desc: 'Cisco ONE Advantage 3Y Subscription' },
@@ -91,9 +227,9 @@ for (const lic of ciscoOneLicenses) {
 }
 
 // ----------------------------------------------------------------------------
-// 4. Verificación de Referencia Estable en getEstimatesMirrorSnapshot (Fix React Error #185)
+// 5. Verificación de Referencia Estable en getEstimatesMirrorSnapshot (Fix React Error #185)
 // ----------------------------------------------------------------------------
-console.log('\n--- 4. Verificación de Blindaje contra React Error #185 en getEstimatesMirrorSnapshot ---');
+console.log('\n--- 5. Verificación de Blindaje contra React Error #185 en getEstimatesMirrorSnapshot ---');
 
 // Mock localStorage if in node environment without window
 if (typeof globalThis.localStorage === 'undefined') {
@@ -142,4 +278,4 @@ assert.strictEqual(
 );
 console.log('✅ Referencia referencialmente idéntica con datos verificada (snapshotWithData1 === snapshotWithData2).');
 
-console.log('\n🎉 ¡TODAS LAS PRUEBAS DE HARDWARE C1 Y BLINDAJE CONTRA REACT ERROR #185 PASARON EXITOSAMENTE!');
+console.log('\n🎉 ¡TODAS LAS PRUEBAS DE HARDWARE C1, CABLES CAB-X Y BLINDAJE CONTRA REACT ERROR #185 PASARON EXITOSAMENTE!');
