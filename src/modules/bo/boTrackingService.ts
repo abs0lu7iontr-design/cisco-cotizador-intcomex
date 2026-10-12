@@ -20,39 +20,108 @@ import {
   BoDailyNote,
 } from './boTrackingTypes';
 import { ProcessedEstimateResult } from '../../core/types';
+import { sanitizeForFirestore } from '../cloud/firestoreService';
 
 const BO_TRACKING_COLLECTION = 'bo_order_tracking';
-const LOCAL_BO_TRACKING_CACHE_KEY = 'cisco_bo_order_tracking_cache_v1';
+const LOCAL_BO_TRACKING_PRIMARY_KEY = 'cisco_bo_order_tracking_cache_v2';
+const LOCAL_BO_TRACKING_VAULT_KEY = 'cisco_bo_order_tracking_vault_v1';
+const LOCAL_BO_TRACKING_LEGACY_KEY = 'cisco_bo_order_tracking_cache_v1';
+const LOCAL_BO_TRACKING_DELETED_KEY = 'cisco_bo_order_tracking_deleted_ids_v1';
+const LOCAL_BO_TRACKING_INIT_KEY = 'cisco_bo_tracking_initialized_flag_v1';
 
 // ----------------------------------------------------------------------------
-// Local Storage Cache Helpers (0ms Instant Load + Offline Failsafe)
+// Local Storage Multi-Tier Vault & Tombstone Helpers (Blindaje Anti-Pérdida)
 // ----------------------------------------------------------------------------
 let inMemoryTrackingCache: BoOrderTrackingRecord[] = [];
 
-export function getLocalBoTrackingCache(): BoOrderTrackingRecord[] {
+export function getDeletedBoTrackingIds(): Set<string> {
   try {
     if (typeof localStorage !== 'undefined') {
-      const raw = localStorage.getItem(LOCAL_BO_TRACKING_CACHE_KEY);
+      const raw = localStorage.getItem(LOCAL_BO_TRACKING_DELETED_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) return new Set(arr);
       }
     }
-  } catch (err) {
-    // ignore
+  } catch (_) {}
+  return new Set();
+}
+
+export function addDeletedBoTrackingId(id: string): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const deleted = getDeletedBoTrackingIds();
+      deleted.add(id);
+      localStorage.setItem(LOCAL_BO_TRACKING_DELETED_KEY, JSON.stringify(Array.from(deleted)));
+    }
+  } catch (_) {}
+}
+
+export function getLocalBoTrackingCache(): BoOrderTrackingRecord[] {
+  const deletedIds = getDeletedBoTrackingIds();
+  const map = new Map<string, BoOrderTrackingRecord>();
+
+  const keysToRead = [
+    LOCAL_BO_TRACKING_LEGACY_KEY,
+    LOCAL_BO_TRACKING_VAULT_KEY,
+    LOCAL_BO_TRACKING_PRIMARY_KEY,
+  ];
+
+  try {
+    if (typeof localStorage !== 'undefined') {
+      for (const k of keysToRead) {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            for (const item of list) {
+              if (item && item.id && !deletedIds.has(item.id)) {
+                const existing = map.get(item.id);
+                if (!existing) {
+                  map.set(item.id, item);
+                } else {
+                  const existingTs = existing.updatedAt || existing.createdAt || '';
+                  const itemTs = item.updatedAt || item.createdAt || '';
+                  if (itemTs >= existingTs) {
+                    map.set(item.id, item);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (_) {}
+
+  // Si hay datos en memoria que no están en localStorage, incluirlos
+  for (const mem of inMemoryTrackingCache) {
+    if (mem && mem.id && !deletedIds.has(mem.id) && !map.has(mem.id)) {
+      map.set(mem.id, mem);
+    }
   }
-  return inMemoryTrackingCache;
+
+  const result = Array.from(map.values()).sort(
+    (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+  );
+
+  return result.length > 0 ? result : inMemoryTrackingCache;
 }
 
 export function saveLocalBoTrackingCache(records: BoOrderTrackingRecord[]): void {
-  inMemoryTrackingCache = [...records];
+  const deletedIds = getDeletedBoTrackingIds();
+  const cleanRecords = records.filter((r) => r && r.id && !deletedIds.has(r.id));
+  inMemoryTrackingCache = [...cleanRecords];
+
   try {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(LOCAL_BO_TRACKING_CACHE_KEY, JSON.stringify(records));
+      const json = JSON.stringify(cleanRecords);
+      localStorage.setItem(LOCAL_BO_TRACKING_PRIMARY_KEY, json);
+      localStorage.setItem(LOCAL_BO_TRACKING_VAULT_KEY, json);
+      localStorage.setItem(LOCAL_BO_TRACKING_LEGACY_KEY, json);
+      localStorage.setItem(LOCAL_BO_TRACKING_INIT_KEY, 'true');
     }
-  } catch (err) {
-    // ignore
-  }
+  } catch (_) {}
 }
 
 // ----------------------------------------------------------------------------
@@ -200,9 +269,13 @@ const SEED_BO_ORDERS: BoOrderTrackingRecord[] = [
 // ----------------------------------------------------------------------------
 
 /**
- * Obtiene todas las órdenes de seguimiento BO (desde Firestore o caché local)
+ * Obtiene todas las órdenes de seguimiento BO con fusión bidireccional inteligente
+ * (Garantiza que ningún registro local se pierda y sincroniza con Cloud Firestore)
  */
 export async function getBoTrackings(): Promise<BoOrderTrackingRecord[]> {
+  const localRecords = getLocalBoTrackingCache();
+  const deletedIds = getDeletedBoTrackingIds();
+
   try {
     const { db, isReady } = getFirestoreInstance();
     if (isReady && db) {
@@ -211,32 +284,98 @@ export async function getBoTrackings(): Promise<BoOrderTrackingRecord[]> {
         orderBy('createdAt', 'desc')
       );
       const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        const records: BoOrderTrackingRecord[] = [];
-        snapshot.forEach((docSnap) => {
-          records.push(docSnap.data() as BoOrderTrackingRecord);
-        });
-        saveLocalBoTrackingCache(records);
-        return records;
+
+      const cloudRecords: BoOrderTrackingRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as BoOrderTrackingRecord;
+        if (data && data.id && !deletedIds.has(data.id)) {
+          cloudRecords.push(data);
+        } else if (data && data.id && deletedIds.has(data.id)) {
+          // Si el registro fue eliminado por el usuario, purgarlo de Firestore en segundo plano
+          deleteDoc(doc(db, BO_TRACKING_COLLECTION, data.id)).catch(() => {});
+        }
+      });
+
+      // SMART BIDIRECTIONAL MERGE:
+      // Combinamos nube con caché local para que NINGÚN ingreso reciente se pierda
+      const mergedMap = new Map<string, BoOrderTrackingRecord>();
+
+      // 1. Incorporar registros de Firestore
+      for (const cr of cloudRecords) {
+        mergedMap.set(cr.id, cr);
+      }
+
+      // 2. Fusionar con registros locales (preservando ingresos recientes no sincronizados)
+      const pendingSyncToCloud: BoOrderTrackingRecord[] = [];
+      for (const lr of localRecords) {
+        if (deletedIds.has(lr.id)) continue;
+
+        const existingCloud = mergedMap.get(lr.id);
+        if (!existingCloud) {
+          // El registro existe localmente pero aún no en Firestore -> PRESERVAR y auto-sincronizar
+          mergedMap.set(lr.id, lr);
+          pendingSyncToCloud.push(lr);
+        } else {
+          // Si la versión local ya fue entregada/completada (DELIVERED) y la nube no, gana DELIVERED
+          if (lr.currentStage === 'DELIVERED' && existingCloud.currentStage !== 'DELIVERED') {
+            mergedMap.set(lr.id, lr);
+            pendingSyncToCloud.push(lr);
+          } else {
+            const localTs = lr.updatedAt || lr.createdAt || '';
+            const cloudTs = existingCloud.updatedAt || existingCloud.createdAt || '';
+            if (localTs >= cloudTs) {
+              mergedMap.set(lr.id, lr);
+              if (localTs > cloudTs) {
+                pendingSyncToCloud.push(lr);
+              }
+            }
+          }
+        }
+      }
+
+      const mergedList = Array.from(mergedMap.values()).sort(
+        (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      );
+
+      // Auto-reparación / Auto-sincronización con la nube para registros locales faltantes
+      if (pendingSyncToCloud.length > 0) {
+        for (const item of pendingSyncToCloud) {
+          try {
+            const docRef = doc(db, BO_TRACKING_COLLECTION, item.id);
+            const sanitized = sanitizeForFirestore(item);
+            setDoc(docRef, sanitized, { merge: true }).catch((errCloud) => {
+              console.warn('[BoTrackingService] Auto-sincronización pendiente:', errCloud);
+            });
+          } catch (_) {}
+        }
+      }
+
+      if (mergedList.length > 0) {
+        saveLocalBoTrackingCache(mergedList);
+        return mergedList;
       }
     }
   } catch (err) {
-    console.warn('[BoTrackingService] Firestore no disponible o sin conexión. Usando caché local:', err);
+    console.warn('[BoTrackingService] Firestore no disponible o sin conexión. Usando caché local blindada:', err);
   }
 
-  // Fallback: leer de caché local
-  const cached = getLocalBoTrackingCache();
-  if (cached.length > 0) {
-    return cached;
+  // Fallback: leer de caché local blindada
+  if (localRecords.length > 0) {
+    return localRecords;
   }
 
-  // Si no hay nada, inicializar con las semillas predeterminadas
-  saveLocalBoTrackingCache(SEED_BO_ORDERS);
-  return SEED_BO_ORDERS;
+  // Inicializar con semillas SOLO si es primera ejecución absoluta y no hay flag de inicio
+  const isInitialized = typeof localStorage !== 'undefined' && localStorage.getItem(LOCAL_BO_TRACKING_INIT_KEY);
+  if (!isInitialized && localRecords.length === 0) {
+    saveLocalBoTrackingCache(SEED_BO_ORDERS);
+    return SEED_BO_ORDERS;
+  }
+
+  return [];
 }
 
 /**
- * Guarda o actualiza un registro completo de seguimiento BO
+ * Guarda o actualiza un registro completo de seguimiento BO con sanitización estricta
  */
 export async function saveBoTracking(
   record: BoOrderTrackingRecord
@@ -248,7 +387,7 @@ export async function saveBoTracking(
       updatedAt: new Date().toISOString(),
     };
 
-    // Actualizar caché local inmediatamente
+    // Actualizar caché local inmediatamente en todos los almacenes redundantes
     const current = getLocalBoTrackingCache();
     const existingIdx = current.findIndex((r) => r.id === normalizedRecord.id);
     let nextList: BoOrderTrackingRecord[];
@@ -260,15 +399,16 @@ export async function saveBoTracking(
     }
     saveLocalBoTrackingCache(nextList);
 
-    // Persistir en Firestore si está conectado
+    // Persistir en Firestore sanitizando campos undefined (elimina error "Unsupported field value: undefined")
     try {
       const { db, isReady } = getFirestoreInstance();
       if (isReady && db) {
         const docRef = doc(db, BO_TRACKING_COLLECTION, normalizedRecord.id);
-        await setDoc(docRef, normalizedRecord, { merge: true });
+        const sanitized = sanitizeForFirestore(normalizedRecord);
+        await setDoc(docRef, sanitized, { merge: true });
       }
     } catch (errCloud) {
-      console.warn('[BoTrackingService] Sincronización nube pendiente, guardado localmente:', errCloud);
+      console.warn('[BoTrackingService] Sincronización nube pendiente, guardado localmente en vault:', errCloud);
     }
 
     return { success: true };
@@ -412,14 +552,19 @@ export async function addBoDailyNote(
 }
 
 /**
- * Elimina o archiva un registro de seguimiento
+ * Elimina o archiva un registro de seguimiento con registro de tombstone
  */
 export async function deleteBoTracking(orderId: string): Promise<{ success: boolean; error?: string }> {
   try {
+    // 1. Registrar en lista negra de tumbstones para evitar resurrección
+    addDeletedBoTrackingId(orderId);
+
+    // 2. Eliminar de caché local redundante
     const current = getLocalBoTrackingCache();
     const nextList = current.filter((r) => r.id !== orderId);
     saveLocalBoTrackingCache(nextList);
 
+    // 3. Eliminar de Cloud Firestore
     try {
       const { db, isReady } = getFirestoreInstance();
       if (isReady && db) {

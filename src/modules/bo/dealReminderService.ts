@@ -21,39 +21,115 @@ import {
   checkDealPopupDue,
 } from './dealReminderTypes';
 import { ProcessedEstimateResult } from '../../core/types';
+import { sanitizeForFirestore } from '../cloud/firestoreService';
 
 export const DEAL_REMINDERS_COLLECTION = 'deal_reminders';
-const LOCAL_DEAL_REMINDERS_CACHE_KEY = 'cisco_deal_reminders_cache_v1';
+const LOCAL_DEAL_REMINDERS_PRIMARY_KEY = 'cisco_deal_reminders_cache_v2';
+const LOCAL_DEAL_REMINDERS_VAULT_KEY = 'cisco_deal_reminders_vault_v1';
+const LOCAL_DEAL_REMINDERS_LEGACY_KEY = 'cisco_deal_reminders_cache_v1';
+const LOCAL_DEAL_REMINDERS_DELETED_KEY = 'cisco_deal_reminders_deleted_ids_v1';
+const LOCAL_DEAL_REMINDERS_INIT_KEY = 'cisco_deal_reminders_initialized_flag_v1';
 
 // ----------------------------------------------------------------------------
-// Caché Local en Memoria + LocalStorage (Carga Instantánea en 0ms y Modo Offline)
+// Caché Local Multi-Tier Vault + Tombstones (Blindaje Anti-Pérdida de Deals)
 // ----------------------------------------------------------------------------
 let inMemoryDealRemindersCache: DealReminderRecord[] = [];
 
-export function getLocalDealRemindersCache(): DealReminderRecord[] {
+export function getDeletedDealReminderIds(): Set<string> {
   try {
     if (typeof localStorage !== 'undefined') {
-      const raw = localStorage.getItem(LOCAL_DEAL_REMINDERS_CACHE_KEY);
+      const raw = localStorage.getItem(LOCAL_DEAL_REMINDERS_DELETED_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) return new Set(arr);
       }
     }
-  } catch (err) {
-    // ignorar error de parseo
+  } catch (_) {}
+  return new Set();
+}
+
+export function addDeletedDealReminderId(id: string): void {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const deleted = getDeletedDealReminderIds();
+      deleted.add(id);
+      localStorage.setItem(LOCAL_DEAL_REMINDERS_DELETED_KEY, JSON.stringify(Array.from(deleted)));
+    }
+  } catch (_) {}
+}
+
+export function getLocalDealRemindersCache(): DealReminderRecord[] {
+  const deletedIds = getDeletedDealReminderIds();
+  const map = new Map<string, DealReminderRecord>();
+
+  const keysToRead = [
+    LOCAL_DEAL_REMINDERS_LEGACY_KEY,
+    LOCAL_DEAL_REMINDERS_VAULT_KEY,
+    LOCAL_DEAL_REMINDERS_PRIMARY_KEY,
+  ];
+
+  try {
+    if (typeof localStorage !== 'undefined') {
+      for (const k of keysToRead) {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            for (const item of list) {
+              if (item && item.id && !deletedIds.has(item.id)) {
+                const existing = map.get(item.id);
+                if (!existing) {
+                  map.set(item.id, item);
+                } else {
+                  // Si el que ya tenemos o el nuevo está aprobado, conservar el aprobado
+                  if (item.status === 'APPROVED' && existing.status !== 'APPROVED') {
+                    map.set(item.id, item);
+                  } else if (existing.status === 'APPROVED' && item.status !== 'APPROVED') {
+                    // Mantener el existente aprobado
+                  } else {
+                    const existingTs = existing.updatedAt || existing.createdAt || '';
+                    const itemTs = item.updatedAt || item.createdAt || '';
+                    if (itemTs >= existingTs) {
+                      map.set(item.id, item);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (_) {}
+
+  // Si hay datos en memoria que no están en localStorage, incluirlos
+  for (const mem of inMemoryDealRemindersCache) {
+    if (mem && mem.id && !deletedIds.has(mem.id) && !map.has(mem.id)) {
+      map.set(mem.id, mem);
+    }
   }
-  return inMemoryDealRemindersCache;
+
+  const result = Array.from(map.values()).sort(
+    (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+  );
+
+  return result.length > 0 ? result : inMemoryDealRemindersCache;
 }
 
 export function saveLocalDealRemindersCache(records: DealReminderRecord[]): void {
-  inMemoryDealRemindersCache = [...records];
+  const deletedIds = getDeletedDealReminderIds();
+  const cleanRecords = records.filter((r) => r && r.id && !deletedIds.has(r.id));
+  inMemoryDealRemindersCache = [...cleanRecords];
+
   try {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(LOCAL_DEAL_REMINDERS_CACHE_KEY, JSON.stringify(records));
+      const json = JSON.stringify(cleanRecords);
+      localStorage.setItem(LOCAL_DEAL_REMINDERS_PRIMARY_KEY, json);
+      localStorage.setItem(LOCAL_DEAL_REMINDERS_VAULT_KEY, json);
+      localStorage.setItem(LOCAL_DEAL_REMINDERS_LEGACY_KEY, json);
+      localStorage.setItem(LOCAL_DEAL_REMINDERS_INIT_KEY, 'true');
     }
-  } catch (err) {
-    // ignorar error de almacenamiento local
-  }
+  } catch (_) {}
 }
 
 // ----------------------------------------------------------------------------
@@ -72,8 +148,9 @@ const SEED_DEAL_REMINDERS: DealReminderRecord[] = [
     estimatedTotalUsd: 142500.0,
     estimateId: 'OE169047114NP',
     notes: 'Solicitud de DART especial para renovación de core Nexus 9300. Deal competido con Arista.',
-    status: 'PENDING_APPROVAL',
-    escalatedAt: new Date(Date.now() - 32 * 3600 * 1000).toISOString(), // Hace 32 horas (Requiere seguimiento)
+    status: 'APPROVED',
+    discountsApprovedAt: new Date(Date.now() - 12 * 3600 * 1000).toISOString(),
+    escalatedAt: new Date(Date.now() - 32 * 3600 * 1000).toISOString(),
     lastReminderSentAt: new Date(Date.now() - 8 * 3600 * 1000).toISOString(),
     reminderCount: 1,
     createdAt: new Date(Date.now() - 32 * 3600 * 1000).toISOString(),
@@ -91,8 +168,8 @@ const SEED_DEAL_REMINDERS: DealReminderRecord[] = [
         id: 'hist-2',
         date: new Date(Date.now() - 8 * 3600 * 1000).toISOString(),
         author: 'pm_cisco',
-        action: 'REMINDER_COPIED',
-        comment: 'Recordatorio enviado por correo Outlook a AM.',
+        action: 'STATUS_CHANGED',
+        comment: 'Descuentos aprobados formalmente por Cisco.',
       },
     ],
   },
@@ -107,11 +184,12 @@ const SEED_DEAL_REMINDERS: DealReminderRecord[] = [
     estimatedTotalUsd: 78900.0,
     estimateId: 'UE169044537CM',
     notes: 'Escalamiento express por Fast Track Switches Catalyst 9200L y APs Wi-Fi 6 Catalyst 9100.',
-    status: 'PENDING_APPROVAL',
-    escalatedAt: new Date(Date.now() - 14 * 3600 * 1000).toISOString(), // Hace 14 horas (Al día)
+    status: 'APPROVED',
+    discountsApprovedAt: new Date(Date.now() - 6 * 3600 * 1000).toISOString(),
+    escalatedAt: new Date(Date.now() - 14 * 3600 * 1000).toISOString(),
     reminderCount: 0,
     createdAt: new Date(Date.now() - 14 * 3600 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 14 * 3600 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 6 * 3600 * 1000).toISOString(),
     createdBy: 'preventa_cisco',
     history: [
       {
@@ -120,6 +198,13 @@ const SEED_DEAL_REMINDERS: DealReminderRecord[] = [
         author: 'preventa_cisco',
         action: 'CREATED',
         comment: 'Ingresado caso en Cisco Velocity Hub con ticket VF-782910.',
+      },
+      {
+        id: 'hist-3b',
+        date: new Date(Date.now() - 6 * 3600 * 1000).toISOString(),
+        author: 'preventa_cisco',
+        action: 'STATUS_CHANGED',
+        comment: 'Descuentos confirmados en CCW.',
       },
     ],
   },
@@ -134,12 +219,13 @@ const SEED_DEAL_REMINDERS: DealReminderRecord[] = [
     targetDiscountPct: 71.0,
     estimatedTotalUsd: 215400.0,
     notes: 'Licitación pública de Switches Industriales Rugged IE-3300 y Routers Catalyst IR1101.',
-    status: 'PENDING_APPROVAL',
-    escalatedAt: new Date(Date.now() - 76 * 3600 * 1000).toISOString(), // Hace 76 horas (Demorado > 48h)
+    status: 'CONVERTED_TO_BO',
+    discountsApprovedAt: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
+    escalatedAt: new Date(Date.now() - 76 * 3600 * 1000).toISOString(),
     lastReminderSentAt: new Date(Date.now() - 28 * 3600 * 1000).toISOString(),
     reminderCount: 2,
     createdAt: new Date(Date.now() - 76 * 3600 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 28 * 3600 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
     createdBy: 'pm_cisco',
     history: [
       {
@@ -151,17 +237,10 @@ const SEED_DEAL_REMINDERS: DealReminderRecord[] = [
       },
       {
         id: 'hist-5',
-        date: new Date(Date.now() - 48 * 3600 * 1000).toISOString(),
+        date: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
         author: 'pm_cisco',
-        action: 'REMINDER_COPIED',
-        comment: 'Primer recordatorio enviado a AM.',
-      },
-      {
-        id: 'hist-6',
-        date: new Date(Date.now() - 28 * 3600 * 1000).toISOString(),
-        author: 'pm_cisco',
-        action: 'REMINDER_COPIED',
-        comment: 'Segundo recordatorio enviado a AM y copia a líder de ventas.',
+        action: 'STATUS_CHANGED',
+        comment: 'OC recibida y convertida a seguimiento logístico Back Order (BO).',
       },
     ],
   },
@@ -172,10 +251,12 @@ const SEED_DEAL_REMINDERS: DealReminderRecord[] = [
 // ----------------------------------------------------------------------------
 
 /**
- * Obtiene todos los recordatorios de Deals (Cloud Firestore + Caché Local Instantáneo)
+ * Obtiene todos los recordatorios de Deals con fusión bidireccional inteligente
+ * (Garantiza que ningún Deal ingresado recientemente se pierda y sincroniza con Cloud Firestore)
  */
 export async function getDealReminders(): Promise<DealReminderRecord[]> {
-  const localCache = getLocalDealRemindersCache();
+  const localRecords = getLocalDealRemindersCache();
+  const deletedIds = getDeletedDealReminderIds();
 
   try {
     const { db, isReady } = getFirestoreInstance();
@@ -183,33 +264,103 @@ export async function getDealReminders(): Promise<DealReminderRecord[]> {
       const q = query(collection(db, DEAL_REMINDERS_COLLECTION), orderBy('createdAt', 'desc'));
       const snapshot = await getDocs(q);
 
-      if (!snapshot.empty) {
-        const records: DealReminderRecord[] = [];
-        snapshot.forEach((docSnap) => {
-          records.push(docSnap.data() as DealReminderRecord);
-        });
-        saveLocalDealRemindersCache(records);
-        return records;
+      const cloudRecords: DealReminderRecord[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as DealReminderRecord;
+        if (data && data.id && !deletedIds.has(data.id)) {
+          cloudRecords.push(data);
+        } else if (data && data.id && deletedIds.has(data.id)) {
+          // Si el Deal fue eliminado por el usuario, purgarlo de Firestore en segundo plano
+          deleteDoc(doc(db, DEAL_REMINDERS_COLLECTION, data.id)).catch(() => {});
+        }
+      });
+
+      // SMART BIDIRECTIONAL MERGE:
+      // Combinamos nube con caché local para que ningún registro se pierda ni se reviertan estados listos
+      const mergedMap = new Map<string, DealReminderRecord>();
+
+      // 1. Incorporar registros de Firestore
+      for (const cr of cloudRecords) {
+        mergedMap.set(cr.id, cr);
+      }
+
+      // 2. Fusionar con registros locales (preservando aprobados y deals recientes no sincronizados)
+      const pendingSyncToCloud: DealReminderRecord[] = [];
+      for (const lr of localRecords) {
+        if (deletedIds.has(lr.id)) continue;
+
+        const existingCloud = mergedMap.get(lr.id);
+        if (!existingCloud) {
+          // Existe localmente pero no en Firestore -> PRESERVAR y auto-sincronizar
+          mergedMap.set(lr.id, lr);
+          pendingSyncToCloud.push(lr);
+        } else {
+          // Si la versión local ya fue aprobada (APPROVED) y la nube sigue pendiente, GANA APPROVED
+          if (lr.status === 'APPROVED' && existingCloud.status !== 'APPROVED') {
+            mergedMap.set(lr.id, lr);
+            pendingSyncToCloud.push(lr);
+          } else if (lr.status === 'CONVERTED_TO_BO' && existingCloud.status !== 'CONVERTED_TO_BO') {
+            mergedMap.set(lr.id, lr);
+            pendingSyncToCloud.push(lr);
+          } else {
+            const localTs = lr.updatedAt || lr.createdAt || '';
+            const cloudTs = existingCloud.updatedAt || existingCloud.createdAt || '';
+            if (localTs >= cloudTs) {
+              mergedMap.set(lr.id, lr);
+              if (localTs > cloudTs) {
+                pendingSyncToCloud.push(lr);
+              }
+            }
+          }
+        }
+      }
+
+      const mergedList = Array.from(mergedMap.values()).sort(
+        (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      );
+
+      // Auto-reparación / Auto-sincronización con la nube para Deals locales pendientes
+      if (pendingSyncToCloud.length > 0) {
+        for (const item of pendingSyncToCloud) {
+          try {
+            const docRef = doc(db, DEAL_REMINDERS_COLLECTION, item.id);
+            const sanitized = sanitizeForFirestore(item);
+            setDoc(docRef, sanitized, { merge: true }).catch((errCloud) => {
+              console.warn('[DealReminderService] Auto-sincronización pendiente:', errCloud);
+            });
+          } catch (_) {}
+        }
+      }
+
+      if (mergedList.length > 0) {
+        saveLocalDealRemindersCache(mergedList);
+        return mergedList;
       }
     }
   } catch (err) {
-    console.warn('[DealReminderService] Modo offline o Firestore no disponible. Usando caché local.', err);
+    console.warn('[DealReminderService] Modo offline o Firestore no disponible. Usando caché local blindada.', err);
   }
 
-  // Si no hay datos en caché ni en la nube, inicializar con las semillas
-  if (localCache.length === 0) {
+  // Fallback: leer de caché local blindada
+  if (localRecords.length > 0) {
+    return localRecords;
+  }
+
+  // Inicializar con semillas SOLO si es primera ejecución absoluta y no hay flag de inicio
+  const isInitialized = typeof localStorage !== 'undefined' && localStorage.getItem(LOCAL_DEAL_REMINDERS_INIT_KEY);
+  if (!isInitialized && localRecords.length === 0) {
     saveLocalDealRemindersCache(SEED_DEAL_REMINDERS);
     return SEED_DEAL_REMINDERS;
   }
 
-  return localCache;
+  return [];
 }
 
 /**
- * Guarda o actualiza un recordatorio de Deal
+ * Guarda o actualiza un recordatorio de Deal con sanitización estricta
  */
 export async function saveDealReminder(deal: DealReminderRecord): Promise<void> {
-  // 1. Actualizar caché local de inmediato
+  // 1. Actualizar caché local inmediatamente en todos los almacenes redundantes
   const current = getLocalDealRemindersCache();
   const existingIndex = current.findIndex((d) => d.id === deal.id);
   let updatedList: DealReminderRecord[];
@@ -223,15 +374,16 @@ export async function saveDealReminder(deal: DealReminderRecord): Promise<void> 
 
   saveLocalDealRemindersCache(updatedList);
 
-  // 2. Sincronizar en Cloud Firestore
+  // 2. Sincronizar en Cloud Firestore con sanitización para evitar errores de undefined
   try {
     const { db, isReady } = getFirestoreInstance();
     if (isReady && db) {
       const docRef = doc(db, DEAL_REMINDERS_COLLECTION, deal.id);
-      await setDoc(docRef, deal, { merge: true });
+      const sanitized = sanitizeForFirestore(deal);
+      await setDoc(docRef, sanitized, { merge: true });
     }
   } catch (err) {
-    console.warn('[DealReminderService] Error sincronizando con Firestore (guardado en caché local):', err);
+    console.warn('[DealReminderService] Error sincronizando con Firestore (guardado en caché local blindada):', err);
   }
 }
 
@@ -457,6 +609,9 @@ export async function addDealHistoryNote(
  * Elimina un recordatorio de Deal
  */
 export async function deleteDealReminder(dealId: string): Promise<void> {
+  // Registrar lápida (tombstone) para que no resucite en sincronizaciones cloud o recargas
+  addDeletedDealReminderId(dealId);
+
   const current = getLocalDealRemindersCache();
   const updatedList = current.filter((d) => d.id !== dealId);
   saveLocalDealRemindersCache(updatedList);
