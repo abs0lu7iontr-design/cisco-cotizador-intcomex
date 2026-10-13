@@ -441,35 +441,26 @@ async function callGeminiProvider(
   const hasImage = Boolean(input.imageBase64 && input.mimeType);
 
   const preferredModel =
-    keyEntry.model === 'gemini-2.5-flash' || keyEntry.model === 'gemini-3.5-flash'
-      ? 'gemini-3.7-flash'
-      : keyEntry.model || 'gemini-3.7-flash';
+    keyEntry.model === 'gemini-2.5-flash' ||
+    keyEntry.model === 'gemini-2.5-pro' ||
+    keyEntry.model === 'gemini-3.7-flash' ||
+    keyEntry.model === 'gemini-3.8-flash'
+      ? 'gemini-3.6-flash'
+      : keyEntry.model || 'gemini-3.6-flash';
 
-  const modelCascade = hasImage
-    ? Array.from(
-        new Set([
-          preferredModel === 'gemini-3.7-flash' ? 'gemini-3.6-flash' : preferredModel,
-          'gemini-3.6-flash',
-          'gemini-3.8-flash',
-          'gemini-3.1-pro',
-          'gemini-2.5-pro',
-          'gemini-3.5-flash-lite',
-          'gemini-flash-lite-latest',
-          'gemini-3.7-flash',
-        ].filter(Boolean))
-      )
-    : Array.from(
-        new Set([
-          preferredModel,
-          'gemini-3.7-flash',
-          'gemini-3.8-flash',
-          'gemini-3.1-pro',
-          'gemini-2.5-pro',
-          'gemini-3.6-flash',
-          'gemini-3.5-flash-lite',
-          'gemini-flash-lite-latest',
-        ].filter(Boolean))
-      );
+  const modelCascade = Array.from(
+    new Set([
+      preferredModel,
+      'gemini-3.6-flash',
+      'gemini-3.5-flash',
+      'gemini-3.1-flash-lite',
+      'gemini-flash-lite-latest',
+      'gemini-3.5-flash-lite',
+      'gemini-flash-latest',
+      'gemini-3.7-flash',
+      'gemini-3.8-flash',
+    ].filter(Boolean))
+  );
 
   const userPrompt = input.text?.trim()
     ? `Analiza minuciosamente la siguiente solicitud comercial en lenguaje natural (y la imagen adjunta si existe). Aplica deducción técnica preventa Cisco 2026 ante requerimientos imprecisos o coloquiales (ej: "sw 24 poe", "para 20 usuarios", "con fibra", "catalis 9200"). Extrae todos los equipos Cisco o Meraki (Switching, Industrial IE, Servidores UCS, Nexus, Seguridad, Colaboración, Wi-Fi), reemplaza cualquier SKU en EOL por su equivalente oficial 100% vigente en CCW, aplica por defecto el cable de poder Norma Chile / Italia (CAB-IT: CAB-ACA / CAB-TA-IT / MA-PWR-CORD-IT) salvo que pidan otro, y genera su estructura completa Madre-Hijo (suggestedActiveSku + aiSubItems) en JSON explicando el razonamiento en "notes":\n\n"${input.text.trim()}"`
@@ -677,6 +668,8 @@ async function callOpenAiCompatibleProvider(
         body: JSON.stringify({
           model: effectiveModel,
           temperature: 0.1,
+          max_tokens: 3500,
+          response_format: { type: 'json_object' },
           messages: [
             { role: 'system', content: SYSTEM_INSTRUCTION },
             { role: 'user', content: userContent },
@@ -684,7 +677,7 @@ async function callOpenAiCompatibleProvider(
         }),
       },
       ctx,
-      10000
+      35000
     );
   };
 
@@ -1538,7 +1531,7 @@ export async function extractBOMRequirementsFromInput(
       ? { explicitApiKey: explicitApiKeyOrOptions }
       : explicitApiKeyOrOptions || {};
 
-  const totalTimeoutMs = Math.max(100, opts.totalTimeoutMs ?? 30000);
+  const totalTimeoutMs = Math.max(100, opts.totalTimeoutMs ?? 75000);
   const deadlineMs = Date.now() + totalTimeoutMs;
   const rawFetch =
     opts.fetchImpl ??
@@ -1672,7 +1665,7 @@ export async function extractBOMRequirementsFromInput(
 
   if (
     !opts.disableLocalFallback &&
-    settings.autoFallbackToLocal &&
+    settings.autoFallbackToLocal !== false &&
     input.text &&
     input.text.trim()
   ) {
@@ -1680,7 +1673,11 @@ export async function extractBOMRequirementsFromInput(
       extractWithLocalDeterministicEngine(input.text),
       input.text
     );
-    localRes.rotatedKeysLog = rotatedKeysLog;
+    localRes.rotatedKeysLog = [
+      ...rotatedKeysLog,
+      'Aviso: Activado motor determinístico local Cisco CCW 2026 ante saturación temporal de APIs remotas.',
+    ];
+    localRes.providerUsed = 'Motor Local Determinístico Cisco CCW 2026 (Resiliencia Activa)';
     localRes.terminationReason = globalTimedOut ? 'GLOBAL_TIMEOUT' : 'PROVIDER_ERROR';
     return localRes;
   }
