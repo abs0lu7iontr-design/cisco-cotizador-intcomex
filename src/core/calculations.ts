@@ -35,18 +35,80 @@ export function roundFinancial(value: number): number {
 
 /**
  * Utilidad de parseo numérico puro para formatos numéricos europeos, latinos y US.
+ * Soporta:
+ * - Decimales con coma sin miles: "12,50" -> 12.5, "0,25" -> 0.25, "950,5" -> 950.5, "0,125" -> 0.125
+ * - Formato Latino/Europeo con miles y decimales: "1.250,50" -> 1250.5, "1.250.000,75" -> 1250000.75
+ * - Formato US con miles y decimales: "1,250.50" -> 1250.5, "1,250" -> 1250, "12,500" -> 12500
+ * - Símbolos de moneda y porcentaje: "$1,250.50", "$1.250,50", "$12,50", "58,40%"
  */
 export function safeParseFloat(value: any): number {
-  if (typeof value === 'number') return value;
-  if (!value) return 0;
+  if (typeof value === 'number') return isNaN(value) ? 0 : value;
+  if (value === null || value === undefined || value === '') return 0;
+
   let str = String(value).trim();
-  if (/^(\d{1,3}\.)+\d{1,3},\d{1,2}$/.test(str)) {
-    str = str.replace(/\./g, '').replace(',', '.'); // Formato Latino/Europeo
-  } else {
-    str = str.replace(/,/g, ''); // Formato US
+  if (!str) return 0;
+
+  // Detectar negativos contables entre paréntesis: "(12,50)" -> "-12,50"
+  let isNegative = false;
+  if (/^\(.*\)$/.test(str)) {
+    isNegative = true;
+    str = str.slice(1, -1).trim();
   }
+
+  // Limpiar símbolos de moneda ($, USD, CLP, UF), porcentaje (%) y espacios
+  str = str.replace(/[$\s%]/g, '').replace(/^(USD|CLP|UF)/i, '').replace(/(USD|CLP|UF)$/i, '').trim();
+  if (!str) return 0;
+
+  if (str.startsWith('-')) {
+    isNegative = !isNegative;
+    str = str.slice(1).trim();
+  } else if (str.startsWith('+')) {
+    str = str.slice(1).trim();
+  }
+
+  const hasDot = str.includes('.');
+  const hasComma = str.includes(',');
+
+  if (hasDot && hasComma) {
+    // Ambos separadores presentes: el último determina cuál es el separador decimal
+    const lastDot = str.lastIndexOf('.');
+    const lastComma = str.lastIndexOf(',');
+    if (lastComma > lastDot) {
+      // Formato Latino/Europeo: "1.250,50" o "12.345.678,9"
+      str = str.replace(/\./g, '').replace(/,/g, '.');
+    } else {
+      // Formato US: "1,250.50" o "12,345,678.9"
+      str = str.replace(/,/g, '');
+    }
+  } else if (hasComma && !hasDot) {
+    // Solo comas presentes
+    const commaCount = (str.match(/,/g) || []).length;
+    if (commaCount > 1) {
+      // Múltiples comas -> separador de miles US ("1,250,000")
+      str = str.replace(/,/g, '');
+    } else {
+      // Una sola coma: verificar si es coma decimal ("12,50", "0,25", "950,5", "0,125")
+      // vs separador de miles entero US ("1,250", "12,500" -> 1 a 3 dígitos no-cero antes y exactamente 3 dígitos después)
+      const [intPart, fracPart] = str.split(',');
+      const isUsThousandsInteger =
+        /^[1-9]\d{0,2}$/.test(intPart) && /^\d{3}$/.test(fracPart);
+      if (isUsThousandsInteger) {
+        str = str.replace(',', '');
+      } else {
+        str = str.replace(',', '.');
+      }
+    }
+  } else if (hasDot && !hasComma) {
+    // Solo puntos presentes: si hay múltiples puntos de miles ("1.250.000"), quitarlos
+    const dotCount = (str.match(/\./g) || []).length;
+    if (dotCount > 1 && /^\d{1,3}(\.\d{3})+$/.test(str)) {
+      str = str.replace(/\./g, '');
+    }
+  }
+
   const parsed = parseFloat(str);
-  return isNaN(parsed) ? 0 : parsed;
+  if (isNaN(parsed)) return 0;
+  return isNegative && parsed !== 0 ? -parsed : parsed;
 }
 
 /**

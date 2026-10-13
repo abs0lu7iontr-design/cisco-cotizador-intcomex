@@ -2,6 +2,8 @@
 // CISCO AUTOMATED v2.1 - PARSER JERÁRQUICO DE ESTIMATES (MULTI-BLOQUE)
 // ============================================================================
 
+import { safeParseFloat } from '../../core/calculations';
+
 export interface ProcessedEstimateLine {
   lineNumber: string;
   partNumber: string;
@@ -17,11 +19,7 @@ export interface ProcessedEstimateLine {
 }
 
 function parseSafeNum(val: any): number {
-  if (val === null || val === undefined) return 0;
-  if (typeof val === 'number') return isNaN(val) ? 0 : val;
-  const s = String(val).replace(/,/g, '').replace(/\$/g, '').trim();
-  const n = parseFloat(s);
-  return isNaN(n) ? 0 : n;
+  return safeParseFloat(val);
 }
 
 function normalizeLineNumber(value: any): string {

@@ -507,7 +507,7 @@ import {
   snapshotToConversionRates,
   getDefaultOfficialRatesSnapshot,
 } from '../src/core/chileanExchangeRateService';
-import { convertUsdToCurrency } from '../src/core/calculations';
+import { convertUsdToCurrency, safeParseFloat } from '../src/core/calculations';
 
 assert.strictEqual(USD_TO_CLP_FRONTEND_SPREAD, 10, 'El spread de USD a CLP en el Front-End debe ser exactamente +10 CLP');
 assert.strictEqual(
@@ -534,5 +534,27 @@ assert.strictEqual(convertUsdToCurrency(100, 'CLP', rates970), 98000, '100 USD a
 assert.strictEqual(convertUsdToCurrency(100, 'UF', rates970), 2.45, '100 USD ($98.000 CLP) con UF $40.000 debe ser 2.45 UF');
 console.log('✅ Conversión Front-End USD -> CLP (Dólar Observado BCCh + $10 CLP: ej. 970 -> 980) y UF verificada.');
 
-console.log('\n🎉 ¡TODAS LAS PRUEBAS DE HARDWARE C1, CABLES CAB-X, ACCESORIOS EN LÍNEA MADRE (1.0..∞), TC OFICIAL CHILENO (+10 CLP) Y BLINDAJE REACT ERROR #185 PASARON EXITOSAMENTE!');
+// ----------------------------------------------------------------------------
+// 8. Verificación de safeParseFloat con decimales con coma ("12,50" -> 12.5, "0,25" -> 0.25)
+// ----------------------------------------------------------------------------
+console.log('\n--- 8. Verificación de safeParseFloat (Decimales con Coma, Miles US/Latino y Moneda) ---');
+assert.strictEqual(safeParseFloat('12,50'), 12.5, 'safeParseFloat("12,50") debe devolver 12.5 (no 1250)');
+assert.strictEqual(safeParseFloat('0,25'), 0.25, 'safeParseFloat("0,25") debe devolver 0.25 (no 25)');
+assert.strictEqual(safeParseFloat('58,40'), 58.4, 'safeParseFloat("58,40") debe devolver 58.4');
+assert.strictEqual(safeParseFloat('950,5'), 950.5, 'safeParseFloat("950,5") debe devolver 950.5');
+assert.strictEqual(safeParseFloat('0,125'), 0.125, 'safeParseFloat("0,125") debe devolver 0.125');
+assert.strictEqual(safeParseFloat('1.250,50'), 1250.5, 'safeParseFloat("1.250,50") debe devolver 1250.5');
+assert.strictEqual(safeParseFloat('1.250.000,75'), 1250000.75, 'safeParseFloat("1.250.000,75") debe devolver 1250000.75');
+assert.strictEqual(safeParseFloat('1,250.50'), 1250.5, 'safeParseFloat("1,250.50") debe devolver 1250.5');
+assert.strictEqual(safeParseFloat('12,500'), 12500, 'safeParseFloat("12,500") entero US debe devolver 12500');
+assert.strictEqual(safeParseFloat('1,250'), 1250, 'safeParseFloat("1,250") entero US debe devolver 1250');
+assert.strictEqual(safeParseFloat('$1,250.50'), 1250.5, 'safeParseFloat("$1,250.50") debe limpiar símbolo $ y devolver 1250.5');
+assert.strictEqual(safeParseFloat('$1.250,50'), 1250.5, 'safeParseFloat("$1.250,50") debe limpiar símbolo $ y devolver 1250.5');
+assert.strictEqual(safeParseFloat('$12,50'), 12.5, 'safeParseFloat("$12,50") debe limpiar símbolo $ y devolver 12.5');
+assert.strictEqual(safeParseFloat('58.40%'), 58.4, 'safeParseFloat("58.40%") debe devolver 58.4');
+assert.strictEqual(safeParseFloat('58,40%'), 58.4, 'safeParseFloat("58,40%") debe devolver 58.4');
+console.log('✅ safeParseFloat verificado en 15 casos críticos (decimales con coma, miles y símbolos).');
+
+console.log('\n🎉 ¡TODAS LAS PRUEBAS DE HARDWARE C1, CABLES CAB-X, ACCESORIOS EN LÍNEA MADRE (1.0..∞), TC OFICIAL CHILENO (+10 CLP), SAFEPARSEFLOAT Y BLINDAJE REACT ERROR #185 PASARON EXITOSAMENTE!');
+
 
