@@ -497,4 +497,42 @@ for (const eolSku of eolAccessorySkus) {
 }
 console.log(`✅ Exclusión de SKUs EOL verificada (${NON_EOL_CISCO_ACCESSORIES_SET.size} SKUs de accesorios vigentes No-EOL en catálogo base + cobertura RegExp infinita).`);
 
-console.log('\n🎉 ¡TODAS LAS PRUEBAS DE HARDWARE C1, CABLES CAB-X, ACCESORIOS EN LÍNEA MADRE (1.0..∞) Y BLINDAJE REACT ERROR #185 PASARON EXITOSAMENTE!');
+// ----------------------------------------------------------------------------
+// 7. Verificación de Conversión Front-End USD -> CLP (+10 CLP sobre BCCh) y UF
+// ----------------------------------------------------------------------------
+console.log('\n--- 7. Verificación de Tipo de Cambio Oficial Chileno Diario (BCCh + $10 CLP Spread Front-End) ---');
+import {
+  USD_TO_CLP_FRONTEND_SPREAD,
+  applyFrontendUsdClpSpread,
+  snapshotToConversionRates,
+  getDefaultOfficialRatesSnapshot,
+} from '../src/core/chileanExchangeRateService';
+import { convertUsdToCurrency } from '../src/core/calculations';
+
+assert.strictEqual(USD_TO_CLP_FRONTEND_SPREAD, 10, 'El spread de USD a CLP en el Front-End debe ser exactamente +10 CLP');
+assert.strictEqual(
+  applyFrontendUsdClpSpread(970),
+  980,
+  'Si el Dólar Observado oficial es 970 CLP, el valor aplicado con +10 pesos debe ser 980 CLP'
+);
+assert.strictEqual(
+  applyFrontendUsdClpSpread(981.61),
+  991.61,
+  'Si el Dólar Observado oficial es 981.61 CLP, el valor aplicado con +10 pesos debe ser 991.61 CLP'
+);
+
+const mockSnap970 = {
+  ...getDefaultOfficialRatesSnapshot(),
+  dolarObservadoOficial: 970,
+  spreadClp: 10,
+  dolarAplicadoClp: applyFrontendUsdClpSpread(970),
+  ufOficialClp: 40000,
+};
+const rates970 = snapshotToConversionRates(mockSnap970);
+assert.strictEqual(rates970.CLP, 980);
+assert.strictEqual(convertUsdToCurrency(100, 'CLP', rates970), 98000, '100 USD a TC 980 (970+10) debe ser $98.000 CLP');
+assert.strictEqual(convertUsdToCurrency(100, 'UF', rates970), 2.45, '100 USD ($98.000 CLP) con UF $40.000 debe ser 2.45 UF');
+console.log('✅ Conversión Front-End USD -> CLP (Dólar Observado BCCh + $10 CLP: ej. 970 -> 980) y UF verificada.');
+
+console.log('\n🎉 ¡TODAS LAS PRUEBAS DE HARDWARE C1, CABLES CAB-X, ACCESORIOS EN LÍNEA MADRE (1.0..∞), TC OFICIAL CHILENO (+10 CLP) Y BLINDAJE REACT ERROR #185 PASARON EXITOSAMENTE!');
+

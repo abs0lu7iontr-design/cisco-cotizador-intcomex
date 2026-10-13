@@ -934,6 +934,8 @@ export const DEFAULT_CURRENCY_RATES: CurrencyConversionRates = {
 
 /**
  * Convierte un monto en USD a la divisa seleccionada (USD, CLP o UF).
+ * Nota: Para CLP y UF en el Front-End, rates.CLP ya incluye el recargo de +$10 CLP
+ * sobre el Dólar Observado oficial del Banco Central de Chile (ej: 970 -> 980 CLP).
  */
 export function convertUsdToCurrency(
   amountUsd: number,
@@ -943,12 +945,12 @@ export function convertUsdToCurrency(
   if (!amountUsd || isNaN(amountUsd)) return 0;
   if (currency === 'USD') return roundFinancial(amountUsd);
   if (currency === 'CLP') {
-    const clpRate = rates.CLP || 950;
+    const clpRate = rates.CLP || DEFAULT_CURRENCY_RATES.CLP;
     return Math.round(amountUsd * clpRate);
   }
   if (currency === 'UF') {
-    const clpRate = rates.CLP || 950;
-    const ufRate = rates.UF || 38500;
+    const clpRate = rates.CLP || DEFAULT_CURRENCY_RATES.CLP;
+    const ufRate = rates.UF || DEFAULT_CURRENCY_RATES.UF;
     const totalClp = amountUsd * clpRate;
     return roundFinancial(totalClp / ufRate);
   }

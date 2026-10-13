@@ -2,16 +2,35 @@
 // CISCO AUTOMATED v2.1 - QUOTER EXECUTIVE FINANCIAL SUMMARY CARDS
 // ============================================================================
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ProcessedEstimateResult, QuoteParameters } from '../core/types';
 import {
   CurrencyCode,
   CurrencyConversionRates,
-  DEFAULT_CURRENCY_RATES,
   convertUsdToCurrency,
   formatCurrencyAmount,
+  roundFinancial,
 } from '../core/calculations';
-import { DollarSign, TrendingUp, ShieldCheck, Truck, Sparkles, Layers, Percent, Pickaxe, Coins } from 'lucide-react';
+import {
+  OfficialChileanRatesSnapshot,
+  USD_TO_CLP_FRONTEND_SPREAD,
+  applyFrontendUsdClpSpread,
+  fetchDailyOfficialChileanRates,
+  getCachedDailyOfficialRates,
+  getDefaultOfficialRatesSnapshot,
+  saveCachedDailyOfficialRates,
+  snapshotToConversionRates,
+} from '../core/chileanExchangeRateService';
+import {
+  DollarSign,
+  TrendingUp,
+  Sparkles,
+  Layers,
+  Pickaxe,
+  Coins,
+  RefreshCw,
+  CheckCircle2,
+} from 'lucide-react';
 import { AuditReport } from '../modules/mining';
 
 interface SummaryCardsProps {
@@ -35,20 +54,49 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
     return 'USD';
   });
 
-  const [rates, setRates] = useState<CurrencyConversionRates>(() => {
-    try {
-      const saved = localStorage.getItem('cisco_custom_currency_rates');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && Number(parsed.CLP) > 0 && Number(parsed.UF) > 0) {
-          return { ...DEFAULT_CURRENCY_RATES, ...parsed };
-        }
-      }
-    } catch {}
-    return DEFAULT_CURRENCY_RATES;
+  const [officialSnapshot, setOfficialSnapshot] = useState<OfficialChileanRatesSnapshot>(() => {
+    return getCachedDailyOfficialRates(true) || getDefaultOfficialRatesSnapshot();
   });
 
+  const [rates, setRates] = useState<CurrencyConversionRates>(() => {
+    const initialSnap = getCachedDailyOfficialRates(true) || getDefaultOfficialRatesSnapshot();
+    return snapshotToConversionRates(initialSnap);
+  });
+
+  const [isLoadingOfficialRates, setIsLoadingOfficialRates] = useState<boolean>(false);
   const [showRateSettings, setShowRateSettings] = useState<boolean>(false);
+
+  // Extrae diariamente el tipo de cambio oficial chileno (BCCh / mindicador.cl) y suma +$10 CLP al dólar
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoadingOfficialRates(true);
+
+    fetchDailyOfficialChileanRates(false)
+      .then((snap) => {
+        if (!isMounted) return;
+        setOfficialSnapshot(snap);
+        setRates(snapshotToConversionRates(snap));
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (isMounted) setIsLoadingOfficialRates(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleRefreshOfficialRates = async () => {
+    setIsLoadingOfficialRates(true);
+    try {
+      const freshSnap = await fetchDailyOfficialChileanRates(true);
+      setOfficialSnapshot(freshSnap);
+      setRates(snapshotToConversionRates(freshSnap));
+    } finally {
+      setIsLoadingOfficialRates(false);
+    }
+  };
 
   const handleSelectCurrency = (c: CurrencyCode) => {
     setCurrency(c);
@@ -57,11 +105,46 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
     } catch {}
   };
 
-  const handleUpdateRates = (newRates: CurrencyConversionRates) => {
-    setRates(newRates);
-    try {
-      localStorage.setItem('cisco_custom_currency_rates', JSON.stringify(newRates));
-    } catch {}
+  const handleUpdateOfficialUsdBase = (newBaseUsd: number) => {
+    const cleanBase = Math.max(0, newBaseUsd);
+    const appliedClp = applyFrontendUsdClpSpread(cleanBase, USD_TO_CLP_FRONTEND_SPREAD);
+    const updatedSnap: OfficialChileanRatesSnapshot = {
+      ...officialSnapshot,
+      dolarObservadoOficial: cleanBase,
+      spreadClp: USD_TO_CLP_FRONTEND_SPREAD,
+      dolarAplicadoClp: appliedClp,
+      isManualOverride: true,
+    };
+    setOfficialSnapshot(updatedSnap);
+    setRates({ ...rates, CLP: appliedClp });
+    saveCachedDailyOfficialRates(updatedSnap);
+  };
+
+  const handleUpdateAppliedClpDirect = (newAppliedClp: number) => {
+    const cleanApplied = Math.max(0, newAppliedClp);
+    const inferredBase = roundFinancial(Math.max(0, cleanApplied - USD_TO_CLP_FRONTEND_SPREAD));
+    const updatedSnap: OfficialChileanRatesSnapshot = {
+      ...officialSnapshot,
+      dolarObservadoOficial: inferredBase,
+      spreadClp: USD_TO_CLP_FRONTEND_SPREAD,
+      dolarAplicadoClp: cleanApplied,
+      isManualOverride: true,
+    };
+    setOfficialSnapshot(updatedSnap);
+    setRates({ ...rates, CLP: cleanApplied });
+    saveCachedDailyOfficialRates(updatedSnap);
+  };
+
+  const handleUpdateUfRate = (newUf: number) => {
+    const cleanUf = Math.max(0, newUf);
+    const updatedSnap: OfficialChileanRatesSnapshot = {
+      ...officialSnapshot,
+      ufOficialClp: cleanUf,
+      isManualOverride: true,
+    };
+    setOfficialSnapshot(updatedSnap);
+    setRates({ ...rates, UF: cleanUf });
+    saveCachedDailyOfficialRates(updatedSnap);
   };
 
   const formatCurrency = (amountUsd?: number) => {
@@ -96,7 +179,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
 
   return (
     <div className="space-y-3">
-      {/* Selector de Divisa y Tipo de Cambio */}
+      {/* Selector de Divisa y Tipo de Cambio Oficial Chileno Diario (BCCh + $10 CLP) */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs">
         <div className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 rounded-xl p-1 shadow-sm">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 flex items-center gap-1">
@@ -119,49 +202,101 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
           ))}
         </div>
 
-        {currency !== 'USD' && (
-          <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400 bg-slate-900/80 px-3 py-1 rounded-xl border border-slate-800">
-            <span>TC Ref: 1 USD = ${rates.CLP.toLocaleString('es-CL')} CLP</span>
-            <span>•</span>
-            <span>1 UF = ${rates.UF.toLocaleString('es-CL')} CLP</span>
-            <button
-              type="button"
-              onClick={() => setShowRateSettings((prev) => !prev)}
-              className="text-indigo-400 hover:text-indigo-300 underline text-[10px] ml-1 cursor-pointer"
-            >
-              {showRateSettings ? 'Ocultar' : 'Ajustar TC'}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {showRateSettings && currency !== 'USD' && (
-        <div className="bg-slate-900 border border-indigo-500/30 p-3 rounded-xl flex flex-wrap items-center gap-4 text-xs font-mono text-slate-300 animate-fade-in">
-          <div className="flex items-center gap-2">
-            <label className="text-[11px] text-slate-400">Tipo Cambio CLP:</label>
-            <input
-              type="number"
-              value={rates.CLP || ''}
-              onChange={(e) => handleUpdateRates({ ...rates, CLP: parseFloat(e.target.value) || 0 })}
-              className="w-20 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-right text-emerald-400 font-bold focus:border-indigo-500 outline-none"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-[11px] text-slate-400">Valor UF (CLP):</label>
-            <input
-              type="number"
-              value={rates.UF || ''}
-              onChange={(e) => handleUpdateRates({ ...rates, UF: parseFloat(e.target.value) || 0 })}
-              className="w-24 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-right text-cyan-400 font-bold focus:border-indigo-500 outline-none"
-            />
-          </div>
+        <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-slate-300 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
+          <span
+            className="flex items-center gap-1 text-[10px] font-sans font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-700/40 px-2 py-0.5 rounded-md"
+            title={`Fuente: ${officialSnapshot.sourceName} (${officialSnapshot.indicatorDate})`}
+          >
+            <CheckCircle2 className="w-3 h-3" />
+            <span>BCCh Oficial ({officialSnapshot.indicatorDate})</span>
+          </span>
+          <span>
+            USD Obs:{' '}
+            <span className="text-slate-400">
+              ${officialSnapshot.dolarObservadoOficial.toLocaleString('es-CL', { maximumFractionDigits: 2 })}
+            </span>{' '}
+            <span className="text-amber-400 font-bold">+ ${USD_TO_CLP_FRONTEND_SPREAD}</span> ={' '}
+            <strong className="text-emerald-400">
+              ${rates.CLP.toLocaleString('es-CL', { maximumFractionDigits: 2 })} CLP
+            </strong>
+          </span>
+          <span className="text-slate-600">•</span>
+          <span>
+            1 UF ={' '}
+            <strong className="text-cyan-400">
+              ${rates.UF.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CLP
+            </strong>
+          </span>
           <button
             type="button"
-            onClick={() => handleUpdateRates(DEFAULT_CURRENCY_RATES)}
-            className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+            onClick={handleRefreshOfficialRates}
+            disabled={isLoadingOfficialRates}
+            title="Extraer valor oficial del día desde Banco Central de Chile (mindicador.cl)"
+            className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 text-[10px] ml-1 cursor-pointer disabled:opacity-50"
           >
-            Restablecer Valores por Defecto
+            <RefreshCw className={`w-3 h-3 ${isLoadingOfficialRates ? 'animate-spin' : ''}`} />
+            <span>{isLoadingOfficialRates ? 'Sincronizando...' : 'Actualizar'}</span>
           </button>
+          <button
+            type="button"
+            onClick={() => setShowRateSettings((prev) => !prev)}
+            className="text-indigo-400 hover:text-indigo-300 underline text-[10px] ml-1 cursor-pointer"
+          >
+            {showRateSettings ? 'Ocultar' : 'Ajustar TC'}
+          </button>
+        </div>
+      </div>
+
+      {showRateSettings && (
+        <div className="bg-slate-900 border border-indigo-500/30 p-3 rounded-xl flex flex-wrap items-center justify-between gap-4 text-xs font-mono text-slate-300 animate-fade-in">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] text-slate-400">Dólar Obs. Oficial (CLP):</label>
+              <input
+                type="number"
+                step="0.01"
+                value={officialSnapshot.dolarObservadoOficial || ''}
+                onChange={(e) => handleUpdateOfficialUsdBase(parseFloat(e.target.value) || 0)}
+                className="w-24 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-right text-slate-200 font-bold focus:border-indigo-500 outline-none"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] text-amber-300 font-bold">
+                TC Aplicado (+${USD_TO_CLP_FRONTEND_SPREAD} CLP):
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={rates.CLP || ''}
+                onChange={(e) => handleUpdateAppliedClpDirect(parseFloat(e.target.value) || 0)}
+                className="w-24 bg-slate-950 border border-emerald-600/50 rounded px-2 py-0.5 text-right text-emerald-400 font-bold focus:border-indigo-500 outline-none"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] text-slate-400">Valor UF Oficial (CLP):</label>
+              <input
+                type="number"
+                step="0.01"
+                value={rates.UF || ''}
+                onChange={(e) => handleUpdateUfRate(parseFloat(e.target.value) || 0)}
+                className="w-28 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-right text-cyan-400 font-bold focus:border-indigo-500 outline-none"
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] text-slate-400">
+              Fuente: {officialSnapshot.sourceName}
+            </span>
+            <button
+              type="button"
+              onClick={handleRefreshOfficialRates}
+              disabled={isLoadingOfficialRates}
+              className="text-[10px] text-emerald-400 hover:text-emerald-300 underline cursor-pointer flex items-center gap-1"
+            >
+              <RefreshCw className={`w-3 h-3 ${isLoadingOfficialRates ? 'animate-spin' : ''}`} />
+              <span>Sincronizar Oficial BCCh (+${USD_TO_CLP_FRONTEND_SPREAD} CLP)</span>
+            </button>
+          </div>
         </div>
       )}
 
