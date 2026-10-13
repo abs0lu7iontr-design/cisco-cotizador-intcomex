@@ -128,8 +128,12 @@ REGLAS OBLIGATORIAS DE COHERENCIA TÉCNICA, DEDUCCIÓN PREVENTA ANTE SOLICITUDES
    - Cuando el cliente formula requerimientos incompletos o de negocio sin un modelo puntual, NUNCA devuelvas una lista vacía ni falles. Aplica la siguiente MATRIZ DEDUCTIVA DE ARQUITECTURA PREVENTA CISCO 2026:
      * A) **"switch 24 poe" / "sw 24 poe" / "switch 24 bocas poe" (Sin especificar modelo ni uplinks)**:
        -> Deducir el estándar de oro de acceso empresarial para oficinas y sucursales: **"C9200L-24P-4G-E"** (Catalyst 9200L 24P PoE+ 370W, 4x1G SFP). Sub-hijos obligatorios: "C9200L-DNA-E-24-3Y" (Prepaid Term 36 meses), "PWR-C5-600WAC", cable Norma Chile "CAB-ACA" y "C9200L-NW-E-24".
-     * B) **"switch 48 poe" / "sw 48 poe" / "switch 48 bocas"**:
+     * B) **"switch 48 poe" / "sw 48 poe" / "switch 48 bocas" (Sin especificar familia)**:
        -> Deducir **"C9200L-48P-4G-E"** (o **"C9200L-48FP-4G-E"** si menciona Full PoE / 740W). Sub-hijos: "C9200L-DNA-E-48-3Y", fuente, cable "CAB-ACA" y Network Essentials.
+     * B.1) **"c9300 48 poe" / "c9300 48" / "catalyst 9300 48 poe" / "c9300 48 puertos"**:
+       -> Deducir switch Enterprise Catalyst 9300L 48P PoE+ 4x10G SFP+ (Fast Track): **"C9300L-48P-4X-E"** (o **"C9300-48P-E"** modular). Sub-hijos obligatorios: "C9300-DNA-E-48-3Y" (Prepaid Term 36 meses), fuente "PWR-C1-715WAC-P", cable Norma Chile "CAB-TA-IT" y "C9300-NW-E-48". NUNCA degradar a C9200L ni a 24 bocas si el cliente pide expresamente C9300 de 48 puertos.
+     * B.2) **"c9300 24 poe" / "c9300 24" / "catalyst 9300 24 poe"**:
+       -> Deducir **"C9300L-24P-4X-E"** (o **"C9300-24P-E"** modular). Sub-hijos: "C9300-DNA-E-24-3Y", "PWR-C1-715WAC-P", "CAB-TA-IT" y "C9300-NW-E-24".
      * C) **Mención de "con fibra", "enlace fibra", "10G", "SFP+"**:
        -> Deducir switch con uplinks 4x10G SFP+: **"C9200L-24P-4X-E"** o **"C9200L-48P-4X-E"** (o C9300 con C9300-NM-8X) y sugerir transceivers vigentes "SFP-10G-SR-S".
      * D) **Dimensionamiento por Puestos / Usuarios (ej. "oficina para 15 usuarios", "sucursal 20 personas")**:
@@ -712,7 +716,19 @@ export function healClientTypoString(raw: string): string {
   t = t
     .replace(/\bcatalis\b/gi, 'Catalyst')
     .replace(/\bcat\s*9200\b/gi, 'Catalyst 9200')
+    .replace(/\bcat\s*9300\b/gi, 'Catalyst 9300')
     .replace(/\bmeraky\b/gi, 'Meraki')
+    // C9300 / Catalyst 9300 resoluciones deterministas
+    .replace(/\b(?:c9300l?|catalyst\s*9300|cat\s*9300)\s*(?:-|_\s*)?48\s*(?:fp|full\s*poe)\b/gi, 'C9300L-48PF-4X-E')
+    .replace(/\b(?:c9300l?|catalyst\s*9300|cat\s*9300)\s*(?:-|_\s*)?48\s*(?:p|poe|\+)?\b/gi, 'C9300L-48P-4X-E')
+    .replace(/\b(?:c9300l?|catalyst\s*9300|cat\s*9300)\s*(?:-|_\s*)?48\s*(?:t|datos?)\b/gi, 'C9300L-48T-4X-E')
+    .replace(/\b(?:c9300l?|catalyst\s*9300|cat\s*9300)\s*(?:-|_\s*)?24\s*(?:p|poe|\+)?\b/gi, 'C9300L-24P-4X-E')
+    .replace(/\b(?:c9300l?|catalyst\s*9300|cat\s*9300)\s*(?:-|_\s*)?24\s*(?:t|datos?)\b/gi, 'C9300L-24T-4X-E')
+    .replace(/\bc9300-48p\b(?!\w)/gi, 'C9300L-48P-4X-E')
+    .replace(/\bc9300-24p\b(?!\w)/gi, 'C9300L-24P-4X-E')
+    .replace(/\bc9300l-48p\b(?!\w)/gi, 'C9300L-48P-4X-E')
+    .replace(/\bc9300l-24p\b(?!\w)/gi, 'C9300L-24P-4X-E')
+    // C9200 resoluciones
     .replace(/\bsw\s*24\b/gi, 'switch 24 puertos')
     .replace(/\bsw\s*48\b/gi, 'switch 48 puertos')
     .replace(/\bsw\s*8\b/gi, 'switch 8 puertos')
@@ -841,11 +857,17 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
       quantity = Number(qtyLeading[1]) || 1;
     }
 
+    const segHas48 = /\b48\b|48\s*(?:puertos|bocas|p\b|poe)/i.test(seg);
+    const segHas24 = /\b24\b|24\s*(?:puertos|bocas|p\b|poe)/i.test(seg);
+    const segHas8 = /\b8\b|8\s*(?:puertos|bocas|p\b|poe)/i.test(seg);
+    const contextPorts = segHas48 ? 48 : segHas24 ? 24 : segHas8 ? 8 : undefined;
+    const segIsPoe = !/\bsin\s+poe\b|\bsolo\s+datos\b|\bdatos\b/i.test(seg);
+
     const skuMatches = Array.from(seg.matchAll(skuRegex));
     if (skuMatches.length > 0) {
       for (const m of skuMatches) {
         const rawSku = m[1].toUpperCase().trim();
-        const officialValidation = validateOfficialCiscoSku(rawSku);
+        const officialValidation = validateOfficialCiscoSku(rawSku, { ports: contextPorts, isPoe: segIsPoe });
         const eolInfo =
           EOL_CATALOG_2026[rawSku] ||
           EOL_CATALOG_2026[rawSku.replace(/-HW$/i, '')] ||
@@ -861,7 +883,18 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
               ? eolInfo.replacementSku
               : learned?.replacementSku || officialValidation.recommendedValidSku || rawSku;
         const sanitized = sanitizeAndValidateCcwSku(rawSuggested);
-        const suggestedSku = sanitized.sanitizedSku;
+        let suggestedSku = sanitized.sanitizedSku;
+
+        // Protección contra degradación de familia: Si pidieron C9300 / 9300, jamás debe degradar a C9200
+        const is9300Request = /\b(?:c9300l?|catalyst\s*9300|cat\s*9300|9300)\b/i.test(seg) || /^C93/i.test(rawSku);
+        if (is9300Request && (suggestedSku.startsWith('C9200L-') || suggestedSku.startsWith('C9200-'))) {
+          const p = (contextPorts === 48 || segHas48) ? '48' : '24';
+          suggestedSku = `C9300L-${p}P-4X-E`;
+        }
+        if ((contextPorts === 48 || segHas48) && (suggestedSku.includes('-24') || suggestedSku.includes('24P') || suggestedSku.includes('24T'))) {
+          suggestedSku = suggestedSku.replace(/24([PTF])/g, '48$1');
+        }
+
         const isNonExistentSku = Boolean(
           officialValidation.isNonExistentSku || sanitized.isNonExistentSku
         );
@@ -1269,9 +1302,23 @@ export function postProcessExtractedResult(
       rawSku = rawInputFakeSkus[0];
     }
 
-    const rawCheck = rawSku ? validateOfficialCiscoSku(rawSku) : null;
+    // Extraer puertos y características de red desde el contexto si no vinieron explícitos en el ítem
+    const contextHas48 = /\b48\b|48\s*(?:puertos|bocas|p\b|poe)/i.test(itemContext);
+    const contextHas24 = /\b24\b|24\s*(?:puertos|bocas|p\b|poe)/i.test(itemContext);
+    const contextHas8 = /\b8\b|8\s*(?:puertos|bocas|p\b|poe)/i.test(itemContext);
+    const contextPorts = contextHas48 ? 48 : contextHas24 ? 24 : contextHas8 ? 8 : undefined;
+    if (!item.ports && contextPorts) {
+      item.ports = contextPorts;
+    }
+    const contextHasPoe = /\bpoe\b|\bpoe\+\b|\bpower\s*over\s*ethernet\b/i.test(itemContext);
+    if (item.isPoe === undefined && contextHasPoe) {
+      item.isPoe = true;
+    }
+    const contextHint = { ports: item.ports || contextPorts, isPoe: item.isPoe };
+
+    const rawCheck = rawSku ? validateOfficialCiscoSku(rawSku, contextHint) : null;
     const suggestedCheck = item.suggestedActiveSku
-      ? validateOfficialCiscoSku(item.suggestedActiveSku)
+      ? validateOfficialCiscoSku(item.suggestedActiveSku, contextHint)
       : null;
 
     const rawSanitized = sanitizeAndValidateCcwSku(
@@ -1320,6 +1367,24 @@ export function postProcessExtractedResult(
       suggested = `C9200-${portsNum}${poeChar}-${tierSuffix}`;
     }
 
+    // Protección de Familia: Si el cliente solicitó C9300 / Catalyst 9300, jamás debe degradar a C9200L
+    const is9300Request = /\b(?:c9300l?|catalyst\s*9300|cat\s*9300|9300)\b/i.test(itemContext) || /^C93/i.test(rawSku);
+    if (is9300Request && (suggested.startsWith('C9200L-') || suggested.startsWith('C9200-'))) {
+      const pNum = (item.ports === 48 || contextHas48 || suggested.includes('48')) ? '48' : '24';
+      const poeCode = item.isPoe === false || suggested.includes('T') ? 'T' : (item.poeBudget === 'full_poe' && pNum === '48') ? 'PF' : 'P';
+      suggested = `C9300L-${pNum}${poeCode}-4X-${tierSuffix}`;
+      item.ports = Number(pNum) as 24 | 48;
+      item.isPoe = poeCode !== 'T';
+      item.suggestedActiveSku = suggested;
+    }
+
+    // Protección de Puertos: Si el cliente solicitó 48 puertos, jamás debe configurarse con 24 puertos
+    if ((item.ports === 48 || contextHas48) && (suggested.includes('-24') || suggested.includes('24P') || suggested.includes('24T'))) {
+      suggested = suggested.replace(/24([PTF])/g, '48$1');
+      item.ports = 48;
+      item.suggestedActiveSku = suggested;
+    }
+
     let coherentCorrectionNote =
       item.coherentCorrectionNote ||
       (wasCorrectedFromClientTypo
@@ -1331,7 +1396,7 @@ export function postProcessExtractedResult(
         (rawCheck?.isNonExistentSku ? rawSku : undefined) ||
         (suggestedCheck?.isNonExistentSku ? item.suggestedActiveSku?.toUpperCase() : undefined) ||
         rawSku;
-      const valInfo = validateOfficialCiscoSku(badSku || 'C9580-24P-4G-E');
+      const valInfo = validateOfficialCiscoSku(badSku || 'C9580-24P-4G-E', contextHint);
       rawSku = badSku || rawSku;
       suggested = normalizeParentChassisSku(valInfo.recommendedValidSku, tier);
       item.isEol2026 = true;

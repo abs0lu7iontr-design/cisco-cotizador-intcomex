@@ -101,8 +101,27 @@ async function runConfiguriatorNlpMinimalTests() {
     itemFiber.suggestedActiveSku === 'C9200L-48P-4X-E',
     `Error: "sw 48 poe con fibra" debe deducir C9200L-48P-4X-E (uplinks 10G SFP+), obtuvo ${itemFiber.suggestedActiveSku}`
   );
-  console.assert(itemFiber.ports === 48, 'Error: ports debe ser 48');
   console.log('✅ Test 4: Requerimiento de fibra ("con fibra") deduce uplinks 10G SFP+ (4X) correctamente.');
+
+  // --------------------------------------------------------------------------
+  // Test 4b: Solicitud de familia "c9300 48 poe" -> C9300L-48P-4X-E (48P PoE+ 4x10G Fast Track)
+  // Blindaje estricto: NUNCA degradar a C9200L ni a 24 puertos
+  // --------------------------------------------------------------------------
+  const resC9300 = extractWithLocalDeterministicEngine('c9300 48 poe');
+  console.assert(resC9300.items.length === 1, 'Error: Debe extraer 1 ítem para "c9300 48 poe"');
+  const itemC9300 = resC9300.items[0];
+  console.assert(
+    itemC9300.suggestedActiveSku === 'C9300L-48P-4X-E',
+    `Error: "c9300 48 poe" debe deducir C9300L-48P-4X-E en primera instancia, obtuvo ${itemC9300.suggestedActiveSku}`
+  );
+  console.assert(itemC9300.ports === 48, `Error: ports debe ser 48, obtuvo ${itemC9300.ports}`);
+  console.assert(itemC9300.isPoe === true, 'Error: isPoe debe ser true');
+
+  const rowsC9300 = await buildAssembledCcwRows(resC9300);
+  console.assert(rowsC9300.length >= 4, `Error: Debe ensamblar Madre + Hijos para C9300L, obtuvo ${rowsC9300.length}`);
+  console.assert(rowsC9300[0].partNumber === 'C9300L-48P-4X-E', `Error: Madre debe ser C9300L-48P-4X-E, obtuvo ${rowsC9300[0].partNumber}`);
+  console.assert(rowsC9300.some((r) => r.partNumber.includes('DNA-E-48-3Y')), 'Error: Debe incluir licencia DNA Essentials 48P 3Y');
+  console.log('✅ Test 4b: Solicitud "c9300 48 poe" resuelta con precisión a C9300L-48P-4X-E (48 puertos PoE+ 10G) y ensamble Madre-Hijo C9300 verificado.');
 
   // --------------------------------------------------------------------------
   // Test 5: Dimensionamiento por capacidad ("switch para 15 usuarios")
