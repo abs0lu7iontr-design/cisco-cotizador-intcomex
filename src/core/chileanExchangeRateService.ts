@@ -298,3 +298,29 @@ export async function fetchDailyOfficialChileanRates(
 
   return getDefaultOfficialRatesSnapshot();
 }
+
+const FRONTEND_CURRENCY_EVENT = 'cisco-frontend-currency-changed';
+
+export function getSavedFrontendCurrency(): 'USD' | 'CLP' | 'UF' {
+  try {
+    if (typeof localStorage === 'undefined') return 'USD';
+    const saved = localStorage.getItem('cisco_selected_currency');
+    if (saved === 'USD' || saved === 'CLP' || saved === 'UF') return saved;
+  } catch {}
+  return 'USD';
+}
+
+export function notifyFrontendCurrencyChange(): void {
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(FRONTEND_CURRENCY_EVENT));
+    }
+  } catch {}
+}
+
+export function subscribeFrontendCurrencyChange(callback: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener(FRONTEND_CURRENCY_EVENT, callback);
+  return () => window.removeEventListener(FRONTEND_CURRENCY_EVENT, callback);
+}
+

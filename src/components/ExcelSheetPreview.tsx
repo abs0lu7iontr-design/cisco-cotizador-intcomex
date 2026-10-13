@@ -4,7 +4,20 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ProcessedEstimateResult, QuoteParameters, EstimateLineItem, OverrideRuleType } from '../core/types';
-import { isMainLineItem } from '../core/calculations';
+import {
+  isMainLineItem,
+  CurrencyCode,
+  CurrencyConversionRates,
+  convertUsdToCurrency,
+  formatCurrencyAmount,
+} from '../core/calculations';
+import {
+  getSavedFrontendCurrency,
+  getCachedDailyOfficialRates,
+  getDefaultOfficialRatesSnapshot,
+  snapshotToConversionRates,
+  subscribeFrontendCurrencyChange,
+} from '../core/chileanExchangeRateService';
 import {
   Eye,
   MousePointerClick,
@@ -46,6 +59,18 @@ export const ExcelSheetPreview: React.FC<ExcelSheetPreviewProps> = ({
 }) => {
   const [showRecalculated, setShowRecalculated] = useState<boolean>(true);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [currency, setCurrency] = useState<CurrencyCode>(() => getSavedFrontendCurrency());
+  const [rates, setRates] = useState<CurrencyConversionRates>(() =>
+    snapshotToConversionRates(getCachedDailyOfficialRates(false) || getDefaultOfficialRatesSnapshot())
+  );
+
+  useEffect(() => {
+    return subscribeFrontendCurrencyChange(() => {
+      setCurrency(getSavedFrontendCurrency());
+      const snap = getCachedDailyOfficialRates(false) || getDefaultOfficialRatesSnapshot();
+      setRates(snapshotToConversionRates(snap));
+    });
+  }, []);
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
@@ -137,13 +162,17 @@ export const ExcelSheetPreview: React.FC<ExcelSheetPreviewProps> = ({
 
   const formatCurrency = (amount?: number) => {
     if (amount === undefined || amount === null || isNaN(amount)) return '$0.00';
-    return (
-      '$' +
-      amount.toLocaleString('es-CL', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
-    );
+    if (currency === 'USD') {
+      return (
+        '$' +
+        amount.toLocaleString('es-CL', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })
+      );
+    }
+    const converted = convertUsdToCurrency(amount, currency, rates);
+    return formatCurrencyAmount(converted, currency);
   };
 
   return (

@@ -20,6 +20,7 @@ import {
   getDefaultOfficialRatesSnapshot,
   saveCachedDailyOfficialRates,
   snapshotToConversionRates,
+  notifyFrontendCurrencyChange,
 } from '../core/chileanExchangeRateService';
 import {
   DollarSign,
@@ -76,6 +77,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
         if (!isMounted) return;
         setOfficialSnapshot(snap);
         setRates(snapshotToConversionRates(snap));
+        notifyFrontendCurrencyChange();
       })
       .catch(() => {})
       .finally(() => {
@@ -93,6 +95,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
       const freshSnap = await fetchDailyOfficialChileanRates(true);
       setOfficialSnapshot(freshSnap);
       setRates(snapshotToConversionRates(freshSnap));
+      notifyFrontendCurrencyChange();
     } finally {
       setIsLoadingOfficialRates(false);
     }
@@ -103,6 +106,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
     try {
       localStorage.setItem('cisco_selected_currency', c);
     } catch {}
+    notifyFrontendCurrencyChange();
   };
 
   const handleUpdateOfficialUsdBase = (newBaseUsd: number) => {
@@ -118,6 +122,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
     setOfficialSnapshot(updatedSnap);
     setRates({ ...rates, CLP: appliedClp });
     saveCachedDailyOfficialRates(updatedSnap);
+    notifyFrontendCurrencyChange();
   };
 
   const handleUpdateAppliedClpDirect = (newAppliedClp: number) => {
@@ -133,6 +138,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
     setOfficialSnapshot(updatedSnap);
     setRates({ ...rates, CLP: cleanApplied });
     saveCachedDailyOfficialRates(updatedSnap);
+    notifyFrontendCurrencyChange();
   };
 
   const handleUpdateUfRate = (newUf: number) => {
@@ -145,6 +151,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
     setOfficialSnapshot(updatedSnap);
     setRates({ ...rates, UF: cleanUf });
     saveCachedDailyOfficialRates(updatedSnap);
+    notifyFrontendCurrencyChange();
   };
 
   const formatCurrency = (amountUsd?: number) => {
