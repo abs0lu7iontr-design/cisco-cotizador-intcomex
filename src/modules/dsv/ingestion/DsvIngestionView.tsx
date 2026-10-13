@@ -2,7 +2,7 @@
 // CISCO AUTOMATED v2.1 - ONEDRIVE DSV INGESTION & DUAL-ENGINE CONSOLIDATION VIEW
 // ============================================================================
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   FolderSync,
   FolderOpen,
@@ -20,10 +20,16 @@ import {
   Check,
   Copy,
   Cpu,
+  XCircle,
 } from 'lucide-react';
-import { scanOneDriveDsvDirectory as motorClasico } from './dsvFolderConnector';
-import { processFilesFromInput as motorAvanzado } from './emlWorkerConnector';
-import { ConsolidatedDealRecord, ConsolidationStatus } from './types';
+import { scanOneDriveDsvDirectoryDetailed } from './dsvFolderConnector';
+import { processFilesFromInputDetailed } from './emlWorkerConnector';
+import {
+  ConsolidatedDealRecord,
+  ConsolidationStatus,
+  DsvIngestionFileError,
+  DsvIngestionProgress,
+} from './types';
 
 interface DsvIngestionViewProps {
   onGenerateDsvForRecord?: (record: ConsolidatedDealRecord) => void;
@@ -38,24 +44,48 @@ export const DsvIngestionView: React.FC<DsvIngestionViewProps> = ({
   const [isScanning, setIsScanning] = useState(false);
   const [activeMotor, setActiveMotor] = useState<'clasico' | 'avanzado' | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fileErrors, setFileErrors] = useState<DsvIngestionFileError[]>([]);
+  const [scanProgress, setScanProgress] = useState<DsvIngestionProgress | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [copiedDealId, setCopiedDealId] = useState<string | null>(null);
 
   const hiddenFileInput = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Motor 1: Síncrono Original (showDirectoryPicker)
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
+  const handleCancelScan = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setErrorMessage('Escaneo cancelado por el usuario. Se conservan los registros parciales ya consolidados.');
+      setIsScanning(false);
+    }
+  };
+
+  // Motor 1: API nativa showDirectoryPicker + Pipeline compartido
   const handleMotorClasico = async () => {
     setErrorMessage(null);
+    setFileErrors([]);
     setIsScanning(true);
     setActiveMotor('clasico');
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       if (typeof window !== 'undefined' && 'showDirectoryPicker' in window) {
-        const consolidated = await motorClasico();
-        setRecords(consolidated);
+        const result = await scanOneDriveDsvDirectoryDetailed({
+          signal: controller.signal,
+          onProgress: (p) => setScanProgress(p),
+        });
+        setRecords(result.records);
+        setFileErrors(result.fileErrors);
       } else {
-        // Fallback para navegadores sin showDirectoryPicker
         hiddenFileInput.current?.click();
       }
     } catch (err: any) {
@@ -65,10 +95,12 @@ export const DsvIngestionView: React.FC<DsvIngestionViewProps> = ({
       }
     } finally {
       setIsScanning(false);
+      setScanProgress(null);
+      abortControllerRef.current = null;
     }
   };
 
-  // Motor 2: Asíncrono V2 (Input Fallback + Web Workers + Zod)
+  // Motor 2: Asíncrono V2 (Input Fallback + Web Workers + Zod + Pipeline compartido)
   const handleMotorAvanzado = () => {
     setActiveMotor('avanzado');
     hiddenFileInput.current?.click();
@@ -78,14 +110,25 @@ export const DsvIngestionView: React.FC<DsvIngestionViewProps> = ({
     if (e.target.files && e.target.files.length > 0) {
       setIsScanning(true);
       setErrorMessage(null);
+      setFileErrors([]);
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       try {
-        const consolidated = await motorAvanzado(e.target.files);
-        setRecords(consolidated);
+        const result = await processFilesFromInputDetailed(e.target.files, {
+          signal: controller.signal,
+          onProgress: (p) => setScanProgress(p),
+        });
+        setRecords(result.records);
+        setFileErrors(result.fileErrors);
       } catch (err: any) {
         console.error('Error en motor avanzado', err);
         setErrorMessage(err.message || 'Error al procesar archivos con Web Worker y Zod');
       } finally {
         setIsScanning(false);
+        setScanProgress(null);
+        abortControllerRef.current = null;
       }
     }
   };
@@ -212,6 +255,17 @@ export const DsvIngestionView: React.FC<DsvIngestionViewProps> = ({
             </button>
           )}
 
+          {isScanning && (
+            <button
+              onClick={handleCancelScan}
+              className="inline-flex items-center space-x-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white px-4 py-2.5 rounded-xl shadow transition-colors cursor-pointer"
+              title="Cancelar escaneo en curso"
+            >
+              <XCircle className="w-4 h-4" />
+              <span>Cancelar Escaneo</span>
+            </button>
+          )}
+
           {/* Motor 1: Síncrono Original (showDirectoryPicker) */}
           <button
             onClick={handleMotorClasico}
@@ -244,6 +298,32 @@ export const DsvIngestionView: React.FC<DsvIngestionViewProps> = ({
         </div>
       </div>
 
+      {/* Live Progress Bar */}
+      {isScanning && scanProgress && (
+        <div className="p-4 rounded-2xl bg-indigo-950/60 border border-indigo-500/40 text-indigo-200 text-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-bold">
+              Fase: {scanProgress.phase} {scanProgress.currentFileName ? `— ${scanProgress.currentFileName}` : ''}
+            </span>
+            <span className="font-mono">
+              {scanProgress.processedFiles} / {scanProgress.totalFiles} archivos
+            </span>
+          </div>
+          <div className="w-full h-2 rounded-full bg-slate-900 overflow-hidden">
+            <div
+              className="h-full bg-indigo-500 transition-all duration-150"
+              style={{
+                width: `${
+                  scanProgress.totalFiles > 0
+                    ? Math.round((scanProgress.processedFiles / scanProgress.totalFiles) * 100)
+                    : 10
+                }%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Active Motor Badge */}
       {activeMotor && records.length > 0 && (
         <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-900/60 border border-slate-800 text-xs">
@@ -275,6 +355,33 @@ export const DsvIngestionView: React.FC<DsvIngestionViewProps> = ({
           >
             Cerrar
           </button>
+        </div>
+      )}
+
+      {/* Isolated Per-File Errors Warning Banner */}
+      {fileErrors.length > 0 && (
+        <div className="p-4 rounded-2xl bg-amber-950/70 border border-amber-600/40 text-amber-200 text-xs space-y-2 shadow-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2 font-bold">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                Se aislaron {fileErrors.length} archivo(s) con error sin detener el resto del lote:
+              </span>
+            </div>
+            <button
+              onClick={() => setFileErrors([])}
+              className="text-amber-300 hover:text-white text-[11px] underline cursor-pointer"
+            >
+              Ocultar
+            </button>
+          </div>
+          <ul className="list-disc list-inside space-y-1 text-[11px] text-amber-300/90 font-mono">
+            {fileErrors.slice(0, 8).map((fe, idx) => (
+              <li key={idx}>
+                [{fe.folder}] {fe.fileName}: {fe.error}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

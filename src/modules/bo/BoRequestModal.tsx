@@ -14,6 +14,7 @@ import {
   DEFAULT_BO_EMAIL_CC,
   formatCLP,
   copyBoTableToClipboard,
+  copyBoTableWithDetail,
   getBoTimeBasedGreeting,
 } from './boEmailHelper';
 import {
@@ -303,10 +304,22 @@ export const BoRequestModal: React.FC<Props> = ({
     }
 
     const linesWithCurrentBodega = lines.map((l) => ({ ...l, bodega: currentBodega }));
-    const ok = await copyBoTableToClipboard(linesWithCurrentBodega);
-    if (ok) {
+    const copyRes = await copyBoTableWithDetail(linesWithCurrentBodega);
+    if (copyRes.success) {
       setCopied(true);
+      setImportNotice({
+        type: 'success',
+        message:
+          copyRes.mode === 'rich'
+            ? 'Tabla BO copiada con formato enriquecido HTML (lista para pegar en Outlook).'
+            : 'Tabla BO copiada en texto plano tabulado (formato HTML no disponible en este navegador).',
+      });
       setTimeout(() => setCopied(false), 3500);
+    } else {
+      setImportNotice({
+        type: 'error',
+        message: copyRes.error || copyRes.message || 'No se pudo copiar la tabla BO al portapapeles.',
+      });
     }
   };
 

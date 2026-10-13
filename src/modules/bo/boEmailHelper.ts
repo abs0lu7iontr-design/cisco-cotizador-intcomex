@@ -3,6 +3,10 @@
 // ============================================================================
 
 import { BoLineItem } from './boTypes';
+import {
+  copyHtmlAndTextToClipboard,
+  ClipboardCopyDetailedResult,
+} from '../../core/emailClipboardHelper';
 
 export const DEFAULT_BO_EMAIL_TO = 'ventascore.cl@intcomex.com';
 export const DEFAULT_BO_EMAIL_CC = 'ciscoteam.cl@intcomex.com';
@@ -79,30 +83,35 @@ export function generateBoHtmlTable(lines: BoLineItem[]): string {
 }
 
 /**
- * Copia el HTML con formato directamente al portapapeles para pegar en Outlook
+ * Genera el texto plano tabulado de la tabla BO como fallback.
  */
-export async function copyBoTableToClipboard(lines: BoLineItem[]): Promise<boolean> {
+export function generateBoPlainTextTable(lines: BoLineItem[]): string {
   const activeLines = lines.filter((l) => !l.isExcludedZeroCost && (l.extendedNetPrice > 0 || l.unitNetPrice > 0));
-  const htmlContent = generateBoHtmlTable(lines);
-  const plainText = activeLines
+  const greeting = getBoTimeBasedGreeting();
+  const totalVenta = activeLines.reduce((acc, l) => acc + (Number(l.extendedNetPrice) || 0), 0);
+  const rowsText = activeLines
     .map(
       (l) =>
         `${l.sku || 'N/A'}\t${l.partNumber}\t${l.bodega}\t${l.qty}\t${formatCLP(l.unitNetPrice, 2)}\t${formatCLP(l.extendedNetPrice, 2)}`
     )
     .join('\n');
 
-  try {
-    const blobHtml = new Blob([htmlContent], { type: 'text/html' });
-    const blobText = new Blob([plainText], { type: 'text/plain' });
-    await navigator.clipboard.write([
-      new ClipboardItem({
-        'text/html': blobHtml,
-        'text/plain': blobText,
-      }),
-    ]);
-    return true;
-  } catch (err) {
-    console.error('Error al copiar tabla BO al portapapeles:', err);
-    return false;
-  }
+  return `Estimado,\n${greeting}, por favor crear BO.\n\nSKU\tPart Number\tBodega\tQty\tUnit Net Price\tExtended Net Price\n${rowsText}\nTotal General:\t$${formatCLP(totalVenta, 2)} USD`;
+}
+
+/**
+ * Copia la tabla BO al portapapeles devolviendo el modo ('rich' | 'plain' | 'none').
+ */
+export async function copyBoTableWithDetail(lines: BoLineItem[]): Promise<ClipboardCopyDetailedResult> {
+  const htmlContent = generateBoHtmlTable(lines);
+  const plainText = generateBoPlainTextTable(lines);
+  return copyHtmlAndTextToClipboard(htmlContent, plainText);
+}
+
+/**
+ * Copia el HTML con formato directamente al portapapeles para pegar en Outlook (con fallback a texto plano).
+ */
+export async function copyBoTableToClipboard(lines: BoLineItem[]): Promise<boolean> {
+  const res = await copyBoTableWithDetail(lines);
+  return res.success;
 }

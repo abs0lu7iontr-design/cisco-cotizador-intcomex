@@ -99,7 +99,7 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
       setIsSyncingCloud(true);
       setSyncNote(null);
       try {
-        const res = await getCloudEstimates(300);
+        const res = await getCloudEstimates(1500);
         if (res.success && res.data) {
           setLastSyncIso(getMirrorLastSyncTimestamp() || new Date().toISOString());
         }
@@ -1209,21 +1209,30 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
                         )}
                       </td>
                       <td className="px-5 py-3.5 text-right text-[11px]">
-                        {e.createdAt ? (
-                          <div className="flex flex-col items-end">
-                            <span className="font-mono text-slate-300 font-semibold">
-                              {new Date(e.createdAt).toLocaleDateString('es-CL')}
-                            </span>
-                            <span className="text-[10px] text-slate-500 font-mono">
-                              {new Date(e.createdAt).toLocaleTimeString('es-CL', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </span>
-                          </div>
-                        ) : (
-                          'Hoy'
-                        )}
+                        {(() => {
+                          const validIso = normalizeIsoTimestamp(e.createdAt);
+                          if (!validIso) {
+                            return (
+                              <span className="text-[10px] text-slate-500 italic">
+                                Fecha desconocida
+                              </span>
+                            );
+                          }
+                          const d = new Date(validIso);
+                          return (
+                            <div className="flex flex-col items-end">
+                              <span className="font-mono text-slate-300 font-semibold">
+                                {d.toLocaleDateString('es-CL')}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-mono">
+                                {d.toLocaleTimeString('es-CL', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-5 py-3.5 text-center">
                         {hasAccess ? (

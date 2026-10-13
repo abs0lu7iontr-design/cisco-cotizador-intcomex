@@ -15,6 +15,7 @@ import {
   where,
   orderBy,
   limit,
+  startAfter,
 } from 'firebase/firestore';
 import { getFirestoreInstance } from './firebaseConfig';
 import {
@@ -35,7 +36,11 @@ import {
   getDeletedEstimateIds,
   addDeletedEstimateId,
 } from '../../hooks/useEstimatesMirror';
-import { normalizeIsoTimestamp } from '../../utils/dateUtils';
+import {
+  normalizeIsoTimestamp,
+  compareDatesUnknownLast,
+  extractYearMonth,
+} from '../../utils/dateUtils';
 
 const ESTIMATES_COLLECTION = 'estimates';
 const DSV_COLLECTION = 'dsv_records';
@@ -216,7 +221,8 @@ export async function saveEstimateToCloud(
   );
 
   const normalizedCreatedAt = normalizeIsoTimestamp(
-    record.createdAt || existingLocal?.createdAt || nowIso
+    record.createdAt || existingLocal?.createdAt || nowIso,
+    nowIso
   );
   const normalizedUpdatedAt = nowIso;
 
@@ -318,7 +324,7 @@ export async function saveEstimateToCloud(
       x.id !== docId &&
       !(record.estimateId && record.estimateId !== 'NA' && x.estimateId === record.estimateId)
   );
-  saveLocalEstimatesCache([mergedRecord, ...filteredLocal].slice(0, 300));
+  saveLocalEstimatesCache([mergedRecord, ...filteredLocal]);
 
   try {
     const { db, isReady, error } = getFirestoreInstance();
@@ -407,7 +413,7 @@ export async function saveEstimateToCloud(
 
     // Mark as synced in local cache
     const syncedRecord: CloudEstimateRecord = { ...mergedRecord, syncedToCloud: true };
-    saveLocalEstimatesCache([syncedRecord, ...filteredLocal].slice(0, 300));
+    saveLocalEstimatesCache([syncedRecord, ...filteredLocal]);
 
     return { success: true, id: docId };
   } catch (err: any) {
@@ -663,19 +669,209 @@ export async function loadEstimateVersionDetail(
   }
 }
 
+// ----------------------------------------------------------------------------
+// VERSION REQUEST CONCURRENCY CONTROLLER (ITEM 2)
+// ----------------------------------------------------------------------------
+export interface VersionRequestTicket {
+  estimateId: string;
+  versionTag: string;
+  requestId: number;
+}
+
+export interface VersionSelectionController {
+  beginRequest: (estimateId: string, versionTag: string) => VersionRequestTicket;
+  isCurrentRequest: (ticket: VersionRequestTicket) => boolean;
+  invalidate: () => void;
+  getActiveRequest: () => VersionRequestTicket | null;
+}
 
 /**
- * Fetches CCW Estimates from Firestore on-demand using getDocs().
- * Orders by createdAt descending, deduplicates by Estimate ID, and auto-syncs any pending local estimates to Cloud.
- * Ingests Desktop SQLite quotes when executing inside PyWebView.
+ * Creates a concurrency controller for version detail requests.
+ * Associates every request with `{ estimateId, versionTag, requestId }` and ensures
+ * stale out-of-order responses never overwrite a newer selection, closed panel, or unmounted view.
+ */
+export function createVersionSelectionController(): VersionSelectionController {
+  let seq = 0;
+  let activeTicket: VersionRequestTicket | null = null;
+
+  return {
+    beginRequest(estimateId: string, versionTag: string): VersionRequestTicket {
+      seq += 1;
+      const ticket: VersionRequestTicket = {
+        estimateId: String(estimateId || '').trim(),
+        versionTag: String(versionTag || '').trim(),
+        requestId: seq,
+      };
+      activeTicket = ticket;
+      return ticket;
+    },
+    isCurrentRequest(ticket: VersionRequestTicket): boolean {
+      if (!activeTicket || !ticket) return false;
+      return (
+        activeTicket.requestId === ticket.requestId &&
+        activeTicket.estimateId === ticket.estimateId &&
+        activeTicket.versionTag === ticket.versionTag
+      );
+    },
+    invalidate(): void {
+      seq += 1;
+      activeTicket = null;
+    },
+    getActiveRequest(): VersionRequestTicket | null {
+      return activeTicket ? { ...activeTicket } : null;
+    },
+  };
+}
+
+// ----------------------------------------------------------------------------
+// CURSOR PAGINATION, DETERMINISTIC ORDERING & FULL-HISTORY SEARCH (ITEM 3)
+// ----------------------------------------------------------------------------
+/**
+ * Required Firestore index specification for cursor pagination:
+ * Collection: `estimates`
+ * Fields: `createdAt` (DESCENDING), `__name__` (DESCENDING)
+ */
+export const ESTIMATES_FIRESTORE_INDEX_SPEC =
+  'COLLECTION: estimates | FIELDS: createdAt DESC, __name__ DESC';
+
+export interface EstimatePaginationCursor {
+  createdAt: string;
+  id: string;
+}
+
+export interface EstimateQueryOptions {
+  pageSize?: number;
+  cursor?: EstimatePaginationCursor | null;
+  searchQuery?: string;
+  filterCreator?: string;
+  filterMonth?: string;
+}
+
+export interface EstimatePaginatedResult {
+  success: boolean;
+  items: CloudEstimateRecord[];
+  allMatchedCount: number;
+  totalLoadedRecords: number;
+  nextCursor: EstimatePaginationCursor | null;
+  hasMore: boolean;
+  fromCacheOnly: boolean;
+  indexSpec: string;
+  error?: string;
+}
+
+/**
+ * Deterministic comparator for CloudEstimateRecord:
+ * 1. Valid `createdAt` descending, with unknown/empty dates always sorted last.
+ * 2. Tie-breaker by `id` descending (and `estimateId` descending) so identical timestamps never shift across pages.
+ */
+export function compareEstimateRecordsDeterministic(
+  a: Pick<CloudEstimateRecord, 'id' | 'estimateId' | 'createdAt'>,
+  b: Pick<CloudEstimateRecord, 'id' | 'estimateId' | 'createdAt'>
+): number {
+  const cmpDate = compareDatesUnknownLast(a.createdAt, b.createdAt, 'desc');
+  if (cmpDate !== 0) return cmpDate;
+  const idA = String(a.id || a.estimateId || '');
+  const idB = String(b.id || b.estimateId || '');
+  return idB.localeCompare(idA);
+}
+
+/**
+ * Pure cursor-based pagination and full-dataset filtering helper.
+ * Applies search and filters across the ENTIRE dataset (including >300 historical records),
+ * orders deterministically with ID tie-breaker, and returns the requested page slice + nextCursor.
+ */
+export function paginateAndFilterEstimates(
+  records: CloudEstimateRecord[],
+  options: EstimateQueryOptions = {}
+): Omit<EstimatePaginatedResult, 'fromCacheOnly' | 'error'> {
+  const pageSize = Math.max(1, Math.min(options.pageSize || 50, 500));
+  const q = (options.searchQuery || '').trim().toLowerCase();
+  const filterCreator = options.filterCreator || 'ALL';
+  const filterMonth = options.filterMonth || 'ALL';
+
+  const sorted = [...records].sort(compareEstimateRecordsDeterministic);
+
+  const matched = sorted.filter((est) => {
+    const matchesSearch =
+      !q ||
+      (est.estimateId || '').toLowerCase().includes(q) ||
+      (est.dealId || '').toLowerCase().includes(q) ||
+      (est.partnerName || '').toLowerCase().includes(q) ||
+      (est.clientFinalName || '').toLowerCase().includes(q) ||
+      (est.originalFileName || '').toLowerCase().includes(q) ||
+      (est.creator?.username || '').toLowerCase().includes(q) ||
+      (est.creator?.fullName || '').toLowerCase().includes(q);
+
+    const matchesCreator =
+      filterCreator === 'ALL' || est.creator?.username === filterCreator;
+
+    const estMonth = extractYearMonth(est.createdAt);
+    const matchesMonth = filterMonth === 'ALL' || estMonth === filterMonth;
+
+    return matchesSearch && matchesCreator && matchesMonth;
+  });
+
+  let startIndex = 0;
+  if (options.cursor && (options.cursor.id || options.cursor.createdAt !== undefined)) {
+    const cursorIdx = matched.findIndex(
+      (item) =>
+        item.id === options.cursor!.id &&
+        (item.createdAt || '') === (options.cursor!.createdAt || '')
+    );
+    if (cursorIdx >= 0) {
+      startIndex = cursorIdx + 1;
+    } else {
+      // If exact cursor document was deleted/updated, advance to first item strictly after cursor in deterministic order
+      const cursorProbe: Pick<CloudEstimateRecord, 'id' | 'estimateId' | 'createdAt'> = {
+        id: options.cursor.id,
+        estimateId: options.cursor.id,
+        createdAt: options.cursor.createdAt,
+      };
+      const firstAfter = matched.findIndex(
+        (item) => compareEstimateRecordsDeterministic(cursorProbe, item) < 0
+      );
+      startIndex = firstAfter >= 0 ? firstAfter : matched.length;
+    }
+  }
+
+  const pageItems = matched.slice(startIndex, startIndex + pageSize);
+  const hasMore = startIndex + pageSize < matched.length;
+  const lastItem = pageItems.length > 0 ? pageItems[pageItems.length - 1] : null;
+  const nextCursor: EstimatePaginationCursor | null =
+    hasMore && lastItem
+      ? { createdAt: lastItem.createdAt || '', id: lastItem.id || '' }
+      : null;
+
+  return {
+    success: true,
+    items: pageItems,
+    allMatchedCount: matched.length,
+    totalLoadedRecords: sorted.length,
+    nextCursor,
+    hasMore,
+    indexSpec: ESTIMATES_FIRESTORE_INDEX_SPEC,
+  };
+}
+
+/**
+ * Fetches CCW Estimates from Firestore on-demand using cursor-capable batch retrieval.
+ * Orders by createdAt descending with deterministic ID tie-breaker, deduplicates by Estimate ID,
+ * and supports >300 historical records without silent truncation.
  */
 export async function getCloudEstimates(
-  limitCount: number = 300,
+  limitCount: number = 1000,
   _sinceIso?: string
-): Promise<{ success: boolean; data: CloudEstimateRecord[]; error?: string }> {
+): Promise<{
+  success: boolean;
+  data: CloudEstimateRecord[];
+  fromCacheOnly?: boolean;
+  error?: string;
+}> {
   try {
     const { db, isReady, error } = getFirestoreInstance();
     const localCache = getLocalEstimatesCache();
+    const isBrowserOffline =
+      typeof navigator !== 'undefined' && navigator.onLine === false;
 
     const dedupMap = new Map<string, CloudEstimateRecord>();
 
@@ -732,7 +928,7 @@ export async function getCloudEstimates(
                   estimateId: estId || 'NA',
                   dealId: String(d.deal_id || 'NA'),
                   priceList: 'Global Price List',
-                  date: dCreatedAt.slice(0, 10),
+                  date: dCreatedAt ? dCreatedAt.slice(0, 10) : '',
                 },
                 itemsCount: Number(d.items_count) || 0,
                 items: [],
@@ -748,8 +944,8 @@ export async function getCloudEstimates(
       }
     }
 
-    if (!isReady || !db) {
-      // Offline / Local Mode: seed with localCache + desktopEsts
+    if (!isReady || !db || isBrowserOffline) {
+      // Offline / Local Cache Mode: seed with localCache + desktopEsts
       for (const l of localCache) {
         const key =
           l.estimateId && l.estimateId !== 'NA'
@@ -781,71 +977,153 @@ export async function getCloudEstimates(
           });
         }
       }
-      const mergedLocal = Array.from(dedupMap.values()).sort((a, b) =>
-        (b.createdAt || '').localeCompare(a.createdAt || '')
+      const mergedLocal = Array.from(dedupMap.values()).sort(
+        compareEstimateRecordsDeterministic
       );
-      saveLocalEstimatesCache(mergedLocal.slice(0, 300));
+      saveLocalEstimatesCache(mergedLocal);
       return {
         success: true,
         data: mergedLocal,
-        error: error ? `Modo local activo (${error})` : undefined,
+        fromCacheOnly: true,
+        error: isBrowserOffline
+          ? 'Modo sin conexión activo (mostrando caché local)'
+          : error
+          ? `Modo local activo (${error})`
+          : undefined,
       };
     }
 
     const colRef = collection(db, ESTIMATES_COLLECTION);
-    const fetchLimit = Math.max(limitCount || 300, 300);
+    const targetMax = Math.max(limitCount || 1000, 300);
+    const batchSize = 250;
+    const remoteList: CloudEstimateRecord[] = [];
 
-    let snapshot;
     try {
-      const q = query(colRef, orderBy('createdAt', 'desc'), limit(fetchLimit));
-      snapshot = await withTimeout(getDocs(q), 8000);
+      let lastDocSnap: any = null;
+      let keepPaging = true;
+
+      while (keepPaging && remoteList.length < targetMax) {
+        const remaining = targetMax - remoteList.length;
+        const pageLimit = Math.min(batchSize, remaining);
+        const q = lastDocSnap
+          ? query(
+              colRef,
+              orderBy('createdAt', 'desc'),
+              startAfter(lastDocSnap),
+              limit(pageLimit)
+            )
+          : query(colRef, orderBy('createdAt', 'desc'), limit(pageLimit));
+
+        const snapshot = await withTimeout(getDocs(q), 8000);
+        if (snapshot.empty) {
+          keepPaging = false;
+          break;
+        }
+
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as Omit<CloudEstimateRecord, 'id'>;
+          const normalizedCreatedAt = normalizeIsoTimestamp(data.createdAt);
+          const normalizedUpdatedAt = normalizeIsoTimestamp(
+            data.updatedAt || data.createdAt
+          );
+
+          const activeVersion =
+            data.activeVersion !== undefined ? data.activeVersion : 1;
+          const activeVersionTag =
+            data.activeVersionTag ||
+            (activeVersion === 0 ? 'v0_RAW' : `v${activeVersion}`);
+          const baselineV0Amount = Number(
+            data.baselineV0Amount ??
+              data.financialSummary?.totalNetCisco ??
+              data.financialSummary?.totalCotizadoIntcomex ??
+              0
+          );
+          const currentAmount = Number(
+            data.currentAmount ??
+              data.financialSummary?.totalCotizadoIntcomex ??
+              baselineV0Amount
+          );
+          const versionsCount =
+            data.versionsCount ??
+            (data.versionsSummary?.length ||
+              (activeVersion > 0 ? activeVersion : 1));
+
+          remoteList.push({
+            ...data,
+            id: docSnap.id,
+            createdAt: normalizedCreatedAt,
+            updatedAt: normalizedUpdatedAt,
+            activeVersion,
+            activeVersionTag,
+            baselineV0Amount,
+            currentAmount,
+            versionsCount,
+            versionsSummary: data.versionsSummary || [],
+            isRestricted: Boolean(data.isRestricted),
+            allowedUsers: Array.isArray(data.allowedUsers) ? data.allowedUsers : [],
+            accessRequests: Array.isArray(data.accessRequests)
+              ? data.accessRequests
+              : [],
+            syncedToCloud: true,
+          });
+        });
+
+        lastDocSnap = snapshot.docs[snapshot.docs.length - 1];
+        if (snapshot.docs.length < pageLimit) {
+          keepPaging = false;
+        }
+      }
     } catch {
       // Fallback query if ordering by createdAt encounters any unindexed or missing legacy field
-      const qFallback = query(colRef, limit(fetchLimit));
-      snapshot = await withTimeout(getDocs(qFallback), 8000);
-    }
+      const qFallback = query(colRef, limit(targetMax));
+      const snapshot = await withTimeout(getDocs(qFallback), 8000);
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as Omit<CloudEstimateRecord, 'id'>;
+        const normalizedCreatedAt = normalizeIsoTimestamp(data.createdAt);
+        const normalizedUpdatedAt = normalizeIsoTimestamp(
+          data.updatedAt || data.createdAt
+        );
+        const activeVersion =
+          data.activeVersion !== undefined ? data.activeVersion : 1;
+        const activeVersionTag =
+          data.activeVersionTag ||
+          (activeVersion === 0 ? 'v0_RAW' : `v${activeVersion}`);
+        const baselineV0Amount = Number(
+          data.baselineV0Amount ??
+            data.financialSummary?.totalNetCisco ??
+            data.financialSummary?.totalCotizadoIntcomex ??
+            0
+        );
+        const currentAmount = Number(
+          data.currentAmount ??
+            data.financialSummary?.totalCotizadoIntcomex ??
+            baselineV0Amount
+        );
+        const versionsCount =
+          data.versionsCount ??
+          (data.versionsSummary?.length ||
+            (activeVersion > 0 ? activeVersion : 1));
 
-    const remoteList: CloudEstimateRecord[] = [];
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data() as Omit<CloudEstimateRecord, 'id'>;
-      const normalizedCreatedAt = normalizeIsoTimestamp(data.createdAt);
-      const normalizedUpdatedAt = normalizeIsoTimestamp(data.updatedAt || data.createdAt);
-
-      const activeVersion = data.activeVersion !== undefined ? data.activeVersion : 1;
-      const activeVersionTag =
-        data.activeVersionTag || (activeVersion === 0 ? 'v0_RAW' : `v${activeVersion}`);
-      const baselineV0Amount = Number(
-        data.baselineV0Amount ??
-          data.financialSummary?.totalNetCisco ??
-          data.financialSummary?.totalCotizadoIntcomex ??
-          0
-      );
-      const currentAmount = Number(
-        data.currentAmount ??
-          data.financialSummary?.totalCotizadoIntcomex ??
-          baselineV0Amount
-      );
-      const versionsCount =
-        data.versionsCount ??
-        (data.versionsSummary?.length || (activeVersion > 0 ? activeVersion : 1));
-
-      remoteList.push({
-        ...data,
-        id: docSnap.id,
-        createdAt: normalizedCreatedAt,
-        updatedAt: normalizedUpdatedAt,
-        activeVersion,
-        activeVersionTag,
-        baselineV0Amount,
-        currentAmount,
-        versionsCount,
-        versionsSummary: data.versionsSummary || [],
-        isRestricted: Boolean(data.isRestricted),
-        allowedUsers: Array.isArray(data.allowedUsers) ? data.allowedUsers : [],
-        accessRequests: Array.isArray(data.accessRequests) ? data.accessRequests : [],
-        syncedToCloud: true,
+        remoteList.push({
+          ...data,
+          id: docSnap.id,
+          createdAt: normalizedCreatedAt,
+          updatedAt: normalizedUpdatedAt,
+          activeVersion,
+          activeVersionTag,
+          baselineV0Amount,
+          currentAmount,
+          versionsCount,
+          versionsSummary: data.versionsSummary || [],
+          isRestricted: Boolean(data.isRestricted),
+          allowedUsers: Array.isArray(data.allowedUsers) ? data.allowedUsers : [],
+          accessRequests: Array.isArray(data.accessRequests)
+            ? data.accessRequests
+            : [],
+          syncedToCloud: true,
+        });
       });
-    });
+    }
 
     // Deduplicate remote list by estimateId (keep newest / deterministic docId first)
     for (const r of remoteList) {
@@ -857,7 +1135,6 @@ export async function getCloudEstimates(
       if (!existing) {
         dedupMap.set(key, r);
       } else {
-        // Prefer deterministic docId `est_...` or newer updatedAt/createdAt, while merging accessRequests/allowedUsers
         const existingTime = existing.updatedAt || existing.createdAt || '';
         const candidateTime = r.updatedAt || r.createdAt || '';
         const mergedAllowed = Array.from(
@@ -932,22 +1209,50 @@ export async function getCloudEstimates(
       }
     }
 
-    const merged = Array.from(dedupMap.values()).sort((a, b) =>
-      (b.createdAt || '').localeCompare(a.createdAt || '')
+    const merged = Array.from(dedupMap.values()).sort(
+      compareEstimateRecordsDeterministic
     );
 
-    // Update multi-tier local mirror snapshot cache and timestamp
-    saveLocalEstimatesCache(merged.slice(0, 300), true);
+    // Update multi-tier local mirror snapshot cache and timestamp without 300-record truncation
+    saveLocalEstimatesCache(merged, true);
 
-    return { success: true, data: merged };
+    return { success: true, data: merged, fromCacheOnly: false };
   } catch (err: any) {
     console.warn('[Firestore Cloud Warning - getEstimates]:', err);
     return {
       success: true,
       data: getLocalEstimatesCache(),
+      fromCacheOnly: true,
       error: `Mostrando registros locales (Aviso Cloud: ${err?.message || 'Sin conexión'})`,
     };
   }
+}
+
+/**
+ * Executes a cursor-paginated and filtered query over the full Estimates history.
+ * Avoids re-downloading Firestore on every keystroke by operating over the synchronized
+ * dataset when provided, or fetching from Cloud when initial load is requested.
+ */
+export async function queryCloudEstimatesPaginated(
+  options: EstimateQueryOptions & { cachedRecords?: CloudEstimateRecord[] } = {}
+): Promise<EstimatePaginatedResult> {
+  if (Array.isArray(options.cachedRecords)) {
+    const isOffline =
+      typeof navigator !== 'undefined' && navigator.onLine === false;
+    const paged = paginateAndFilterEstimates(options.cachedRecords, options);
+    return {
+      ...paged,
+      fromCacheOnly: isOffline,
+    };
+  }
+
+  const res = await getCloudEstimates(1500);
+  const paged = paginateAndFilterEstimates(res.data || [], options);
+  return {
+    ...paged,
+    fromCacheOnly: Boolean(res.fromCacheOnly),
+    error: res.error,
+  };
 }
 
 /**

@@ -76,6 +76,29 @@ export interface ExtractedRequirementItem {
   aiSubItems?: SubItemConfig[]; // Sub-líneas Hijo sugeridas por la IA para ensamblaje Madre-Hijo
 }
 
+export type AiFailureKind = 'USER_ABORTED' | 'GLOBAL_TIMEOUT' | 'PROVIDER_ERROR';
+
+export interface AiBomExtractionOptions {
+  explicitApiKey?: string;
+  signal?: AbortSignal;
+  totalTimeoutMs?: number;
+  perAttemptTimeoutMs?: number;
+  fetchImpl?: typeof fetch;
+  disableLocalFallback?: boolean;
+}
+
+export class AiExtractionError extends Error {
+  public readonly kind: AiFailureKind;
+  public readonly rotatedKeysLog: string[];
+
+  constructor(message: string, kind: AiFailureKind, rotatedKeysLog: string[] = []) {
+    super(message);
+    this.name = 'AiExtractionError';
+    this.kind = kind;
+    this.rotatedKeysLog = rotatedKeysLog;
+  }
+}
+
 export interface ExtractedRequirementResult {
   clientName?: string;
   projectName?: string;
@@ -83,6 +106,7 @@ export interface ExtractedRequirementResult {
   providerUsed?: string;
   keyLabelUsed?: string;
   rotatedKeysLog?: string[];
+  terminationReason?: AiFailureKind | 'SUCCESS';
   groundingSources?: { title: string; url: string }[];
 }
 
@@ -263,17 +287,147 @@ function parseSafeJsonFromText(rawText: string): ExtractedRequirementResult {
 }
 
 /**
- * Llamada resiliente a Google Gemini con cascada inteligente 2026:
- * - Si es TEXTO (Lenguaje Natural): usa "gemini-3.7-flash" como primera opción (#1),
- *   y si falla o excede tiempo salta a "gemini-3.6-flash" y hacia arriba ("gemini-3.8-flash").
- * - Si incluye IMAGEN / CAPTURA DE PANTALLA: usa directamente "gemini-3.6-flash" y hacia arriba
- *   ("gemini-3.8-flash", "gemini-3.5-flash-lite") ya que 3.7-flash no procesa visión multimodal.
- * - Incluye AbortController por intento (8.5s) para evitar cuelgues de red.
+ * Parses a standard HTTP `Retry-After` header (either integer seconds or HTTP-date) into milliseconds.
+ */
+export function parseRetryAfterMs(headerVal: string | null | undefined, nowMs: number = Date.now()): number | null {
+  if (!headerVal) return null;
+  const trimmed = headerVal.trim();
+  if (!trimmed) return null;
+
+  if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
+    const seconds = Number(trimmed);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.round(seconds * 1000);
+    }
+  }
+
+  const parsedDate = Date.parse(trimmed);
+  if (!isNaN(parsedDate)) {
+    const diff = parsedDate - nowMs;
+    return diff > 0 ? diff : 0;
+  }
+
+  return null;
+}
+
+/**
+ * Sleeps for `ms` milliseconds while listening for caller `AbortSignal`.
+ */
+export async function abortAwareSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return;
+  if (signal?.aborted) {
+    throw new AiExtractionError('Extracción cancelada por el usuario.', 'USER_ABORTED');
+  }
+  await new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new AiExtractionError('Extracción cancelada por el usuario.', 'USER_ABORTED'));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+interface ProviderRuntimeContext {
+  signal?: AbortSignal;
+  deadlineMs: number;
+  perAttemptTimeoutMs?: number;
+  fetchImpl: typeof fetch;
+}
+
+/**
+ * Executes a `fetch` request AND reads its full response body text under a single unified
+ * `AbortController` that combines:
+ * - User `AbortSignal` (`USER_ABORTED`)
+ * - Global deadline budget (`GLOBAL_TIMEOUT`)
+ * - Per-attempt timeout (`ATTEMPT_TIMEOUT`)
+ * Crucially, the timer is ONLY cleared in `finally` AFTER `res.text()` completes!
+ */
+export async function executeFetchWithAbortAndBodyTimeout(
+  url: string,
+  init: RequestInit,
+  ctx: ProviderRuntimeContext,
+  defaultAttemptMs: number
+): Promise<{ status: number; ok: boolean; bodyText: string; retryAfterMs: number | null }> {
+  if (ctx.signal?.aborted) {
+    throw new AiExtractionError('Extracción cancelada por el usuario.', 'USER_ABORTED');
+  }
+
+  const remainingBudgetMs = ctx.deadlineMs - Date.now();
+  if (remainingBudgetMs <= 25) {
+    throw new AiExtractionError(
+      'Presupuesto total de tiempo agotado para extracción IA.',
+      'GLOBAL_TIMEOUT'
+    );
+  }
+
+  const requestedAttemptMs = ctx.perAttemptTimeoutMs ?? defaultAttemptMs;
+  const effectiveTimeoutMs = Math.max(25, Math.min(requestedAttemptMs, remainingBudgetMs));
+  const usedGlobalCap = remainingBudgetMs <= requestedAttemptMs;
+
+  const controller = new AbortController();
+  let abortReason: 'USER_ABORTED' | 'GLOBAL_TIMEOUT' | 'ATTEMPT_TIMEOUT' | null = null;
+
+  const onUserAbort = () => {
+    abortReason = 'USER_ABORTED';
+    controller.abort();
+  };
+  ctx.signal?.addEventListener('abort', onUserAbort, { once: true });
+
+  const timeoutId = setTimeout(() => {
+    abortReason = usedGlobalCap ? 'GLOBAL_TIMEOUT' : 'ATTEMPT_TIMEOUT';
+    controller.abort();
+  }, effectiveTimeoutMs);
+
+  try {
+    const res = await ctx.fetchImpl(url, {
+      ...init,
+      signal: controller.signal,
+    });
+
+    const retryHeader = res.headers?.get ? res.headers.get('Retry-After') : null;
+    const retryAfterMs = parseRetryAfterMs(retryHeader);
+
+    // Read body WHILE controller and timeoutId are still active!
+    const bodyText = await res.text();
+
+    return {
+      status: res.status,
+      ok: res.ok,
+      bodyText,
+      retryAfterMs,
+    };
+  } catch (err: any) {
+    if (ctx.signal?.aborted || abortReason === 'USER_ABORTED') {
+      throw new AiExtractionError('Extracción cancelada por el usuario.', 'USER_ABORTED');
+    }
+    if (abortReason === 'GLOBAL_TIMEOUT' || Date.now() >= ctx.deadlineMs) {
+      throw new AiExtractionError(
+        'Presupuesto total de tiempo agotado para extracción IA.',
+        'GLOBAL_TIMEOUT'
+      );
+    }
+    if (abortReason === 'ATTEMPT_TIMEOUT' || err?.name === 'AbortError') {
+      throw new Error(`ATTEMPT_TIMEOUT (${effectiveTimeoutMs}ms)`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+    ctx.signal?.removeEventListener('abort', onUserAbort);
+  }
+}
+
+/**
+ * Llamada resiliente a Google Gemini con cascada inteligente 2026 y presupuesto global de tiempo.
  */
 async function callGeminiProvider(
   keyEntry: ApiKeyEntry,
   input: { text?: string; imageBase64?: string; mimeType?: string },
-  _useWebGrounding: boolean
+  _useWebGrounding: boolean,
+  ctx: ProviderRuntimeContext
 ): Promise<ExtractedRequirementResult> {
   const cleanKey = keyEntry.apiKey.trim();
   const hasImage = Boolean(input.imageBase64 && input.mimeType);
@@ -327,45 +481,63 @@ async function callGeminiProvider(
   let lastModelError = '';
 
   for (const modelName of modelCascade) {
-    const timeoutMs = modelName.includes('pro') ? 13000 : 8500;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    if (ctx.signal?.aborted) {
+      throw new AiExtractionError('Extracción cancelada por el usuario.', 'USER_ABORTED');
+    }
+    if (Date.now() >= ctx.deadlineMs - 25) {
+      throw new AiExtractionError(
+        'Presupuesto total de tiempo agotado para extracción IA.',
+        'GLOBAL_TIMEOUT'
+      );
+    }
+
+    const defaultAttemptMs = modelName.includes('pro') ? 13000 : 8500;
 
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(cleanKey)}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: SYSTEM_INSTRUCTION }],
-          },
-          contents: [
-            {
-              role: 'user',
-              parts,
+      const res = await executeFetchWithAbortAndBodyTimeout(
+        url,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [{ text: SYSTEM_INSTRUCTION }],
             },
-          ],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            temperature: 0.05,
-            maxOutputTokens: 8192,
-          },
-        }),
-      });
-      clearTimeout(timeoutId);
+            contents: [
+              {
+                role: 'user',
+                parts,
+              },
+            ],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.05,
+              maxOutputTokens: 8192,
+            },
+          }),
+        },
+        ctx,
+        defaultAttemptMs
+      );
 
       if (!res.ok) {
-        const errBody = await res.text().catch(() => '');
+        const errBody = res.bodyText || '';
         lastModelError = `HTTP ${res.status} (${modelName}): ${errBody.slice(0, 160)}`;
         if (res.status === 401 || res.status === 403 || errBody.includes('API_KEY_INVALID')) {
           throw new Error(lastModelError);
         }
+        // Respect Retry-After on 429 if within remaining budget
+        if (res.status === 429 && res.retryAfterMs !== null) {
+          const remaining = ctx.deadlineMs - Date.now();
+          if (res.retryAfterMs > 0 && res.retryAfterMs <= Math.min(4000, remaining - 250)) {
+            await abortAwareSleep(res.retryAfterMs, ctx.signal);
+          }
+        }
         continue;
       }
 
-      const data: any = await res.json();
+      const data: any = JSON.parse(res.bodyText || '{}');
       const rawText =
         data?.candidates?.[0]?.content?.parts
           ?.map((p: any) => p.text || '')
@@ -379,11 +551,13 @@ async function callGeminiProvider(
         }
       }
     } catch (err: any) {
-      clearTimeout(timeoutId);
-      const isAbort = err?.name === 'AbortError' || String(err?.message || '').includes('aborted');
-      lastModelError = isAbort
-        ? `Timeout en ${modelName} (>8.5s) -> saltando al siguiente modelo Flash`
-        : String(err?.message || err);
+      if (err instanceof AiExtractionError) {
+        throw err;
+      }
+      const msg = String(err?.message || err);
+      lastModelError = msg.startsWith('ATTEMPT_TIMEOUT')
+        ? `Timeout en ${modelName} -> saltando al siguiente modelo`
+        : msg;
       if (
         lastModelError.includes('API_KEY_INVALID') ||
         lastModelError.includes('HTTP 401') ||
@@ -397,38 +571,52 @@ async function callGeminiProvider(
   throw new Error(lastModelError || 'No se obtuvo respuesta válida de los modelos Gemini.');
 }
 
-async function tryAutoProvisionOpenRouterKey(provisioningKey: string, keyId: string): Promise<string | null> {
+async function tryAutoProvisionOpenRouterKey(
+  provisioningKey: string,
+  keyId: string,
+  ctx: ProviderRuntimeContext
+): Promise<string | null> {
   try {
-    const createRes = await fetch('https://openrouter.ai/api/v1/keys', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${provisioningKey.trim()}`,
+    const createRes = await executeFetchWithAbortAndBodyTimeout(
+      'https://openrouter.ai/api/v1/keys',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${provisioningKey.trim()}`,
+        },
+        body: JSON.stringify({ name: 'CiscoAutomated_ConfigurIAtor_Auto' }),
       },
-      body: JSON.stringify({ name: 'CiscoAutomated_ConfigurIAtor_Auto' }),
-    });
+      ctx,
+      4000
+    );
 
     if (!createRes.ok) return null;
-    const data: any = await createRes.json();
+    const data: any = JSON.parse(createRes.bodyText || '{}');
     const newInferenceKey = data?.key;
     if (newInferenceKey && typeof newInferenceKey === 'string') {
       const current = loadAiSettings();
       const updated = {
         ...current,
         keys: current.keys.map((k) =>
-          k.id === keyId ? { ...k, apiKey: newInferenceKey, model: 'openrouter/auto', lastStatus: 'ok' as const } : k
+          k.id === keyId
+            ? { ...k, apiKey: newInferenceKey, model: 'openrouter/auto', lastStatus: 'ok' as const }
+            : k
         ),
       };
       saveAiSettings(updated);
       return newInferenceKey;
     }
-  } catch {}
+  } catch (err) {
+    if (err instanceof AiExtractionError) throw err;
+  }
   return null;
 }
 
 async function callOpenAiCompatibleProvider(
   keyEntry: ApiKeyEntry,
-  input: { text?: string; imageBase64?: string; mimeType?: string }
+  input: { text?: string; imageBase64?: string; mimeType?: string },
+  ctx: ProviderRuntimeContext
 ): Promise<ExtractedRequirementResult> {
   const endpointMap: Record<string, string> = {
     openrouter: 'https://openrouter.ai/api/v1/chat/completions',
@@ -473,35 +661,45 @@ async function callOpenAiCompatibleProvider(
       headers['X-Title'] = 'Cisco Automated ConfigurIAtor';
     }
 
-    return fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: effectiveModel,
-        temperature: 0.1,
-        messages: [
-          { role: 'system', content: SYSTEM_INSTRUCTION },
-          { role: 'user', content: userContent },
-        ],
-      }),
-    });
+    return executeFetchWithAbortAndBodyTimeout(
+      url,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: effectiveModel,
+          temperature: 0.1,
+          messages: [
+            { role: 'system', content: SYSTEM_INSTRUCTION },
+            { role: 'user', content: userContent },
+          ],
+        }),
+      },
+      ctx,
+      10000
+    );
   };
 
   let res = await executeRequest(keyEntry.apiKey);
 
   if (!res.ok && res.status === 401 && keyEntry.provider === 'openrouter') {
-    const provisionedKey = await tryAutoProvisionOpenRouterKey(keyEntry.apiKey, keyEntry.id);
+    const provisionedKey = await tryAutoProvisionOpenRouterKey(keyEntry.apiKey, keyEntry.id, ctx);
     if (provisionedKey) {
       res = await executeRequest(provisionedKey);
     }
   }
 
   if (!res.ok) {
-    const errBody = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status}: ${errBody.slice(0, 200)}`);
+    if (res.status === 429 && res.retryAfterMs !== null) {
+      const remaining = ctx.deadlineMs - Date.now();
+      if (res.retryAfterMs > 0 && res.retryAfterMs <= Math.min(4000, remaining - 250)) {
+        await abortAwareSleep(res.retryAfterMs, ctx.signal);
+      }
+    }
+    throw new Error(`HTTP ${res.status}: ${(res.bodyText || '').slice(0, 200)}`);
   }
 
-  const data: any = await res.json();
+  const data: any = JSON.parse(res.bodyText || '{}');
   const content = data?.choices?.[0]?.message?.content || '{}';
   const parsed = parseSafeJsonFromText(content);
   parsed.providerUsed = `${keyEntry.provider.toUpperCase()} (${data?.model || effectiveModel})`;
@@ -1325,18 +1523,36 @@ export function postProcessExtractedResult(
 
 export async function extractBOMRequirementsFromInput(
   input: { text?: string; imageBase64?: string; mimeType?: string },
-  explicitApiKey?: string
+  explicitApiKeyOrOptions?: string | AiBomExtractionOptions
 ): Promise<ExtractedRequirementResult> {
+  const opts: AiBomExtractionOptions =
+    typeof explicitApiKeyOrOptions === 'string'
+      ? { explicitApiKey: explicitApiKeyOrOptions }
+      : explicitApiKeyOrOptions || {};
+
+  const totalTimeoutMs = Math.max(100, opts.totalTimeoutMs ?? 30000);
+  const deadlineMs = Date.now() + totalTimeoutMs;
+  const ctx: ProviderRuntimeContext = {
+    signal: opts.signal,
+    deadlineMs,
+    perAttemptTimeoutMs: opts.perAttemptTimeoutMs,
+    fetchImpl: opts.fetchImpl ?? fetch,
+  };
+
+  if (ctx.signal?.aborted) {
+    throw new AiExtractionError('Extracción cancelada por el usuario.', 'USER_ABORTED', []);
+  }
+
   const settings = loadAiSettings();
   const rotatedKeysLog: string[] = [];
 
   const candidateKeys: ApiKeyEntry[] = [];
-  if (explicitApiKey && explicitApiKey.trim()) {
+  if (opts.explicitApiKey && opts.explicitApiKey.trim()) {
     candidateKeys.push({
       id: 'explicit-runtime-key',
       provider: 'gemini',
       label: 'API Key Directa',
-      apiKey: explicitApiKey.trim(),
+      apiKey: opts.explicitApiKey.trim(),
       model: 'gemini-3.7-flash',
       enabled: true,
     });
@@ -1348,24 +1564,61 @@ export async function extractBOMRequirementsFromInput(
     }
   }
 
+  let globalTimedOut = false;
+
   for (const keyEntry of candidateKeys) {
+    if (ctx.signal?.aborted) {
+      throw new AiExtractionError(
+        'Extracción cancelada por el usuario.',
+        'USER_ABORTED',
+        rotatedKeysLog
+      );
+    }
+    if (Date.now() >= deadlineMs - 25) {
+      globalTimedOut = true;
+      rotatedKeysLog.push(
+        `[Presupuesto Global]: Tiempo total agotado (${totalTimeoutMs}ms) antes de probar ${keyEntry.label}.`
+      );
+      break;
+    }
+
     try {
       let result: ExtractedRequirementResult;
       if (keyEntry.provider === 'gemini') {
-        result = await callGeminiProvider(keyEntry, input, settings.useCiscoOfficialGrounding);
+        result = await callGeminiProvider(
+          keyEntry,
+          input,
+          settings.useCiscoOfficialGrounding,
+          ctx
+        );
       } else {
-        result = await callOpenAiCompatibleProvider(keyEntry, input);
+        result = await callOpenAiCompatibleProvider(keyEntry, input, ctx);
       }
 
       if (result && Array.isArray(result.items) && result.items.length > 0) {
         markApiKeyStatus(keyEntry.id, 'ok');
         const finalResult = postProcessExtractedResult(result, input.text);
-        finalResult.providerUsed = result.providerUsed || `${keyEntry.provider.toUpperCase()} (${keyEntry.model})`;
+        finalResult.providerUsed =
+          result.providerUsed || `${keyEntry.provider.toUpperCase()} (${keyEntry.model})`;
         finalResult.keyLabelUsed = keyEntry.label;
         finalResult.rotatedKeysLog = rotatedKeysLog;
+        finalResult.terminationReason = 'SUCCESS';
         return finalResult;
       }
     } catch (err: any) {
+      if (err instanceof AiExtractionError) {
+        if (err.kind === 'USER_ABORTED') {
+          throw new AiExtractionError(err.message, 'USER_ABORTED', rotatedKeysLog);
+        }
+        if (err.kind === 'GLOBAL_TIMEOUT') {
+          globalTimedOut = true;
+          rotatedKeysLog.push(
+            `[${keyEntry.label} - ${keyEntry.provider}]: Presupuesto global de tiempo agotado (${totalTimeoutMs}ms).`
+          );
+          break;
+        }
+      }
+
       const errMsg = String(err?.message || err || 'Error desconocido');
       const isQuota =
         errMsg.includes('429') ||
@@ -1380,24 +1633,36 @@ export async function extractBOMRequirementsFromInput(
       );
       rotatedKeysLog.push(
         `[${keyEntry.label} - ${keyEntry.provider}]: ${
-          isQuota ? 'Tokens agotados (429) -> Rotando a siguiente API...' : `Aviso (${errMsg.slice(0, 90)}) -> Rotando...`
+          isQuota
+            ? 'Tokens agotados (429) -> Rotando a siguiente API...'
+            : `Aviso (${errMsg.slice(0, 90)}) -> Rotando...`
         }`
       );
     }
   }
 
-  if (settings.autoFallbackToLocal && input.text && input.text.trim()) {
+  if (
+    !opts.disableLocalFallback &&
+    settings.autoFallbackToLocal &&
+    input.text &&
+    input.text.trim()
+  ) {
     const localRes = postProcessExtractedResult(
       extractWithLocalDeterministicEngine(input.text),
       input.text
     );
     localRes.rotatedKeysLog = rotatedKeysLog;
+    localRes.terminationReason = globalTimedOut ? 'GLOBAL_TIMEOUT' : 'PROVIDER_ERROR';
     return localRes;
   }
 
-  throw new Error(
+  const failureKind: AiFailureKind = globalTimedOut ? 'GLOBAL_TIMEOUT' : 'PROVIDER_ERROR';
+  throw new AiExtractionError(
     rotatedKeysLog.length > 0
       ? `No se pudo completar el análisis con las APIs configuradas:\n${rotatedKeysLog.join('\n')}`
-      : 'No hay ninguna API Key activa en el pool. Revisa el botón "APIs & Rotación".'
+      : 'No hay ninguna API Key activa en el pool. Revisa el botón "APIs & Rotación".',
+    failureKind,
+    rotatedKeysLog
   );
 }
+

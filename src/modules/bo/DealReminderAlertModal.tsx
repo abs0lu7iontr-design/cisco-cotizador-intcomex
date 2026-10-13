@@ -30,7 +30,8 @@ import {
 import {
   snoozeDealReminder,
   markDealDiscountsApproved,
-  recordDealReminderSent,
+  recordDealReminderCopied,
+  confirmDealReminderSent,
 } from './dealReminderService';
 import { copyDealReminderToClipboard } from './dealEmailHelper';
 import { useCiscoAutomatedStore } from '../../core/store';
@@ -51,6 +52,7 @@ export function DealReminderAlertModal({
   const { currentUser } = useCiscoAutomatedStore();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [copiedSuccess, setCopiedSuccess] = useState(false);
+  const [sentConfirmedSuccess, setSentConfirmedSuccess] = useState(false);
   const [approvedSuccessDealId, setApprovedSuccessDealId] = useState<string | null>(null);
 
   if (!isOpen || !deals || deals.length === 0) {
@@ -114,17 +116,25 @@ export function DealReminderAlertModal({
     }, 1200);
   };
 
-  // 3. Copiar correo Outlook de recordatorio
+  // 3. Copiar correo Outlook de recordatorio (solo registra copia, no envío confirmado)
   const handleCopyEmail = async () => {
     const res = await copyDealReminderToClipboard(currentDeal);
     if (res.success) {
       setCopiedSuccess(true);
-      await recordDealReminderSent(currentDeal.id, author);
+      await recordDealReminderCopied(currentDeal.id, author);
       if (onRefreshData) onRefreshData();
       setTimeout(() => setCopiedSuccess(false), 3000);
     } else {
       alert(`No se pudo copiar: ${res.error}`);
     }
+  };
+
+  // 4. Confirmación manual explícita de que el correo fue enviado
+  const handleConfirmEmailSent = async () => {
+    setSentConfirmedSuccess(true);
+    await confirmDealReminderSent(currentDeal.id, author, 'MANUAL_CONFIRMATION');
+    if (onRefreshData) onRefreshData();
+    setTimeout(() => setSentConfirmedSuccess(false), 3000);
   };
 
   return (
@@ -258,23 +268,38 @@ export function DealReminderAlertModal({
                   <span>✅ Sí, ya se aprobaron los descuentos (Detener Alertas)</span>
                 </button>
 
-                {/* 2. Botón Copiar Correo para insistir */}
-                <button
-                  type="button"
-                  onClick={handleCopyEmail}
-                  className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center space-x-2 ${
-                    copiedSuccess
-                      ? 'bg-indigo-600 text-white border-indigo-500 shadow-indigo-600/40'
-                      : 'bg-slate-800 hover:bg-slate-700 text-indigo-300 border-indigo-500/30'
-                  }`}
-                >
-                  {copiedSuccess ? <Check className="w-4 h-4" /> : <Mail className="w-4 h-4 text-indigo-400" />}
-                  <span>
-                    {copiedSuccess
-                      ? '¡Copiado con saludo según la hora para Outlook!'
-                      : `📧 Copiar correo para insistir a ${isVF ? 'Velocity Hub' : currentDeal.amContactName || 'AM Cisco'}`}
-                  </span>
-                </button>
+                {/* 2. Botón Copiar Correo para insistir y Confirmar Envío */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyEmail}
+                    className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center space-x-1.5 ${
+                      copiedSuccess
+                        ? 'bg-indigo-600 text-white border-indigo-500 shadow-indigo-600/40'
+                        : 'bg-slate-800 hover:bg-slate-700 text-indigo-300 border-indigo-500/30'
+                    }`}
+                  >
+                    {copiedSuccess ? <Check className="w-4 h-4" /> : <Mail className="w-4 h-4 text-indigo-400" />}
+                    <span>
+                      {copiedSuccess
+                        ? '¡Borrador copiado!'
+                        : `📧 Copiar correo (${isVF ? 'VF' : currentDeal.amContactName || 'AM'})`}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleConfirmEmailSent}
+                    className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center justify-center space-x-1.5 ${
+                      sentConfirmedSuccess
+                        ? 'bg-emerald-600 text-white border-emerald-500'
+                        : 'bg-emerald-950/60 hover:bg-emerald-900/70 text-emerald-300 border-emerald-700/50'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>{sentConfirmedSuccess ? '¡Envío registrado!' : 'Confirmar Envío Realizado'}</span>
+                  </button>
+                </div>
 
                 {/* 3. Botón "Recordar más tarde" (Snooze al siguiente horario) */}
                 <div className="flex items-center space-x-2 pt-1">

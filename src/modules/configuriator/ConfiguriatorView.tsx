@@ -368,7 +368,28 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
   };
 
   // Botón CLEAR: limpia todo el BOM IA, el texto, la imagen y los errores para hacer otro
+  const aiAbortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      aiAbortControllerRef.current?.abort();
+    };
+  }, []);
+
+  const handleCancelGenerateConfig = useCallback(() => {
+    if (aiAbortControllerRef.current) {
+      aiAbortControllerRef.current.abort();
+      aiAbortControllerRef.current = null;
+    }
+    setIsGenerating(false);
+    setErrorMsg('Análisis con IA cancelado por el usuario.');
+  }, []);
+
   const handleClearAllBom = () => {
+    if (aiAbortControllerRef.current) {
+      aiAbortControllerRef.current.abort();
+      aiAbortControllerRef.current = null;
+    }
     setInputText('');
     setPastedImage(null);
     setExtractionResult(null);
@@ -392,15 +413,26 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
       return;
     }
 
+    aiAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    aiAbortControllerRef.current = abortController;
+
     setIsGenerating(true);
     setErrorMsg(null);
 
     try {
-      const result = await extractBOMRequirementsFromInput({
-        text: inputText,
-        imageBase64: pastedImage?.base64,
-        mimeType: pastedImage?.mimeType,
-      });
+      const result = await extractBOMRequirementsFromInput(
+        {
+          text: inputText,
+          imageBase64: pastedImage?.base64,
+          mimeType: pastedImage?.mimeType,
+        },
+        {
+          signal: abortController.signal,
+        }
+      );
+
+      if (abortController.signal.aborted) return;
 
       if (result.clientName && result.clientName !== 'Cliente' && clientName === 'Cliente') {
         setClientName(result.clientName);
@@ -426,10 +458,17 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
         onCollapseNavSidebar?.();
       }
     } catch (err: any) {
-      setErrorMsg(err?.message || 'Error al procesar la solicitud con IA.');
+      if (abortController.signal.aborted) {
+        setErrorMsg('Análisis con IA cancelado por el usuario.');
+      } else {
+        setErrorMsg(err?.message || 'Error al procesar la solicitud con IA.');
+      }
       setAiSettings(loadAiSettings());
     } finally {
-      setIsGenerating(false);
+      if (aiAbortControllerRef.current === abortController) {
+        aiAbortControllerRef.current = null;
+        setIsGenerating(false);
+      }
     }
   };
 
@@ -1593,7 +1632,7 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
             )}
           </div>
 
-          {/* Botones de Acción: Generar con IA + Botón Clear */}
+          {/* Botones de Acción: Generar con IA + Cancelar + Botón Clear */}
           <div className="flex items-center gap-2.5">
             <button
               type="button"
@@ -1613,6 +1652,18 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                 </>
               )}
             </button>
+
+            {isGenerating && (
+              <button
+                type="button"
+                onClick={handleCancelGenerateConfig}
+                className="py-3 px-4 rounded-xl bg-rose-700 hover:bg-rose-600 text-white border border-rose-500 font-bold text-xs sm:text-sm flex items-center space-x-1.5 transition-all cursor-pointer shrink-0"
+                title="Cancelar análisis de IA en curso"
+              >
+                <X className="w-4 h-4" />
+                <span>Cancelar</span>
+              </button>
+            )}
 
             <button
               type="button"

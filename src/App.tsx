@@ -232,25 +232,30 @@ function AppContent() {
   const handleCopyEmailSummary = async () => {
     if (!processedResult) return;
     try {
-      const success = await copyEstimateEmailSummaryToClipboard(processedResult, detectedPartner);
-      if (success) {
+      const { copyEstimateEmailSummaryWithDetail } = await import('./core/emailClipboardHelper');
+      const res = await copyEstimateEmailSummaryWithDetail(processedResult, detectedPartner);
+      if (res.success) {
         setIsCopiedEmail(true);
         setCloudToast({
-          message: '📋 Resumen comercial copiado al portapapeles con formato Outlook/HTML y saludo dinámico.',
+          message:
+            res.mode === 'rich'
+              ? '📋 Resumen comercial copiado al portapapeles con formato enriquecido Outlook/HTML.'
+              : '📋 Resumen comercial copiado en texto plano (formato HTML no disponible en este entorno).',
           type: 'success',
         });
         setTimeout(() => setIsCopiedEmail(false), 3000);
         setTimeout(() => setCloudToast(null), 4500);
       } else {
         setCloudToast({
-          message: 'No se pudo copiar el resumen al portapapeles.',
+          message: `No se pudo copiar el resumen al portapapeles: ${res.error || res.message}`,
           type: 'error',
         });
         setTimeout(() => setCloudToast(null), 4000);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Error desconocido';
       setCloudToast({
-        message: `Error al copiar: ${err?.message || 'Error desconocido'}`,
+        message: `Error al copiar: ${errMsg}`,
         type: 'error',
       });
       setTimeout(() => setCloudToast(null), 4000);
@@ -558,7 +563,11 @@ function AppContent() {
 
           {/* Views with Localized Error Boundaries */}
           {currentView === 'dashboard' && (
-            <ErrorBoundary fallbackTitle="Error en Dashboard Analítico">
+            <ErrorBoundary
+              fallbackTitle="Error en Dashboard Analítico"
+              resetKeys={[currentView]}
+              onReturnToSafeView={() => setCurrentView('quoter')}
+            >
               <DashboardView
                 onOpenQuoter={() => setCurrentView('quoter')}
                 onOpenUpload={() => setCurrentView('upload')}
@@ -567,7 +576,11 @@ function AppContent() {
           )}
 
           {currentView === 'upload' && (
-            <ErrorBoundary fallbackTitle="Error en Módulo de Carga">
+            <ErrorBoundary
+              fallbackTitle="Error en Módulo de Carga"
+              resetKeys={[currentView]}
+              onReturnToSafeView={() => setCurrentView('quoter')}
+            >
               <UploadView
                 onProcessFile={async (buf, name) => {
                   await processFileBuffer(buf, name);
@@ -578,13 +591,21 @@ function AppContent() {
           )}
 
           {currentView === 'dsv' && (
-            <ErrorBoundary fallbackTitle="Error en Generador DSV Cisco">
+            <ErrorBoundary
+              fallbackTitle="Error en Generador DSV Cisco"
+              resetKeys={[currentView]}
+              onReturnToSafeView={() => setCurrentView('quoter')}
+            >
               <DsvView />
             </ErrorBoundary>
           )}
 
           {currentView === 'configuriator' && (
-            <ErrorBoundary fallbackTitle="Error en ConfigurIAtor (AI BOM Generator)">
+            <ErrorBoundary
+              fallbackTitle="Error en ConfigurIAtor (AI BOM Generator)"
+              resetKeys={[currentView]}
+              onReturnToSafeView={() => setCurrentView('quoter')}
+            >
               <ConfiguriatorView
                 isNavSidebarOpen={isNavSidebarOpen}
                 onToggleNavSidebar={() => setIsNavSidebarOpen((prev) => !prev)}
@@ -594,37 +615,60 @@ function AppContent() {
           )}
 
           {currentView === 'estimates' && (
-            <ErrorBoundary fallbackTitle="Error en Historial de Cotizaciones">
+            <ErrorBoundary
+              fallbackTitle="Error en Historial de Cotizaciones"
+              resetKeys={[currentView]}
+              onReturnToSafeView={() => setCurrentView('quoter')}
+            >
               <EstimatesHistoryView />
             </ErrorBoundary>
           )}
 
           {currentView === 'bo_tracking' && (
-            <ErrorBoundary fallbackTitle="Error en Tracking y Ciclo de Vida BO">
+            <ErrorBoundary
+              fallbackTitle="Error en Tracking y Ciclo de Vida BO"
+              resetKeys={[currentView]}
+              onReturnToSafeView={() => setCurrentView('quoter')}
+            >
               <BoTrackingView />
             </ErrorBoundary>
           )}
 
           {currentView === 'users' && currentUser.role === 'admin' && (
-            <ErrorBoundary fallbackTitle="Error en Gestión de Usuarios RBAC">
+            <ErrorBoundary
+              fallbackTitle="Error en Gestión de Usuarios RBAC"
+              resetKeys={[currentView]}
+              onReturnToSafeView={() => setCurrentView('quoter')}
+            >
               <UserManagementView />
             </ErrorBoundary>
           )}
 
           {currentView === 'audit' && currentUser.role === 'admin' && (
-            <ErrorBoundary fallbackTitle="Error en Registro de Auditoría">
+            <ErrorBoundary
+              fallbackTitle="Error en Registro de Auditoría"
+              resetKeys={[currentView]}
+              onReturnToSafeView={() => setCurrentView('quoter')}
+            >
               <AuditLogsView />
             </ErrorBoundary>
           )}
 
           {currentView === 'settings' && (
-            <ErrorBoundary fallbackTitle="Error en Configuración de Sistema">
+            <ErrorBoundary
+              fallbackTitle="Error en Configuración de Sistema"
+              resetKeys={[currentView]}
+              onReturnToSafeView={() => setCurrentView('quoter')}
+            >
               <SettingsView onOpenThemes={() => setIsThemeModalOpen(true)} />
             </ErrorBoundary>
           )}
 
           {currentView === 'quoter' && (
-            <ErrorBoundary fallbackTitle="Error en Cotizador Cisco CCW">
+            <ErrorBoundary
+              fallbackTitle="Error en Cotizador Cisco CCW"
+              resetKeys={[currentView, currentFileName]}
+            >
               {isProcessing ? (
                 <div className="max-w-md mx-auto text-center py-20 space-y-4">
                   <div className="w-14 h-14 rounded-2xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center mx-auto border border-indigo-500/30 animate-spin">
@@ -750,7 +794,12 @@ function AppContent() {
 
                       {/* Active Tab View */}
                       {activeQuoterTab === 'excel' && (
-                        <ErrorBoundary fallbackTitle="Error en Vista Excel">
+                        <ErrorBoundary
+                          fallbackTitle="Error en Vista Excel"
+                          resetKeys={[activeQuoterTab, currentFileName]}
+                          onReturnToSafeView={() => setActiveQuoterTab('table')}
+                          safeViewLabel="Cambiar a Tabla Interactiva"
+                        >
                           <ExcelSheetPreview
                             data={processedResult}
                             params={params}
@@ -761,7 +810,12 @@ function AppContent() {
                       )}
 
                       {activeQuoterTab === 'table' && (
-                        <ErrorBoundary fallbackTitle="Error en Tabla Interactiva">
+                        <ErrorBoundary
+                          fallbackTitle="Error en Tabla Interactiva"
+                          resetKeys={[activeQuoterTab, currentFileName]}
+                          onReturnToSafeView={() => setActiveQuoterTab('excel')}
+                          safeViewLabel="Cambiar a Vista Excel CCW"
+                        >
                           <InteractiveTable
                             data={processedResult}
                             params={params}
@@ -772,7 +826,12 @@ function AppContent() {
                       )}
 
                       {activeQuoterTab === 'calculator' && (
-                        <ErrorBoundary fallbackTitle="Error en Calculadora">
+                        <ErrorBoundary
+                          fallbackTitle="Error en Calculadora"
+                          resetKeys={[activeQuoterTab]}
+                          onReturnToSafeView={() => setActiveQuoterTab('excel')}
+                          safeViewLabel="Volver a Vista Excel CCW"
+                        >
                           <QuickCalculator params={params} />
                         </ErrorBoundary>
                       )}

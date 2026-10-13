@@ -4,7 +4,7 @@
 // Includes Shared Visibility, Manual Restriction Toggle & Access Request Workflow
 // ============================================================================
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   CloudEstimateRecord,
   EstimateAccessRequest,
@@ -22,6 +22,8 @@ import {
   loadEstimateVersionDetail,
   EstimateVersionSummary,
   EstimateVersionDetail,
+  createVersionSelectionController,
+  compareEstimateRecordsDeterministic,
 } from '../modules/cloud';
 import { useCiscoAutomatedStore } from '../core/store';
 import {
@@ -59,7 +61,11 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { formatPartnerName, getUniqueFormattedPartners } from '../utils/partnerDbUtils';
-import { normalizeIsoTimestamp, extractYearMonth } from '../utils/dateUtils';
+import {
+  normalizeIsoTimestamp,
+  extractYearMonth,
+  compareDatesUnknownLast,
+} from '../utils/dateUtils';
 import {
   searchDesktopStorage,
   DesktopSearchResult,
@@ -135,6 +141,13 @@ export function EstimatesHistoryView() {
     'date_desc'
   );
 
+  // Pagination & Cache State (Item 3)
+  const PAGE_SIZE = 50;
+  const [visibleCount, setVisibleCount] = useState<number>(PAGE_SIZE);
+  const [isFromCacheOnly, setIsFromCacheOnly] = useState<boolean>(
+    typeof navigator !== 'undefined' && navigator.onLine === false
+  );
+
   // UI state
   const [isLoading, setIsLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<{
@@ -151,15 +164,27 @@ export function EstimatesHistoryView() {
     useState<CloudEstimateRecord | null>(null);
   const [isFirebaseModalOpen, setIsFirebaseModalOpen] = useState(false);
 
-  // Version Selection & Inspection State for selectedEstimateDetail
+  // Version Selection & Concurrency Controller for selectedEstimateDetail (Item 2)
+  const versionControllerRef = useRef(createVersionSelectionController());
   const [selectedVersionTag, setSelectedVersionTag] = useState<string | null>(null);
   const [estimateVersions, setEstimateVersions] = useState<EstimateVersionSummary[]>([]);
   const [isLoadingVersionDetail, setIsLoadingVersionDetail] = useState(false);
   const [activeVersionDetail, setActiveVersionDetail] = useState<EstimateVersionDetail | null>(null);
   const [showVersionComparison, setShowVersionComparison] = useState(false);
 
-  // Sync versions whenever selectedEstimateDetail changes
+  // Invalidate any in-flight version requests on component unmount
   useEffect(() => {
+    const controller = versionControllerRef.current;
+    return () => {
+      controller.invalidate();
+    };
+  }, []);
+
+  // Sync versions whenever selectedEstimateDetail changes (invalidating previous in-flight requests)
+  useEffect(() => {
+    versionControllerRef.current.invalidate();
+    setIsLoadingVersionDetail(false);
+
     if (!selectedEstimateDetail) {
       setSelectedVersionTag(null);
       setEstimateVersions([]);
@@ -168,6 +193,7 @@ export function EstimatesHistoryView() {
       return;
     }
 
+    const estimateKey = selectedEstimateDetail.id || selectedEstimateDetail.estimateId;
     const initialTag =
       selectedEstimateDetail.activeVersionTag ||
       (selectedEstimateDetail.activeVersion === 0
@@ -181,9 +207,9 @@ export function EstimatesHistoryView() {
       setEstimateVersions(selectedEstimateDetail.versionsSummary);
     }
 
-    // Fetch versions from subcollection on demand
+    // Fetch versions from subcollection on demand with cancellation guard
     let isCancelled = false;
-    getEstimateVersions(selectedEstimateDetail.id || selectedEstimateDetail.estimateId).then((res) => {
+    getEstimateVersions(estimateKey).then((res) => {
       if (!isCancelled && res.success && res.data && res.data.length > 0) {
         setEstimateVersions(res.data);
       }
@@ -191,27 +217,37 @@ export function EstimatesHistoryView() {
 
     return () => {
       isCancelled = true;
+      versionControllerRef.current.invalidate();
     };
   }, [selectedEstimateDetail]);
 
   const handleSelectVersionTag = async (tag: string) => {
     if (!selectedEstimateDetail) return;
+    const estimateKey = selectedEstimateDetail.id || selectedEstimateDetail.estimateId;
+    const ticket = versionControllerRef.current.beginRequest(estimateKey, tag);
+
     setSelectedVersionTag(tag);
     setIsLoadingVersionDetail(true);
+
     try {
-      const res = await loadEstimateVersionDetail(
-        selectedEstimateDetail.id || selectedEstimateDetail.estimateId,
-        tag
-      );
+      const res = await loadEstimateVersionDetail(estimateKey, tag);
+      // Only the current active request ticket may update state, error, or loading flag
+      if (!versionControllerRef.current.isCurrentRequest(ticket)) {
+        return;
+      }
       if (res.success && res.data) {
         setActiveVersionDetail(res.data);
       } else {
         showToast(res.error || 'No se pudo cargar la versión', 'error');
       }
     } catch (err: any) {
-      console.warn('Error cargando versión:', err);
+      if (versionControllerRef.current.isCurrentRequest(ticket)) {
+        console.warn('Error cargando versión:', err);
+      }
     } finally {
-      setIsLoadingVersionDetail(false);
+      if (versionControllerRef.current.isCurrentRequest(ticket)) {
+        setIsLoadingVersionDetail(false);
+      }
     }
   };
 
@@ -295,20 +331,22 @@ export function EstimatesHistoryView() {
     };
   };
 
-  // Fetch on demand function (fetches up to 300 documents so no history is truncated)
+  // Fetch on demand function using cursor-backed full history retrieval (supports >300 records)
   const fetchAllHistory = async (isManualRefresh: boolean = false) => {
     setIsLoading(true);
     setCloudStatusNote(null);
 
     try {
       const [estRes, dsvRes] = await Promise.all([
-        getCloudEstimates(300),
-        getCloudDsvs(300),
+        getCloudEstimates(1500),
+        getCloudDsvs(500),
       ]);
 
       if (dsvRes.success && dsvRes.data) {
         setDsvRecords(dsvRes.data);
       }
+
+      setIsFromCacheOnly(Boolean(estRes.fromCacheOnly));
 
       if (estRes.error || dsvRes.error) {
         setCloudStatusNote(estRes.error || dsvRes.error || 'Modo local activo');
@@ -319,6 +357,7 @@ export function EstimatesHistoryView() {
       }
     } catch (e: any) {
       console.error('Error fetching history:', e);
+      setIsFromCacheOnly(true);
       setCloudStatusNote('Conectando a almacenamiento local');
     } finally {
       setIsLoading(false);
@@ -328,6 +367,11 @@ export function EstimatesHistoryView() {
   useEffect(() => {
     fetchAllHistory(false);
   }, []);
+
+  // Reset pagination slice when search or filter criteria change (without re-downloading Firestore on each keystroke)
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [searchTerm, selectedMonth, selectedCreator, selectedPartner, visibilityFilter, sortBy]);
 
   // Format Currency
   const fmtCurrency = (amount?: number) => {
@@ -411,9 +455,10 @@ export function EstimatesHistoryView() {
     setSelectedPartner('all');
     setVisibilityFilter('all');
     setSortBy('date_desc');
+    setVisibleCount(PAGE_SIZE);
   };
 
-  // Filtered Estimates (Restricted estimates ALWAYS appear in search results as requested!)
+  // Filtered Estimates across full history (including >300 records), sorted deterministically with ID tie-breaker
   const filteredEstimates = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     const myUsername = (currentUser?.username || '').trim().toLowerCase();
@@ -433,7 +478,7 @@ export function EstimatesHistoryView() {
         (e.originalFileName || '').toLowerCase().includes(q);
 
       const matchesMonth =
-        selectedMonth === 'all' || (e.createdAt && extractYearMonth(e.createdAt) === selectedMonth);
+        selectedMonth === 'all' || Boolean(e.createdAt && extractYearMonth(e.createdAt) === selectedMonth);
 
       const creatorUserLower = (e.creator?.username || '').trim().toLowerCase();
       const matchesCreator =
@@ -465,21 +510,25 @@ export function EstimatesHistoryView() {
 
     return filtered.sort((a, b) => {
       if (sortBy === 'date_asc') {
-        return (a.createdAt || '').localeCompare(b.createdAt || '');
+        const cmp = compareDatesUnknownLast(a.createdAt, b.createdAt, 'asc');
+        if (cmp !== 0) return cmp;
+        return String(a.id || a.estimateId || '').localeCompare(String(b.id || b.estimateId || ''));
       }
       if (sortBy === 'amount_desc') {
-        return (
+        const diff =
           (b.financialSummary?.totalCotizadoIntcomex || 0) -
-          (a.financialSummary?.totalCotizadoIntcomex || 0)
-        );
+          (a.financialSummary?.totalCotizadoIntcomex || 0);
+        if (diff !== 0) return diff;
+        return compareEstimateRecordsDeterministic(a, b);
       }
       if (sortBy === 'amount_asc') {
-        return (
+        const diff =
           (a.financialSummary?.totalCotizadoIntcomex || 0) -
-          (b.financialSummary?.totalCotizadoIntcomex || 0)
-        );
+          (b.financialSummary?.totalCotizadoIntcomex || 0);
+        if (diff !== 0) return diff;
+        return compareEstimateRecordsDeterministic(a, b);
       }
-      return (b.createdAt || '').localeCompare(a.createdAt || '');
+      return compareEstimateRecordsDeterministic(a, b);
     });
   }, [
     estimates,
@@ -491,6 +540,12 @@ export function EstimatesHistoryView() {
     sortBy,
     currentUser,
   ]);
+
+  const paginatedEstimates = useMemo(() => {
+    return filteredEstimates.slice(0, visibleCount);
+  }, [filteredEstimates, visibleCount]);
+
+  const hasMoreEstimates = visibleCount < filteredEstimates.length;
 
   // Filtered DSVs
   const filteredDsvs = useMemo(() => {
@@ -967,16 +1022,27 @@ export function EstimatesHistoryView() {
             )}
           </div>
 
-          <div className="text-[11px] text-slate-400 font-mono">
-            Mostrando{' '}
-            <strong className="text-white">
-              {activeTab === 'estimates' ? filteredEstimates.length : filteredDsvs.length}
-            </strong>{' '}
-            de{' '}
-            <strong className="text-slate-300">
-              {activeTab === 'estimates' ? estimates.length : dsvRecords.length}
-            </strong>{' '}
-            registros
+          <div className="flex items-center flex-wrap gap-2 text-[11px] text-slate-400 font-mono">
+            {isFromCacheOnly && (
+              <span
+                className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/90 text-amber-300 border border-amber-700/50"
+                title="Los resultados mostrados provienen exclusivamente de la caché local (sin conexión o Firebase no disponible)"
+              >
+                <CloudRain className="w-3 h-3 text-amber-400" />
+                <span>Modo Caché Local</span>
+              </span>
+            )}
+            <span>
+              Mostrando{' '}
+              <strong className="text-white">
+                {activeTab === 'estimates' ? paginatedEstimates.length : filteredDsvs.length}
+              </strong>{' '}
+              de{' '}
+              <strong className="text-cyan-300">
+                {activeTab === 'estimates' ? filteredEstimates.length : filteredDsvs.length}
+              </strong>{' '}
+              coincidencias ({activeTab === 'estimates' ? estimates.length : dsvRecords.length} en historial)
+            </span>
           </div>
         </div>
       </div>
@@ -1002,7 +1068,7 @@ export function EstimatesHistoryView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {filteredEstimates.length === 0 ? (
+                {paginatedEstimates.length === 0 ? (
                   <tr>
                     <td colSpan={11} className="px-5 py-12 text-center text-slate-500">
                       {isLoading ? (
@@ -1016,7 +1082,7 @@ export function EstimatesHistoryView() {
                     </td>
                   </tr>
                 ) : (
-                  filteredEstimates.map((est, idx) => {
+                  paginatedEstimates.map((est, idx) => {
                     const {
                       isOwner,
                       isAllowed,
@@ -1190,21 +1256,30 @@ export function EstimatesHistoryView() {
                         </td>
 
                         <td className="px-5 py-4 text-right text-[11px]">
-                          {est.createdAt ? (
-                            <div className="flex flex-col items-end">
-                              <span className="font-mono text-slate-300 font-semibold">
-                                {new Date(normalizeIsoTimestamp(est.createdAt)).toLocaleDateString('es-CL')}
-                              </span>
-                              <span className="text-[10px] text-slate-500 font-mono">
-                                {new Date(normalizeIsoTimestamp(est.createdAt)).toLocaleTimeString('es-CL', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </span>
-                            </div>
-                          ) : (
-                            '—'
-                          )}
+                          {(() => {
+                            const validIso = normalizeIsoTimestamp(est.createdAt);
+                            if (!validIso) {
+                              return (
+                                <span className="text-[10px] text-slate-500 italic">
+                                  Fecha desconocida
+                                </span>
+                              );
+                            }
+                            const d = new Date(validIso);
+                            return (
+                              <div className="flex flex-col items-end">
+                                <span className="font-mono text-slate-300 font-semibold">
+                                  {d.toLocaleDateString('es-CL')}
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                  {d.toLocaleTimeString('es-CL', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         <td className="px-5 py-4 text-center">
@@ -1316,6 +1391,24 @@ export function EstimatesHistoryView() {
               </tbody>
             </table>
           </div>
+
+          {hasMoreEstimates && (
+            <div className="px-6 py-4 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between">
+              <span className="text-xs text-slate-400 font-mono">
+                Mostrando {paginatedEstimates.length} de {filteredEstimates.length} cotizaciones encontradas
+              </span>
+              <button
+                onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
+                className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all cursor-pointer"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>
+                  Cargar más cotizaciones (+
+                  {Math.min(PAGE_SIZE, filteredEstimates.length - paginatedEstimates.length)})
+                </span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 

@@ -1,9 +1,199 @@
 // ============================================================================
-// CISCO AUTOMATED v2.1 - ESTIMATE EMAIL CLIPBOARD HELPER (OUTLOOK / GMAIL)
-// Genera resumen comercial HTML estilizado para pegar directamente en Outlook
+// CISCO AUTOMATED v2.1 - ESTIMATE & BO EMAIL CLIPBOARD HELPER (OUTLOOK / GMAIL)
+// Unifies rich HTML + plain-text clipboard copying with verified fallbacks
 // ============================================================================
 
 import { ProcessedEstimateResult, EstimateHeaderInfo } from './types';
+
+export type ClipboardCopyMode = 'rich' | 'plain' | 'none';
+
+export interface ClipboardCopyDetailedResult {
+  success: boolean;
+  mode: ClipboardCopyMode;
+  message: string;
+  error?: string;
+}
+
+/**
+ * Unifies rich HTML + plain-text clipboard copying across Quote Summary, BO, and Deal Reminders.
+ * 1. Tries modern ClipboardItem ('text/html' + 'text/plain') -> mode: 'rich'
+ * 2. Tries legacy copy event + document.execCommand('copy') verifying boolean result -> mode: 'rich'
+ * 3. Tries navigator.clipboard.writeText(plainText) -> mode: 'plain'
+ * 4. Tries legacy textarea + document.execCommand('copy') verifying boolean result -> mode: 'plain'
+ * Always cleans up temporary DOM elements and listeners in `finally`.
+ */
+export async function copyHtmlAndTextToClipboard(
+  htmlContent: string,
+  plainText: string
+): Promise<ClipboardCopyDetailedResult> {
+  let lastError = '';
+
+  // 1. Modern Clipboard API with ClipboardItem (HTML + Plain Text)
+  if (
+    typeof navigator !== 'undefined' &&
+    navigator.clipboard &&
+    typeof navigator.clipboard.write === 'function' &&
+    typeof ClipboardItem !== 'undefined'
+  ) {
+    try {
+      const blobHtml = new Blob([htmlContent], { type: 'text/html' });
+      const blobText = new Blob([plainText], { type: 'text/plain' });
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': blobHtml,
+          'text/plain': blobText,
+        }),
+      ]);
+      return {
+        success: true,
+        mode: 'rich',
+        message: 'Copia enriquecida (HTML para Outlook/Gmail + texto plano) realizada con éxito.',
+      };
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  // 2. Legacy rich HTML copy via ClipboardEvent listener + verified execCommand('copy')
+  if (typeof document !== 'undefined' && typeof document.execCommand === 'function') {
+    let listener: ((e: ClipboardEvent) => void) | null = null;
+    let tempContainer: HTMLDivElement | null = null;
+    try {
+      let intercepted = false;
+      listener = (e: ClipboardEvent) => {
+        if (e.clipboardData) {
+          e.preventDefault();
+          e.clipboardData.setData('text/html', htmlContent);
+          e.clipboardData.setData('text/plain', plainText);
+          intercepted = true;
+        }
+      };
+
+      if (document.body) {
+        tempContainer = document.createElement('div');
+        tempContainer.contentEditable = 'true';
+        tempContainer.style.position = 'fixed';
+        tempContainer.style.left = '-9999px';
+        tempContainer.style.top = '0';
+        tempContainer.style.opacity = '0';
+        tempContainer.innerHTML = htmlContent;
+        document.body.appendChild(tempContainer);
+
+        if (typeof window !== 'undefined' && typeof window.getSelection === 'function' && typeof document.createRange === 'function') {
+          const range = document.createRange();
+          range.selectNodeContents(tempContainer);
+          const selection = window.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+        }
+      }
+
+      document.addEventListener('copy', listener);
+      const execOk = Boolean(document.execCommand('copy'));
+      if (execOk && (intercepted || tempContainer !== null)) {
+        return {
+          success: true,
+          mode: 'rich',
+          message: 'Copia enriquecida (modo compatible HTML) realizada con éxito.',
+        };
+      }
+      if (!execOk && !lastError) {
+        lastError = 'document.execCommand("copy") devolvió false.';
+      }
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : String(err);
+    } finally {
+      if (listener) {
+        try {
+          document.removeEventListener('copy', listener);
+        } catch {
+          // Ignore listener cleanup errors
+        }
+      }
+      if (typeof window !== 'undefined' && typeof window.getSelection === 'function') {
+        try {
+          window.getSelection()?.removeAllRanges();
+        } catch {
+          // Ignore selection cleanup errors
+        }
+      }
+      if (tempContainer && tempContainer.parentNode) {
+        try {
+          tempContainer.parentNode.removeChild(tempContainer);
+        } catch {
+          // Ignore DOM removal errors
+        }
+      }
+    }
+  }
+
+  // 3. Plain-text fallback via navigator.clipboard.writeText
+  if (
+    typeof navigator !== 'undefined' &&
+    navigator.clipboard &&
+    typeof navigator.clipboard.writeText === 'function'
+  ) {
+    try {
+      await navigator.clipboard.writeText(plainText);
+      return {
+        success: true,
+        mode: 'plain',
+        message: 'Copia en texto plano completada (formato enriquecido HTML no disponible en este navegador).',
+      };
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  // 4. Plain-text fallback via temporary textarea + verified execCommand('copy')
+  if (
+    typeof document !== 'undefined' &&
+    document.body &&
+    typeof document.execCommand === 'function'
+  ) {
+    let textarea: HTMLTextAreaElement | null = null;
+    try {
+      textarea = document.createElement('textarea');
+      textarea.value = plainText;
+      textarea.setAttribute('readonly', 'true');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+
+      const execPlainOk = Boolean(document.execCommand('copy'));
+      if (execPlainOk) {
+        return {
+          success: true,
+          mode: 'plain',
+          message: 'Copia en texto plano (modo compatible) completada.',
+        };
+      }
+      if (!lastError) {
+        lastError = 'document.execCommand("copy") en texto plano devolvió false.';
+      }
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : String(err);
+    } finally {
+      if (textarea && textarea.parentNode) {
+        try {
+          textarea.parentNode.removeChild(textarea);
+        } catch {
+          // Ignore DOM removal errors
+        }
+      }
+    }
+  }
+
+  return {
+    success: false,
+    mode: 'none',
+    message: 'No se pudo copiar al portapapeles.',
+    error: lastError || 'El navegador o entorno bloqueó el acceso al portapapeles.',
+  };
+}
 
 /**
  * Obtiene el saludo dinámico según la hora local del sistema:
@@ -216,49 +406,25 @@ Equipo Cisco • Intcomex Chile
 }
 
 /**
+ * Copia el resumen de cotización al portapapeles devolviendo el detalle del modo de copia ('rich' | 'plain' | 'none').
+ */
+export async function copyEstimateEmailSummaryWithDetail(
+  data: ProcessedEstimateResult,
+  detectedPartner?: string
+): Promise<ClipboardCopyDetailedResult> {
+  const htmlContent = generateEstimateEmailHtml(data, detectedPartner);
+  const plainText = generateEstimatePlainText(data, detectedPartner);
+  return copyHtmlAndTextToClipboard(htmlContent, plainText);
+}
+
+/**
  * Copia el HTML con formato directamente al portapapeles con compatibilidad dual
- * (HTML enriquecido para Outlook/Gmail y Texto Plano como fallback)
+ * (HTML enriquecido para Outlook/Gmail y Texto Plano como fallback).
  */
 export async function copyEstimateEmailSummaryToClipboard(
   data: ProcessedEstimateResult,
   detectedPartner?: string
 ): Promise<boolean> {
-  const htmlContent = generateEstimateEmailHtml(data, detectedPartner);
-  const plainText = generateEstimatePlainText(data, detectedPartner);
-
-  try {
-    if (navigator?.clipboard?.write && typeof ClipboardItem !== 'undefined') {
-      const blobHtml = new Blob([htmlContent], { type: 'text/html' });
-      const blobText = new Blob([plainText], { type: 'text/plain' });
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          'text/html': blobHtml,
-          'text/plain': blobText,
-        }),
-      ]);
-      return true;
-    }
-  } catch (err) {
-    console.warn('ClipboardItem API falló, intentando fallback legacy...', err);
-  }
-
-  // Fallback para navegadores antiguos o restricciones de iframe
-  if (typeof document !== 'undefined') {
-    try {
-      const listener = (e: ClipboardEvent) => {
-        e.preventDefault();
-        e.clipboardData?.setData('text/html', htmlContent);
-        e.clipboardData?.setData('text/plain', plainText);
-      };
-      document.addEventListener('copy', listener);
-      document.execCommand('copy');
-      document.removeEventListener('copy', listener);
-      return true;
-    } catch (e2) {
-      console.error('Error en fallback de portapapeles:', e2);
-      return false;
-    }
-  }
-
-  return false;
+  const res = await copyEstimateEmailSummaryWithDetail(data, detectedPartner);
+  return res.success;
 }

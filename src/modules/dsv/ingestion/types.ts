@@ -8,16 +8,23 @@ export interface ExtractedAddress {
   country: string;
 }
 
+export type BomCandidateSource = 'email_attachment' | 'loose_file';
+
+export interface BomFileCandidate {
+  fileName: string;
+  fileBuffer: ArrayBuffer;
+  lastModified: number;
+  source?: BomCandidateSource;
+  revisionHint?: number;
+}
+
 export interface CiscoSourceData {
   dealId: string;
   fileName: string;
   lastModified: number; // Timestamp en ms
   address?: ExtractedAddress;
-  bomFile?: {
-    fileName: string;
-    fileBuffer: ArrayBuffer;
-    lastModified: number;
-  };
+  bomFile?: BomFileCandidate;
+  duplicateBomNotifications?: string[];
 }
 
 export interface JorgeSourceData {
@@ -42,4 +49,36 @@ export interface ConsolidatedDealRecord {
   cisco?: CiscoSourceData;
   jorge?: JorgeSourceData;
   validationErrors: string[];
+  warnings?: string[];
+}
+
+export type DsvIngestionPhase =
+  | 'discovering'
+  | 'reading_bom'
+  | 'parsing_cisco'
+  | 'parsing_jorge'
+  | 'consolidating'
+  | 'completed'
+  | 'cancelled';
+
+export interface DsvIngestionProgress {
+  phase: DsvIngestionPhase;
+  processedFiles: number;
+  totalFiles: number;
+  currentFileName?: string;
+}
+
+export interface DsvIngestionFileError {
+  fileName: string;
+  folder: 'cisco' | 'jorge' | 'unknown';
+  phase: DsvIngestionPhase;
+  error: string;
+}
+
+export interface DsvIngestionPipelineResult {
+  records: ConsolidatedDealRecord[];
+  fileErrors: DsvIngestionFileError[];
+  aborted: boolean;
+  processedFiles: number;
+  totalFiles: number;
 }

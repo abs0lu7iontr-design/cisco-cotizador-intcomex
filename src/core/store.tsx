@@ -37,7 +37,19 @@ import {
   detectMiningFastTrackUsage,
   MiningFastTrackAlertData,
 } from '../modules/mining';
-import { formatPartnerName } from '../utils/partnerDbUtils';
+import {
+  getDesktopPyWebViewApi,
+  readLocalSkuOverrides,
+  writeLocalSkuOverrides,
+  normalizeOverrideRule,
+  computeNextCycledRule,
+  matchItemsWithSkuOverrides,
+  filterUnappliedSharedSkuRules,
+  persistProcessedEstimateHistory,
+  buildRawV0EstimatePayload,
+  reconstructProcessedResultFromCloudRecord,
+  resolveFallbackPartnerAndClient,
+} from './storePersistence';
 
 export type NavViewId =
   | 'dashboard'
@@ -57,7 +69,7 @@ export const DEFAULT_PARAMS: QuoteParameters = {
   margenPct: 5.0,
 };
 
-interface CiscoAutomatedState {
+export interface CiscoAutomatedState {
   // Authentication & Session
   currentUser: UserSession | null;
   currentView: NavViewId;
@@ -171,21 +183,23 @@ export interface SaveEstimateCloudOptions {
 const CiscoAutomatedContext = createContext<CiscoAutomatedState | null>(null);
 
 export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Session
+  // 1. Dominio de Sesión y Navegación
   const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
   const [currentView, setCurrentView] = useState<NavViewId>('dashboard');
 
-  // Business Parameters (v2.1 defaults)
+  // 2. Dominio de Parámetros Comerciales (v2.1 defaults)
   const [params, setParams] = useState<QuoteParameters>(DEFAULT_PARAMS);
   const [detectedPartner, setDetectedPartner] = useState<string>('');
   const [activePartnerProfile, setActivePartnerProfile] = useState<ParamProfileRecord | null>(null);
 
-  // Dataset State
+  // 3. Dominio de Cotización Activa y Overrides
   const [rawWorkbookBuffer, setRawWorkbookBuffer] = useState<ArrayBuffer | null>(null);
   const [currentFileName, setCurrentFileName] = useState<string>('');
   const [processedResult, setProcessedResult] = useState<ProcessedEstimateResult | null>(null);
   const [customOverrideMap, setCustomOverrideMap] = useState<Record<number, OverrideRuleType>>({});
-  const [skuOverridesMap, setSkuOverridesMap] = useState<Record<string, OverrideRuleType>>({});
+  const [skuOverridesMap, setSkuOverridesMap] = useState<Record<string, OverrideRuleType>>(() =>
+    readLocalSkuOverrides()
+  );
   const [isSharedSkuManagerOpen, setIsSharedSkuManagerOpen] = useState<boolean>(false);
   const [pendingSkuAuthOverrides, setPendingSkuAuthOverridesState] = useState<SharedSkuOverrideRecord[]>([]);
   const [skuAuthAuthorName, setSkuAuthAuthorName] = useState<string>('');
@@ -195,94 +209,81 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     if (author) setSkuAuthAuthorName(author);
   }, []);
 
-  // Fast Track Promo State
+  // 4. Dominio de Promociones Fast Track
   const [fastTrackPromoMap, setFastTrackPromoMap] = useState<Record<number, number>>({});
   const [pendingFastTrackAudit, setPendingFastTrackAudit] = useState<FastTrackAuditResult | null>(null);
   const [isFastTrackOpportunityModalOpen, setIsFastTrackOpportunityModalOpen] = useState<boolean>(false);
   const [isFastTrackAdminModalOpen, setIsFastTrackAdminModalOpen] = useState<boolean>(false);
 
-  // Prior Audit / Recalculation State
+  // 5. Dominio de Versiones y Auditoría Previa
   const [isRecalculated, setIsRecalculated] = useState<boolean>(false);
   const [detectedAudit, setDetectedAudit] = useState<DetectedAuditInfo | null>(null);
   const [isDetectedAuditModalOpen, setIsDetectedAuditModalOpen] = useState<boolean>(false);
-
-  // Multi-Version State (v0 RAW vs v1..vN Calculated)
   const [estimateVersionNumber, setEstimateVersionNumber] = useState<number>(1);
   const [estimateVersionTag, setEstimateVersionTag] = useState<string>('v1');
   const [baselineV0Amount, setBaselineV0Amount] = useState<number>(0);
 
-  // Mining & Industrial Conditions Audit
+  // 6. Dominio de Auditoría y Observador de Minería
   const [miningAuditData, setMiningAuditData] = useState<AuditReport | null>(null);
   const [isMiningAuditModalOpen, setIsMiningAuditModalOpen] = useState<boolean>(false);
-
-  // Mining Observer (Daniel Peña Special Discount Alert >= $150.000 USD)
   const [miningAlertData, setMiningAlertData] = useState<MiningAlertData | null>(null);
   const [isMiningAlertModalOpen, setIsMiningAlertModalOpen] = useState<boolean>(false);
-
-  // Mining Observer: Fast Track Usage Warning
   const [miningFastTrackWarningData, setMiningFastTrackWarningData] = useState<MiningFastTrackAlertData | null>(null);
   const [isMiningFastTrackWarningModalOpen, setIsMiningFastTrackWarningModalOpen] = useState<boolean>(false);
 
-  // UI Controls
+  // 7. Controles de Interfaz
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeQuoterTab, setActiveQuoterTab] = useState<'excel' | 'table' | 'calculator'>('excel');
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
 
-  // 1. Load SKU Overrides from Multi-Tier Storage (localStorage + SQLite + overrides.json)
+  // Sincronización inicial con el puente Desktop (PyWebView) y almacenamiento local fuera de setState
   useEffect(() => {
     let isMounted = true;
 
     const syncWithNativeBridge = async () => {
-      if ((window as any).pywebview?.api && isMounted) {
-        try {
-          if ((window as any).pywebview.api.get_sku_overrides) {
-            const res = await (window as any).pywebview.api.get_sku_overrides();
-            if (res && res.success && res.overrides && isMounted) {
-              setSkuOverridesMap((prev) => ({ ...prev, ...res.overrides }));
-              try {
-                const local = localStorage.getItem('cisco_sku_overrides_v2');
-                const existing = local ? JSON.parse(local) : {};
-                localStorage.setItem('cisco_sku_overrides_v2', JSON.stringify({ ...existing, ...res.overrides }));
-              } catch (_) {}
-            }
+      const desktopApi = getDesktopPyWebViewApi();
+      if (!desktopApi || !isMounted) return;
+      try {
+        if (desktopApi.get_sku_overrides) {
+          const res = await desktopApi.get_sku_overrides();
+          if (res?.success && res.overrides && isMounted) {
+            const merged = { ...readLocalSkuOverrides(), ...res.overrides };
+            writeLocalSkuOverrides(merged);
+            setSkuOverridesMap(merged);
           }
-          if ((window as any).pywebview.api.get_current_user && isMounted) {
-            const user = await (window as any).pywebview.api.get_current_user();
-            if (user && isMounted) {
-              setCurrentUser(user);
-            }
-          }
-        } catch (err) {
-          console.warn('Bridge sync error:', err);
         }
+        if (desktopApi.get_current_user && isMounted) {
+          const user = await desktopApi.get_current_user();
+          if (user && isMounted) {
+            setCurrentUser(user);
+          }
+        }
+      } catch (err) {
+        console.warn('Bridge sync error:', err);
       }
     };
 
-    // A. Load from localStorage
-    try {
-      const local = localStorage.getItem('cisco_sku_overrides_v2');
-      if (local && isMounted) {
-        setSkuOverridesMap(JSON.parse(local));
-      }
-    } catch (e) {
-      console.warn('Local storage overrides read error:', e);
+    const localOverrides = readLocalSkuOverrides();
+    if (Object.keys(localOverrides).length > 0 && isMounted) {
+      setSkuOverridesMap(localOverrides);
     }
 
-    // B. Load from Desktop Bridge
-    if ((window as any).pywebview?.api) {
+    if (getDesktopPyWebViewApi()) {
       syncWithNativeBridge();
-    } else {
+    } else if (typeof window !== 'undefined') {
       window.addEventListener('pywebviewready', syncWithNativeBridge);
     }
 
     return () => {
       isMounted = false;
-      window.removeEventListener('pywebviewready', syncWithNativeBridge);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('pywebviewready', syncWithNativeBridge);
+      }
     };
   }, []);
 
-  // Centralized re-calculation routine with in-flight queue guard
+  // Recálculo centralizado con cola protegida ante ejecuciones concurrentes
   const isComputingRef = useRef(false);
   const pendingRecomputeRef = useRef<{
     buffer: ArrayBuffer;
@@ -322,67 +323,14 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           activePromoMap
         );
         setProcessedResult(result);
-
-        const parts = fileName.split('_');
-        const partnerName = (parts[0] || 'Intcomex').replace(/\.[^/.]+$/, '').trim();
-        const clientName = (parts[1] || 'Cliente').replace(/\.[^/.]+$/, '').trim();
-
-        // 1. Sync with SQLite Database bridge
-        if ((window as any).pywebview?.api?.save_processed_estimate) {
-          try {
-            const payload = {
-              estimate_id_cisco: result.headerInfo.estimateId || '011682708571Z',
-              deal_id: result.headerInfo.dealId || 'NA',
-              partner_name: partnerName,
-              client_final_name: clientName,
-              original_filename: fileName,
-              stored_filepath: fileName,
-              net_cisco_total: result.originalProductTotal,
-              total_cotizado_intcomex: result.calculatedProductTotal,
-              recargo_reglas_usd: result.calculatedProductTotal - result.originalProductTotal,
-              ganancia_intcomex_usd:
-                result.calculatedProductTotal -
-                result.items.reduce((a, b) => a + (b.isInfoRow ? 0 : b.costoTotalUnitario * b.qty), 0),
-              items: result.items,
-            };
-            (window as any).pywebview.api.save_processed_estimate(JSON.stringify(payload));
-          } catch (e) {
-            console.warn('DB record save note:', e);
-          }
-        }
-
-        // 2. Sync with localStorage History
-        try {
-          const localHist = localStorage.getItem('cisco_estimates_history_v2');
-          const historyList = localHist ? JSON.parse(localHist) : [];
-          const record = {
-            id: 'est-' + Date.now(),
-            estimate_id_cisco: result.headerInfo.estimateId || '011682708571Z',
-            deal_id: result.headerInfo.dealId || 'NA',
-            partner_name: partnerName,
-            client_final_name: clientName,
-            original_filename: fileName,
-            stored_filepath: fileName,
-            net_cisco_total: result.originalProductTotal,
-            total_cotizado_intcomex: result.calculatedProductTotal,
-            ganancia_intcomex_usd:
-              result.calculatedProductTotal -
-              result.items.reduce((a, b) => a + (b.isInfoRow ? 0 : b.costoTotalUnitario * b.qty), 0),
-            items_count: result.items.length,
-            created_at: new Date().toISOString(),
-            username: currentUser?.username || 'mskill',
-          };
-          const updatedHist = [record, ...historyList.filter((h: any) => h.original_filename !== fileName)];
-          localStorage.setItem('cisco_estimates_history_v2', JSON.stringify(updatedHist.slice(0, 100)));
-        } catch (e) {
-          console.warn('Local history storage note:', e);
-        }
-      } catch (err: any) {
+        persistProcessedEstimateHistory(result, fileName, currentUser);
+      } catch (err: unknown) {
         console.error('Error recalculating estimate:', err);
+        const msg = err instanceof Error ? err.message : String(err ?? '');
         setErrorMessage(
-          err?.message?.includes('central directory')
+          msg.includes('central directory')
             ? 'El archivo seleccionado no es un libro Excel (.xlsx) válido o está dañado. Por favor asegúrate de seleccionar un archivo de cotización Excel (.xlsx) de Cisco CCW.'
-            : err?.message || 'Error al procesar el archivo Excel. Asegúrate de subir un archivo .xlsx válido de Cisco CCW.'
+            : msg || 'Error al procesar el archivo Excel. Asegúrate de subir un archivo .xlsx válido de Cisco CCW.'
         );
       } finally {
         isComputingRef.current = false;
@@ -396,7 +344,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     [currentUser, fastTrackPromoMap]
   );
 
-  // Recalculate instantly in-memory when params, override map or fastTrackPromoMap changes
+  // Recalcular en memoria al cambiar parámetros, overrides o promociones Fast Track
   useEffect(() => {
     if (processedResult && processedResult.items && processedResult.items.length > 0) {
       setProcessedResult((prev) =>
@@ -407,14 +355,11 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     }
   }, [params, customOverrideMap, fastTrackPromoMap]);
 
-  // Actions
   const processFileBuffer = useCallback(
     async (buffer: ArrayBuffer, fileName: string) => {
       setIsProcessing(true);
       setErrorMessage(null);
       setFastTrackPromoMap({});
-
-      // 1. Auto-restore default parameters on new file upload as requested
       setParams(DEFAULT_PARAMS);
 
       try {
@@ -422,29 +367,28 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         setRawWorkbookBuffer(safeBuffer);
         setCurrentFileName(fileName);
 
-        // 2. Fetch fresh overrides map from storage
-        let currentMap = { ...skuOverridesMap };
-        try {
-          const local = localStorage.getItem('cisco_sku_overrides_v2');
-          if (local) {
-            currentMap = { ...JSON.parse(local), ...currentMap };
-          }
-        } catch (_) {}
+        const currentMap: Record<string, OverrideRuleType> = {
+          ...readLocalSkuOverrides(),
+          ...skuOverridesMap,
+        };
 
-        // 3. Parse initial structure to match existing persistent SKU overrides
-        const { result: rawResult } = await parseEstimateWorkbook(safeBuffer.slice(0), DEFAULT_PARAMS, fileName, {});
+        const { result: rawResult } = await parseEstimateWorkbook(
+          safeBuffer.slice(0),
+          DEFAULT_PARAMS,
+          fileName,
+          {}
+        );
 
-        // 3.1. Extraer el Partner a partir del nombre del archivo o encabezado
-        const partner = extractPartnerFromFilenameOrHeader(fileName, rawResult?.headerInfo?.companyName);
+        const partner = extractPartnerFromFilenameOrHeader(
+          fileName,
+          rawResult?.headerInfo?.companyName
+        );
         setDetectedPartner(partner);
 
-        // 3.2. Resolver parámetros comerciales activos (Partner específico -> Global -> Fábrica 7/6/5)
         const { params: resolvedParams, appliedProfile } = await resolveActiveParams(partner);
         setActivePartnerProfile(appliedProfile);
-
         const activeInitialParams = resolvedParams;
 
-        // 3.3. Arquitectura Multi-Versión: Comprobar si el Estimate ya existe en Firestore / Caché
         const rawEstId = (rawResult?.headerInfo?.estimateId || '').trim();
         let currentVerNum = 1;
         let currentVerTag = 'v1';
@@ -452,64 +396,27 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
 
         if (rawEstId && rawEstId.toUpperCase() !== 'NA' && rawEstId.toUpperCase() !== 'ESTIMATE') {
           try {
-            const verInfo = await getEstimateVersionInfo(rawEstId, rawResult?.headerInfo?.dealId, fileName);
-            if (!verInfo.exists) {
-              // Estimate nuevo: guardar automáticamente v0 (RAW inmutable CCW) como respaldo contable
-              const rawV0Payload: Omit<CloudEstimateRecord, 'id'> = {
-                dealId: rawResult?.headerInfo?.dealId || 'NA',
-                estimateId: rawEstId,
-                partnerName: partner,
-                clientFinalName: rawResult?.headerInfo?.customerName || 'Cliente Final',
-                originalFileName: fileName,
-                createdAt: new Date().toISOString(),
-                activeVersion: 0,
-                activeVersionTag: 'v0_RAW',
-                baselineV0Amount: baseV0Cost,
-                currentAmount: baseV0Cost,
-                creator: {
-                  username: currentUser?.username || 'system',
-                  fullName: currentUser?.full_name || 'Cisco CCW Import',
-                  role: currentUser?.role || 'pm',
-                  email: currentUser?.email || '',
-                },
-                financialSummary: {
-                  totalNetCisco: baseV0Cost,
-                  totalCotizadoIntcomex: baseV0Cost,
-                  gananciaIntcomexUsd: 0,
-                  margenPct: 0,
-                  currency: 'USD',
-                  params: DEFAULT_PARAMS,
-                },
-                headerInfo: rawResult.headerInfo,
-                itemsCount: rawResult.items.length,
-                customOverrideMap: {},
-                items: rawResult.items.map((it) => ({
-                  rowIdx: it.rowIdx,
-                  lineNumber: it.lineNumber || '',
-                  partNumber: it.partNumber || '',
-                  description: it.description || '',
-                  qty: it.qty || 1,
-                  unitListPrice: it.unitListPrice || 0,
-                  netCiscoUnit: it.netCiscoUnit || 0,
-                  discPct: it.discPct || 0,
-                  transformedLeadTime: it.transformedLeadTime || '',
-                  overrideType: it.isIntangible ? 'intangible' : it.llevaArancel ? 'arancel' : 'equipo',
-                  isIntangible: Boolean(it.isIntangible),
-                  llevaArancel: Boolean(it.llevaArancel),
-                  costoInternacion: 0,
-                  costoArancel: 0,
-                  costoTotalUnitario: it.netCiscoUnit || 0,
-                  precioVentaUnitario: it.netCiscoUnit || 0,
-                  precioVentaExtendido: (it.netCiscoUnit || 0) * (it.qty || 1),
-                })),
-              };
+            const verInfo = await getEstimateVersionInfo(
+              rawEstId,
+              rawResult?.headerInfo?.dealId,
+              fileName
+            );
+            if (!verInfo.exists && rawResult) {
+              const rawV0Payload = buildRawV0EstimatePayload(
+                rawResult,
+                rawEstId,
+                partner,
+                fileName,
+                baseV0Cost,
+                currentUser,
+                DEFAULT_PARAMS
+              );
               saveOriginalV0Estimate(rawV0Payload).catch((e) =>
                 console.warn('Background v0 auto-save warning:', e)
               );
               currentVerNum = 1;
               currentVerTag = 'v1';
-            } else {
-              // Estimate ya existe: la siguiente iteración es v2, v3, etc.
+            } else if (verInfo.exists) {
               currentVerNum = verInfo.nextVersionNumber;
               currentVerTag = verInfo.nextVersionTag;
               if (verInfo.baselineV0Amount > 0) {
@@ -521,6 +428,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
             console.warn('Error verificando versión de estimate:', verErr);
           }
         }
+
         setEstimateVersionNumber(currentVerNum);
         setEstimateVersionTag(currentVerTag);
         setBaselineV0Amount(baseV0Cost);
@@ -536,16 +444,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           setParams(resolvedParams);
         }
 
-        const matchedOverrides: Record<number, OverrideRuleType> = {};
-        if (rawResult && rawResult.items) {
-          rawResult.items.forEach((item) => {
-            const skuKey = (item.partNumber || '').trim().toUpperCase();
-            if (currentMap[skuKey]) {
-              matchedOverrides[item.rowIdx] = currentMap[skuKey];
-            }
-          });
-        }
-
+        const matchedOverrides = matchItemsWithSkuOverrides(rawResult?.items, currentMap);
         setCustomOverrideMap(matchedOverrides);
 
         const hasCustomParams =
@@ -554,66 +453,35 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           activeInitialParams.margenPct !== DEFAULT_PARAMS.margenPct;
 
         if (Object.keys(matchedOverrides).length > 0 || hasCustomParams) {
-          await recompute(safeBuffer.slice(0), activeInitialParams, fileName, matchedOverrides, {});
+          await recompute(
+            safeBuffer.slice(0),
+            activeInitialParams,
+            fileName,
+            matchedOverrides,
+            {}
+          );
         } else {
           setProcessedResult(rawResult);
         }
 
-        // 4. Check for shared community / colleague SKU rules from the Cloud or local shared cache
         try {
           const sharedRes = await getSharedSkuRules();
           if (sharedRes.success && sharedRes.data && sharedRes.data.length > 0) {
-            const unappliedShared: SharedSkuOverrideRecord[] = [];
-
-            for (const r of sharedRes.data) {
-              const skuUpper = r.sku.toUpperCase();
-              const matchingItem = rawResult?.items?.find(
-                (it) => (it.partNumber || '').trim().toUpperCase() === skuUpper
-              );
-
-              if (!matchingItem) continue;
-
-              // Current calculation classification of this item in this estimate
-              const currentItemRule: OverrideRuleType = matchingItem.isIntangible
-                ? 'intangible'
-                : matchingItem.llevaArancel
-                ? 'arancel'
-                : 'equipo';
-
-              const currentTypeName = matchingItem.isIntangible
-                ? 'Intangible'
-                : matchingItem.llevaArancel
-                ? 'Arancel Especial'
-                : 'Hardware';
-
-              const normalizedRemoteRule = (String(r.rule).toLowerCase() === 'intangible'
-                ? 'intangible'
-                : String(r.rule).toLowerCase() === 'arancel'
-                ? 'arancel'
-                : 'equipo') as OverrideRuleType;
-
-              // Suggest ONLY if it represents a genuine change from current state
-              const isRealDifference = currentItemRule !== normalizedRemoteRule;
-              const isAlreadyInLocalMap = currentMap[skuUpper] === normalizedRemoteRule;
-              const isOtherAuthor = !currentUser || r.author?.username !== currentUser.username;
-
-              if (isRealDifference && !isAlreadyInLocalMap && isOtherAuthor) {
-                unappliedShared.push({
-                  ...r,
-                  rule: normalizedRemoteRule,
-                  previousType: currentTypeName,
-                });
-              }
-            }
-
+            const unappliedShared = filterUnappliedSharedSkuRules(
+              sharedRes.data,
+              rawResult?.items,
+              currentMap,
+              currentUser
+            );
             if (unappliedShared.length > 0) {
               setPendingSkuAuthOverridesState(unappliedShared);
               setSkuAuthAuthorName(unappliedShared[0]?.author?.fullName || 'Product Manager');
             }
           }
-        } catch (_) {}
+        } catch {
+          // Ignore shared rules fetch warnings in offline mode
+        }
 
-        // 5. MÓDULO AUDITOR DE MINERÍA Y SERVICIOS CISCO (Read-Only)
         const auditReport = executeSafeMiningAudit({
           ...rawResult,
           fileName: fileName || currentFileName,
@@ -624,7 +492,6 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           setMiningAuditData(null);
         }
 
-        // 6. MÓDULO OBSERVADOR DE MINERÍA (Solo Detección y Alerta Daniel Peña >= $150.000 USD)
         const miningInspection: MiningAlertData = inspectEstimateForMining(
           fileName || currentFileName,
           rawResult?.items || [],
@@ -638,10 +505,11 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           setIsMiningAlertModalOpen(false);
         }
 
-        // 7. EVALUACIÓN OBSERVADOR MINERÍA: CRUCE FAST TRACK (MODO OBSERVADOR)
         const isMiningAccount =
           Boolean(miningInspection?.isMining) ||
-          Boolean(auditReport && auditReport.overallStatus !== 'NO_RULES' && auditReport.matchedAccount);
+          Boolean(
+            auditReport && auditReport.overallStatus !== 'NO_RULES' && auditReport.matchedAccount
+          );
 
         const matchedMiningName =
           auditReport?.matchedAccount?.groupName ||
@@ -650,11 +518,9 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           'Cuenta Minera';
 
         if (isMiningAccount) {
-          // En minería NO se usa Fast Track: suprimir modal estándar de oportunidad comercial
           setPendingFastTrackAudit(null);
           setIsFastTrackOpportunityModalOpen(false);
 
-          // Cruce preventivo con Fast Track para detectar posibles cotizaciones con FT en CCW
           const ftMiningAlert = await detectMiningFastTrackUsage(
             rawResult.items,
             true,
@@ -668,11 +534,9 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
             setIsMiningFastTrackWarningModalOpen(false);
           }
         } else {
-          // Para cuentas generales (no minería): no activar alerta minera
           setMiningFastTrackWarningData(null);
           setIsMiningFastTrackWarningModalOpen(false);
 
-          // Flujo estándar de oportunidad Fast Track para cuentas generales
           const auditRes = await auditEstimateWithFastTrack(rawResult.items);
           if (auditRes && auditRes.hasOpportunity) {
             setPendingFastTrackAudit(auditRes);
@@ -682,50 +546,60 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
             setIsFastTrackOpportunityModalOpen(false);
           }
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Error processing workbook:', err);
+        const msg = err instanceof Error ? err.message : String(err ?? '');
         setErrorMessage(
-          err?.message?.includes('central directory')
+          msg.includes('central directory')
             ? 'El archivo seleccionado no es un libro Excel (.xlsx) válido o está dañado. Por favor asegúrate de seleccionar un archivo de cotización Excel (.xlsx) de Cisco CCW.'
-            : err?.message || 'Error procesando archivo.'
+            : msg || 'Error procesando archivo.'
         );
       } finally {
         setIsProcessing(false);
       }
     },
-    [recompute, skuOverridesMap, currentUser]
+    [recompute, skuOverridesMap, currentUser, currentFileName]
   );
 
   const applyApprovedSkuOverrides = useCallback(
     async (approved: SharedSkuOverrideRecord[], persistPermanently: boolean) => {
-      const updatedSkuMap = { ...skuOverridesMap };
+      const updatedSkuMap: Record<string, OverrideRuleType> = { ...skuOverridesMap };
       approved.forEach((r) => {
-        updatedSkuMap[r.sku.toUpperCase()] = r.rule;
+        updatedSkuMap[r.sku.toUpperCase()] = normalizeOverrideRule(r.rule);
       });
 
-      setSkuOverridesMap(updatedSkuMap);
-
       if (persistPermanently) {
-        try {
-          localStorage.setItem('cisco_sku_overrides_v2', JSON.stringify(updatedSkuMap));
-        } catch (_) {}
+        writeLocalSkuOverrides(updatedSkuMap);
       }
 
+      setSkuOverridesMap(updatedSkuMap);
       setPendingSkuAuthOverridesState([]);
 
       if (processedResult && rawWorkbookBuffer && currentFileName) {
-        const updatedCustomMap = { ...customOverrideMap };
-        processedResult.items.forEach((item) => {
-          const skuKey = (item.partNumber || '').trim().toUpperCase();
-          if (updatedSkuMap[skuKey]) {
-            updatedCustomMap[item.rowIdx] = updatedSkuMap[skuKey];
-          }
-        });
+        const updatedCustomMap: Record<number, OverrideRuleType> = {
+          ...customOverrideMap,
+          ...matchItemsWithSkuOverrides(processedResult.items, updatedSkuMap),
+        };
         setCustomOverrideMap(updatedCustomMap);
-        await recompute(rawWorkbookBuffer.slice(0), params, currentFileName, updatedCustomMap, fastTrackPromoMap);
+        await recompute(
+          rawWorkbookBuffer.slice(0),
+          params,
+          currentFileName,
+          updatedCustomMap,
+          fastTrackPromoMap
+        );
       }
     },
-    [skuOverridesMap, processedResult, rawWorkbookBuffer, currentFileName, customOverrideMap, params, fastTrackPromoMap, recompute]
+    [
+      skuOverridesMap,
+      processedResult,
+      rawWorkbookBuffer,
+      currentFileName,
+      customOverrideMap,
+      params,
+      fastTrackPromoMap,
+      recompute,
+    ]
   );
 
   const applyFastTrackPromos = useCallback(async () => {
@@ -742,7 +616,13 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     setFastTrackPromoMap(newPromoMap);
     setIsFastTrackOpportunityModalOpen(false);
 
-    await recompute(rawWorkbookBuffer.slice(0), params, currentFileName, customOverrideMap, newPromoMap);
+    await recompute(
+      rawWorkbookBuffer.slice(0),
+      params,
+      currentFileName,
+      customOverrideMap,
+      newPromoMap
+    );
   }, [pendingFastTrackAudit, rawWorkbookBuffer, currentFileName, params, customOverrideMap, recompute]);
 
   const skipFastTrackPromos = useCallback(() => {
@@ -752,12 +632,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
 
   const setRowRule = useCallback(
     async (rowIdx: number, rule: OverrideRuleType, sku?: string) => {
-      const normRule = (String(rule).toLowerCase() === 'intangible'
-        ? 'intangible'
-        : String(rule).toLowerCase() === 'arancel'
-        ? 'arancel'
-        : 'equipo') as OverrideRuleType;
-
+      const normRule = normalizeOverrideRule(rule);
       const targetItem = processedResult?.items.find((i) => i.rowIdx === rowIdx);
       const itemSku = sku || targetItem?.partNumber;
       const cleanSku = itemSku ? itemSku.trim().toUpperCase() : undefined;
@@ -784,26 +659,23 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       }
 
       if (cleanSku) {
-        const updated = { ...skuOverridesMap, [cleanSku]: normRule };
+        const updated: Record<string, OverrideRuleType> = {
+          ...skuOverridesMap,
+          [cleanSku]: normRule,
+        };
+        writeLocalSkuOverrides(updated);
         setSkuOverridesMap(updated);
-
-        try {
-          localStorage.setItem('cisco_sku_overrides_v2', JSON.stringify(updated));
-        } catch (e) {
-          console.warn('localStorage error:', e);
-        }
 
         const prevTypeName = targetItem?.isIntangible
           ? 'Intangible'
           : targetItem?.llevaArancel
-          ? 'Arancel Especial'
-          : 'Hardware';
+            ? 'Arancel Especial'
+            : 'Hardware';
 
-        // Auto publish shared rule for colleagues to discover & authorize
         const authorInfo = {
           username: currentUser?.username || 'pm_user',
           fullName: currentUser?.full_name || 'Product Manager',
-          role: (currentUser?.role as string) || 'pm',
+          role: String(currentUser?.role || 'pm'),
         };
         const record: SharedSkuOverrideRecord = {
           sku: cleanSku,
@@ -815,9 +687,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         };
         publishSharedSkuRules([record], authorInfo).catch(() => {});
 
-        if ((window as any).pywebview?.api?.save_sku_override) {
+        const desktopApi = getDesktopPyWebViewApi();
+        if (desktopApi?.save_sku_override) {
           try {
-            await (window as any).pywebview.api.save_sku_override(cleanSku, rule);
+            await desktopApi.save_sku_override(cleanSku, normRule);
           } catch (e) {
             console.warn('Desktop override save error:', e);
           }
@@ -831,174 +704,99 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     async (rowIdx: number) => {
       const currentItem = processedResult?.items.find((i) => i.rowIdx === rowIdx);
       if (!currentItem) return;
-
-      let currentRule: OverrideRuleType = 'equipo';
-      if (currentItem.isIntangible) {
-        currentRule = 'intangible';
-      } else if (currentItem.llevaArancel) {
-        currentRule = 'arancel';
-      }
-
-      // 3-Rule Cycle: Equipo -> Intangible -> Arancel -> Equipo
-      let nextRule: OverrideRuleType = 'intangible';
-      if (currentRule === 'equipo') {
-        nextRule = 'intangible';
-      } else if (currentRule === 'intangible') {
-        nextRule = 'arancel';
-      } else if (currentRule === 'arancel') {
-        nextRule = 'equipo';
-      }
-
+      const nextRule = computeNextCycledRule(currentItem);
       await setRowRule(rowIdx, nextRule, currentItem.partNumber);
     },
     [processedResult, setRowRule]
   );
 
-  const loadCloudEstimateIntoStore = useCallback(
-    async (record: CloudEstimateRecord) => {
-      try {
-        setIsProcessing(true);
-        if (record.financialSummary?.params) {
-          setParams(record.financialSummary.params);
-        }
+  const loadCloudEstimateIntoStore = useCallback(async (record: CloudEstimateRecord) => {
+    try {
+      setIsProcessing(true);
+      if (record.financialSummary?.params) {
+        setParams(record.financialSummary.params);
+      }
 
-        const restoredOverrideMap = record.customOverrideMap || {};
-        setCustomOverrideMap(restoredOverrideMap);
+      setCustomOverrideMap(record.customOverrideMap || {});
+      setFastTrackPromoMap(record.fastTrackPromoMap || {});
 
-        const restoredPromoMap = record.fastTrackPromoMap || {};
-        setFastTrackPromoMap(restoredPromoMap);
+      const {
+        processedResult: nextResult,
+        reconstructedItems,
+        totalNetCisco,
+        totalVenta,
+        activeVersion,
+        activeVersionTag,
+        baselineV0Amount: baseV0,
+      } = reconstructProcessedResultFromCloudRecord(record);
 
-        const reconstructedItems: EstimateLineItem[] = (record.items || []).map((it, idx) => ({
-          rowIdx: it.rowIdx ?? idx + 19,
-          lineNumber: it.lineNumber || String(idx + 1),
-          partNumber: it.partNumber,
-          smartAccountMandatory: '',
-          description: it.description || '',
-          serviceDurationMonths: '',
-          originalLeadTimeDays: '',
-          transformedLeadTime: it.transformedLeadTime || '',
-          unitListPrice: it.unitListPrice || 0,
-          pricingTerm: '',
-          qty: it.qty || 1,
-          netCiscoUnit: it.netCiscoUnit || 0,
-          discPct: it.discPct || 0,
-          isIntangible: it.isIntangible,
-          llevaArancel: it.llevaArancel,
-          costoInternacion: it.costoInternacion || 0,
-          costoArancel: it.costoArancel || 0,
-          costoTotalUnitario: it.costoTotalUnitario || 0,
-          precioVentaUnitario: it.precioVentaUnitario || 0,
-          precioVentaExtendido: it.precioVentaExtendido || 0,
-          isFastTrackPromo: it.isFastTrackPromo,
-          originalNetCiscoUnit: it.originalNetCiscoUnit,
-          fastTrackDiscountPct: it.fastTrackDiscountPct,
-          fastTrackSavings: it.fastTrackSavings,
-        }));
+      setProcessedResult(nextResult);
+      setCurrentFileName(nextResult.fileName || '');
+      setCurrentView('quoter');
+      setActiveQuoterTab('table');
 
-        const totalNetCisco =
-          record.financialSummary?.totalNetCisco ||
-          reconstructedItems.reduce((sum, i) => sum + i.netCiscoUnit * i.qty, 0);
-        const totalVenta =
-          record.financialSummary?.totalCotizadoIntcomex ||
-          reconstructedItems.reduce((sum, i) => sum + i.precioVentaExtendido, 0);
+      setEstimateVersionNumber(activeVersion);
+      setEstimateVersionTag(activeVersionTag);
+      setBaselineV0Amount(baseV0);
+      setIsRecalculated(activeVersion > 1);
 
-        setProcessedResult({
-          fileName: record.originalFileName || `${record.estimateId}_${record.dealId}.xlsx`,
-          headerInfo: record.headerInfo || {
-            customerName: record.partnerName || 'Intcomex Partner',
-            companyName: record.clientFinalName || 'Cliente Final',
-            address: '',
-            city: 'Santiago',
-            country: 'Chile',
-            phone: '',
-            estimateId: record.estimateId,
-            dealId: record.dealId,
-            priceList: 'Global Price List',
-            date: record.createdAt ? record.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10),
-          },
-          items: reconstructedItems,
-          originalProductTotal: totalNetCisco,
-          calculatedProductTotal: totalVenta,
-          serviceTotal: 0,
-          subscriptionTotal: 0,
-          finalTotalPrice: totalVenta,
-          headerRowIndex: 18,
-        });
+      const auditReport = executeSafeMiningAudit({
+        headerInfo: nextResult.headerInfo,
+        items: reconstructedItems,
+        originalProductTotal: totalNetCisco,
+        calculatedProductTotal: totalVenta,
+        fileName: record.originalFileName || '',
+      });
+      if (auditReport && auditReport.overallStatus !== 'NO_RULES') {
+        setMiningAuditData(auditReport);
+      } else {
+        setMiningAuditData(null);
+      }
 
-        setCurrentFileName(record.originalFileName || `${record.estimateId}_${record.dealId}.xlsx`);
-        setCurrentView('quoter');
-        setActiveQuoterTab('table');
+      const miningInspection: MiningAlertData = inspectEstimateForMining(
+        record.originalFileName || '',
+        reconstructedItems,
+        record.headerInfo?.dealId || null
+      );
+      if (miningInspection.shouldAlert) {
+        setMiningAlertData(miningInspection);
+        setIsMiningAlertModalOpen(true);
+      } else {
+        setMiningAlertData(null);
+        setIsMiningAlertModalOpen(false);
+      }
 
-        // Multi-Version State Restoration
-        const actVer = record.activeVersion ?? 1;
-        const actVerTag = record.activeVersionTag || (actVer === 0 ? 'v0_RAW' : `v${actVer}`);
-        const baseV0 = Number(
-          record.baselineV0Amount ?? record.financialSummary?.totalNetCisco ?? totalNetCisco
+      const isMiningAccount =
+        Boolean(miningInspection?.isMining) ||
+        Boolean(
+          auditReport && auditReport.overallStatus !== 'NO_RULES' && auditReport.matchedAccount
         );
-        setEstimateVersionNumber(actVer);
-        setEstimateVersionTag(actVerTag);
-        setBaselineV0Amount(baseV0);
-        setIsRecalculated(actVer > 1);
 
-        // Evaluar condiciones minería
-        const auditReport = executeSafeMiningAudit({
-          headerInfo: record.headerInfo || { customerName: record.partnerName || 'Intcomex Partner', companyName: record.clientFinalName || 'Cliente Final' },
-          items: reconstructedItems,
-          originalProductTotal: totalNetCisco,
-          calculatedProductTotal: totalVenta,
-          fileName: record.originalFileName || '',
-        });
-        if (auditReport && auditReport.overallStatus !== 'NO_RULES') {
-          setMiningAuditData(auditReport);
-        } else {
-          setMiningAuditData(null);
-        }
-
-        // Evaluar observador minería
-        const miningInspection: MiningAlertData = inspectEstimateForMining(
-          record.originalFileName || '',
+      if (isMiningAccount) {
+        const ftMiningAlert = await detectMiningFastTrackUsage(
           reconstructedItems,
-          record.headerInfo?.dealId || null
+          true,
+          auditReport?.matchedAccount?.groupName || miningInspection?.matchedKeyword?.toUpperCase()
         );
-        if (miningInspection.shouldAlert) {
-          setMiningAlertData(miningInspection);
-          setIsMiningAlertModalOpen(true);
-        } else {
-          setMiningAlertData(null);
-          setIsMiningAlertModalOpen(false);
-        }
-
-        // Evaluar posible uso de Fast Track en minería
-        const isMiningAccount =
-          Boolean(miningInspection?.isMining) ||
-          Boolean(auditReport && auditReport.overallStatus !== 'NO_RULES' && auditReport.matchedAccount);
-
-        if (isMiningAccount) {
-          const ftMiningAlert = await detectMiningFastTrackUsage(
-            reconstructedItems,
-            true,
-            auditReport?.matchedAccount?.groupName || miningInspection?.matchedKeyword?.toUpperCase()
-          );
-          if (ftMiningAlert.shouldAlert) {
-            setMiningFastTrackWarningData(ftMiningAlert);
-            setIsMiningFastTrackWarningModalOpen(true);
-          } else {
-            setMiningFastTrackWarningData(null);
-            setIsMiningFastTrackWarningModalOpen(false);
-          }
+        if (ftMiningAlert.shouldAlert) {
+          setMiningFastTrackWarningData(ftMiningAlert);
+          setIsMiningFastTrackWarningModalOpen(true);
         } else {
           setMiningFastTrackWarningData(null);
           setIsMiningFastTrackWarningModalOpen(false);
         }
-      } catch (err: any) {
-        console.error('Error cargando cotización desde la nube:', err);
-        setErrorMessage(`Error restaurando cotización: ${err?.message || 'Datos corruptos'}`);
-      } finally {
-        setIsProcessing(false);
+      } else {
+        setMiningFastTrackWarningData(null);
+        setIsMiningFastTrackWarningModalOpen(false);
       }
-    },
-    []
-  );
+    } catch (err: unknown) {
+      console.error('Error cargando cotización desde la nube:', err);
+      const msg = err instanceof Error ? err.message : String(err ?? '');
+      setErrorMessage(`Error restaurando cotización: ${msg || 'Datos corruptos'}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, []);
 
   const saveCurrentEstimateToCloud = useCallback(
     async (options?: SaveEstimateCloudOptions) => {
@@ -1022,25 +820,14 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       );
       const profit = Math.max(0, totalVenta - (totalCosto > 0 ? totalCosto : totalNetCisco));
 
-      // Smart fallback partner & client extraction from filename or headerInfo
-      let fallbackPartner =
-        detectedPartner || processedResult.headerInfo.companyName || 'Intcomex Partner';
-      let fallbackClient = processedResult.headerInfo.customerName || 'Cliente Final';
-      if (currentFileName) {
-        const clean = currentFileName.replace(/\.[^/.]+$/, '');
-        const parts = clean.split(/[_.\s-]+/);
-        if (parts.length >= 1 && parts[0] && !parts[0].match(/^(estimate|\d+)$/i)) {
-          fallbackPartner = parts[0].trim();
-        }
-        if (parts.length >= 2 && parts[1] && !parts[1].match(/^(estimate|\d+)$/i)) {
-          fallbackClient = parts[1].trim();
-        }
-      }
+      const { resolvedPartner, resolvedClient } = resolveFallbackPartnerAndClient(
+        processedResult,
+        detectedPartner,
+        currentFileName,
+        options?.partnerName,
+        options?.clientFinalName
+      );
 
-      const resolvedPartner =
-        formatPartnerName(options?.partnerName || fallbackPartner) ||
-        (options?.partnerName || fallbackPartner).trim();
-      const resolvedClient = (options?.clientFinalName || fallbackClient).trim();
       const resolvedFileName = (
         options?.originalFileName ||
         currentFileName ||
@@ -1188,9 +975,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
   }, []);
 
   const logout = useCallback(async () => {
-    if ((window as any).pywebview?.api?.logout_user) {
+    const desktopApi = getDesktopPyWebViewApi();
+    if (desktopApi?.logout_user) {
       try {
-        await (window as any).pywebview.api.logout_user();
+        await desktopApi.logout_user();
       } catch (e) {
         console.warn(e);
       }

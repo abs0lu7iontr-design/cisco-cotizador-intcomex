@@ -19,7 +19,13 @@ export interface DealHistoryNote {
   id: string;
   date: string; // ISO 8601
   author: string;
-  action: 'CREATED' | 'REMINDER_COPIED' | 'STATUS_CHANGED' | 'NOTE_ADDED' | 'CONVERTED_TO_BO';
+  action:
+    | 'CREATED'
+    | 'REMINDER_COPIED'
+    | 'REMINDER_SENT'
+    | 'STATUS_CHANGED'
+    | 'NOTE_ADDED'
+    | 'CONVERTED_TO_BO';
   comment: string;
 }
 
@@ -42,8 +48,11 @@ export interface DealReminderRecord {
   // Estado y Envejecimiento (Aging)
   status: DealReminderStatus;
   escalatedAt: string;                // Fecha/hora de escalamiento (ISO 8601)
-  lastReminderSentAt?: string;        // Fecha/hora de última copia de recordatorio (ISO 8601)
-  reminderCount: number;              // Número de recordatorios generados
+  lastReminderCopiedAt?: string;      // Fecha/hora de última copia de recordatorio al portapapeles (ISO 8601)
+  reminderCopyCount?: number;         // Número de veces que se copió el recordatorio al portapapeles
+  lastReminderSentAt?: string;        // Fecha/hora de último envío confirmado de recordatorio (ISO 8601)
+  reminderCount: number;              // Número de recordatorios cuyo envío fue confirmado explícitamente
+  lastSentConfirmationSource?: 'MANUAL_CONFIRMATION' | 'CLOUDFLARE_EMAIL';
 
   // Control de Pop-ups y Posponer (Snooze)
   snoozedUntil?: string;              // Fecha/hora hasta cuando se pospuso el recordatorio (ISO 8601)

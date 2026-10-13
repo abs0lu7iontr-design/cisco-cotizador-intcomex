@@ -5,7 +5,7 @@
 
 import { useSyncExternalStore } from 'react';
 import type { CloudEstimateRecord } from '../modules/cloud/types';
-import { normalizeIsoTimestamp } from '../utils/dateUtils';
+import { normalizeIsoTimestamp, compareDatesUnknownLast } from '../utils/dateUtils';
 
 // ----------------------------------------------------------------------------
 // Redundant Multi-Tier Storage Keys ("Blindaje de Persistencia Local")
@@ -134,9 +134,13 @@ function mergeAndDeduplicateEstimates(records: CloudEstimateRecord[]): CloudEsti
     }
   }
 
-  return Array.from(map.values()).sort((a, b) =>
-    (b.createdAt || '').localeCompare(a.createdAt || '')
-  );
+  return Array.from(map.values()).sort((a, b) => {
+    const dateCmp = compareDatesUnknownLast(a.createdAt, b.createdAt, 'desc');
+    if (dateCmp !== 0) return dateCmp;
+    const idA = String(a.id || a.estimateId || '');
+    const idB = String(b.id || b.estimateId || '');
+    return idB.localeCompare(idA);
+  });
 }
 
 /**
@@ -282,8 +286,8 @@ export function saveEstimatesMirrorSnapshot(
   try {
     if (typeof localStorage === 'undefined') return;
 
-    // Deduplicate and normalize timestamps
-    const cleanList = mergeAndDeduplicateEstimates(list).slice(0, 1000);
+    // Deduplicate and normalize timestamps without truncating large histories
+    const cleanList = mergeAndDeduplicateEstimates(list);
     const serialized = JSON.stringify(cleanList);
 
     // Save redundantly to all 3 vault keys

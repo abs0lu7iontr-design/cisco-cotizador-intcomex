@@ -182,34 +182,39 @@ Equipo Especialistas Cisco - Intcomex Chile`;
 
 /**
  * Copia el correo enriquecido al portapapeles en formato HTML y texto plano
+ * usando el helper unificado con verificación de resultado real.
  */
 export async function copyDealReminderToClipboard(
   deal: DealReminderRecord,
   now: Date = new Date()
-): Promise<{ success: boolean; subject: string; error?: string }> {
+): Promise<{
+  success: boolean;
+  mode: 'rich' | 'plain' | 'none';
+  message: string;
+  subject: string;
+  error?: string;
+}> {
   try {
     const payload = generateDealReminderEmail(deal, now);
+    const { copyHtmlAndTextToClipboard } = await import('../../core/emailClipboardHelper');
+    const copyRes = await copyHtmlAndTextToClipboard(payload.htmlContent, payload.plainTextContent);
 
-    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof ClipboardItem !== 'undefined') {
-      const blobHtml = new Blob([payload.htmlContent], { type: 'text/html' });
-      const blobText = new Blob([payload.plainTextContent], { type: 'text/plain' });
-      const item = new ClipboardItem({
-        'text/html': blobHtml,
-        'text/plain': blobText,
-      });
-      await navigator.clipboard.write([item]);
-      return { success: true, subject: payload.subject };
-    }
-
-    // Fallback de texto plano
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      await navigator.clipboard.writeText(payload.plainTextContent);
-      return { success: true, subject: payload.subject };
-    }
-
-    return { success: false, subject: payload.subject, error: 'Portapapeles no disponible en este entorno.' };
-  } catch (err: any) {
+    return {
+      success: copyRes.success,
+      mode: copyRes.mode,
+      message: copyRes.message,
+      subject: payload.subject,
+      error: copyRes.error,
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Error al copiar al portapapeles';
     console.error('Error copiando correo de recordatorio de Deal:', err);
-    return { success: false, subject: '', error: err?.message || 'Error al copiar al portapapeles' };
+    return {
+      success: false,
+      mode: 'none',
+      message: 'No se pudo copiar el recordatorio al portapapeles.',
+      subject: '',
+      error: message,
+    };
   }
 }

@@ -52,6 +52,7 @@ import {
 import { DealReminderView } from './DealReminderView';
 import { DealReminderRecord } from './dealReminderTypes';
 import { useCiscoAutomatedStore } from '../../core/store';
+import { downloadContentSafe } from '../../utils/downloadHelper';
 
 export function BoTrackingView() {
   const { currentUser, processedResult, detectedPartner } = useCiscoAutomatedStore();
@@ -324,14 +325,8 @@ export function BoTrackingView() {
     ]);
 
     const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `Reporte_Tracking_BO_Intcomex_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const filename = `Reporte_Tracking_BO_Intcomex_${new Date().toISOString().slice(0, 10)}.csv`;
+    downloadContentSafe(csvContent, filename, 'text/csv;charset=utf-8;');
   };
 
   return (

@@ -44,7 +44,8 @@ import {
   getDealReminders,
   saveDealReminder,
   updateDealReminderStatus,
-  recordDealReminderSent,
+  recordDealReminderCopied,
+  confirmDealReminderSent,
   addDealHistoryNote,
   deleteDealReminder,
   createDealReminderFromEstimate,
@@ -53,6 +54,7 @@ import {
 import { copyDealReminderToClipboard, getDealTimeGreeting } from './dealEmailHelper';
 import { DealReminderAlertModal } from './DealReminderAlertModal';
 import { useCiscoAutomatedStore } from '../../core/store';
+import { downloadContentSafe } from '../../utils/downloadHelper';
 
 interface DealReminderViewProps {
   onConvertToBo?: (deal: DealReminderRecord) => void;
@@ -204,7 +206,7 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
     await loadData();
   };
 
-  // Copiar recordatorio para Outlook
+  // Copiar recordatorio para Outlook (registra lastReminderCopiedAt, NO envío confirmado)
   const handleCopyEmailReminder = async (deal: DealReminderRecord) => {
     const author = currentUser?.full_name || currentUser?.username || 'Usuario';
     const result = await copyDealReminderToClipboard(deal);
@@ -212,11 +214,25 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
     if (result.success) {
       setCopiedDealId(deal.id);
       setTimeout(() => setCopiedDealId(null), 4000);
-      await recordDealReminderSent(deal.id, author);
+      await recordDealReminderCopied(deal.id, author);
       await loadData();
+      showToast(
+        result.mode === 'rich'
+          ? '📋 Recordatorio copiado en formato enriquecido HTML. Recuerda presionar "Confirmar Envío" tras despacharlo en Outlook.'
+          : '📋 Recordatorio copiado en texto plano. Recuerda presionar "Confirmar Envío" tras despacharlo.',
+        'info'
+      );
     } else {
-      alert(`No se pudo copiar al portapapeles: ${result.error}`);
+      showToast(`No se pudo copiar al portapapeles: ${result.error || result.message}`, 'error');
     }
+  };
+
+  // Confirmar manualmente que el recordatorio fue enviado por correo
+  const handleConfirmReminderSent = async (deal: DealReminderRecord) => {
+    const author = currentUser?.full_name || currentUser?.username || 'Usuario';
+    await confirmDealReminderSent(deal.id, author, 'MANUAL_CONFIRMATION');
+    await loadData();
+    showToast(`✅ Envío de recordatorio confirmado para Deal ${deal.dealId}.`, 'success');
   };
 
   // Cambiar estado rápido
@@ -374,14 +390,8 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
     });
 
     const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `Deals_Seguimiento_Intcomex_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const filename = `Deals_Seguimiento_Intcomex_${new Date().toISOString().slice(0, 10)}.csv`;
+    downloadContentSafe(csvContent, filename, 'text/csv;charset=utf-8;');
   };
 
   return (
@@ -645,8 +655,14 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
                       </span>
 
                       {deal.reminderCount > 0 && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-emerald-950/70 text-emerald-300 border border-emerald-700/50">
+                          {deal.reminderCount} envío(s) confirmado(s)
+                        </span>
+                      )}
+
+                      {(deal.reminderCopyCount || 0) > 0 && (
                         <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
-                          {deal.reminderCount} recordatorio(s)
+                          {deal.reminderCopyCount} copia(s)
                         </span>
                       )}
                     </div>
@@ -687,9 +703,15 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
                           Monto: <strong className="text-slate-200 font-mono">${deal.estimatedTotalUsd.toLocaleString('en-US')} USD</strong>
                         </span>
                       )}
+                      {deal.lastReminderCopiedAt && (
+                        <span className="text-slate-400">
+                          Última copia: {new Date(deal.lastReminderCopiedAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}{' '}
+                          ({new Date(deal.lastReminderCopiedAt).toLocaleDateString('es-CL')})
+                        </span>
+                      )}
                       {deal.lastReminderSentAt && (
-                        <span className="text-slate-500">
-                          Último recordatorio: {new Date(deal.lastReminderSentAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}{' '}
+                        <span className="text-emerald-400/90 font-medium">
+                          Último envío confirmado: {new Date(deal.lastReminderSentAt).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}{' '}
                           ({new Date(deal.lastReminderSentAt).toLocaleDateString('es-CL')})
                         </span>
                       )}
@@ -712,10 +734,20 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
                           ? 'bg-emerald-600 text-white shadow-emerald-600/40 scale-105'
                           : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30'
                       }`}
-                      title="Copiar correo formal con saludo según hora para Outlook"
+                      title="Copiar correo formal con saludo según hora para Outlook (registra copia)"
                     >
                       {isCopied ? <Check className="w-4 h-4" /> : <Mail className="w-4 h-4" />}
                       <span>{isCopied ? '¡Copiado para Outlook!' : 'Copiar Correo Recordatorio'}</span>
+                    </button>
+
+                    {/* Botón Confirmación Manual de Envío */}
+                    <button
+                      onClick={() => handleConfirmReminderSent(deal)}
+                      className="inline-flex items-center space-x-1.5 px-3 py-2 bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-600/50 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                      title="Confirmar explícitamente que el correo de recordatorio ya fue enviado"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Confirmar Envío</span>
                     </button>
 
                     {/* Botón Simular Pop-up Alerta */}

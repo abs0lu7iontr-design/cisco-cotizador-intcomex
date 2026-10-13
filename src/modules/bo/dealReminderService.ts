@@ -58,6 +58,41 @@ export function addDeletedDealReminderId(id: string): void {
   } catch (_) {}
 }
 
+/**
+ * Normalizes a DealReminderRecord so that historical clipboard copies (REMINDER_COPIED)
+ * are never misinterpreted as confirmed email sends (REMINDER_SENT).
+ */
+export function normalizeLegacyDealReminderRecord(raw: DealReminderRecord): DealReminderRecord {
+  if (!raw || typeof raw !== 'object') return raw;
+  const history = Array.isArray(raw.history) ? raw.history : [];
+  const copyEvents = history.filter((h) => h && h.action === 'REMINDER_COPIED');
+  const sentEvents = history.filter((h) => h && h.action === 'REMINDER_SENT');
+
+  // If the record has historical REMINDER_COPIED events, zero REMINDER_SENT events,
+  // and was never migrated to lastReminderCopiedAt, reclassify those legacy copies.
+  if (
+    copyEvents.length > 0 &&
+    sentEvents.length === 0 &&
+    !raw.lastReminderCopiedAt &&
+    !raw.lastSentConfirmationSource
+  ) {
+    const latestCopyDate = copyEvents[0]?.date || raw.lastReminderSentAt;
+    return {
+      ...raw,
+      lastReminderCopiedAt: latestCopyDate,
+      reminderCopyCount: Math.max(raw.reminderCopyCount || 0, copyEvents.length, raw.reminderCount || 0),
+      lastReminderSentAt: undefined,
+      reminderCount: 0,
+    };
+  }
+
+  return {
+    ...raw,
+    reminderCopyCount: raw.reminderCopyCount ?? copyEvents.length,
+    reminderCount: typeof raw.reminderCount === 'number' ? raw.reminderCount : sentEvents.length,
+  };
+}
+
 export function getLocalDealRemindersCache(): DealReminderRecord[] {
   const deletedIds = getDeletedDealReminderIds();
   const map = new Map<string, DealReminderRecord>();
@@ -75,17 +110,17 @@ export function getLocalDealRemindersCache(): DealReminderRecord[] {
         if (raw) {
           const list = JSON.parse(raw);
           if (Array.isArray(list)) {
-            for (const item of list) {
-              if (item && item.id && !deletedIds.has(item.id)) {
+            for (const rawItem of list) {
+              if (rawItem && rawItem.id && !deletedIds.has(rawItem.id)) {
+                const item = normalizeLegacyDealReminderRecord(rawItem);
                 const existing = map.get(item.id);
                 if (!existing) {
                   map.set(item.id, item);
                 } else {
-                  // Si el que ya tenemos o el nuevo está aprobado, conservar el aprobado
                   if (item.status === 'APPROVED' && existing.status !== 'APPROVED') {
                     map.set(item.id, item);
                   } else if (existing.status === 'APPROVED' && item.status !== 'APPROVED') {
-                    // Mantener el existente aprobado
+                    // Keep approved existing
                   } else {
                     const existingTs = existing.updatedAt || existing.createdAt || '';
                     const itemTs = item.updatedAt || item.createdAt || '';
@@ -103,9 +138,9 @@ export function getLocalDealRemindersCache(): DealReminderRecord[] {
   } catch (_) {}
 
   // Si hay datos en memoria que no están en localStorage, incluirlos
-  for (const mem of inMemoryDealRemindersCache) {
-    if (mem && mem.id && !deletedIds.has(mem.id) && !map.has(mem.id)) {
-      map.set(mem.id, mem);
+  for (const rawMem of inMemoryDealRemindersCache) {
+    if (rawMem && rawMem.id && !deletedIds.has(rawMem.id) && !map.has(rawMem.id)) {
+      map.set(rawMem.id, normalizeLegacyDealReminderRecord(rawMem));
     }
   }
 
@@ -113,12 +148,14 @@ export function getLocalDealRemindersCache(): DealReminderRecord[] {
     (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
   );
 
-  return result.length > 0 ? result : inMemoryDealRemindersCache;
+  return result.length > 0 ? result : inMemoryDealRemindersCache.map(normalizeLegacyDealReminderRecord);
 }
 
 export function saveLocalDealRemindersCache(records: DealReminderRecord[]): void {
   const deletedIds = getDeletedDealReminderIds();
-  const cleanRecords = records.filter((r) => r && r.id && !deletedIds.has(r.id));
+  const cleanRecords = records
+    .filter((r) => r && r.id && !deletedIds.has(r.id))
+    .map(normalizeLegacyDealReminderRecord);
   inMemoryDealRemindersCache = [...cleanRecords];
 
   try {
@@ -420,22 +457,66 @@ export async function updateDealReminderStatus(
 }
 
 /**
- * Registra que se ha generado y copiado un recordatorio de correo
+ * Registra únicamente que el recordatorio fue COPIADO al portapapeles (`lastReminderCopiedAt`).
+ * NO incrementa `reminderCount` (envíos confirmados) ni modifica `lastReminderSentAt`.
  */
-export async function recordDealReminderSent(dealId: string, author: string): Promise<void> {
+export async function recordDealReminderCopied(
+  dealId: string,
+  author: string
+): Promise<DealReminderRecord | null> {
   const allDeals = getLocalDealRemindersCache();
   const deal = allDeals.find((d) => d.id === dealId);
-  if (!deal) return;
+  if (!deal) return null;
+
+  const nowIso = new Date().toISOString();
+  const copyNumber = (deal.reminderCopyCount || 0) + 1;
+
+  const newNote: DealHistoryNote = {
+    id: `hist-copy-${Date.now()}`,
+    date: nowIso,
+    author: author || 'Usuario',
+    action: 'REMINDER_COPIED',
+    comment: `Borrador de recordatorio (copia #${copyNumber}) copiado al portapapeles para ${
+      deal.escalationChannel === 'VELOCITY_HUB' ? 'Cisco Velocity Hub' : deal.amContactName || 'AM Cisco'
+    }. Pendiente confirmación de envío.`,
+  };
+
+  const updatedDeal: DealReminderRecord = {
+    ...deal,
+    reminderCopyCount: copyNumber,
+    lastReminderCopiedAt: nowIso,
+    updatedAt: nowIso,
+    history: [newNote, ...(deal.history || [])],
+  };
+
+  await saveDealReminder(updatedDeal);
+  return updatedDeal;
+}
+
+/**
+ * Registra la confirmación explícita de que el correo de recordatorio fue ENVIADO.
+ * Actualiza `lastReminderSentAt`, incrementa `reminderCount` y añade un evento `REMINDER_SENT`.
+ */
+export async function confirmDealReminderSent(
+  dealId: string,
+  author: string,
+  source: 'MANUAL_CONFIRMATION' | 'CLOUDFLARE_EMAIL' = 'MANUAL_CONFIRMATION'
+): Promise<DealReminderRecord | null> {
+  const allDeals = getLocalDealRemindersCache();
+  const deal = allDeals.find((d) => d.id === dealId);
+  if (!deal) return null;
 
   const nowIso = new Date().toISOString();
   const reminderNumber = (deal.reminderCount || 0) + 1;
 
   const newNote: DealHistoryNote = {
-    id: `hist-${Date.now()}`,
+    id: `hist-sent-${Date.now()}`,
     date: nowIso,
     author: author || 'Usuario',
-    action: 'REMINDER_COPIED',
-    comment: `Recordatorio #${reminderNumber} copiado para envío por correo a ${
+    action: 'REMINDER_SENT',
+    comment: `Envío de recordatorio #${reminderNumber} confirmado (${
+      source === 'CLOUDFLARE_EMAIL' ? 'Despacho directo Cloudflare Email' : 'Confirmación manual de envío'
+    }) a ${
       deal.escalationChannel === 'VELOCITY_HUB' ? 'Cisco Velocity Hub' : deal.amContactName || 'AM Cisco'
     }.`,
   };
@@ -444,11 +525,20 @@ export async function recordDealReminderSent(dealId: string, author: string): Pr
     ...deal,
     reminderCount: reminderNumber,
     lastReminderSentAt: nowIso,
+    lastSentConfirmationSource: source,
     updatedAt: nowIso,
     history: [newNote, ...(deal.history || [])],
   };
 
   await saveDealReminder(updatedDeal);
+  return updatedDeal;
+}
+
+/**
+ * Alias de compatibilidad para confirmación explícita de envío de recordatorio.
+ */
+export async function recordDealReminderSent(dealId: string, author: string): Promise<void> {
+  await confirmDealReminderSent(dealId, author, 'MANUAL_CONFIRMATION');
 }
 
 /**

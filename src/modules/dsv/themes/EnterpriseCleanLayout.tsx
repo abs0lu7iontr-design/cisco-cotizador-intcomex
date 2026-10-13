@@ -2,8 +2,9 @@
 // CISCO AUTOMATED v2.1 - ENTERPRISE CLEAN RECONCILIATION LAYOUT
 // ============================================================================
 
-import React from 'react';
+import React, { useId } from 'react';
 import { ReconciliationItem } from '../types';
+import { useAccessibleModal } from '../../../utils/useAccessibleModal';
 
 interface LayoutProps {
   items: ReconciliationItem[];
@@ -18,16 +19,31 @@ export const EnterpriseCleanLayout: React.FC<LayoutProps> = ({
   onResolve,
   onCancel,
 }) => {
+  const baseId = useId();
+  const customTitleId = `reconciliation-title-${baseId}`;
+  const customDescId = `reconciliation-desc-${baseId}`;
+
+  const { dialogProps, titleId, descriptionId } = useAccessibleModal<HTMLElement>({
+    isOpen: true,
+    onClose: onCancel,
+    titleId: customTitleId,
+    descriptionId: customDescId,
+  });
+
   return (
     <section
-      role="dialog"
-      aria-modal="true"
-      className="w-full max-w-4xl bg-zinc-950 border border-zinc-800 rounded-xl p-6 text-zinc-100 shadow-2xl font-sans animate-in fade-in duration-150"
+      {...dialogProps}
+      aria-describedby={descriptionId}
+      className="w-full max-w-4xl bg-zinc-950 border border-zinc-800 rounded-xl p-6 text-zinc-100 shadow-2xl font-sans animate-in fade-in duration-150 focus:outline-none"
     >
       <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
         <div>
-          <h2 className="text-base font-semibold text-zinc-100">Conciliación de Cotización CCW</h2>
-          <p className="text-xs text-zinc-400 mt-0.5">Auditoría de variaciones en líneas de servicio y hardware.</p>
+          <h2 id={titleId} className="text-base font-semibold text-zinc-100">
+            Conciliación de Cotización CCW
+          </h2>
+          <p id={descriptionId} className="text-xs text-zinc-400 mt-0.5">
+            Auditoría de variaciones en líneas de servicio y hardware.
+          </p>
         </div>
         <div className="flex gap-4 text-xs font-mono bg-zinc-900 px-4 py-2 rounded-lg border border-zinc-800">
           <span>Teórico: <strong>${totals.theo.toLocaleString('es-CL', { minimumFractionDigits: 2 })} USD</strong></span>
@@ -68,18 +84,21 @@ export const EnterpriseCleanLayout: React.FC<LayoutProps> = ({
 
       <div className="flex justify-end gap-3 pt-2 border-t border-zinc-800">
         <button
+          type="button"
           onClick={onCancel}
           className="px-4 py-2 text-xs text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
         >
           Cancelar
         </button>
         <button
+          type="button"
           onClick={() => onResolve('MATH')}
           className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 rounded-lg border border-zinc-700 transition-colors cursor-pointer"
         >
           Forzar Teórico
         </button>
         <button
+          type="button"
           onClick={() => onResolve('BOM')}
           className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-xs font-medium text-white rounded-lg transition-colors cursor-pointer shadow-md shadow-emerald-600/20"
         >
@@ -89,3 +108,4 @@ export const EnterpriseCleanLayout: React.FC<LayoutProps> = ({
     </section>
   );
 };
+
