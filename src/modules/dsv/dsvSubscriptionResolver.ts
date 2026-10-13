@@ -200,7 +200,7 @@ export function resolveDsvRowPrices(row: DsvBomRowRaw): DsvResolvedRowValues {
     standardNet = row.unitNetPriceColQ;
   } else {
     const dealRate =
-      typeof row.dealDiscountRate === 'number' && row.dealDiscountRate > 0
+      typeof row.dealDiscountRate === 'number' && !Number.isNaN(row.dealDiscountRate) && row.dealDiscountRate >= 0
         ? row.dealDiscountRate
         : partnerRate;
     standardNet = Number((standardList * (1 - dealRate)).toFixed(2));

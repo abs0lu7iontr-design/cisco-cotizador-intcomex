@@ -1097,13 +1097,8 @@ export async function parseEstimateWorkbook(
   const roundedProductTotal = Math.round(calculatedProductTotal * 100) / 100;
   const roundedOriginalTotal = Math.round(originalProductTotal * 100) / 100;
 
-  const isZeroParams = params.internacionPct === 0 && params.arancelPct === 0 && params.margenPct === 0;
-  const hasNoOverrides = !overrides || Object.keys(overrides).length === 0;
-  const hasNoPromos = !promoNetPrices || Object.keys(promoNetPrices).length === 0;
-
-  const finalCalculatedProductTotal = isZeroParams && hasNoOverrides && hasNoPromos
-    ? roundedOriginalTotal
-    : roundedProductTotal;
+  // Unified rounding policy: total must strictly match the sum of rounded line items (precioVentaExtendido)
+  const finalCalculatedProductTotal = roundedProductTotal;
 
   const isOnlyLicensing = isPureLicensingQuote(items);
 
@@ -2235,9 +2230,11 @@ export async function synthesizeOfficialEstimateWorkbook(
     } else if (c === 7) {
       const firstDataRow = EXPORT_HEADER_ROW + 1;
       const lastDataRow = totalRowIndex - 1;
+      const sumOfLineExtended =
+        Math.round(items.reduce((acc, it) => acc + (Number(it.precioVentaExtendido) || 0), 0) * 100) / 100;
       cell.value = {
         formula: `SUM(G${firstDataRow}:G${lastDataRow})`,
-        result: result.calculatedProductTotal,
+        result: sumOfLineExtended,
       };
       cell.alignment = { vertical: 'middle', horizontal: 'right' };
       cell.font = { name: 'Arial', size: 10.5, bold: true, color: { argb: 'FF0F172A' } };

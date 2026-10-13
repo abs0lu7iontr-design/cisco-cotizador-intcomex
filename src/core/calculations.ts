@@ -364,12 +364,18 @@ export function calculateLineItemCosts(
   const arancelRate = llevaArancel ? params.arancelPct / 100 : 0.0;
   const marginRate = params.margenPct / 100;
 
+  if (marginRate >= 1 || marginRate < 0 || Number.isNaN(marginRate)) {
+    throw new RangeError(
+      `Margen comercial inválido (${params.margenPct}%): debe estar en el rango [0%, 100%). Un margen de 100% genera división por cero.`
+    );
+  }
+
   const costoInternacion = roundFinancial(netCiscoUnit * internacionRate);
   const costoArancel = roundFinancial(netCiscoUnit * arancelRate);
   const costoTotalUnitario = roundFinancial(netCiscoUnit + costoInternacion + costoArancel);
 
   // Standard Commercial Margin on Sales Price: PV = Costo / (1 - Margen)
-  const rawUnitPrice = marginRate >= 1 ? costoTotalUnitario : costoTotalUnitario / (1 - marginRate);
+  const rawUnitPrice = costoTotalUnitario / (1 - marginRate);
   const roundedUnitPrice = roundFinancial(rawUnitPrice);
   const roundedExtPrice = roundFinancial(roundedUnitPrice * qty);
 
@@ -476,7 +482,12 @@ export function calculateMerakiLicenseCosts(
 
   // b) Precio Venta Total y Mensual (Margen Comercial: PV = Costo / (1 - Margen))
   const marginRate = params.margenPct / 100;
-  const rawPrecioVentaUnitario = marginRate >= 1 ? costoTotalUnitario : costoTotalUnitario / (1 - marginRate);
+  if (marginRate >= 1 || marginRate < 0 || Number.isNaN(marginRate)) {
+    throw new RangeError(
+      `Margen comercial inválido (${params.margenPct}%): debe estar en el rango [0%, 100%). Un margen de 100% genera división por cero.`
+    );
+  }
+  const rawPrecioVentaUnitario = costoTotalUnitario / (1 - marginRate);
   const precioVentaUnitario = roundFinancial(rawPrecioVentaUnitario);
   const precioVentaExtendido = roundFinancial(precioVentaUnitario * safeQty);
   const precioVentaMensual = roundFinancial(precioVentaUnitario / safeMonths);
@@ -515,6 +526,8 @@ export interface GoalSeekResult {
   newInternacionPct?: number;
   newArancelPct?: number; // Strictly fixed at 6.0% (INTOCABLE)
   newMargenPct?: number;
+  minPossibleTotal?: number;
+  isBelowMinimumCost?: boolean;
   error?: string;
 }
 
@@ -607,9 +620,9 @@ export function solveGoalSeekParameters(
 
   if (mode === 'discount_amount') {
     requestedDiscount = Math.max(0, targetPriceOrDiscount);
-    targetTotal = Math.max(1, roundFinancial(currentTotal - requestedDiscount));
+    targetTotal = Math.max(0, roundFinancial(currentTotal - requestedDiscount));
   } else {
-    targetTotal = Math.max(1, roundFinancial(targetPriceOrDiscount));
+    targetTotal = Math.max(0, roundFinancial(targetPriceOrDiscount));
     requestedDiscount = Math.max(0, roundFinancial(currentTotal - targetTotal));
   }
 
@@ -636,6 +649,30 @@ export function solveGoalSeekParameters(
     : (currentParams.internacionPct > 0 ? currentParams.internacionPct : 7.0);
   const baseMargen = currentParams.margenPct > 0 ? currentParams.margenPct : 5.0;
 
+  // Floor validation: minimum possible total at 0% Internación and 0% Margen (preserving fixed Arancel)
+  const minPossibleTotal = computeTotal({
+    internacionPct: 0,
+    arancelPct: fixedArancel,
+    margenPct: 0,
+  });
+
+  if (targetTotal < minPossibleTotal - 0.01) {
+    return {
+      success: false,
+      isBelowMinimumCost: true,
+      minPossibleTotal,
+      currentTotal,
+      targetTotal,
+      achievedTotal: minPossibleTotal,
+      difference: roundFinancial(Math.abs(minPossibleTotal - targetTotal)),
+      discountAmount: roundFinancial(currentTotal - minPossibleTotal),
+      newInternacionPct: 0,
+      newArancelPct: fixedArancel,
+      newMargenPct: 0,
+      error: `Objetivo inalcanzable: $${targetTotal.toFixed(2)} USD está por debajo del costo piso mínimo de $${minPossibleTotal.toFixed(2)} USD (0% Internación y 0% Margen).`,
+    };
+  }
+
   // Binary search for equitable scaling factor k in [0.0, 1.5]
   let low = 0.0;
   let high = 1.5;
@@ -647,7 +684,7 @@ export function solveGoalSeekParameters(
     const testParams: QuoteParameters = {
       internacionPct: isInternacionStrictlyZero ? 0 : Math.max(0, mid * baseInternacion),
       arancelPct: fixedArancel,
-      margenPct: Math.max(0, mid * baseMargen),
+      margenPct: Math.min(99, Math.max(0, mid * baseMargen)),
     };
 
     const simulatedTotal = computeTotal(testParams);
@@ -667,7 +704,7 @@ export function solveGoalSeekParameters(
 
   // Candidate percentages rounded to 1 decimal place (e.g. 5.2%, 3.7%)
   let bestInt = isInternacionStrictlyZero ? 0 : Math.max(0, Math.round(bestK * baseInternacion * 10) / 10);
-  let bestMar = Math.max(0, Math.round(bestK * baseMargen * 10) / 10);
+  let bestMar = Math.min(99, Math.max(0, Math.round(bestK * baseMargen * 10) / 10));
   let bestAchieved = computeTotal({
     internacionPct: bestInt,
     arancelPct: fixedArancel,
@@ -680,7 +717,7 @@ export function solveGoalSeekParameters(
   for (const dInt of dIntRange) {
     for (let dMar = -3; dMar <= 3; dMar++) {
       const candInt = isInternacionStrictlyZero ? 0 : Math.max(0, Math.round((bestInt + dInt * 0.1) * 10) / 10);
-      const candMar = Math.max(0, Math.round((bestMar + dMar * 0.1) * 10) / 10);
+      const candMar = Math.min(99, Math.max(0, Math.round((bestMar + dMar * 0.1) * 10) / 10));
       const candTotal = computeTotal({
         internacionPct: candInt,
         arancelPct: fixedArancel,
@@ -698,6 +735,7 @@ export function solveGoalSeekParameters(
 
   return {
     success: true,
+    minPossibleTotal,
     currentTotal,
     targetTotal,
     achievedTotal: bestAchieved,
@@ -931,15 +969,8 @@ export function recalculateEstimateResult(
   const roundedCalculatedTotal = roundFinancial(calculatedProductTotal);
   const roundedOriginalTotal = roundFinancial(originalProductTotal);
 
-  // Consistency guarantee: at 0% parameters with no overrides or promos,
-  // calculated total MUST strictly equal original base Cisco cost.
-  const isZeroParams = params.internacionPct === 0 && params.arancelPct === 0 && params.margenPct === 0;
-  const hasNoOverrides = !overrides || Object.keys(overrides).length === 0;
-  const hasNoPromos = !promoPrices || Object.keys(promoPrices).length === 0;
-
-  const finalCalculatedTotal = isZeroParams && hasNoOverrides && hasNoPromos
-    ? roundedOriginalTotal
-    : roundedCalculatedTotal;
+  // Unified rounding policy: total must strictly match the sum of rounded line items (precioVentaExtendido)
+  const finalCalculatedTotal = roundedCalculatedTotal;
 
   const isOnlyLicensing = isPureLicensingQuote(newItems);
 

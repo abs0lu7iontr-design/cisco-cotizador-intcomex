@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { EstimateLineItem } from '../../core/types';
+import { isCloudSubscriptionSku } from '../../core/calculations';
 import { FastTrackAuditResult, FastTrackAuditMatch, FastTrackProduct } from './types';
 import {
   isFastTrackAuditEnabled,
@@ -100,9 +101,25 @@ export async function auditEstimateWithFastTrack(
       1,
       item.detectedDurationMonths || item.months || 1
     );
-    const isPeriodic = Boolean(
-      item.isPeriodicSubscription || durationMonths > 1
-    );
+    const cleanSkuKey = (item.partNumber || '').trim().toUpperCase();
+    const isExplicitPrepaid =
+      /prepaid/i.test(item.description || '') ||
+      /smartnet/i.test(item.description || '') ||
+      /\bsntc\b/i.test(item.description || '') ||
+      ((cleanSkuKey.startsWith('C1-') || /^C1[AFP]/.test(cleanSkuKey)) && !/^C1\d{3}/.test(cleanSkuKey)) ||
+      cleanSkuKey.startsWith('SVS-') ||
+      cleanSkuKey.startsWith('CON-') ||
+      cleanSkuKey.startsWith('CON') ||
+      cleanSkuKey.startsWith('CX-') ||
+      cleanSkuKey.startsWith('CXE-') ||
+      cleanSkuKey.startsWith('CXS-') ||
+      cleanSkuKey.startsWith('DCN-');
+
+    const isPeriodic =
+      !isExplicitPrepaid &&
+      (item.isPeriodicSubscription !== undefined
+        ? Boolean(item.isPeriodicSubscription)
+        : Boolean(durationMonths > 1 && isCloudSubscriptionSku(cleanSkuKey, item.description)));
 
     // Precio de lista total correspondiente al plazo completo del ítem
     const contractListPrice = isPeriodic

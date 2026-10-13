@@ -17,6 +17,11 @@ export function calculateEstimateSalesPricing(
   hardwareInternacionPercent: number // Arancel/internación solo para hardware (ej. 6 o 7%)
 ): CalculatedSaleLine[] {
   const marginDecimal = marginPercent / 100;
+  if (marginDecimal >= 1 || marginDecimal < 0 || Number.isNaN(marginDecimal)) {
+    throw new RangeError(
+      `Margen comercial inválido (${marginPercent}%): debe estar en el rango [0%, 100%). Un margen de 100% genera división por cero.`
+    );
+  }
   const hwInternacionDecimal = hardwareInternacionPercent / 100;
 
   return lines.map((line) => {
@@ -26,7 +31,7 @@ export function calculateEstimateSalesPricing(
     const applicableInternacion = isHardware ? hwInternacionDecimal : 0;
 
     const landedCost = roundFinancial(line.realUnitCost * (1 + applicableInternacion));
-    const rawUnitPrice = marginDecimal < 1 ? landedCost / (1 - marginDecimal) : landedCost;
+    const rawUnitPrice = landedCost / (1 - marginDecimal);
     const unitSalePrice = roundFinancial(rawUnitPrice);
     const extendedSalePrice = roundFinancial(unitSalePrice * line.qty);
     const marginAmountTotal = roundFinancial((unitSalePrice - landedCost) * line.qty);

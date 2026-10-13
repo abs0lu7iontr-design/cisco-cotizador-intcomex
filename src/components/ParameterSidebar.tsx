@@ -148,9 +148,10 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
 
   const handleInputChange = (field: keyof QuoteParameters, val: number) => {
     if (notifyChange) {
+      const maxAllowed = field === 'margenPct' ? 99 : 100;
       notifyChange({
         ...params,
-        [field]: Math.max(0, Math.min(100, isNaN(val) ? 0 : val)),
+        [field]: Math.max(0, Math.min(maxAllowed, isNaN(val) ? 0 : val)),
       });
     }
   };
@@ -332,7 +333,7 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
             <input
               type="number"
               min="0"
-              max="100"
+              max="99"
               step="0.1"
               value={params.margenPct}
               onChange={(e) => handleInputChange('margenPct', parseFloat(e.target.value))}
@@ -556,6 +557,21 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
               <Sparkles className="w-4 h-4" />
               <span>Aplicar Descuentos Calculados</span>
             </button>
+          </div>
+        )}
+
+        {/* Unreachable Goal Seek Warning Box */}
+        {goalSeekResult && !goalSeekResult.success && goalSeekResult.error && (
+          <div className="p-3.5 bg-rose-950/60 border border-rose-500/40 rounded-2xl space-y-2 animate-in fade-in text-[11px] text-rose-200">
+            <div className="font-bold text-rose-300 flex items-center justify-between">
+              <span>⚠️ Objetivo Inalcanzable</span>
+              {typeof goalSeekResult.minPossibleTotal === 'number' && (
+                <span className="font-mono text-xs text-amber-300">
+                  Piso: {formatUsd(goalSeekResult.minPossibleTotal)}
+                </span>
+              )}
+            </div>
+            <p className="text-rose-200/90 leading-relaxed">{goalSeekResult.error}</p>
           </div>
         )}
       </div>

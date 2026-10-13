@@ -157,17 +157,15 @@ export function calculateDsvPrices(
   const isService = baseCategory === 'service' || isCiscoServiceSku(partNumber, description);
 
   if (isService) {
-    const years = durationMonths >= 12 ? Math.max(1, Math.round(durationMonths / 12)) : 1;
+    const years = durationMonths > 1 ? durationMonths / 12 : 1;
 
     // 1. Columna J: INTACTA
     const discount = durationMonths >= 36 ? 0.4141 : 0.37;
     const colJ = Number((listPrice * (1 - discount)).toFixed(2));
 
-    // 2. Opción 1: Cálculo Teórico Dinámico
-    const distiDisc =
-      (itemData?.distiDiscount ?? distiDiscountPct) > 1
-        ? (itemData?.distiDiscount ?? distiDiscountPct) / 100
-        : (itemData?.distiDiscount ?? distiDiscountPct ?? 0);
+    // 2. Opción 1: Cálculo Teórico Dinámico (distiDiscount y distiDiscountPct siempre vienen en escala 0-100%)
+    const rawDiscPct = itemData?.distiDiscount ?? distiDiscountPct ?? 0;
+    const distiDisc = Math.max(0, Math.min(100, Number(rawDiscPct) || 0)) / 100;
 
     const durationList =
       itemData?.durationListPrice && itemData.durationListPrice > 0
@@ -211,6 +209,7 @@ export function calculateDsvPrices(
     };
   } else {
     // Hardware y Suscripciones (Resolución con Subscription Resolver)
+    const effectiveDealDiscPct = itemData?.distiDiscount ?? distiDiscountPct;
     const rawRow: DsvBomRowRaw = {
       lineNumber: lineNumber,
       magicKey: itemData?.magicKey || '',
@@ -227,7 +226,10 @@ export function calculateDsvPrices(
       pricingTermColAF: itemData?.pricingTerm,
       manualCategory: overrideCategory,
       partnerDiscountRate: getDsvDiscountRate(partNumber) / 100,
-      dealDiscountRate: distiDiscountPct > 0 ? distiDiscountPct / 100 : undefined,
+      dealDiscountRate:
+        typeof effectiveDealDiscPct === 'number' && !Number.isNaN(effectiveDealDiscPct) && effectiveDealDiscPct >= 0
+          ? effectiveDealDiscPct / 100
+          : undefined,
       description,
     };
 
