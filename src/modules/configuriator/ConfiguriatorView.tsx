@@ -92,7 +92,7 @@ import {
   PsirtAdvisory,
 } from '../ciscoApi';
 import { useCiscoAutomatedStore } from '../../core/store';
-import { checkIsIntangible, checkLlevaArancel } from '../../core/calculations';
+import { checkIsIntangible, checkLlevaArancel, formatLeadTime } from '../../core/calculations';
 import { CloudEstimateRecord } from '../cloud';
 import { saveDesktopExcelFile, isDesktopApp } from '../../core/desktopBridge';
 import {
@@ -931,7 +931,8 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
         costoTotalUnitario,
         precioVentaUnitario,
         precioVentaExtendido,
-        transformedLeadTime: isIntangible ? 'Entrega Digital (ED)' : '14-21 días',
+        originalLeadTimeDays: isIntangible ? 0 : 21,
+        transformedLeadTime: isIntangible ? 'Entrega Digital (ED)' : formatLeadTime(21),
         isFastTrackPromo: Boolean(row.fastTrackInfo),
       };
     });

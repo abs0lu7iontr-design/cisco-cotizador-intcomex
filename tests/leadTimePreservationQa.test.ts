@@ -39,6 +39,13 @@ describe('QA Golden Rules: Cisco CCW Lead Time Conversion & Anti-Degradation', (
     assert.strictEqual(formatted, '4 semanas a pedido');
   });
 
+  it('Regla 6b: 5 días CCW (o 3-6 días) da 1 sem fábrica + 2 sem tránsito = 3 semanas, pero la regla de oro exige mínimo 4 semanas a pedido', () => {
+    assert.strictEqual(formatLeadTime(5), '4 semanas a pedido', '5 días debe dar exactamente 4 semanas a pedido');
+    assert.strictEqual(formatLeadTime(3), '4 semanas a pedido', '3 días debe dar 4 semanas a pedido');
+    assert.strictEqual(formatLeadTime(4), '4 semanas a pedido', '4 días debe dar 4 semanas a pedido');
+    assert.strictEqual(formatLeadTime(6), '4 semanas a pedido', '6 días debe dar 4 semanas a pedido');
+  });
+
   it('Regla 7: <= 2 días CCW es stock inmediato (retorna cadena vacía)', () => {
     assert.strictEqual(formatLeadTime(2), '');
     assert.strictEqual(formatLeadTime(0), '');
