@@ -12,7 +12,14 @@ import {
   query,
   orderBy,
 } from 'firebase/firestore';
-import { getFirestoreInstance } from '../cloud/firebaseConfig';
+import {
+  getFirestoreInstance,
+  readProjectScopedStorage,
+  writeProjectScopedStorage,
+  registerProjectScopedCleanup,
+  captureProjectContext,
+  isProjectContextCurrent,
+} from '../cloud/firebaseConfig';
 import {
   DealReminderRecord,
   DealEscalationChannel,
@@ -22,6 +29,14 @@ import {
 } from './dealReminderTypes';
 import { ProcessedEstimateResult } from '../../core/types';
 import { sanitizeForFirestore } from '../cloud/firestoreService';
+import {
+  putCollectionRecordsBatch,
+  deleteCollectionRecord,
+  hydrateAndMigrateCollection,
+  appendEntityEventAtomic,
+  mergeAndQueryEntityEvents,
+  EntityHistoryEvent,
+} from '../storage/indexedDbCollectionStore';
 
 export const DEAL_REMINDERS_COLLECTION = 'deal_reminders';
 const LOCAL_DEAL_REMINDERS_PRIMARY_KEY = 'cisco_deal_reminders_cache_v2';
@@ -31,18 +46,20 @@ const LOCAL_DEAL_REMINDERS_DELETED_KEY = 'cisco_deal_reminders_deleted_ids_v1';
 const LOCAL_DEAL_REMINDERS_INIT_KEY = 'cisco_deal_reminders_initialized_flag_v1';
 
 // ----------------------------------------------------------------------------
-// Caché Local Multi-Tier Vault + Tombstones (Blindaje Anti-Pérdida de Deals)
+// Caché Local Multi-Tier Vault + IndexedDB + Tombstones (Blindaje Anti-Pérdida)
 // ----------------------------------------------------------------------------
 let inMemoryDealRemindersCache: DealReminderRecord[] = [];
 
+registerProjectScopedCleanup(() => {
+  inMemoryDealRemindersCache = [];
+});
+
 export function getDeletedDealReminderIds(): Set<string> {
   try {
-    if (typeof localStorage !== 'undefined') {
-      const raw = localStorage.getItem(LOCAL_DEAL_REMINDERS_DELETED_KEY);
-      if (raw) {
-        const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) return new Set(arr);
-      }
+    const raw = readProjectScopedStorage(LOCAL_DEAL_REMINDERS_DELETED_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return new Set(arr);
     }
   } catch (_) {}
   return new Set();
@@ -50,11 +67,9 @@ export function getDeletedDealReminderIds(): Set<string> {
 
 export function addDeletedDealReminderId(id: string): void {
   try {
-    if (typeof localStorage !== 'undefined') {
-      const deleted = getDeletedDealReminderIds();
-      deleted.add(id);
-      localStorage.setItem(LOCAL_DEAL_REMINDERS_DELETED_KEY, JSON.stringify(Array.from(deleted)));
-    }
+    const deleted = getDeletedDealReminderIds();
+    deleted.add(id);
+    writeProjectScopedStorage(LOCAL_DEAL_REMINDERS_DELETED_KEY, JSON.stringify(Array.from(deleted)));
   } catch (_) {}
 }
 
@@ -104,29 +119,27 @@ export function getLocalDealRemindersCache(): DealReminderRecord[] {
   ];
 
   try {
-    if (typeof localStorage !== 'undefined') {
-      for (const k of keysToRead) {
-        const raw = localStorage.getItem(k);
-        if (raw) {
-          const list = JSON.parse(raw);
-          if (Array.isArray(list)) {
-            for (const rawItem of list) {
-              if (rawItem && rawItem.id && !deletedIds.has(rawItem.id)) {
-                const item = normalizeLegacyDealReminderRecord(rawItem);
-                const existing = map.get(item.id);
-                if (!existing) {
+    for (const k of keysToRead) {
+      const raw = readProjectScopedStorage(k);
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          for (const rawItem of list) {
+            if (rawItem && rawItem.id && !deletedIds.has(rawItem.id)) {
+              const item = normalizeLegacyDealReminderRecord(rawItem);
+              const existing = map.get(item.id);
+              if (!existing) {
+                map.set(item.id, item);
+              } else {
+                if (item.status === 'APPROVED' && existing.status !== 'APPROVED') {
                   map.set(item.id, item);
+                } else if (existing.status === 'APPROVED' && item.status !== 'APPROVED') {
+                  // Keep approved existing
                 } else {
-                  if (item.status === 'APPROVED' && existing.status !== 'APPROVED') {
+                  const existingTs = existing.updatedAt || existing.createdAt || '';
+                  const itemTs = item.updatedAt || item.createdAt || '';
+                  if (itemTs >= existingTs) {
                     map.set(item.id, item);
-                  } else if (existing.status === 'APPROVED' && item.status !== 'APPROVED') {
-                    // Keep approved existing
-                  } else {
-                    const existingTs = existing.updatedAt || existing.createdAt || '';
-                    const itemTs = item.updatedAt || item.createdAt || '';
-                    if (itemTs >= existingTs) {
-                      map.set(item.id, item);
-                    }
                   }
                 }
               }
@@ -139,8 +152,18 @@ export function getLocalDealRemindersCache(): DealReminderRecord[] {
 
   // Si hay datos en memoria que no están en localStorage, incluirlos
   for (const rawMem of inMemoryDealRemindersCache) {
-    if (rawMem && rawMem.id && !deletedIds.has(rawMem.id) && !map.has(rawMem.id)) {
-      map.set(rawMem.id, normalizeLegacyDealReminderRecord(rawMem));
+    if (rawMem && rawMem.id && !deletedIds.has(rawMem.id)) {
+      const normalized = normalizeLegacyDealReminderRecord(rawMem);
+      const existing = map.get(normalized.id);
+      if (!existing) {
+        map.set(normalized.id, normalized);
+      } else {
+        const existingTs = existing.updatedAt || existing.createdAt || '';
+        const itemTs = normalized.updatedAt || normalized.createdAt || '';
+        if (itemTs >= existingTs) {
+          map.set(normalized.id, normalized);
+        }
+      }
     }
   }
 
@@ -159,14 +182,21 @@ export function saveLocalDealRemindersCache(records: DealReminderRecord[]): void
   inMemoryDealRemindersCache = [...cleanRecords];
 
   try {
-    if (typeof localStorage !== 'undefined') {
-      const json = JSON.stringify(cleanRecords);
-      localStorage.setItem(LOCAL_DEAL_REMINDERS_PRIMARY_KEY, json);
-      localStorage.setItem(LOCAL_DEAL_REMINDERS_VAULT_KEY, json);
-      localStorage.setItem(LOCAL_DEAL_REMINDERS_LEGACY_KEY, json);
-      localStorage.setItem(LOCAL_DEAL_REMINDERS_INIT_KEY, 'true');
-    }
-  } catch (_) {}
+    const json = JSON.stringify(cleanRecords);
+    writeProjectScopedStorage(LOCAL_DEAL_REMINDERS_PRIMARY_KEY, json);
+    writeProjectScopedStorage(LOCAL_DEAL_REMINDERS_VAULT_KEY, json);
+    writeProjectScopedStorage(LOCAL_DEAL_REMINDERS_LEGACY_KEY, json);
+    writeProjectScopedStorage(LOCAL_DEAL_REMINDERS_INIT_KEY, 'true');
+  } catch (_) {
+    // Item 11: Si localStorage excede cuota, persiste en memoria + IndexedDB
+  }
+
+  // Item 11: Persistir en IndexedDB de forma asíncrona
+  putCollectionRecordsBatch(
+    'deal_reminders',
+    cleanRecords.map((r) => ({ id: r.id, record: r })),
+    { replaceAllInScope: true }
+  ).catch(() => {});
 }
 
 // ----------------------------------------------------------------------------
@@ -292,8 +322,41 @@ const SEED_DEAL_REMINDERS: DealReminderRecord[] = [
  * (Garantiza que ningún Deal ingresado recientemente se pierda y sincroniza con Cloud Firestore)
  */
 export async function getDealReminders(): Promise<DealReminderRecord[]> {
-  const localRecords = getLocalDealRemindersCache();
+  const projectCtx = captureProjectContext();
   const deletedIds = getDeletedDealReminderIds();
+
+  // Item 11: Hidratar desde IndexedDB + migrar datos heredados de localStorage
+  let localRecords = getLocalDealRemindersCache();
+  try {
+    const hydrated = await hydrateAndMigrateCollection<DealReminderRecord>(
+      'deal_reminders',
+      [
+        LOCAL_DEAL_REMINDERS_PRIMARY_KEY,
+        LOCAL_DEAL_REMINDERS_VAULT_KEY,
+        LOCAL_DEAL_REMINDERS_LEGACY_KEY,
+      ],
+      (r) => r.id
+    );
+    if (hydrated.records.length > 0 && isProjectContextCurrent(projectCtx)) {
+      const idbMap = new Map<string, DealReminderRecord>();
+      for (const r of localRecords) idbMap.set(r.id, r);
+      for (const r of hydrated.records) {
+        if (r && r.id && !deletedIds.has(r.id)) {
+          const normalized = normalizeLegacyDealReminderRecord(r);
+          const existing = idbMap.get(normalized.id);
+          const exTs = existing?.updatedAt || existing?.createdAt || '';
+          const rTs = normalized.updatedAt || normalized.createdAt || '';
+          if (!existing || rTs >= exTs) {
+            idbMap.set(normalized.id, normalized);
+          }
+        }
+      }
+      localRecords = Array.from(idbMap.values()).sort(
+        (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      );
+      inMemoryDealRemindersCache = [...localRecords];
+    }
+  } catch (_) {}
 
   try {
     const { db, isReady } = getFirestoreInstance();
@@ -301,11 +364,15 @@ export async function getDealReminders(): Promise<DealReminderRecord[]> {
       const q = query(collection(db, DEAL_REMINDERS_COLLECTION), orderBy('createdAt', 'desc'));
       const snapshot = await getDocs(q);
 
+      if (!isProjectContextCurrent(projectCtx)) {
+        return getLocalDealRemindersCache();
+      }
+
       const cloudRecords: DealReminderRecord[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as DealReminderRecord;
         if (data && data.id && !deletedIds.has(data.id)) {
-          cloudRecords.push(data);
+          cloudRecords.push(normalizeLegacyDealReminderRecord(data));
         } else if (data && data.id && deletedIds.has(data.id)) {
           // Si el Deal fue eliminado por el usuario, purgarlo de Firestore en segundo plano
           deleteDoc(doc(db, DEAL_REMINDERS_COLLECTION, data.id)).catch(() => {});
@@ -357,7 +424,7 @@ export async function getDealReminders(): Promise<DealReminderRecord[]> {
       );
 
       // Auto-reparación / Auto-sincronización con la nube para Deals locales pendientes
-      if (pendingSyncToCloud.length > 0) {
+      if (pendingSyncToCloud.length > 0 && isProjectContextCurrent(projectCtx)) {
         for (const item of pendingSyncToCloud) {
           try {
             const docRef = doc(db, DEAL_REMINDERS_COLLECTION, item.id);
@@ -369,7 +436,7 @@ export async function getDealReminders(): Promise<DealReminderRecord[]> {
         }
       }
 
-      if (mergedList.length > 0) {
+      if (mergedList.length > 0 && isProjectContextCurrent(projectCtx)) {
         saveLocalDealRemindersCache(mergedList);
         return mergedList;
       }
@@ -384,7 +451,7 @@ export async function getDealReminders(): Promise<DealReminderRecord[]> {
   }
 
   // Inicializar con semillas SOLO si es primera ejecución absoluta y no hay flag de inicio
-  const isInitialized = typeof localStorage !== 'undefined' && localStorage.getItem(LOCAL_DEAL_REMINDERS_INIT_KEY);
+  const isInitialized = readProjectScopedStorage(LOCAL_DEAL_REMINDERS_INIT_KEY);
   if (!isInitialized && localRecords.length === 0) {
     saveLocalDealRemindersCache(SEED_DEAL_REMINDERS);
     return SEED_DEAL_REMINDERS;
@@ -397,16 +464,21 @@ export async function getDealReminders(): Promise<DealReminderRecord[]> {
  * Guarda o actualiza un recordatorio de Deal con sanitización estricta
  */
 export async function saveDealReminder(deal: DealReminderRecord): Promise<void> {
+  const projectCtx = captureProjectContext();
   // 1. Actualizar caché local inmediatamente en todos los almacenes redundantes
   const current = getLocalDealRemindersCache();
   const existingIndex = current.findIndex((d) => d.id === deal.id);
+  const updatedDeal: DealReminderRecord = {
+    ...deal,
+    updatedAt: deal.updatedAt || new Date().toISOString(),
+  };
   let updatedList: DealReminderRecord[];
 
   if (existingIndex >= 0) {
     updatedList = [...current];
-    updatedList[existingIndex] = { ...deal, updatedAt: new Date().toISOString() };
+    updatedList[existingIndex] = updatedDeal;
   } else {
-    updatedList = [{ ...deal, updatedAt: new Date().toISOString() }, ...current];
+    updatedList = [updatedDeal, ...current];
   }
 
   saveLocalDealRemindersCache(updatedList);
@@ -414,9 +486,9 @@ export async function saveDealReminder(deal: DealReminderRecord): Promise<void> 
   // 2. Sincronizar en Cloud Firestore con sanitización para evitar errores de undefined
   try {
     const { db, isReady } = getFirestoreInstance();
-    if (isReady && db) {
-      const docRef = doc(db, DEAL_REMINDERS_COLLECTION, deal.id);
-      const sanitized = sanitizeForFirestore(deal);
+    if (isReady && db && isProjectContextCurrent(projectCtx)) {
+      const docRef = doc(db, DEAL_REMINDERS_COLLECTION, updatedDeal.id);
+      const sanitized = sanitizeForFirestore(updatedDeal);
       await setDoc(docRef, sanitized, { merge: true });
     }
   } catch (err) {
@@ -424,22 +496,48 @@ export async function saveDealReminder(deal: DealReminderRecord): Promise<void> 
   }
 }
 
+export interface DealEventMutationOptions {
+  idempotencyKey?: string;
+  timestampIso?: string;
+}
+
+/**
+ * Item 12: Consulta la bitácora completa de un DealReminder combinando eventos
+ * embebidos heredados y el almacén normalizado `entity_events`, ordenado cronológicamente.
+ */
+export async function getDealReminderHistoryEvents(dealId: string): Promise<EntityHistoryEvent[]> {
+  const allDeals = getLocalDealRemindersCache();
+  const deal = allDeals.find((d) => d.id === dealId);
+  return mergeAndQueryEntityEvents('DEAL_REMINDER', dealId, deal?.history || []);
+}
+
 /**
  * Actualiza el estado de un Deal (Aprobado, Rechazado, Requiere Info, etc.) y añade una nota a la bitácora
+ * de forma atómica e idempotente (Item 12).
  */
 export async function updateDealReminderStatus(
   dealId: string,
   newStatus: DealReminderStatus,
   author: string,
-  comment?: string
+  comment?: string,
+  options?: DealEventMutationOptions
 ): Promise<void> {
   const allDeals = getLocalDealRemindersCache();
   const deal = allDeals.find((d) => d.id === dealId);
   if (!deal) return;
 
-  const nowIso = new Date().toISOString();
+  const nowIso = options?.timestampIso || new Date().toISOString();
+  const idempKey =
+    options?.idempotencyKey ||
+    `deal_status_${dealId}_${newStatus}_${author || 'Usuario'}_${comment || ''}_${nowIso.slice(0, 19)}`;
+
+  const existingNote = (deal.history || []).find((h) => h.id === idempKey);
+  if (existingNote && deal.status === newStatus) {
+    return;
+  }
+
   const newNote: DealHistoryNote = {
-    id: `hist-${Date.now()}`,
+    id: idempKey,
     date: nowIso,
     author: author || 'Usuario',
     action: 'STATUS_CHANGED',
@@ -453,7 +551,27 @@ export async function updateDealReminderStatus(
     history: [newNote, ...(deal.history || [])],
   };
 
-  await saveDealReminder(updatedDeal);
+  const atomicRes = await appendEntityEventAtomic({
+    entityType: 'DEAL_REMINDER',
+    entityId: dealId,
+    actionOrStage: 'STATUS_CHANGED',
+    author: author || 'Usuario',
+    comment: newNote.comment,
+    createdAt: nowIso,
+    eventId: idempKey,
+    idempotencyKey: idempKey,
+    metadata: { previousStatus: deal.status, newStatus },
+    collectionName: 'deal_reminders',
+    updatedEntity: updatedDeal,
+  });
+
+  if (!atomicRes.success) {
+    throw new Error(atomicRes.error || 'No se pudo confirmar el cambio de estado atómico del Deal.');
+  }
+
+  if (!atomicRes.wasDuplicate) {
+    await saveDealReminder(updatedDeal);
+  }
 }
 
 /**
@@ -462,17 +580,25 @@ export async function updateDealReminderStatus(
  */
 export async function recordDealReminderCopied(
   dealId: string,
-  author: string
+  author: string,
+  options?: DealEventMutationOptions
 ): Promise<DealReminderRecord | null> {
   const allDeals = getLocalDealRemindersCache();
   const deal = allDeals.find((d) => d.id === dealId);
   if (!deal) return null;
 
-  const nowIso = new Date().toISOString();
+  const nowIso = options?.timestampIso || new Date().toISOString();
+  const idempKey =
+    options?.idempotencyKey || `hist-copy-${dealId}-${author || 'Usuario'}-${nowIso}`;
+
+  if ((deal.history || []).some((h) => h.id === idempKey)) {
+    return deal;
+  }
+
   const copyNumber = (deal.reminderCopyCount || 0) + 1;
 
   const newNote: DealHistoryNote = {
-    id: `hist-copy-${Date.now()}`,
+    id: idempKey,
     date: nowIso,
     author: author || 'Usuario',
     action: 'REMINDER_COPIED',
@@ -489,7 +615,27 @@ export async function recordDealReminderCopied(
     history: [newNote, ...(deal.history || [])],
   };
 
-  await saveDealReminder(updatedDeal);
+  const atomicRes = await appendEntityEventAtomic({
+    entityType: 'DEAL_REMINDER',
+    entityId: dealId,
+    actionOrStage: 'REMINDER_COPIED',
+    author: author || 'Usuario',
+    comment: newNote.comment,
+    createdAt: nowIso,
+    eventId: idempKey,
+    idempotencyKey: idempKey,
+    metadata: { copyNumber },
+    collectionName: 'deal_reminders',
+    updatedEntity: updatedDeal,
+  });
+
+  if (!atomicRes.success) {
+    throw new Error(atomicRes.error || 'Fallo al registrar evento REMINDER_COPIED.');
+  }
+
+  if (!atomicRes.wasDuplicate) {
+    await saveDealReminder(updatedDeal);
+  }
   return updatedDeal;
 }
 
@@ -500,17 +646,25 @@ export async function recordDealReminderCopied(
 export async function confirmDealReminderSent(
   dealId: string,
   author: string,
-  source: 'MANUAL_CONFIRMATION' | 'CLOUDFLARE_EMAIL' = 'MANUAL_CONFIRMATION'
+  source: 'MANUAL_CONFIRMATION' | 'CLOUDFLARE_EMAIL' = 'MANUAL_CONFIRMATION',
+  options?: DealEventMutationOptions
 ): Promise<DealReminderRecord | null> {
   const allDeals = getLocalDealRemindersCache();
   const deal = allDeals.find((d) => d.id === dealId);
   if (!deal) return null;
 
-  const nowIso = new Date().toISOString();
+  const nowIso = options?.timestampIso || new Date().toISOString();
+  const idempKey =
+    options?.idempotencyKey || `hist-sent-${dealId}-${source}-${author || 'Usuario'}-${nowIso}`;
+
+  if ((deal.history || []).some((h) => h.id === idempKey)) {
+    return deal;
+  }
+
   const reminderNumber = (deal.reminderCount || 0) + 1;
 
   const newNote: DealHistoryNote = {
-    id: `hist-sent-${Date.now()}`,
+    id: idempKey,
     date: nowIso,
     author: author || 'Usuario',
     action: 'REMINDER_SENT',
@@ -530,7 +684,27 @@ export async function confirmDealReminderSent(
     history: [newNote, ...(deal.history || [])],
   };
 
-  await saveDealReminder(updatedDeal);
+  const atomicRes = await appendEntityEventAtomic({
+    entityType: 'DEAL_REMINDER',
+    entityId: dealId,
+    actionOrStage: 'REMINDER_SENT',
+    author: author || 'Usuario',
+    comment: newNote.comment,
+    createdAt: nowIso,
+    eventId: idempKey,
+    idempotencyKey: idempKey,
+    metadata: { reminderNumber, source },
+    collectionName: 'deal_reminders',
+    updatedEntity: updatedDeal,
+  });
+
+  if (!atomicRes.success) {
+    throw new Error(atomicRes.error || 'Fallo al registrar confirmación de envío de recordatorio.');
+  }
+
+  if (!atomicRes.wasDuplicate) {
+    await saveDealReminder(updatedDeal);
+  }
   return updatedDeal;
 }
 
@@ -549,20 +723,28 @@ export async function snoozeDealReminder(
   dealId: string,
   snoozeUntilIso: string,
   author: string,
-  reason: string = 'Recordatorio pospuesto'
+  reason: string = 'Recordatorio pospuesto',
+  options?: DealEventMutationOptions
 ): Promise<void> {
   const allDeals = getLocalDealRemindersCache();
   const deal = allDeals.find((d) => d.id === dealId);
   if (!deal) return;
 
-  const nowIso = new Date().toISOString();
+  const nowIso = options?.timestampIso || new Date().toISOString();
+  const idempKey =
+    options?.idempotencyKey || `hist-snooze-${dealId}-${snoozeUntilIso}-${author || 'Usuario'}`;
+
+  if ((deal.history || []).some((h) => h.id === idempKey) && deal.snoozedUntil === snoozeUntilIso) {
+    return;
+  }
+
   const snoozeFormatted = new Date(snoozeUntilIso).toLocaleTimeString('es-CL', {
     hour: '2-digit',
     minute: '2-digit',
   });
 
   const newNote: DealHistoryNote = {
-    id: `hist-${Date.now()}`,
+    id: idempKey,
     date: nowIso,
     author: author || 'Usuario',
     action: 'NOTE_ADDED',
@@ -577,7 +759,27 @@ export async function snoozeDealReminder(
     history: [newNote, ...(deal.history || [])],
   };
 
-  await saveDealReminder(updatedDeal);
+  const atomicRes = await appendEntityEventAtomic({
+    entityType: 'DEAL_REMINDER',
+    entityId: dealId,
+    actionOrStage: 'SNOOZED',
+    author: author || 'Usuario',
+    comment: newNote.comment,
+    createdAt: nowIso,
+    eventId: idempKey,
+    idempotencyKey: idempKey,
+    metadata: { snoozedUntil: snoozeUntilIso, reason },
+    collectionName: 'deal_reminders',
+    updatedEntity: updatedDeal,
+  });
+
+  if (!atomicRes.success) {
+    throw new Error(atomicRes.error || 'Fallo al posponer recordatorio de Deal.');
+  }
+
+  if (!atomicRes.wasDuplicate) {
+    await saveDealReminder(updatedDeal);
+  }
 }
 
 /**
@@ -587,15 +789,23 @@ export async function snoozeDealReminder(
 export async function markDealDiscountsApproved(
   dealId: string,
   author: string,
-  note: string = 'Descuentos aprobados por Cisco'
+  note: string = 'Descuentos aprobados por Cisco',
+  options?: DealEventMutationOptions
 ): Promise<void> {
   const allDeals = getLocalDealRemindersCache();
   const deal = allDeals.find((d) => d.id === dealId);
   if (!deal) return;
 
-  const nowIso = new Date().toISOString();
+  const nowIso = options?.timestampIso || new Date().toISOString();
+  const idempKey =
+    options?.idempotencyKey || `hist-approved-${dealId}-${author || 'Usuario'}-${note}`;
+
+  if ((deal.history || []).some((h) => h.id === idempKey) && deal.status === 'APPROVED') {
+    return;
+  }
+
   const newNote: DealHistoryNote = {
-    id: `hist-${Date.now()}`,
+    id: idempKey,
     date: nowIso,
     author: author || 'Usuario',
     action: 'STATUS_CHANGED',
@@ -611,7 +821,27 @@ export async function markDealDiscountsApproved(
     history: [newNote, ...(deal.history || [])],
   };
 
-  await saveDealReminder(updatedDeal);
+  const atomicRes = await appendEntityEventAtomic({
+    entityType: 'DEAL_REMINDER',
+    entityId: dealId,
+    actionOrStage: 'STATUS_CHANGED',
+    author: author || 'Usuario',
+    comment: newNote.comment,
+    createdAt: nowIso,
+    eventId: idempKey,
+    idempotencyKey: idempKey,
+    metadata: { status: 'APPROVED', discountsApprovedAt: nowIso },
+    collectionName: 'deal_reminders',
+    updatedEntity: updatedDeal,
+  });
+
+  if (!atomicRes.success) {
+    throw new Error(atomicRes.error || 'Fallo al aprobar descuentos del Deal.');
+  }
+
+  if (!atomicRes.wasDuplicate) {
+    await saveDealReminder(updatedDeal);
+  }
 }
 
 /**
@@ -671,15 +901,23 @@ export async function triggerOfflineEmailNotification(
 export async function addDealHistoryNote(
   dealId: string,
   author: string,
-  comment: string
+  comment: string,
+  options?: DealEventMutationOptions
 ): Promise<void> {
   const allDeals = getLocalDealRemindersCache();
   const deal = allDeals.find((d) => d.id === dealId);
   if (!deal) return;
 
-  const nowIso = new Date().toISOString();
+  const nowIso = options?.timestampIso || new Date().toISOString();
+  const idempKey =
+    options?.idempotencyKey || `hist-note-${dealId}-${author || 'Usuario'}-${comment.trim()}-${nowIso.slice(0, 19)}`;
+
+  if ((deal.history || []).some((h) => h.id === idempKey)) {
+    return;
+  }
+
   const newNote: DealHistoryNote = {
-    id: `hist-${Date.now()}`,
+    id: idempKey,
     date: nowIso,
     author: author || 'Usuario',
     action: 'NOTE_ADDED',
@@ -692,7 +930,26 @@ export async function addDealHistoryNote(
     history: [newNote, ...(deal.history || [])],
   };
 
-  await saveDealReminder(updatedDeal);
+  const atomicRes = await appendEntityEventAtomic({
+    entityType: 'DEAL_REMINDER',
+    entityId: dealId,
+    actionOrStage: 'NOTE_ADDED',
+    author: author || 'Usuario',
+    comment: newNote.comment,
+    createdAt: nowIso,
+    eventId: idempKey,
+    idempotencyKey: idempKey,
+    collectionName: 'deal_reminders',
+    updatedEntity: updatedDeal,
+  });
+
+  if (!atomicRes.success) {
+    throw new Error(atomicRes.error || 'Fallo al agregar nota al historial del Deal.');
+  }
+
+  if (!atomicRes.wasDuplicate) {
+    await saveDealReminder(updatedDeal);
+  }
 }
 
 /**
@@ -705,6 +962,7 @@ export async function deleteDealReminder(dealId: string): Promise<void> {
   const current = getLocalDealRemindersCache();
   const updatedList = current.filter((d) => d.id !== dealId);
   saveLocalDealRemindersCache(updatedList);
+  deleteCollectionRecord('deal_reminders', dealId).catch(() => {});
 
   try {
     const { db, isReady } = getFirestoreInstance();

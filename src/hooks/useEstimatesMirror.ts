@@ -6,6 +6,15 @@
 import { useSyncExternalStore } from 'react';
 import type { CloudEstimateRecord } from '../modules/cloud/types';
 import { normalizeIsoTimestamp, compareDatesUnknownLast } from '../utils/dateUtils';
+import {
+  getActiveProjectScopeKey,
+  readProjectScopedStorage,
+  writeProjectScopedStorage,
+} from '../modules/cloud/firebaseConfig';
+import {
+  getCollectionRecordsSync,
+  putCollectionRecordsBatch,
+} from '../modules/storage/indexedDbCollectionStore';
 
 // ----------------------------------------------------------------------------
 // Redundant Multi-Tier Storage Keys ("Blindaje de Persistencia Local")
@@ -17,29 +26,38 @@ export const LOCAL_ESTIMATES_LEGACY_KEY = 'cisco_estimates_history_v2';
 export const LOCAL_ESTIMATES_DELETED_KEY = 'cisco_estimates_deleted_ids_v1';
 export const LOCAL_MIRROR_SYNC_TS_KEY = 'cisco_cloud_estimates_mirror_sync_ts';
 
-export function getDeletedEstimateIds(): Set<string> {
+export function getDeletedEstimateIds(projectId?: string): Set<string> {
   try {
     if (typeof localStorage === 'undefined') return new Set();
-    const raw = localStorage.getItem(LOCAL_ESTIMATES_DELETED_KEY);
+    const raw = readProjectScopedStorage(LOCAL_ESTIMATES_DELETED_KEY, projectId);
     return raw ? new Set(JSON.parse(raw)) : new Set();
   } catch {
     return new Set();
   }
 }
 
-export function addDeletedEstimateId(idOrEstimateId: string): void {
+export function addDeletedEstimateId(idOrEstimateId: string, projectId?: string): void {
   try {
     if (typeof localStorage === 'undefined' || !idOrEstimateId) return;
-    const current = getDeletedEstimateIds();
+    const current = getDeletedEstimateIds(projectId);
     const clean = idOrEstimateId.trim();
     current.add(clean);
     current.add(clean.toUpperCase());
-    localStorage.setItem(LOCAL_ESTIMATES_DELETED_KEY, JSON.stringify(Array.from(current)));
+    writeProjectScopedStorage(
+      LOCAL_ESTIMATES_DELETED_KEY,
+      JSON.stringify(Array.from(current)),
+      projectId
+    );
   } catch {}
 }
 
 let cachedHash: string | null = null;
 let cachedSnapshot: CloudEstimateRecord[] = [];
+let lastMirrorStorageWarning: string | null = null;
+
+export function getLastEstimatesMirrorWarning(): string | null {
+  return lastMirrorStorageWarning;
+}
 
 /**
  * Deduplicates and merges multiple estimate arrays by Estimate ID, Deal ID, or document ID.
@@ -144,23 +162,29 @@ function mergeAndDeduplicateEstimates(records: CloudEstimateRecord[]): CloudEsti
 }
 
 /**
- * Returns instantaneous local snapshot. Reads across all redundant vaults,
+ * Returns instantaneous local snapshot. Reads across IndexedDB collection store and redundant vaults,
  * self-heals any missing keys, and ensures referential equality when data is unchanged.
  */
 export function getEstimatesMirrorSnapshot(): CloudEstimateRecord[] {
   try {
+    const scopeKey = getActiveProjectScopeKey();
+    const idbRecords = getCollectionRecordsSync<CloudEstimateRecord>('estimates', scopeKey);
+
     if (typeof localStorage === 'undefined') {
+      if (idbRecords.length > 0) {
+        cachedSnapshot = mergeAndDeduplicateEstimates(idbRecords);
+      }
       return cachedSnapshot;
     }
 
-    // Read from all tiers of redundant local storage
-    const rawPrimary = localStorage.getItem(LOCAL_ESTIMATES_PRIMARY_KEY) || '';
-    const rawVault = localStorage.getItem(LOCAL_ESTIMATES_VAULT_KEY) || '';
-    const rawMirror = localStorage.getItem(LOCAL_ESTIMATES_MIRROR_KEY) || '';
-    const rawLegacy = localStorage.getItem(LOCAL_ESTIMATES_LEGACY_KEY) || '';
+    // Read from all tiers of project-scoped redundant local storage
+    const rawPrimary = readProjectScopedStorage(LOCAL_ESTIMATES_PRIMARY_KEY, scopeKey) || '';
+    const rawVault = readProjectScopedStorage(LOCAL_ESTIMATES_VAULT_KEY, scopeKey) || '';
+    const rawMirror = readProjectScopedStorage(LOCAL_ESTIMATES_MIRROR_KEY, scopeKey) || '';
+    const rawLegacy = readProjectScopedStorage(LOCAL_ESTIMATES_LEGACY_KEY, scopeKey) || '';
 
-    // Fast path: if storage strings haven't changed, preserve referential equality strictly
-    const currentHash = `${rawPrimary}:::${rawVault}:::${rawMirror}:::${rawLegacy}`;
+    // Fast path: if storage strings and IDB count haven't changed, preserve referential equality strictly
+    const currentHash = `${scopeKey}:::${idbRecords.length}:::${rawPrimary}:::${rawVault}:::${rawMirror}:::${rawLegacy}`;
     if (cachedHash !== null && currentHash === cachedHash) {
       return cachedSnapshot;
     }
@@ -172,7 +196,6 @@ export function getEstimatesMirrorSnapshot(): CloudEstimateRecord[] {
     // Also inspect legacy quoter history
     let legacyList: any[] = [];
     try {
-      const rawLegacy = localStorage.getItem(LOCAL_ESTIMATES_LEGACY_KEY);
       if (rawLegacy) {
         legacyList = JSON.parse(rawLegacy);
       }
@@ -225,8 +248,9 @@ export function getEstimatesMirrorSnapshot(): CloudEstimateRecord[] {
         };
       });
 
-    // Merge all available tiers into one comprehensive collection
+    // Merge all available tiers (including full-item records from IndexedDB collection store)
     const merged = mergeAndDeduplicateEstimates([
+      ...idbRecords,
       ...primaryList,
       ...vaultList,
       ...mirrorList,
@@ -248,9 +272,10 @@ export function getEstimatesMirrorSnapshot(): CloudEstimateRecord[] {
 export function healEstimatesMirrorVaults(): void {
   try {
     if (typeof localStorage === 'undefined') return;
-    const rawPrimary = localStorage.getItem(LOCAL_ESTIMATES_PRIMARY_KEY) || '';
-    const rawVault = localStorage.getItem(LOCAL_ESTIMATES_VAULT_KEY) || '';
-    const rawMirror = localStorage.getItem(LOCAL_ESTIMATES_MIRROR_KEY) || '';
+    const scopeKey = getActiveProjectScopeKey();
+    const rawPrimary = readProjectScopedStorage(LOCAL_ESTIMATES_PRIMARY_KEY, scopeKey) || '';
+    const rawVault = readProjectScopedStorage(LOCAL_ESTIMATES_VAULT_KEY, scopeKey) || '';
+    const rawMirror = readProjectScopedStorage(LOCAL_ESTIMATES_MIRROR_KEY, scopeKey) || '';
 
     const best = [rawPrimary, rawVault, rawMirror].reduce(
       (max, cur) => (cur.length > max.length ? cur : max),
@@ -259,13 +284,19 @@ export function healEstimatesMirrorVaults(): void {
     if (!best || best.length <= 2) return;
 
     if (!rawPrimary || rawPrimary.length < best.length) {
-      try { localStorage.setItem(LOCAL_ESTIMATES_PRIMARY_KEY, best); } catch (_) {}
+      try {
+        writeProjectScopedStorage(LOCAL_ESTIMATES_PRIMARY_KEY, best, scopeKey);
+      } catch (_) {}
     }
     if (!rawVault || rawVault.length < best.length) {
-      try { localStorage.setItem(LOCAL_ESTIMATES_VAULT_KEY, best); } catch (_) {}
+      try {
+        writeProjectScopedStorage(LOCAL_ESTIMATES_VAULT_KEY, best, scopeKey);
+      } catch (_) {}
     }
     if (!rawMirror || rawMirror.length < best.length) {
-      try { localStorage.setItem(LOCAL_ESTIMATES_MIRROR_KEY, best); } catch (_) {}
+      try {
+        writeProjectScopedStorage(LOCAL_ESTIMATES_MIRROR_KEY, best, scopeKey);
+      } catch (_) {}
     }
   } catch (_) {}
 }
@@ -276,43 +307,75 @@ function getServerSnapshot(): CloudEstimateRecord[] {
 }
 
 /**
- * Saves a list of CloudEstimateRecords across all redundant local storage tiers
- * and notifies active components with zero UI tearing.
+ * Saves a list of CloudEstimateRecords to the IndexedDB per-record collection store (Item 11)
+ * and project-scoped local storage tiers (Item 15), notifying active components with zero UI tearing.
  */
 export function saveEstimatesMirrorSnapshot(
   list: CloudEstimateRecord[],
   markSyncedNow: boolean = false
 ): void {
   try {
-    if (typeof localStorage === 'undefined') return;
-
-    // Deduplicate and normalize timestamps without truncating large histories
+    const scopeKey = getActiveProjectScopeKey();
     const cleanList = mergeAndDeduplicateEstimates(list);
-    const serialized = JSON.stringify(cleanList);
 
-    // Save redundantly to all 3 vault keys
-    localStorage.setItem(LOCAL_ESTIMATES_PRIMARY_KEY, serialized);
-    localStorage.setItem(LOCAL_ESTIMATES_VAULT_KEY, serialized);
-    localStorage.setItem(LOCAL_ESTIMATES_MIRROR_KEY, serialized);
+    // 1. Persist individual records into IndexedDB collection store (handles large line item payloads)
+    const idbEntries = cleanList.map((rec, idx) => ({
+      id: String(rec.id || rec.estimateId || `est_${idx}`),
+      record: rec,
+    }));
+    putCollectionRecordsBatch('estimates', idbEntries, {
+      projectScope: scopeKey,
+      replaceAllInScope: true,
+    }).catch(() => {});
+
+    if (typeof localStorage === 'undefined') {
+      cachedSnapshot = cleanList;
+      return;
+    }
+
+    const serialized = JSON.stringify(cleanList);
+    // Avoid QuotaExceededError on huge collections by falling back to compact headers in localStorage
+    let payloadForLocalStorage = serialized;
+    if (serialized.length > 1_800_000) {
+      const compactList = cleanList.map((rec) => ({
+        ...rec,
+        items: Array.isArray(rec.items) && rec.items.length > 20 ? [] : rec.items,
+      }));
+      payloadForLocalStorage = JSON.stringify(compactList);
+      lastMirrorStorageWarning =
+        'Colección grande detectada: líneas completas almacenadas en IndexedDB y cabeceras compactas en localStorage.';
+    } else {
+      lastMirrorStorageWarning = null;
+    }
+
+    try {
+      writeProjectScopedStorage(LOCAL_ESTIMATES_PRIMARY_KEY, payloadForLocalStorage, scopeKey);
+      writeProjectScopedStorage(LOCAL_ESTIMATES_VAULT_KEY, payloadForLocalStorage, scopeKey);
+      writeProjectScopedStorage(LOCAL_ESTIMATES_MIRROR_KEY, payloadForLocalStorage, scopeKey);
+    } catch (quotaErr: any) {
+      lastMirrorStorageWarning = `QuotaExceededError en localStorage (${quotaErr?.message || 'cuota llena'}): respaldado en IndexedDB.`;
+    }
 
     if (markSyncedNow) {
       const nowIso = new Date().toISOString();
-      localStorage.setItem(LOCAL_MIRROR_SYNC_TS_KEY, nowIso);
+      writeProjectScopedStorage(LOCAL_MIRROR_SYNC_TS_KEY, nowIso, scopeKey);
     }
 
     cachedSnapshot = cleanList;
-    const postLegacy = localStorage.getItem(LOCAL_ESTIMATES_LEGACY_KEY) || '';
-    cachedHash = `${serialized}:::${serialized}:::${serialized}:::${postLegacy}`;
+    const postLegacy = readProjectScopedStorage(LOCAL_ESTIMATES_LEGACY_KEY, scopeKey) || '';
+    cachedHash = `${scopeKey}:::${idbEntries.length}:::${payloadForLocalStorage}:::${payloadForLocalStorage}:::${payloadForLocalStorage}:::${postLegacy}`;
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('cisco-estimates-mirror-updated'));
     }
-  } catch (_) {}
+  } catch (err: any) {
+    lastMirrorStorageWarning = err?.message || 'Error guardando espejo de cotizaciones';
+  }
 }
 
 /**
- * Subscribes to local mirror updates dispatched within the app window
- * or across browser tabs via 'storage' events.
+ * Subscribes to local mirror updates dispatched within the app window,
+ * project switches, or across browser tabs via 'storage' events.
  */
 export function subscribeEstimatesMirror(onStoreChange: () => void): () => void {
   if (typeof window === 'undefined') {
@@ -325,10 +388,12 @@ export function subscribeEstimatesMirror(onStoreChange: () => void): () => void 
   };
 
   window.addEventListener('cisco-estimates-mirror-updated', handler);
+  window.addEventListener('cisco-firebase-project-switched', handler);
   window.addEventListener('storage', handler);
 
   return () => {
     window.removeEventListener('cisco-estimates-mirror-updated', handler);
+    window.removeEventListener('cisco-firebase-project-switched', handler);
     window.removeEventListener('storage', handler);
   };
 }
@@ -338,17 +403,22 @@ export function subscribeEstimatesMirror(onStoreChange: () => void): () => void 
  * with automatic reactive synchronization upon changes.
  */
 export function useEstimatesMirror(): CloudEstimateRecord[] {
-  return useSyncExternalStore(subscribeEstimatesMirror, getEstimatesMirrorSnapshot, getServerSnapshot);
+  return useSyncExternalStore(
+    subscribeEstimatesMirror,
+    getEstimatesMirrorSnapshot,
+    getServerSnapshot
+  );
 }
 
 /**
  * Returns ISO timestamp of the last successful mirror sync with Firebase.
  */
-export function getMirrorLastSyncTimestamp(): string | null {
+export function getMirrorLastSyncTimestamp(projectId?: string): string | null {
   try {
     if (typeof localStorage === 'undefined') return null;
-    return localStorage.getItem(LOCAL_MIRROR_SYNC_TS_KEY);
+    return readProjectScopedStorage(LOCAL_MIRROR_SYNC_TS_KEY, projectId);
   } catch (_) {
     return null;
   }
 }
+

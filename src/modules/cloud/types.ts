@@ -91,10 +91,16 @@ export interface CloudEstimateRecord {
   allowedUsers?: string[];
   accessRequests?: EstimateAccessRequest[];
   syncedToCloud?: boolean;
+  syncStatus?: 'SYNCED' | 'PENDING_SYNC' | 'UNCERTAIN_COMMIT';
+  lastOperationId?: string;
+  v0Status?: 'PRESENT_IMMUTABLE' | 'UNAVAILABLE_ORIGINAL' | 'READ_ERROR_DEFERRED';
+  lifecycleState?: 'ACTIVE' | 'ARCHIVED' | 'PENDING_DELETE';
+  archivedAt?: string;
+  archivedBy?: string;
 
   // Multi-Version System (v0 Raw Original vs v1..vN Calculated Iterations)
   activeVersion?: number; // e.g. 0 for RAW, 1 for initial calc, 2+ for recalcs
-  activeVersionTag?: string; // 'v0', 'v1', 'v2', etc.
+  activeVersionTag?: string; // 'v0_RAW', 'v1', 'v2', etc.
   baselineV0Amount?: number; // Inmutable Net Cisco baseline cost from v0
   currentAmount?: number; // Active quoted total with margins
   versionsCount?: number;

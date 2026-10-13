@@ -11,13 +11,20 @@ import {
   getDoc,
   getDocs,
   deleteDoc,
+  writeBatch,
   query,
   where,
   orderBy,
   limit,
   startAfter,
 } from 'firebase/firestore';
-import { getFirestoreInstance } from './firebaseConfig';
+import {
+  getFirestoreInstance,
+  captureProjectContext,
+  isProjectContextCurrent,
+  readProjectScopedStorage,
+  writeProjectScopedStorage,
+} from './firebaseConfig';
 import {
   CloudEstimateRecord,
   EstimateAccessRequest,
@@ -45,6 +52,11 @@ import {
 const ESTIMATES_COLLECTION = 'estimates';
 const DSV_COLLECTION = 'dsv_records';
 
+export const CANONICAL_V0_TAG = 'v0_RAW';
+export const LEGACY_V0_TAG = 'v0';
+export const LOCAL_ESTIMATE_VERSIONS_VAULT_KEY = 'cisco_estimate_versions_vault_v1';
+export const LOCAL_ESTIMATES_PENDING_DELETE_KEY = 'cisco_estimates_pending_delete_v1';
+
 // Claves de Bóveda Redundante Multi-Capa para Registros DSV
 const LOCAL_DSV_BACKUP_KEY = 'cisco_cloud_dsv_cache_v2';
 const LOCAL_DSV_VAULT_KEY = 'cisco_dsv_permanent_vault_v1';
@@ -54,7 +66,7 @@ const LOCAL_DSV_DELETED_KEY = 'cisco_dsv_deleted_ids_v1';
 export function getDeletedDsvIds(): Set<string> {
   try {
     if (typeof localStorage === 'undefined') return new Set();
-    const raw = localStorage.getItem(LOCAL_DSV_DELETED_KEY);
+    const raw = readProjectScopedStorage(LOCAL_DSV_DELETED_KEY);
     return raw ? new Set(JSON.parse(raw)) : new Set();
   } catch {
     return new Set();
@@ -66,7 +78,7 @@ export function addDeletedDsvId(id: string): void {
     if (typeof localStorage === 'undefined' || !id) return;
     const current = getDeletedDsvIds();
     current.add(id.trim());
-    localStorage.setItem(LOCAL_DSV_DELETED_KEY, JSON.stringify(Array.from(current)));
+    writeProjectScopedStorage(LOCAL_DSV_DELETED_KEY, JSON.stringify(Array.from(current)));
   } catch {}
 }
 
@@ -88,9 +100,9 @@ function getLocalDsvCache(): CloudDsvRecord[] {
   try {
     if (typeof localStorage === 'undefined') return [];
     const deletedIds = getDeletedDsvIds();
-    const rawV2 = localStorage.getItem(LOCAL_DSV_BACKUP_KEY);
-    const rawVault = localStorage.getItem(LOCAL_DSV_VAULT_KEY);
-    const rawLegacy = localStorage.getItem(LOCAL_DSV_LEGACY_KEY);
+    const rawV2 = readProjectScopedStorage(LOCAL_DSV_BACKUP_KEY);
+    const rawVault = readProjectScopedStorage(LOCAL_DSV_VAULT_KEY);
+    const rawLegacy = readProjectScopedStorage(LOCAL_DSV_LEGACY_KEY);
 
     const listV2: CloudDsvRecord[] = rawV2 ? JSON.parse(rawV2) : [];
     const listVault: CloudDsvRecord[] = rawVault ? JSON.parse(rawVault) : [];
@@ -113,9 +125,9 @@ function saveLocalDsvCache(list: CloudDsvRecord[]) {
     const deletedIds = getDeletedDsvIds();
     const cleanList = list.filter((r) => r && r.id && !deletedIds.has(r.id)).slice(0, 500);
     const serialized = JSON.stringify(cleanList);
-    localStorage.setItem(LOCAL_DSV_BACKUP_KEY, serialized);
-    localStorage.setItem(LOCAL_DSV_VAULT_KEY, serialized);
-    localStorage.setItem(LOCAL_DSV_LEGACY_KEY, serialized);
+    writeProjectScopedStorage(LOCAL_DSV_BACKUP_KEY, serialized);
+    writeProjectScopedStorage(LOCAL_DSV_VAULT_KEY, serialized);
+    writeProjectScopedStorage(LOCAL_DSV_LEGACY_KEY, serialized);
   } catch (_) {}
 }
 
@@ -200,13 +212,230 @@ export function buildEstimateDocId(
   return 'est_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
 }
 
+export interface EstimateAtomicWritePayload {
+  docId: string;
+  rootPayload: Record<string, any>;
+  versionTag: string;
+  versionPayload: Record<string, any>;
+  v0Payload?: Record<string, any> | null;
+  operationId: string;
+}
+
+export interface EstimatePersistenceDriver {
+  readRootDoc?: (docId: string) => Promise<{ exists: boolean; data?: Partial<CloudEstimateRecord> }>;
+  checkV0Doc?: (
+    docId: string
+  ) => Promise<{ status: 'EXISTS' | 'CONFIRMED_ABSENT' | 'READ_ERROR'; data?: EstimateVersionDetail; error?: string }>;
+  commitAtomicEstimateAndVersion: (payload: EstimateAtomicWritePayload) => Promise<void>;
+  listVersionDocIds?: (docId: string) => Promise<string[]>;
+  deleteEstimateAndVersionsBatch?: (docId: string, versionIds: string[]) => Promise<void>;
+}
+
 /**
- * Saves or updates a completed CCW Estimate record in Firestore 'estimates' collection.
- * Preserves financial summary, items array, customOverrideMap, and privacy/access permissions.
+ * Reads the project-scoped local versions vault (`docId -> versionTag -> EstimateVersionDetail`).
+ */
+export function getLocalEstimateVersionsVault(
+  projectId?: string
+): Record<string, Record<string, EstimateVersionDetail>> {
+  try {
+    if (typeof localStorage === 'undefined') return {};
+    const raw = readProjectScopedStorage(LOCAL_ESTIMATE_VERSIONS_VAULT_KEY, projectId);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveLocalEstimateVersionsVault(
+  vault: Record<string, Record<string, EstimateVersionDetail>>,
+  projectId?: string
+): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    writeProjectScopedStorage(
+      LOCAL_ESTIMATE_VERSIONS_VAULT_KEY,
+      JSON.stringify(vault),
+      projectId
+    );
+  } catch {}
+}
+
+export function getLocalEstimateVersionDetail(
+  docId: string,
+  versionTag: string,
+  projectId?: string
+): EstimateVersionDetail | null {
+  const vault = getLocalEstimateVersionsVault(projectId);
+  const docVersions = vault[docId];
+  if (!docVersions) return null;
+  if (versionTag === CANONICAL_V0_TAG || versionTag === LEGACY_V0_TAG) {
+    return docVersions[CANONICAL_V0_TAG] || docVersions[LEGACY_V0_TAG] || null;
+  }
+  return docVersions[versionTag] || null;
+}
+
+export function putLocalEstimateVersionDetail(
+  docId: string,
+  versionTag: string,
+  detail: EstimateVersionDetail,
+  options?: { immutableIfV0?: boolean; projectId?: string }
+): void {
+  const vault = getLocalEstimateVersionsVault(options?.projectId);
+  if (!vault[docId]) {
+    vault[docId] = {};
+  }
+  const canonicalTag =
+    versionTag === LEGACY_V0_TAG || versionTag === CANONICAL_V0_TAG
+      ? CANONICAL_V0_TAG
+      : versionTag;
+
+  // Never overwrite an existing v0_RAW in local vault when immutableIfV0 is true (default)
+  if (
+    canonicalTag === CANONICAL_V0_TAG &&
+    (options?.immutableIfV0 ?? true) &&
+    (vault[docId][CANONICAL_V0_TAG] || vault[docId][LEGACY_V0_TAG])
+  ) {
+    return;
+  }
+
+  vault[docId][canonicalTag] = {
+    ...detail,
+    id: canonicalTag,
+    versionTag: canonicalTag,
+  };
+  saveLocalEstimateVersionsVault(vault, options?.projectId);
+}
+
+/**
+ * Verifies whether a candidate payload represents authentic original `v0` data (unmodified CCW BOM)
+ * rather than an already-edited `v1+` quote with commercial margins or internación/arancel markups.
+ */
+export function isAuthenticRawV0Payload(
+  record: Omit<CloudEstimateRecord, 'id'>,
+  versionNumber: number
+): boolean {
+  if (versionNumber !== 0 && record.activeVersionTag !== CANONICAL_V0_TAG && record.activeVersionTag !== LEGACY_V0_TAG) {
+    return false;
+  }
+  const marginPct = Number(record.financialSummary?.margenPct ?? 0);
+  if (marginPct > 0.0001) {
+    return false;
+  }
+  const items = Array.isArray(record.items) ? record.items : [];
+  for (const item of items) {
+    const netUnit = Number(item.netCiscoUnit ?? 0);
+    const saleUnit = Number(item.precioVentaUnitario ?? netUnit);
+    if (netUnit > 0 && saleUnit > netUnit * 1.001) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Distinguishes 3 states for `v0_RAW` (and legacy alias `v0`):
+ * - `EXISTS`: `v0_RAW` or `v0` already exists (must NOT be overwritten).
+ * - `CONFIRMED_ABSENT`: Confirmed that neither `v0_RAW` nor `v0` exists.
+ * - `READ_ERROR`: Read failed (network/timeout/permission); must NOT assume absence or overwrite!
+ */
+export async function checkV0ExistenceState(
+  docId: string,
+  options?: { driver?: EstimatePersistenceDriver; projectId?: string }
+): Promise<{
+  status: 'EXISTS' | 'CONFIRMED_ABSENT' | 'READ_ERROR';
+  existingV0?: EstimateVersionDetail;
+  error?: string;
+}> {
+  const localV0 = getLocalEstimateVersionDetail(docId, CANONICAL_V0_TAG, options?.projectId);
+
+  if (options?.driver?.checkV0Doc) {
+    const remoteRes = await options.driver.checkV0Doc(docId);
+    if (remoteRes.status === 'EXISTS') {
+      return { status: 'EXISTS', existingV0: remoteRes.data || localV0 || undefined };
+    }
+    if (remoteRes.status === 'READ_ERROR') {
+      return localV0
+        ? { status: 'EXISTS', existingV0: localV0 }
+        : { status: 'READ_ERROR', error: remoteRes.error || 'Error leyendo v0_RAW remoto' };
+    }
+    if (localV0) {
+      return { status: 'EXISTS', existingV0: localV0 };
+    }
+    return { status: 'CONFIRMED_ABSENT' };
+  }
+
+  if (localV0) {
+    return { status: 'EXISTS', existingV0: localV0 };
+  }
+
+  const { db, isReady } = getFirestoreInstance();
+  if (!isReady || !db) {
+    return { status: 'CONFIRMED_ABSENT' };
+  }
+
+  try {
+    const canonicalRef = doc(db, ESTIMATES_COLLECTION, docId, 'versions', CANONICAL_V0_TAG);
+    const canonicalSnap = await withTimeout(getDoc(canonicalRef), 3000);
+    if (canonicalSnap.exists()) {
+      const d = canonicalSnap.data() as EstimateVersionDetail;
+      return {
+        status: 'EXISTS',
+        existingV0: { ...d, id: CANONICAL_V0_TAG, versionTag: CANONICAL_V0_TAG },
+      };
+    }
+
+    const legacyRef = doc(db, ESTIMATES_COLLECTION, docId, 'versions', LEGACY_V0_TAG);
+    const legacySnap = await withTimeout(getDoc(legacyRef), 2500);
+    if (legacySnap.exists()) {
+      const d = legacySnap.data() as EstimateVersionDetail;
+      return {
+        status: 'EXISTS',
+        existingV0: { ...d, id: CANONICAL_V0_TAG, versionTag: CANONICAL_V0_TAG },
+      };
+    }
+
+    return { status: 'CONFIRMED_ABSENT' };
+  } catch (err: any) {
+    return {
+      status: 'READ_ERROR',
+      error: err?.message || 'Error de lectura al verificar v0_RAW en Firestore',
+    };
+  }
+}
+
+/**
+ * Saves or updates a completed CCW Estimate record and its active version atomically in Firestore.
+ * Guarantees:
+ * - Item 1: Root header (`estimates/{docId}`) and version document (`estimates/{docId}/versions/{versionTag}`)
+ *   are committed together via `writeBatch` (or injectable atomic driver). Header `activeVersionTag` never points
+ *   to an unpersisted version, and `syncedToCloud: true` is set ONLY after full confirmation.
+ * - Item 2: `v0_RAW` is conditionally created only from authentic unmodified `v0` data and is strictly immutable.
+ *   Read errors never trigger `v0` overwrite, and modified `v1+` lines are never fabricated into a fake `v0`.
  */
 export async function saveEstimateToCloud(
-  record: Omit<CloudEstimateRecord, 'id'>
-): Promise<{ success: boolean; id?: string; error?: string }> {
+  record: Omit<CloudEstimateRecord, 'id'>,
+  options?: {
+    driver?: EstimatePersistenceDriver;
+    operationId?: string;
+    rawV0Snapshot?: {
+      items: CloudEstimateRecord['items'];
+      totalNetCisco: number;
+      createdAt?: string;
+    };
+  }
+): Promise<{
+  success: boolean;
+  id?: string;
+  versionTag?: string;
+  operationId?: string;
+  syncStatus?: 'SYNCED' | 'PENDING_SYNC' | 'UNCERTAIN_COMMIT';
+  v0Status?: 'PRESENT_IMMUTABLE' | 'UNAVAILABLE_ORIGINAL' | 'READ_ERROR_DEFERRED';
+  skippedImmutableV0?: boolean;
+  error?: string;
+}> {
+  const capturedCtx = captureProjectContext();
   const docId = buildEstimateDocId(record.estimateId, record.dealId, record.originalFileName);
   const nowIso = new Date().toISOString();
 
@@ -226,30 +455,103 @@ export async function saveEstimateToCloud(
   );
   const normalizedUpdatedAt = nowIso;
 
-  // Determine active version number & tags
+  // Determine active version number & canonical tags
   let versionNumber: number;
   if (record.activeVersion !== undefined) {
     versionNumber = record.activeVersion;
   } else if (existingLocal?.activeVersion !== undefined) {
-    versionNumber = existingLocal.activeVersion === 0 ? 1 : existingLocal.activeVersion + 1;
+    // If retrying a pending/uncertain operation with the same operationId, reuse the same versionNumber!
+    if (
+      options?.operationId &&
+      existingLocal.lastOperationId === options.operationId &&
+      existingLocal.activeVersion !== undefined
+    ) {
+      versionNumber = existingLocal.activeVersion;
+    } else {
+      versionNumber = existingLocal.activeVersion === 0 ? 1 : existingLocal.activeVersion + 1;
+    }
   } else {
     versionNumber = 1;
   }
 
+  const rawTag =
+    record.activeVersionTag || (versionNumber === 0 ? CANONICAL_V0_TAG : `v${versionNumber}`);
   const versionTag =
-    record.activeVersionTag || (versionNumber === 0 ? 'v0_RAW' : `v${versionNumber}`);
+    rawTag === LEGACY_V0_TAG || versionNumber === 0 ? CANONICAL_V0_TAG : rawTag;
+
+  const operationId =
+    options?.operationId || `${docId}::${versionTag}::${normalizedCreatedAt.slice(0, 19)}`;
+
+  // Check v0 state (Item 2: distinguish EXISTS, CONFIRMED_ABSENT, READ_ERROR)
+  const v0Check = await checkV0ExistenceState(docId, {
+    driver: options?.driver,
+    projectId: capturedCtx.projectId,
+  });
+
+  // If caller explicitly asked to save v0_RAW (`versionNumber === 0`):
+  if (versionNumber === 0) {
+    if (v0Check.status === 'EXISTS' && v0Check.existingV0) {
+      // Immutability guarantee: never overwrite an existing v0_RAW!
+      putLocalEstimateVersionDetail(docId, CANONICAL_V0_TAG, v0Check.existingV0, {
+        immutableIfV0: true,
+        projectId: capturedCtx.projectId,
+      });
+      return {
+        success: true,
+        id: docId,
+        versionTag: CANONICAL_V0_TAG,
+        operationId,
+        syncStatus: 'SYNCED',
+        v0Status: 'PRESENT_IMMUTABLE',
+        skippedImmutableV0: true,
+      };
+    }
+    if (v0Check.status === 'READ_ERROR') {
+      return {
+        success: false,
+        id: docId,
+        versionTag: CANONICAL_V0_TAG,
+        operationId,
+        syncStatus: 'PENDING_SYNC',
+        v0Status: 'READ_ERROR_DEFERRED',
+        error:
+          v0Check.error ||
+          'Lectura de v0_RAW falló; se bloquea escritura para evitar sobrescribir el original.',
+      };
+    }
+    if (!isAuthenticRawV0Payload(record, 0)) {
+      return {
+        success: false,
+        id: docId,
+        versionTag: CANONICAL_V0_TAG,
+        operationId,
+        syncStatus: 'PENDING_SYNC',
+        v0Status: 'UNAVAILABLE_ORIGINAL',
+        error:
+          'Los datos suministrados para v0_RAW contienen márgenes o modificaciones; no se permite fabricar v0 desde una versión editada.',
+      };
+    }
+  }
+
+  const immutableV0Amount =
+    v0Check.status === 'EXISTS' && v0Check.existingV0
+      ? Number(v0Check.existingV0.netCiscoTotal || v0Check.existingV0.totalAmount || 0)
+      : undefined;
 
   const baselineV0Amount = Number(
-    record.baselineV0Amount ??
+    immutableV0Amount ??
+      record.baselineV0Amount ??
       existingLocal?.baselineV0Amount ??
       record.financialSummary?.totalNetCisco ??
       0
   );
 
   const currentAmount = Number(
-    record.currentAmount ??
-      record.financialSummary?.totalCotizadoIntcomex ??
-      baselineV0Amount
+    versionNumber === 0
+      ? baselineV0Amount
+      : record.currentAmount ??
+          record.financialSummary?.totalCotizadoIntcomex ??
+          baselineV0Amount
   );
 
   // Build version summary entry
@@ -260,37 +562,103 @@ export async function saveEstimateToCloud(
     totalAmount: currentAmount,
     netCiscoTotal: Number(record.financialSummary?.totalNetCisco || baselineV0Amount),
     marginPct: Number(record.financialSummary?.margenPct ?? (versionNumber === 0 ? 0 : 5.0)),
-    internacionPct: record.financialSummary?.params?.internacionPct,
-    arancelPct: record.financialSummary?.params?.arancelPct,
+    internacionPct:
+      versionNumber === 0 ? 0 : record.financialSummary?.params?.internacionPct,
+    arancelPct: versionNumber === 0 ? 0 : record.financialSummary?.params?.arancelPct,
     itemsCount: record.itemsCount || (record.items || []).length,
-    createdAt: nowIso,
+    createdAt: versionNumber === 0 ? normalizedCreatedAt : nowIso,
     creatorUsername: record.creator?.username || 'anonymous',
     creatorFullName: record.creator?.fullName || '',
     originalFileName: record.originalFileName || '',
+    ...(versionNumber === 0 ? { note: 'BOM Original CCW (Sin Márgenes)' } : {}),
   };
 
-  // Compile full versions summary list
+  // Determine whether we have authentic v0 data to include in the atomic batch
+  let v0PayloadForBatch: EstimateVersionDetail | null = null;
+  let v0Status: 'PRESENT_IMMUTABLE' | 'UNAVAILABLE_ORIGINAL' | 'READ_ERROR_DEFERRED' =
+    v0Check.status === 'EXISTS'
+      ? 'PRESENT_IMMUTABLE'
+      : v0Check.status === 'READ_ERROR'
+      ? 'READ_ERROR_DEFERRED'
+      : 'UNAVAILABLE_ORIGINAL';
+
+  if (v0Check.status === 'CONFIRMED_ABSENT') {
+    if (versionNumber === 0 && isAuthenticRawV0Payload(record, 0)) {
+      v0Status = 'PRESENT_IMMUTABLE';
+    } else if (options?.rawV0Snapshot && Array.isArray(options.rawV0Snapshot.items)) {
+      v0PayloadForBatch = {
+        id: CANONICAL_V0_TAG,
+        estimateId: record.estimateId || 'NA',
+        versionNumber: 0,
+        versionTag: CANONICAL_V0_TAG,
+        type: 'ORIGINAL_RAW',
+        totalAmount: Number(options.rawV0Snapshot.totalNetCisco || baselineV0Amount),
+        netCiscoTotal: Number(options.rawV0Snapshot.totalNetCisco || baselineV0Amount),
+        marginPct: 0,
+        internacionPct: 0,
+        arancelPct: 0,
+        itemsCount: options.rawV0Snapshot.items.length,
+        items: options.rawV0Snapshot.items,
+        customOverrideMap: {},
+        fastTrackPromoMap: {},
+        headerInfo: record.headerInfo,
+        createdAt: options.rawV0Snapshot.createdAt || normalizedCreatedAt,
+        creatorUsername: record.creator?.username || 'system',
+        creatorFullName: 'BOM Cisco Original (CCW)',
+        originalFileName: record.originalFileName || '',
+        note: 'BOM Original CCW (Sin Márgenes)',
+      };
+      v0Status = 'PRESENT_IMMUTABLE';
+    }
+  }
+
+  // Compile full versions summary list without fabricating fake v0 if original is unavailable
   const existingSummaries: EstimateVersionSummary[] = existingLocal?.versionsSummary
     ? [...existingLocal.versionsSummary]
     : [];
 
-  if (!existingSummaries.some((v) => v.versionNumber === 0) && baselineV0Amount > 0) {
-    existingSummaries.unshift({
+  if (v0Check.status === 'EXISTS' && v0Check.existingV0) {
+    const existingV0Sum: EstimateVersionSummary = {
       versionNumber: 0,
-      versionTag: 'v0_RAW',
+      versionTag: CANONICAL_V0_TAG,
       type: 'ORIGINAL_RAW',
-      totalAmount: baselineV0Amount,
-      netCiscoTotal: baselineV0Amount,
+      totalAmount: Number(v0Check.existingV0.totalAmount || baselineV0Amount),
+      netCiscoTotal: Number(v0Check.existingV0.netCiscoTotal || baselineV0Amount),
       marginPct: 0,
       internacionPct: 0,
       arancelPct: 0,
-      itemsCount: record.itemsCount || (record.items || []).length,
-      createdAt: normalizedCreatedAt,
-      creatorUsername: record.creator?.username || 'system',
-      creatorFullName: 'BOM Cisco Original (CCW)',
-      originalFileName: record.originalFileName || '',
-      note: 'BOM Original CCW (Sin Márgenes)',
-    });
+      itemsCount: Number(v0Check.existingV0.itemsCount || (v0Check.existingV0.items || []).length),
+      createdAt: v0Check.existingV0.createdAt || normalizedCreatedAt,
+      creatorUsername: v0Check.existingV0.creatorUsername || 'system',
+      creatorFullName: v0Check.existingV0.creatorFullName || 'BOM Cisco Original (CCW)',
+      originalFileName: v0Check.existingV0.originalFileName || record.originalFileName || '',
+      note: v0Check.existingV0.note || 'BOM Original CCW (Sin Márgenes)',
+    };
+    const withoutV0 = existingSummaries.filter((v) => v.versionNumber !== 0);
+    existingSummaries.length = 0;
+    existingSummaries.push(existingV0Sum, ...withoutV0);
+  } else if (v0PayloadForBatch) {
+    const withoutV0 = existingSummaries.filter((v) => v.versionNumber !== 0);
+    existingSummaries.length = 0;
+    existingSummaries.push(
+      {
+        versionNumber: 0,
+        versionTag: CANONICAL_V0_TAG,
+        type: 'ORIGINAL_RAW',
+        totalAmount: v0PayloadForBatch.totalAmount,
+        netCiscoTotal: v0PayloadForBatch.netCiscoTotal,
+        marginPct: 0,
+        internacionPct: 0,
+        arancelPct: 0,
+        itemsCount: v0PayloadForBatch.itemsCount,
+        createdAt: v0PayloadForBatch.createdAt,
+        creatorUsername: v0PayloadForBatch.creatorUsername,
+        creatorFullName: v0PayloadForBatch.creatorFullName,
+        originalFileName: v0PayloadForBatch.originalFileName,
+        note: v0PayloadForBatch.note,
+      },
+      ...withoutV0
+    );
   }
 
   const filteredSummaries = existingSummaries.filter((v) => v.versionNumber !== versionNumber);
@@ -298,7 +666,9 @@ export async function saveEstimateToCloud(
     (a, b) => a.versionNumber - b.versionNumber
   );
 
-  const mergedRecord: CloudEstimateRecord = {
+  // Preserve previous activeVersionTag on local record until atomic commit succeeds if we want strict consistency,
+  // while storing the full pending version in local cache marked as `syncedToCloud: false, syncStatus: 'PENDING_SYNC'`
+  const pendingLocalRecord: CloudEstimateRecord = {
     ...record,
     id: docId,
     createdAt: normalizedCreatedAt,
@@ -316,130 +686,250 @@ export async function saveEstimateToCloud(
     allowedUsers: record.allowedUsers ?? existingLocal?.allowedUsers ?? [],
     accessRequests: record.accessRequests ?? existingLocal?.accessRequests ?? [],
     syncedToCloud: false,
+    syncStatus: 'PENDING_SYNC',
+    lastOperationId: operationId,
+    v0Status,
+    lifecycleState: record.lifecycleState || existingLocal?.lifecycleState || 'ACTIVE',
   };
 
-  // Save immediately to multi-tier redundant local cache as failsafe
+  const versionDetailObject: EstimateVersionDetail = {
+    ...versionSummaryEntry,
+    id: versionTag,
+    estimateId: record.estimateId || 'NA',
+    items:
+      versionNumber === 0 && v0Check.status === 'EXISTS' && v0Check.existingV0
+        ? v0Check.existingV0.items
+        : record.items || [],
+    customOverrideMap: versionNumber === 0 ? {} : record.customOverrideMap || {},
+    fastTrackPromoMap: versionNumber === 0 ? {} : record.fastTrackPromoMap || {},
+    headerInfo: record.headerInfo,
+  };
+
+  // Persist local version detail and pending estimate in local cache BEFORE remote call
+  putLocalEstimateVersionDetail(docId, versionTag, versionDetailObject, {
+    immutableIfV0: true,
+    projectId: capturedCtx.projectId,
+  });
+  if (v0PayloadForBatch) {
+    putLocalEstimateVersionDetail(docId, CANONICAL_V0_TAG, v0PayloadForBatch, {
+      immutableIfV0: true,
+      projectId: capturedCtx.projectId,
+    });
+  }
+
   const filteredLocal = localList.filter(
     (x) =>
       x.id !== docId &&
       !(record.estimateId && record.estimateId !== 'NA' && x.estimateId === record.estimateId)
   );
-  saveLocalEstimatesCache([mergedRecord, ...filteredLocal]);
+  if (isProjectContextCurrent(capturedCtx)) {
+    saveLocalEstimatesCache([pendingLocalRecord, ...filteredLocal]);
+  }
+
+  const isBrowserOffline =
+    typeof navigator !== 'undefined' && navigator.onLine === false;
 
   try {
-    const { db, isReady, error } = getFirestoreInstance();
-
-    if (!isReady || !db) {
-      return {
-        success: true,
-        id: docId,
-        error: error ? `Guardado localmente (Aviso Cloud: ${error})` : undefined,
-      };
-    }
-
-    const docRef = doc(db, ESTIMATES_COLLECTION, docId);
-
-    // If not in local cache, check remote doc briefly to preserve remote accessRequests / allowedUsers
-    if (!existingLocal) {
-      try {
-        const existingSnap = await withTimeout(getDoc(docRef), 3500);
-        if (existingSnap.exists()) {
-          const remoteData = existingSnap.data() as Partial<CloudEstimateRecord>;
-          if (record.isRestricted === undefined && remoteData.isRestricted !== undefined) {
-            mergedRecord.isRestricted = Boolean(remoteData.isRestricted);
-          }
-          if (remoteData.allowedUsers && (!mergedRecord.allowedUsers || mergedRecord.allowedUsers.length === 0)) {
-            mergedRecord.allowedUsers = remoteData.allowedUsers;
-          }
-          if (remoteData.accessRequests && (!mergedRecord.accessRequests || mergedRecord.accessRequests.length === 0)) {
-            mergedRecord.accessRequests = remoteData.accessRequests;
-          }
-          if (remoteData.baselineV0Amount && !mergedRecord.baselineV0Amount) {
-            mergedRecord.baselineV0Amount = remoteData.baselineV0Amount;
-          }
-        }
-      } catch (_) {}
-    }
-
-    // 1. Write root document with active version metadata (used by Dashboard without duplicates)
-    const { id: _omitId, ...payloadWithoutId } = {
-      ...mergedRecord,
+    // Prepare sanitized atomic payloads for root document and version subcollection document(s)
+    const { id: _omitId, ...rootPayloadRaw } = {
+      ...pendingLocalRecord,
       syncedToCloud: true,
+      syncStatus: 'SYNCED' as const,
     };
-    const sanitizedRecord = sanitizeForFirestore(payloadWithoutId);
-    await withTimeout(setDoc(docRef, sanitizedRecord, { merge: true }), 8000);
+    const sanitizedRootPayload = sanitizeForFirestore(rootPayloadRaw);
+    const sanitizedVersionPayload = sanitizeForFirestore(versionDetailObject);
+    const sanitizedV0BatchPayload = v0PayloadForBatch
+      ? sanitizeForFirestore(v0PayloadForBatch)
+      : null;
 
-    // 2. Write subcollection version document (for audit history and rollback/comparison)
-    try {
-      const versionDocRef = doc(db, ESTIMATES_COLLECTION, docId, 'versions', versionTag);
-      const versionPayload = sanitizeForFirestore({
-        ...versionSummaryEntry,
-        estimateId: record.estimateId || 'NA',
-        items: record.items || [],
-        customOverrideMap: record.customOverrideMap || {},
-        fastTrackPromoMap: record.fastTrackPromoMap || {},
-        headerInfo: record.headerInfo,
-      });
-      await withTimeout(setDoc(versionDocRef, versionPayload, { merge: true }), 6000);
-
-      // If writing v1 and v0 is not yet in subcollection, ensure v0 is stored as immutable backup
-      if (versionNumber > 0 && baselineV0Amount > 0) {
-        const v0DocRef = doc(db, ESTIMATES_COLLECTION, docId, 'versions', 'v0');
-        const v0Snap = await withTimeout(getDoc(v0DocRef), 2000).catch(() => null);
-        if (!v0Snap || !v0Snap.exists()) {
-          const v0Payload = sanitizeForFirestore({
-            versionNumber: 0,
-            versionTag: 'v0_RAW',
-            type: 'ORIGINAL_RAW',
-            totalAmount: baselineV0Amount,
-            netCiscoTotal: baselineV0Amount,
-            marginPct: 0,
-            internacionPct: 0,
-            arancelPct: 0,
-            itemsCount: record.itemsCount || (record.items || []).length,
-            items: record.items || [],
-            createdAt: normalizedCreatedAt,
-            creatorUsername: record.creator?.username || 'system',
-            creatorFullName: 'BOM Cisco Original (CCW)',
-            originalFileName: record.originalFileName || '',
-            note: 'BOM Original CCW (Sin Márgenes)',
-          });
-          setDoc(v0DocRef, v0Payload, { merge: true }).catch(() => {});
-        }
+    if (options?.driver) {
+      if (!existingLocal && options.driver.readRootDoc) {
+        try {
+          const remoteSnap = await options.driver.readRootDoc(docId);
+          if (remoteSnap.exists && remoteSnap.data) {
+            if (record.isRestricted === undefined && remoteSnap.data.isRestricted !== undefined) {
+              sanitizedRootPayload.isRestricted = Boolean(remoteSnap.data.isRestricted);
+            }
+          }
+        } catch {}
       }
-    } catch (vErr) {
-      console.warn('[Firestore Cloud Subcollection Version Warning]:', vErr);
+
+      await options.driver.commitAtomicEstimateAndVersion({
+        docId,
+        rootPayload: sanitizedRootPayload,
+        versionTag,
+        versionPayload: sanitizedVersionPayload,
+        v0Payload: sanitizedV0BatchPayload,
+        operationId,
+      });
+    } else {
+      const { db, isReady, error } = getFirestoreInstance();
+      if (!isReady || !db || isBrowserOffline) {
+        return {
+          success: true,
+          id: docId,
+          versionTag,
+          operationId,
+          syncStatus: 'PENDING_SYNC',
+          v0Status,
+          error: isBrowserOffline
+            ? 'Guardado localmente (Sin conexión: sincronización pendiente)'
+            : error
+            ? `Guardado localmente (Aviso Cloud: ${error})`
+            : undefined,
+        };
+      }
+
+      const docRef = doc(db, ESTIMATES_COLLECTION, docId);
+
+      // If not in local cache, check remote doc briefly to preserve remote accessRequests / allowedUsers
+      if (!existingLocal) {
+        try {
+          const existingSnap = await withTimeout(getDoc(docRef), 3500);
+          if (existingSnap.exists()) {
+            const remoteData = existingSnap.data() as Partial<CloudEstimateRecord>;
+            if (record.isRestricted === undefined && remoteData.isRestricted !== undefined) {
+              sanitizedRootPayload.isRestricted = Boolean(remoteData.isRestricted);
+              pendingLocalRecord.isRestricted = Boolean(remoteData.isRestricted);
+            }
+            if (
+              remoteData.allowedUsers &&
+              (!pendingLocalRecord.allowedUsers || pendingLocalRecord.allowedUsers.length === 0)
+            ) {
+              sanitizedRootPayload.allowedUsers = remoteData.allowedUsers;
+              pendingLocalRecord.allowedUsers = remoteData.allowedUsers;
+            }
+            if (
+              remoteData.accessRequests &&
+              (!pendingLocalRecord.accessRequests || pendingLocalRecord.accessRequests.length === 0)
+            ) {
+              sanitizedRootPayload.accessRequests = remoteData.accessRequests;
+              pendingLocalRecord.accessRequests = remoteData.accessRequests;
+            }
+            if (remoteData.baselineV0Amount && !pendingLocalRecord.baselineV0Amount) {
+              sanitizedRootPayload.baselineV0Amount = remoteData.baselineV0Amount;
+              pendingLocalRecord.baselineV0Amount = remoteData.baselineV0Amount;
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Single atomic writeBatch for root Estimate header + active Version doc (+ conditional v0_RAW doc)
+      const batch = writeBatch(db);
+      const versionDocRef = doc(db, ESTIMATES_COLLECTION, docId, 'versions', versionTag);
+
+      batch.set(docRef, sanitizedRootPayload, { merge: true });
+      batch.set(versionDocRef, sanitizedVersionPayload, { merge: true });
+
+      if (sanitizedV0BatchPayload && versionTag !== CANONICAL_V0_TAG) {
+        const v0DocRef = doc(db, ESTIMATES_COLLECTION, docId, 'versions', CANONICAL_V0_TAG);
+        batch.set(v0DocRef, sanitizedV0BatchPayload, { merge: true });
+      }
+
+      await withTimeout(batch.commit(), 8000);
     }
 
-    // Mark as synced in local cache
-    const syncedRecord: CloudEstimateRecord = { ...mergedRecord, syncedToCloud: true };
-    saveLocalEstimatesCache([syncedRecord, ...filteredLocal]);
+    // Mark as synced in local cache ONLY after the atomic commit completes and project context is still current
+    if (isProjectContextCurrent(capturedCtx)) {
+      const syncedRecord: CloudEstimateRecord = {
+        ...pendingLocalRecord,
+        syncedToCloud: true,
+        syncStatus: 'SYNCED',
+        lastOperationId: operationId,
+        v0Status,
+      };
+      const latestLocal = getLocalEstimatesCache().filter(
+        (x) =>
+          x.id !== docId &&
+          !(record.estimateId && record.estimateId !== 'NA' && x.estimateId === record.estimateId)
+      );
+      saveLocalEstimatesCache([syncedRecord, ...latestLocal]);
+    }
 
-    return { success: true, id: docId };
+    return {
+      success: true,
+      id: docId,
+      versionTag,
+      operationId,
+      syncStatus: 'SYNCED',
+      v0Status,
+    };
   } catch (err: any) {
+    const errMsg = String(err?.message || 'Offline');
+    const isTimeout =
+      errMsg.toLowerCase().includes('timeout') ||
+      errMsg.toLowerCase().includes('tiempo de espera');
+    const fallbackStatus: 'PENDING_SYNC' | 'UNCERTAIN_COMMIT' = isTimeout
+      ? 'UNCERTAIN_COMMIT'
+      : 'PENDING_SYNC';
+
+    if (isProjectContextCurrent(capturedCtx)) {
+      // If atomic commit failed (non-timeout), revert header activeVersionTag to previous persisted version if one existed
+      const revertedLocal: CloudEstimateRecord =
+        !isTimeout && existingLocal && existingLocal.syncedToCloud
+          ? {
+              ...pendingLocalRecord,
+              activeVersion: existingLocal.activeVersion,
+              activeVersionTag: existingLocal.activeVersionTag,
+              syncedToCloud: false,
+              syncStatus: fallbackStatus,
+              lastOperationId: operationId,
+            }
+          : {
+              ...pendingLocalRecord,
+              syncedToCloud: false,
+              syncStatus: fallbackStatus,
+              lastOperationId: operationId,
+            };
+
+      const latestLocal = getLocalEstimatesCache().filter(
+        (x) =>
+          x.id !== docId &&
+          !(record.estimateId && record.estimateId !== 'NA' && x.estimateId === record.estimateId)
+      );
+      saveLocalEstimatesCache([revertedLocal, ...latestLocal]);
+    }
+
     console.warn('[Firestore Cloud Warning - saveEstimate]:', err);
     return {
       success: true,
       id: docId,
-      error: `Guardado en almacenamiento local (Aviso Cloud: ${err?.message || 'Offline'})`,
+      versionTag,
+      operationId,
+      syncStatus: fallbackStatus,
+      v0Status,
+      error: `Guardado en almacenamiento local (Aviso Cloud: ${errMsg})`,
     };
   }
 }
 
 /**
  * Saves the immutable original v0 raw BOM directly from Cisco CCW (0% margins).
- * Guarantees that v0 is stored permanently and never overwritten by subsequent edits.
+ * Guarantees that v0 is stored permanently under canonical ID `v0_RAW`, is never overwritten
+ * by subsequent or concurrent calls, and rejects modified (`v1+`) items or read-error states.
  */
 export async function saveOriginalV0Estimate(
-  record: Omit<CloudEstimateRecord, 'id'>
-): Promise<{ success: boolean; id?: string; error?: string }> {
-  return await saveEstimateToCloud({
-    ...record,
-    activeVersion: 0,
-    activeVersionTag: 'v0_RAW',
-    baselineV0Amount: Number(record.financialSummary?.totalNetCisco || 0),
-    currentAmount: Number(record.financialSummary?.totalNetCisco || 0),
-  });
+  record: Omit<CloudEstimateRecord, 'id'>,
+  options?: { driver?: EstimatePersistenceDriver; operationId?: string }
+): Promise<{
+  success: boolean;
+  id?: string;
+  versionTag?: string;
+  skippedImmutableV0?: boolean;
+  v0Status?: 'PRESENT_IMMUTABLE' | 'UNAVAILABLE_ORIGINAL' | 'READ_ERROR_DEFERRED';
+  error?: string;
+}> {
+  const netCisco = Number(record.financialSummary?.totalNetCisco || 0);
+  return await saveEstimateToCloud(
+    {
+      ...record,
+      activeVersion: 0,
+      activeVersionTag: CANONICAL_V0_TAG,
+      baselineV0Amount: netCisco,
+      currentAmount: netCisco,
+    },
+    options
+  );
 }
 
 /**
@@ -447,13 +937,32 @@ export async function saveOriginalV0Estimate(
  */
 export async function saveModifiedEstimateVersion(
   record: Omit<CloudEstimateRecord, 'id'>,
-  customVersionNum?: number
-): Promise<{ success: boolean; id?: string; error?: string }> {
+  customVersionNum?: number,
+  options?: {
+    driver?: EstimatePersistenceDriver;
+    operationId?: string;
+    rawV0Snapshot?: {
+      items: CloudEstimateRecord['items'];
+      totalNetCisco: number;
+      createdAt?: string;
+    };
+  }
+): Promise<{
+  success: boolean;
+  id?: string;
+  versionTag?: string;
+  syncStatus?: 'SYNCED' | 'PENDING_SYNC' | 'UNCERTAIN_COMMIT';
+  v0Status?: 'PRESENT_IMMUTABLE' | 'UNAVAILABLE_ORIGINAL' | 'READ_ERROR_DEFERRED';
+  error?: string;
+}> {
   const versionNum = customVersionNum !== undefined ? customVersionNum : undefined;
-  return await saveEstimateToCloud({
-    ...record,
-    activeVersion: versionNum,
-  });
+  return await saveEstimateToCloud(
+    {
+      ...record,
+      activeVersion: versionNum,
+    },
+    options
+  );
 }
 
 /**
@@ -491,7 +1000,7 @@ export async function getEstimateVersionInfo(
     return {
       exists: false,
       activeVersion: 0,
-      activeVersionTag: 'v0_RAW',
+      activeVersionTag: CANONICAL_V0_TAG,
       nextVersionNumber: 1,
       nextVersionTag: 'v1',
       baselineV0Amount: 0,
@@ -512,7 +1021,7 @@ export async function getEstimateVersionInfo(
     exists: true,
     activeVersion: activeVer,
     activeVersionTag:
-      existing.activeVersionTag || (activeVer === 0 ? 'v0_RAW' : `v${activeVer}`),
+      existing.activeVersionTag || (activeVer === 0 ? CANONICAL_V0_TAG : `v${activeVer}`),
     nextVersionNumber: nextVer,
     nextVersionTag: `v${nextVer}`,
     baselineV0Amount:
@@ -526,7 +1035,7 @@ export async function getEstimateVersionInfo(
 }
 
 /**
- * Retrieves all versions of a specific estimate (v0, v1, v2...) from subcollection or root summary.
+ * Retrieves all versions of a specific estimate (v0_RAW, v1, v2...) from subcollection, local vault, or root summary.
  */
 export async function getEstimateVersions(
   docIdOrEstimateId: string
@@ -548,17 +1057,22 @@ export async function getEstimateVersions(
     const versionsColRef = collection(db, ESTIMATES_COLLECTION, docId, 'versions');
     const snap = await withTimeout(getDocs(versionsColRef), 5000);
     if (!snap.empty) {
-      const versions: EstimateVersionSummary[] = [];
+      const byVersionNum = new Map<number, EstimateVersionSummary>();
       snap.forEach((d) => {
         const data = d.data();
         const vNum =
           data.versionNumber ??
-          (d.id === 'v0' || d.id === 'v0_RAW'
+          (d.id === LEGACY_V0_TAG || d.id === CANONICAL_V0_TAG
             ? 0
             : parseInt(d.id.replace('v', ''), 10) || 1);
-        versions.push({
+        const canonicalTag = vNum === 0 ? CANONICAL_V0_TAG : data.versionTag || `v${vNum}`;
+        // Prefer canonical v0_RAW if both v0 and v0_RAW exist
+        if (vNum === 0 && byVersionNum.has(0) && d.id === LEGACY_V0_TAG) {
+          return;
+        }
+        byVersionNum.set(vNum, {
           versionNumber: vNum,
-          versionTag: data.versionTag || (vNum === 0 ? 'v0_RAW' : `v${vNum}`),
+          versionTag: canonicalTag,
           type: data.type || (vNum === 0 ? 'ORIGINAL_RAW' : 'EDITED'),
           totalAmount: Number(data.totalAmount) || 0,
           netCiscoTotal: Number(data.netCiscoTotal) || 0,
@@ -573,7 +1087,9 @@ export async function getEstimateVersions(
           note: data.note,
         });
       });
-      versions.sort((a, b) => a.versionNumber - b.versionNumber);
+      const versions = Array.from(byVersionNum.values()).sort(
+        (a, b) => a.versionNumber - b.versionNumber
+      );
       return { success: true, data: versions };
     }
 
@@ -584,7 +1100,8 @@ export async function getEstimateVersions(
 }
 
 /**
- * Loads the full detail (including items and overrides) of a specific version from the subcollection.
+ * Loads the full detail (including items and overrides) of a specific version from the subcollection
+ * or local versions vault. Supports both canonical `v0_RAW` and legacy alias `v0`.
  */
 export async function loadEstimateVersionDetail(
   docIdOrEstimateId: string,
@@ -594,25 +1111,28 @@ export async function loadEstimateVersionDetail(
     ? docIdOrEstimateId
     : buildEstimateDocId(docIdOrEstimateId);
 
+  const isV0Query = versionId === CANONICAL_V0_TAG || versionId === LEGACY_V0_TAG;
+  const candidateIds = isV0Query ? [CANONICAL_V0_TAG, LEGACY_V0_TAG] : [versionId];
+
   try {
     const { db, isReady } = getFirestoreInstance();
     if (isReady && db) {
-      const vRef = doc(db, ESTIMATES_COLLECTION, docId, 'versions', versionId);
-      const snap = await withTimeout(getDoc(vRef), 5000);
-      if (snap.exists()) {
-        const d = snap.data();
-        const vNum =
-          d.versionNumber ??
-          (versionId === 'v0' || versionId === 'v0_RAW'
-            ? 0
-            : parseInt(versionId.replace('v', ''), 10) || 1);
-        return {
-          success: true,
-          data: {
-            id: snap.id,
+      for (const candidateId of candidateIds) {
+        const vRef = doc(db, ESTIMATES_COLLECTION, docId, 'versions', candidateId);
+        const snap = await withTimeout(getDoc(vRef), 5000);
+        if (snap.exists()) {
+          const d = snap.data();
+          const vNum =
+            d.versionNumber ??
+            (candidateId === LEGACY_V0_TAG || candidateId === CANONICAL_V0_TAG
+              ? 0
+              : parseInt(candidateId.replace('v', ''), 10) || 1);
+          const canonicalTag = vNum === 0 ? CANONICAL_V0_TAG : d.versionTag || candidateId;
+          const detail: EstimateVersionDetail = {
+            id: canonicalTag,
             estimateId: docIdOrEstimateId,
             versionNumber: vNum,
-            versionTag: d.versionTag || versionId,
+            versionTag: canonicalTag,
             type: d.type || (vNum === 0 ? 'ORIGINAL_RAW' : 'EDITED'),
             totalAmount: Number(d.totalAmount) || 0,
             netCiscoTotal: Number(d.netCiscoTotal) || 0,
@@ -629,37 +1149,60 @@ export async function loadEstimateVersionDetail(
             creatorFullName: d.creatorFullName,
             originalFileName: d.originalFileName,
             note: d.note,
-          },
-        };
+          };
+          putLocalEstimateVersionDetail(docId, canonicalTag, detail, { immutableIfV0: true });
+          return {
+            success: true,
+            data: detail,
+          };
+        }
       }
     }
 
-    // Fallback: check local root doc
+    // Fallback 1: check local versions vault (supports offline v0_RAW and v1..vN)
+    const vaultVersion = getLocalEstimateVersionDetail(docId, versionId);
+    if (vaultVersion) {
+      return {
+        success: true,
+        data: vaultVersion,
+      };
+    }
+
+    // Fallback 2: check local root doc ONLY if the requested version matches its activeVersionTag
     const localList = getLocalEstimatesCache();
     const existing = localList.find((x) => x.id === docId || x.estimateId === docIdOrEstimateId);
     if (existing) {
+      const existingTag =
+        existing.activeVersionTag ||
+        (existing.activeVersion === 0 ? CANONICAL_V0_TAG : `v${existing.activeVersion ?? 1}`);
+      if (!isV0Query || existing.activeVersion === 0 || existingTag === CANONICAL_V0_TAG) {
+        return {
+          success: true,
+          data: {
+            id: isV0Query ? CANONICAL_V0_TAG : versionId,
+            estimateId: existing.estimateId || docId,
+            versionNumber: existing.activeVersion ?? 1,
+            versionTag: existingTag,
+            type: existing.activeVersion === 0 ? 'ORIGINAL_RAW' : 'EDITED',
+            totalAmount:
+              existing.currentAmount ?? existing.financialSummary?.totalCotizadoIntcomex ?? 0,
+            netCiscoTotal:
+              existing.baselineV0Amount ?? existing.financialSummary?.totalNetCisco ?? 0,
+            marginPct: existing.financialSummary?.margenPct ?? 5.0,
+            itemsCount: existing.itemsCount ?? (existing.items || []).length,
+            items: existing.items || [],
+            customOverrideMap: existing.customOverrideMap,
+            fastTrackPromoMap: existing.fastTrackPromoMap,
+            headerInfo: existing.headerInfo,
+            createdAt: existing.createdAt || new Date().toISOString(),
+            creatorUsername: existing.creator?.username,
+            creatorFullName: existing.creator?.fullName,
+          },
+        };
+      }
       return {
-        success: true,
-        data: {
-          id: versionId,
-          estimateId: existing.estimateId || docId,
-          versionNumber: existing.activeVersion ?? 1,
-          versionTag: existing.activeVersionTag ?? 'v1',
-          type: 'EDITED',
-          totalAmount:
-            existing.currentAmount ?? existing.financialSummary?.totalCotizadoIntcomex ?? 0,
-          netCiscoTotal:
-            existing.baselineV0Amount ?? existing.financialSummary?.totalNetCisco ?? 0,
-          marginPct: existing.financialSummary?.margenPct ?? 5.0,
-          itemsCount: existing.itemsCount ?? (existing.items || []).length,
-          items: existing.items || [],
-          customOverrideMap: existing.customOverrideMap,
-          fastTrackPromoMap: existing.fastTrackPromoMap,
-          headerInfo: existing.headerInfo,
-          createdAt: existing.createdAt || new Date().toISOString(),
-          creatorUsername: existing.creator?.username,
-          creatorFullName: existing.creator?.fullName,
-        },
+        success: false,
+        error: 'El BOM original (v0_RAW) no está disponible para esta cotización.',
       };
     }
 
@@ -1474,45 +2017,302 @@ export async function resolveEstimateAccessRequest(
   }
 }
 
+export interface PendingEstimateDeletionEntry {
+  docId: string;
+  estimateId?: string;
+  knownVersionIds: string[];
+  startedAt: string;
+  lastError?: string;
+}
+
+export function getPendingEstimateDeletions(
+  projectId?: string
+): Record<string, PendingEstimateDeletionEntry> {
+  try {
+    if (typeof localStorage === 'undefined') return {};
+    const raw = readProjectScopedStorage(LOCAL_ESTIMATES_PENDING_DELETE_KEY, projectId);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePendingEstimateDeletions(
+  map: Record<string, PendingEstimateDeletionEntry>,
+  projectId?: string
+): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    writeProjectScopedStorage(LOCAL_ESTIMATES_PENDING_DELETE_KEY, JSON.stringify(map), projectId);
+  } catch {}
+}
+
 /**
- * Deletes an estimate document from Firestore and local cache with permanent tombstone tracking.
+ * Archives an estimate logically (`lifecycleState: 'ARCHIVED'`) without destroying historical versions.
+ */
+export async function archiveCloudEstimate(
+  docId: string,
+  estimateId?: string,
+  archivedBy: string = 'system'
+): Promise<{ success: boolean; lifecycleState: 'ARCHIVED'; error?: string }> {
+  const nowIso = new Date().toISOString();
+  try {
+    const localList = getLocalEstimatesCache().map((item) => {
+      if (
+        item.id === docId ||
+        (estimateId && estimateId !== 'NA' && item.estimateId === estimateId)
+      ) {
+        return {
+          ...item,
+          lifecycleState: 'ARCHIVED' as const,
+          archivedAt: nowIso,
+          archivedBy,
+          updatedAt: nowIso,
+        };
+      }
+      return item;
+    });
+    saveLocalEstimatesCache(localList);
+
+    const { db, isReady } = getFirestoreInstance();
+    if (isReady && db && !docId.startsWith('cloud-est-')) {
+      const docRef = doc(db, ESTIMATES_COLLECTION, docId);
+      await withTimeout(
+        setDoc(
+          docRef,
+          sanitizeForFirestore({
+            lifecycleState: 'ARCHIVED',
+            archivedAt: nowIso,
+            archivedBy,
+            updatedAt: nowIso,
+          }),
+          { merge: true }
+        ),
+        4000
+      );
+    }
+
+    return { success: true, lifecycleState: 'ARCHIVED' };
+  } catch (err: any) {
+    return {
+      success: false,
+      lifecycleState: 'ARCHIVED',
+      error: err?.message || 'Error archivando cotización',
+    };
+  }
+}
+
+/**
+ * Deletes an estimate document AND all of its `versions/*` subcollection documents from Firestore
+ * and local cache with multi-step `PENDING_DELETE` tracking and idempotent retry (Item 8).
+ * Also supports `options.mode === 'archive'` for logical archiving when preserving history.
  */
 export async function deleteCloudEstimate(
   docId: string,
-  estimateId?: string
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    // 1. Register permanent tombstone so it never resurrects
-    addDeletedEstimateId(docId);
-    if (estimateId && estimateId !== 'NA') {
-      addDeletedEstimateId(estimateId);
-    }
+  estimateId?: string,
+  options?: {
+    mode?: 'archive' | 'hard_delete';
+    archivedBy?: string;
+    driver?: EstimatePersistenceDriver;
+  }
+): Promise<{
+  success: boolean;
+  completed?: boolean;
+  partialDeletePending?: boolean;
+  deletedVersionsCount?: number;
+  lifecycleState?: 'ARCHIVED' | 'PENDING_DELETE' | 'DELETED';
+  error?: string;
+}> {
+  if (options?.mode === 'archive') {
+    const archRes = await archiveCloudEstimate(docId, estimateId, options.archivedBy);
+    return {
+      success: archRes.success,
+      completed: archRes.success,
+      lifecycleState: 'ARCHIVED',
+      error: archRes.error,
+    };
+  }
 
-    // 2. Remove from local cache
-    const localList = getLocalEstimatesCache().filter(
-      (x) => x.id !== docId && !(estimateId && estimateId !== 'NA' && x.estimateId === estimateId)
-    );
-    saveLocalEstimatesCache(localList);
+  const capturedCtx = captureProjectContext();
+  const targetDocIds = new Set<string>([docId]);
+  if (estimateId && estimateId !== 'NA') {
+    targetDocIds.add(buildEstimateDocId(estimateId));
+  }
 
-    // 3. Remove from Firestore
-    const { db, isReady } = getFirestoreInstance();
-    if (isReady && db) {
-      if (!docId.startsWith('cloud-est-')) {
-        await withTimeout(deleteDoc(doc(db, ESTIMATES_COLLECTION, docId)), 4000);
+  // 1. Collect known version IDs from local cache, local versions vault, and any prior pending delete entry
+  const localList = getLocalEstimatesCache();
+  const targetLocalRecord = localList.find(
+    (x) => x.id === docId || (estimateId && estimateId !== 'NA' && x.estimateId === estimateId)
+  );
+  const versionsVault = getLocalEstimateVersionsVault(capturedCtx.projectId);
+  const pendingDeletes = getPendingEstimateDeletions(capturedCtx.projectId);
+
+  const knownVersionIdsSet = new Set<string>([CANONICAL_V0_TAG, LEGACY_V0_TAG]);
+  if (targetLocalRecord?.versionsSummary) {
+    for (const vs of targetLocalRecord.versionsSummary) {
+      if (vs.versionTag) knownVersionIdsSet.add(vs.versionTag);
+      if (vs.versionNumber !== undefined) {
+        knownVersionIdsSet.add(vs.versionNumber === 0 ? CANONICAL_V0_TAG : `v${vs.versionNumber}`);
       }
-      if (estimateId && estimateId !== 'NA') {
-        const detId = buildEstimateDocId(estimateId);
-        if (detId !== docId) {
-          deleteDoc(doc(db, ESTIMATES_COLLECTION, detId)).catch(() => {});
+    }
+  }
+  if (targetLocalRecord?.activeVersionTag) {
+    knownVersionIdsSet.add(targetLocalRecord.activeVersionTag);
+  }
+  for (const tDocId of targetDocIds) {
+    if (versionsVault[tDocId]) {
+      for (const vKey of Object.keys(versionsVault[tDocId])) {
+        knownVersionIdsSet.add(vKey);
+      }
+    }
+    if (pendingDeletes[tDocId]?.knownVersionIds) {
+      for (const vKey of pendingDeletes[tDocId].knownVersionIds) {
+        knownVersionIdsSet.add(vKey);
+      }
+    }
+  }
+
+  // 2. Mark as PENDING_DELETE before starting remote subcollection + root purge
+  pendingDeletes[docId] = {
+    docId,
+    estimateId,
+    knownVersionIds: Array.from(knownVersionIdsSet),
+    startedAt: pendingDeletes[docId]?.startedAt || new Date().toISOString(),
+  };
+  savePendingEstimateDeletions(pendingDeletes, capturedCtx.projectId);
+
+  try {
+    let deletedVersionsCount = 0;
+
+    if (options?.driver) {
+      let remoteVerIds: string[] = [];
+      if (options.driver.listVersionDocIds) {
+        remoteVerIds = await options.driver.listVersionDocIds(docId);
+      }
+      const allVerIds = Array.from(new Set([...knownVersionIdsSet, ...remoteVerIds]));
+      if (options.driver.deleteEstimateAndVersionsBatch) {
+        await options.driver.deleteEstimateAndVersionsBatch(docId, allVerIds);
+      }
+      deletedVersionsCount = allVerIds.length;
+    } else {
+      const { db, isReady } = getFirestoreInstance();
+      if (isReady && db) {
+        for (const tDocId of targetDocIds) {
+          if (tDocId.startsWith('cloud-est-')) continue;
+
+          // Enumerate remote subcollection versions so no orphan version docs remain
+          const remoteVerIds = new Set<string>(knownVersionIdsSet);
+          try {
+            const verColRef = collection(db, ESTIMATES_COLLECTION, tDocId, 'versions');
+            const verSnap = await withTimeout(getDocs(verColRef), 4000);
+            verSnap.forEach((vDoc) => remoteVerIds.add(vDoc.id));
+          } catch (_) {
+            // Even if getDocs fails, we still batch-delete all known version tags
+          }
+
+          const allVerIds = Array.from(remoteVerIds);
+          // Delete versions + root doc in atomic writeBatch chunks (<= 450 ops per batch)
+          const batchSize = 400;
+          for (let i = 0; i < allVerIds.length; i += batchSize) {
+            const slice = allVerIds.slice(i, i + batchSize);
+            const batch = writeBatch(db);
+            for (const vId of slice) {
+              batch.delete(doc(db, ESTIMATES_COLLECTION, tDocId, 'versions', vId));
+            }
+            if (i + batchSize >= allVerIds.length) {
+              batch.delete(doc(db, ESTIMATES_COLLECTION, tDocId));
+            }
+            await withTimeout(batch.commit(), 5000);
+          }
+
+          if (allVerIds.length === 0) {
+            await withTimeout(deleteDoc(doc(db, ESTIMATES_COLLECTION, tDocId)), 4000);
+          }
+          deletedVersionsCount += allVerIds.length;
         }
       }
     }
 
-    return { success: true };
+    // 3. Only AFTER all version subcollection docs and root doc are confirmed deleted:
+    //    - Register permanent tombstone
+    //    - Remove from local estimates cache and local versions vault
+    //    - Clear from pending deletions queue
+    addDeletedEstimateId(docId, capturedCtx.projectId);
+    if (estimateId && estimateId !== 'NA') {
+      addDeletedEstimateId(estimateId, capturedCtx.projectId);
+    }
+
+    const updatedLocal = getLocalEstimatesCache().filter(
+      (x) => x.id !== docId && !(estimateId && estimateId !== 'NA' && x.estimateId === estimateId)
+    );
+    saveLocalEstimatesCache(updatedLocal);
+
+    const updatedVault = getLocalEstimateVersionsVault(capturedCtx.projectId);
+    for (const tDocId of targetDocIds) {
+      delete updatedVault[tDocId];
+      delete pendingDeletes[tDocId];
+    }
+    delete pendingDeletes[docId];
+    saveLocalEstimateVersionsVault(updatedVault, capturedCtx.projectId);
+    savePendingEstimateDeletions(pendingDeletes, capturedCtx.projectId);
+
+    return {
+      success: true,
+      completed: true,
+      partialDeletePending: false,
+      deletedVersionsCount,
+      lifecycleState: 'DELETED',
+    };
   } catch (err: any) {
+    const errMsg = err?.message || 'Error eliminando cotización y sus versiones';
+    pendingDeletes[docId] = {
+      ...pendingDeletes[docId],
+      lastError: errMsg,
+    };
+    savePendingEstimateDeletions(pendingDeletes, capturedCtx.projectId);
+
+    // Mark record in local cache as PENDING_DELETE so UI/Sync knows deletion is incomplete
+    const markedLocal = getLocalEstimatesCache().map((x) => {
+      if (x.id === docId || (estimateId && estimateId !== 'NA' && x.estimateId === estimateId)) {
+        return { ...x, lifecycleState: 'PENDING_DELETE' as const };
+      }
+      return x;
+    });
+    saveLocalEstimatesCache(markedLocal);
+
     console.warn('[Firestore Cloud Warning - deleteEstimate]:', err);
-    return { success: false, error: err?.message || 'Error eliminando registro' };
+    return {
+      success: false,
+      completed: false,
+      partialDeletePending: true,
+      lifecycleState: 'PENDING_DELETE',
+      error: errMsg,
+    };
   }
+}
+
+/**
+ * Resumes any interrupted `PENDING_DELETE` estimate purges idempotently.
+ */
+export async function resumePendingEstimateDeletions(options?: {
+  driver?: EstimatePersistenceDriver;
+}): Promise<{ completed: number; remaining: number }> {
+  const pendingMap = getPendingEstimateDeletions();
+  const entries = Object.values(pendingMap);
+  let completed = 0;
+  for (const entry of entries) {
+    const res = await deleteCloudEstimate(entry.docId, entry.estimateId, {
+      mode: 'hard_delete',
+      driver: options?.driver,
+    });
+    if (res.success && res.completed) {
+      completed += 1;
+    }
+  }
+  const remaining = Object.keys(getPendingEstimateDeletions()).length;
+  return { completed, remaining };
 }
 
 // ----------------------------------------------------------------------------

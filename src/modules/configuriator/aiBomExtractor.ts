@@ -383,7 +383,15 @@ export async function executeFetchWithAbortAndBodyTimeout(
   }, effectiveTimeoutMs);
 
   try {
-    const res = await ctx.fetchImpl(url, {
+    const fetchFn = ctx.fetchImpl;
+    const fetchTarget =
+      typeof window !== 'undefined'
+        ? window
+        : typeof globalThis !== 'undefined'
+        ? globalThis
+        : undefined;
+
+    const res = await fetchFn.call(fetchTarget, url, {
       ...init,
       signal: controller.signal,
     });
@@ -1532,11 +1540,32 @@ export async function extractBOMRequirementsFromInput(
 
   const totalTimeoutMs = Math.max(100, opts.totalTimeoutMs ?? 30000);
   const deadlineMs = Date.now() + totalTimeoutMs;
+  const rawFetch =
+    opts.fetchImpl ??
+    (typeof window !== 'undefined' && window.fetch
+      ? window.fetch
+      : typeof globalThis !== 'undefined' && globalThis.fetch
+      ? globalThis.fetch
+      : fetch);
+
+  const safeBoundFetch: typeof fetch = (
+    inputInfo: RequestInfo | URL,
+    initConfig?: RequestInit
+  ) => {
+    const target =
+      typeof window !== 'undefined'
+        ? window
+        : typeof globalThis !== 'undefined'
+        ? globalThis
+        : undefined;
+    return rawFetch.call(target, inputInfo, initConfig);
+  };
+
   const ctx: ProviderRuntimeContext = {
     signal: opts.signal,
     deadlineMs,
     perAttemptTimeoutMs: opts.perAttemptTimeoutMs,
-    fetchImpl: opts.fetchImpl ?? fetch,
+    fetchImpl: safeBoundFetch,
   };
 
   if (ctx.signal?.aborted) {

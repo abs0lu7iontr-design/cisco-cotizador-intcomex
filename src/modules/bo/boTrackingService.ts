@@ -1,5 +1,6 @@
 // ============================================================================
-// CISCO AUTOMATED v2.1 - BO ORDER TRACKING SERVICE (FIRESTORE + OFFLINE CACHE)
+// CISCO AUTOMATED v2.1 - BO ORDER TRACKING SERVICE (FIRESTORE + INDEXEDDB + EVENT LOG)
+// Implements Item 11 (IndexedDB Collection Store), Item 12 (Idempotent Event Log), Item 15 (Project Scope)
 // ============================================================================
 
 import {
@@ -11,7 +12,12 @@ import {
   query,
   orderBy,
 } from 'firebase/firestore';
-import { getFirestoreInstance } from '../cloud/firebaseConfig';
+import {
+  getFirestoreInstance,
+  getActiveProjectScopeKey,
+  readProjectScopedStorage,
+  writeProjectScopedStorage,
+} from '../cloud/firebaseConfig';
 import {
   BoOrderTrackingRecord,
   BoStage,
@@ -21,6 +27,15 @@ import {
 } from './boTrackingTypes';
 import { ProcessedEstimateResult } from '../../core/types';
 import { sanitizeForFirestore } from '../cloud/firestoreService';
+import {
+  getCollectionRecordsSync,
+  putCollectionRecordsBatch,
+  deleteCollectionRecord,
+  appendEntityEventAtomic,
+  mergeAndQueryEntityEvents,
+  EventQueryOptions,
+  EntityHistoryEvent,
+} from '../storage/indexedDbCollectionStore';
 
 const BO_TRACKING_COLLECTION = 'bo_order_tracking';
 const LOCAL_BO_TRACKING_PRIMARY_KEY = 'cisco_bo_order_tracking_cache_v2';
@@ -30,14 +45,69 @@ const LOCAL_BO_TRACKING_DELETED_KEY = 'cisco_bo_order_tracking_deleted_ids_v1';
 const LOCAL_BO_TRACKING_INIT_KEY = 'cisco_bo_tracking_initialized_flag_v1';
 
 // ----------------------------------------------------------------------------
-// Local Storage Multi-Tier Vault & Tombstone Helpers (Blindaje Anti-Pérdida)
+// Local Storage Multi-Tier Vault, IndexedDB & Idempotent Event Helpers
 // ----------------------------------------------------------------------------
 let inMemoryTrackingCache: BoOrderTrackingRecord[] = [];
 
-export function getDeletedBoTrackingIds(): Set<string> {
+/**
+ * Merges a BO order's inline `notes` array with the idempotent event store so concurrent
+ * additions never overwrite each other and duplicate retries are deduplicated (Item 12).
+ */
+export function reconcileBoOrderNotesWithEventStore(
+  record: BoOrderTrackingRecord,
+  projectScope?: string
+): BoOrderTrackingRecord {
+  if (!record || !record.id) return record;
+  const mergedEvents = mergeAndQueryEntityEvents(
+    'BO_TRACKING',
+    record.id,
+    (record.notes || []).map((n) => ({
+      id: n.id,
+      date: n.date,
+      author: n.author,
+      stage: n.stage,
+      comment: n.comment,
+    })),
+    { direction: 'asc', projectScope }
+  );
+
+  const notes: BoDailyNote[] = mergedEvents.map((evt) => ({
+    id: evt.id,
+    date: evt.createdAt,
+    author: evt.author,
+    stage: (evt.actionOrStage as BoStage) || record.currentStage,
+    comment: evt.comment,
+  }));
+
+  return {
+    ...record,
+    notes,
+  };
+}
+
+export function getBoOrderEventsPaginated(
+  orderId: string,
+  options?: EventQueryOptions
+): EntityHistoryEvent[] {
+  const existing = getLocalBoTrackingCache().find((r) => r.id === orderId);
+  return mergeAndQueryEntityEvents(
+    'BO_TRACKING',
+    orderId,
+    (existing?.notes || []).map((n) => ({
+      id: n.id,
+      date: n.date,
+      author: n.author,
+      stage: n.stage,
+      comment: n.comment,
+    })),
+    options
+  );
+}
+
+export function getDeletedBoTrackingIds(projectId?: string): Set<string> {
   try {
     if (typeof localStorage !== 'undefined') {
-      const raw = localStorage.getItem(LOCAL_BO_TRACKING_DELETED_KEY);
+      const raw = readProjectScopedStorage(LOCAL_BO_TRACKING_DELETED_KEY, projectId);
       if (raw) {
         const arr = JSON.parse(raw);
         if (Array.isArray(arr)) return new Set(arr);
@@ -47,19 +117,32 @@ export function getDeletedBoTrackingIds(): Set<string> {
   return new Set();
 }
 
-export function addDeletedBoTrackingId(id: string): void {
+export function addDeletedBoTrackingId(id: string, projectId?: string): void {
   try {
     if (typeof localStorage !== 'undefined') {
-      const deleted = getDeletedBoTrackingIds();
+      const deleted = getDeletedBoTrackingIds(projectId);
       deleted.add(id);
-      localStorage.setItem(LOCAL_BO_TRACKING_DELETED_KEY, JSON.stringify(Array.from(deleted)));
+      writeProjectScopedStorage(
+        LOCAL_BO_TRACKING_DELETED_KEY,
+        JSON.stringify(Array.from(deleted)),
+        projectId
+      );
     }
   } catch (_) {}
 }
 
-export function getLocalBoTrackingCache(): BoOrderTrackingRecord[] {
-  const deletedIds = getDeletedBoTrackingIds();
+export function getLocalBoTrackingCache(projectId?: string): BoOrderTrackingRecord[] {
+  const scopeKey = projectId || getActiveProjectScopeKey();
+  const deletedIds = getDeletedBoTrackingIds(scopeKey);
   const map = new Map<string, BoOrderTrackingRecord>();
+
+  // 1. Read from IndexedDB collection mirror (Item 11)
+  const idbRecords = getCollectionRecordsSync<BoOrderTrackingRecord>('bo_trackings', scopeKey);
+  for (const item of idbRecords) {
+    if (item && item.id && !deletedIds.has(item.id)) {
+      map.set(item.id, reconcileBoOrderNotesWithEventStore(item, scopeKey));
+    }
+  }
 
   const keysToRead = [
     LOCAL_BO_TRACKING_LEGACY_KEY,
@@ -70,21 +153,27 @@ export function getLocalBoTrackingCache(): BoOrderTrackingRecord[] {
   try {
     if (typeof localStorage !== 'undefined') {
       for (const k of keysToRead) {
-        const raw = localStorage.getItem(k);
+        const raw = readProjectScopedStorage(k, scopeKey);
         if (raw) {
           const list = JSON.parse(raw);
           if (Array.isArray(list)) {
             for (const item of list) {
               if (item && item.id && !deletedIds.has(item.id)) {
-                const existing = map.get(item.id);
+                const reconciledItem = reconcileBoOrderNotesWithEventStore(item, scopeKey);
+                const existing = map.get(reconciledItem.id);
                 if (!existing) {
-                  map.set(item.id, item);
+                  map.set(reconciledItem.id, reconciledItem);
                 } else {
                   const existingTs = existing.updatedAt || existing.createdAt || '';
-                  const itemTs = item.updatedAt || item.createdAt || '';
-                  if (itemTs >= existingTs) {
-                    map.set(item.id, item);
-                  }
+                  const itemTs = reconciledItem.updatedAt || reconciledItem.createdAt || '';
+                  const combinedNotes = reconcileBoOrderNotesWithEventStore(
+                    {
+                      ...(itemTs >= existingTs ? reconciledItem : existing),
+                      notes: [...(existing.notes || []), ...(reconciledItem.notes || [])],
+                    },
+                    scopeKey
+                  );
+                  map.set(reconciledItem.id, combinedNotes);
                 }
               }
             }
@@ -97,7 +186,7 @@ export function getLocalBoTrackingCache(): BoOrderTrackingRecord[] {
   // Si hay datos en memoria que no están en localStorage, incluirlos
   for (const mem of inMemoryTrackingCache) {
     if (mem && mem.id && !deletedIds.has(mem.id) && !map.has(mem.id)) {
-      map.set(mem.id, mem);
+      map.set(mem.id, reconcileBoOrderNotesWithEventStore(mem, scopeKey));
     }
   }
 
@@ -108,18 +197,31 @@ export function getLocalBoTrackingCache(): BoOrderTrackingRecord[] {
   return result.length > 0 ? result : inMemoryTrackingCache;
 }
 
-export function saveLocalBoTrackingCache(records: BoOrderTrackingRecord[]): void {
-  const deletedIds = getDeletedBoTrackingIds();
-  const cleanRecords = records.filter((r) => r && r.id && !deletedIds.has(r.id));
+export function saveLocalBoTrackingCache(
+  records: BoOrderTrackingRecord[],
+  projectId?: string
+): void {
+  const scopeKey = projectId || getActiveProjectScopeKey();
+  const deletedIds = getDeletedBoTrackingIds(scopeKey);
+  const cleanRecords = records
+    .filter((r) => r && r.id && !deletedIds.has(r.id))
+    .map((r) => reconcileBoOrderNotesWithEventStore(r, scopeKey));
   inMemoryTrackingCache = [...cleanRecords];
+
+  // Persist per-record in IndexedDB collection store (Item 11)
+  putCollectionRecordsBatch(
+    'bo_trackings',
+    cleanRecords.map((r) => ({ id: r.id, record: r })),
+    { projectScope: scopeKey, replaceAllInScope: true }
+  ).catch(() => {});
 
   try {
     if (typeof localStorage !== 'undefined') {
       const json = JSON.stringify(cleanRecords);
-      localStorage.setItem(LOCAL_BO_TRACKING_PRIMARY_KEY, json);
-      localStorage.setItem(LOCAL_BO_TRACKING_VAULT_KEY, json);
-      localStorage.setItem(LOCAL_BO_TRACKING_LEGACY_KEY, json);
-      localStorage.setItem(LOCAL_BO_TRACKING_INIT_KEY, 'true');
+      writeProjectScopedStorage(LOCAL_BO_TRACKING_PRIMARY_KEY, json, scopeKey);
+      writeProjectScopedStorage(LOCAL_BO_TRACKING_VAULT_KEY, json, scopeKey);
+      writeProjectScopedStorage(LOCAL_BO_TRACKING_LEGACY_KEY, json, scopeKey);
+      writeProjectScopedStorage(LOCAL_BO_TRACKING_INIT_KEY, 'true', scopeKey);
     }
   } catch (_) {}
 }
@@ -365,7 +467,8 @@ export async function getBoTrackings(): Promise<BoOrderTrackingRecord[]> {
   }
 
   // Inicializar con semillas SOLO si es primera ejecución absoluta y no hay flag de inicio
-  const isInitialized = typeof localStorage !== 'undefined' && localStorage.getItem(LOCAL_BO_TRACKING_INIT_KEY);
+  const isInitialized =
+    typeof localStorage !== 'undefined' && readProjectScopedStorage(LOCAL_BO_TRACKING_INIT_KEY);
   if (!isInitialized && localRecords.length === 0) {
     saveLocalBoTrackingCache(SEED_BO_ORDERS);
     return SEED_BO_ORDERS;
@@ -376,30 +479,41 @@ export async function getBoTrackings(): Promise<BoOrderTrackingRecord[]> {
 
 /**
  * Guarda o actualiza un registro completo de seguimiento BO con sanitización estricta
+ * y reconciliación idempotente de eventos de bitácora (Item 12).
  */
 export async function saveBoTracking(
   record: BoOrderTrackingRecord
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const scopeKey = getActiveProjectScopeKey();
+    const reconciled = reconcileBoOrderNotesWithEventStore(record, scopeKey);
     const normalizedRecord: BoOrderTrackingRecord = {
-      ...record,
+      ...reconciled,
       courierTrackingUrl: getCourierTrackingUrl(record.courier, record.courierTrackingNumber),
       updatedAt: new Date().toISOString(),
     };
 
-    // Actualizar caché local inmediatamente en todos los almacenes redundantes
-    const current = getLocalBoTrackingCache();
+    // Actualizar caché local inmediatamente en IndexedDB y almacenes redundantes
+    const current = getLocalBoTrackingCache(scopeKey);
     const existingIdx = current.findIndex((r) => r.id === normalizedRecord.id);
     let nextList: BoOrderTrackingRecord[];
     if (existingIdx >= 0) {
+      // Merge existing notes with incoming notes via event store so concurrent notes are never overwritten
+      const mergedRecord = reconcileBoOrderNotesWithEventStore(
+        {
+          ...normalizedRecord,
+          notes: [...(current[existingIdx].notes || []), ...(normalizedRecord.notes || [])],
+        },
+        scopeKey
+      );
       nextList = [...current];
-      nextList[existingIdx] = normalizedRecord;
+      nextList[existingIdx] = mergedRecord;
     } else {
       nextList = [normalizedRecord, ...current];
     }
-    saveLocalBoTrackingCache(nextList);
+    saveLocalBoTrackingCache(nextList, scopeKey);
 
-    // Persistir en Firestore sanitizando campos undefined (elimina error "Unsupported field value: undefined")
+    // Persistir en Firestore sanitizando campos undefined
     try {
       const { db, isReady } = getFirestoreInstance();
       if (isReady && db) {
@@ -419,14 +533,15 @@ export async function saveBoTracking(
 }
 
 /**
- * Avanza o cambia la etapa de una orden agregando una nota automática a la bitácora
+ * Avanza o cambia la etapa de una orden registrando la transición y nota como un evento idempotente (Item 12).
  */
 export async function updateBoTrackingStage(
   orderId: string,
   newStage: BoStage,
   author: string,
-  noteText?: string
-): Promise<{ success: boolean; error?: string }> {
+  noteText?: string,
+  options?: { eventId?: string; idempotencyKey?: string; createdAt?: string }
+): Promise<{ success: boolean; wasDuplicateEvent?: boolean; error?: string }> {
   try {
     const records = await getBoTrackings();
     const order = records.find((r) => r.id === orderId);
@@ -434,23 +549,30 @@ export async function updateBoTrackingStage(
       return { success: false, error: `Orden ${orderId} no encontrada` };
     }
 
-    const nowIso = new Date().toISOString();
-    const updatedNotes: BoDailyNote[] = [...(order.notes || [])];
+    const nowIso = options?.createdAt || new Date().toISOString();
+    let wasDuplicateEvent = false;
 
     if (noteText && noteText.trim()) {
-      updatedNotes.push({
-        id: `note-${Date.now()}`,
-        date: nowIso,
+      const evtRes = await appendEntityEventAtomic({
+        entityType: 'BO_TRACKING',
+        entityId: orderId,
+        actionOrStage: newStage,
         author: author || 'Usuario',
-        stage: newStage,
         comment: noteText.trim(),
+        createdAt: nowIso,
+        eventId: options?.eventId,
+        idempotencyKey: options?.idempotencyKey,
       });
+      if (!evtRes.success) {
+        return { success: false, error: evtRes.error || 'Error registrando evento de cambio de etapa' };
+      }
+      wasDuplicateEvent = evtRes.wasDuplicate;
     }
 
+    const reconciledOrder = reconcileBoOrderNotesWithEventStore(order);
     const updatedOrder: BoOrderTrackingRecord = {
-      ...order,
+      ...reconciledOrder,
       currentStage: newStage,
-      notes: updatedNotes,
       updatedAt: nowIso,
       lastDailyReviewAt: nowIso,
     };
@@ -459,21 +581,23 @@ export async function updateBoTrackingStage(
       updatedOrder.actualDeliveryDate = nowIso.slice(0, 10);
     }
 
-    return await saveBoTracking(updatedOrder);
+    const saveRes = await saveBoTracking(updatedOrder);
+    return { ...saveRes, wasDuplicateEvent };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Error al actualizar etapa' };
   }
 }
 
 /**
- * Actualiza los datos de Courier y Tracking (ej. FedEx)
+ * Actualiza los datos de Courier y Tracking registrando un evento idempotente en la bitácora (Item 12).
  */
 export async function updateBoTrackingCourier(
   orderId: string,
   courier: CourierProvider,
   trackingNumber: string,
-  author: string
-): Promise<{ success: boolean; error?: string }> {
+  author: string,
+  options?: { eventId?: string; idempotencyKey?: string; createdAt?: string }
+): Promise<{ success: boolean; wasDuplicateEvent?: boolean; error?: string }> {
   try {
     const records = await getBoTrackings();
     const order = records.find((r) => r.id === orderId);
@@ -481,43 +605,53 @@ export async function updateBoTrackingCourier(
       return { success: false, error: `Orden ${orderId} no encontrada` };
     }
 
-    const nowIso = new Date().toISOString();
-    const updatedNotes: BoDailyNote[] = [...(order.notes || [])];
+    const nowIso = options?.createdAt || new Date().toISOString();
+    let wasDuplicateEvent = false;
 
     if (trackingNumber.trim() && trackingNumber !== order.courierTrackingNumber) {
-      updatedNotes.push({
-        id: `note-${Date.now()}`,
-        date: nowIso,
+      const evtRes = await appendEntityEventAtomic({
+        entityType: 'BO_TRACKING',
+        entityId: orderId,
+        actionOrStage: order.currentStage,
         author: author || 'Usuario',
-        stage: order.currentStage,
         comment: `Guía ${courier} registrada / actualizada: ${trackingNumber.trim()}`,
+        createdAt: nowIso,
+        eventId: options?.eventId,
+        idempotencyKey: options?.idempotencyKey,
       });
+      if (!evtRes.success) {
+        return { success: false, error: evtRes.error || 'Error registrando evento de guía courier' };
+      }
+      wasDuplicateEvent = evtRes.wasDuplicate;
     }
 
+    const reconciledOrder = reconcileBoOrderNotesWithEventStore(order);
     const updatedOrder: BoOrderTrackingRecord = {
-      ...order,
+      ...reconciledOrder,
       courier,
       courierTrackingNumber: trackingNumber.trim(),
       courierTrackingUrl: getCourierTrackingUrl(courier, trackingNumber.trim()),
-      notes: updatedNotes,
       updatedAt: nowIso,
       lastDailyReviewAt: nowIso,
     };
 
-    return await saveBoTracking(updatedOrder);
+    const saveRes = await saveBoTracking(updatedOrder);
+    return { ...saveRes, wasDuplicateEvent };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Error al actualizar tracking' };
   }
 }
 
 /**
- * Agrega un comentario o nota de seguimiento diario
+ * Agrega un comentario o nota de seguimiento diario como evento idempotente (Item 12).
+ * Si se reintenta la misma nota o dos usuarios agregan notas concurrentemente, ninguna nota se pierde ni se duplica.
  */
 export async function addBoDailyNote(
   orderId: string,
   author: string,
-  comment: string
-): Promise<{ success: boolean; error?: string }> {
+  comment: string,
+  options?: { eventId?: string; idempotencyKey?: string; createdAt?: string }
+): Promise<{ success: boolean; wasDuplicateEvent?: boolean; error?: string }> {
   if (!comment || !comment.trim()) {
     return { success: false, error: 'El comentario no puede estar vacío' };
   }
@@ -529,35 +663,44 @@ export async function addBoDailyNote(
       return { success: false, error: `Orden ${orderId} no encontrada` };
     }
 
-    const nowIso = new Date().toISOString();
-    const newNote: BoDailyNote = {
-      id: `note-${Date.now()}`,
-      date: nowIso,
+    const nowIso = options?.createdAt || new Date().toISOString();
+    const evtRes = await appendEntityEventAtomic({
+      entityType: 'BO_TRACKING',
+      entityId: orderId,
+      actionOrStage: order.currentStage,
       author: author || 'Usuario',
-      stage: order.currentStage,
       comment: comment.trim(),
-    };
+      createdAt: nowIso,
+      eventId: options?.eventId,
+      idempotencyKey: options?.idempotencyKey,
+    });
 
+    if (!evtRes.success) {
+      return { success: false, error: evtRes.error || 'Error registrando evento de nota BO' };
+    }
+
+    const reconciledOrder = reconcileBoOrderNotesWithEventStore(order);
     const updatedOrder: BoOrderTrackingRecord = {
-      ...order,
-      notes: [...(order.notes || []), newNote],
+      ...reconciledOrder,
       updatedAt: nowIso,
       lastDailyReviewAt: nowIso,
     };
 
-    return await saveBoTracking(updatedOrder);
+    const saveRes = await saveBoTracking(updatedOrder);
+    return { ...saveRes, wasDuplicateEvent: evtRes.wasDuplicate };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Error al agregar nota' };
   }
 }
 
 /**
- * Elimina o archiva un registro de seguimiento con registro de tombstone
+ * Elimina o archiva un registro de seguimiento con registro de tombstone y limpieza en IndexedDB.
  */
 export async function deleteBoTracking(orderId: string): Promise<{ success: boolean; error?: string }> {
   try {
     // 1. Registrar en lista negra de tumbstones para evitar resurrección
     addDeletedBoTrackingId(orderId);
+    await deleteCollectionRecord('bo_trackings', orderId);
 
     // 2. Eliminar de caché local redundante
     const current = getLocalBoTrackingCache();

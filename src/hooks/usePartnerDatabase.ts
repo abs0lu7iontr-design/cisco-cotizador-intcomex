@@ -7,7 +7,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { doc, setDoc, collection, onSnapshot, Firestore } from 'firebase/firestore';
 import { getSimilarityScore } from '../utils/fuzzyMatch';
 import { getPartnerDocId } from '../utils/partnerDbUtils';
-import { getFirestoreInstance } from '../modules/cloud/firebaseConfig';
+import {
+  getFirestoreInstance,
+  readProjectScopedStorage,
+  writeProjectScopedStorage,
+  registerProjectListener,
+  captureProjectContext,
+  isProjectContextCurrent,
+} from '../modules/cloud/firebaseConfig';
 
 export interface PartnerRecord {
   resellerName: string;
@@ -168,10 +175,10 @@ export function mergePartnerListsDeterministically(
   );
 }
 
-export function getPendingPartnerWrites(): Record<string, PartnerRecord> {
+export function getPendingPartnerWrites(projectId?: string): Record<string, PartnerRecord> {
   try {
     if (typeof localStorage === 'undefined') return {};
-    const raw = localStorage.getItem(LOCAL_STORAGE_PARTNERS_PENDING_KEY);
+    const raw = readProjectScopedStorage(LOCAL_STORAGE_PARTNERS_PENDING_KEY, projectId);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' ? parsed : {};
@@ -180,57 +187,71 @@ export function getPendingPartnerWrites(): Record<string, PartnerRecord> {
   }
 }
 
-export function savePendingPartnerWrites(pending: Record<string, PartnerRecord>): void {
+export function savePendingPartnerWrites(
+  pending: Record<string, PartnerRecord>,
+  projectId?: string
+): void {
   try {
     if (typeof localStorage === 'undefined') return;
-    localStorage.setItem(LOCAL_STORAGE_PARTNERS_PENDING_KEY, JSON.stringify(pending));
+    writeProjectScopedStorage(
+      LOCAL_STORAGE_PARTNERS_PENDING_KEY,
+      JSON.stringify(pending),
+      projectId
+    );
   } catch {
     // Ignore storage quota errors
   }
 }
 
-export function enqueuePendingPartnerWrite(record: PartnerRecord): Record<string, PartnerRecord> {
+export function enqueuePendingPartnerWrite(
+  record: PartnerRecord,
+  projectId?: string
+): Record<string, PartnerRecord> {
   const norm = { ...normalizePartnerRecord(record), pendingSync: true };
   const key = norm.resellerName.toUpperCase();
-  const current = getPendingPartnerWrites();
+  const current = getPendingPartnerWrites(projectId);
   const existing = current[key];
   current[key] = existing
     ? resolvePartnerConflict(existing, norm, { hasPendingLocalWrite: true })
     : norm;
-  savePendingPartnerWrites(current);
+  savePendingPartnerWrites(current, projectId);
   return current;
 }
 
-export function markPendingPartnerWriteSynced(resellerName: string, syncedUpdatedAt: number): void {
+export function markPendingPartnerWriteSynced(
+  resellerName: string,
+  syncedUpdatedAt: number,
+  projectId?: string
+): void {
   const key = resellerName.trim().toUpperCase();
-  const current = getPendingPartnerWrites();
+  const current = getPendingPartnerWrites(projectId);
   const pending = current[key];
   if (!pending) return;
   if ((pending.updatedAt ?? 0) <= syncedUpdatedAt) {
     delete current[key];
-    savePendingPartnerWrites(current);
+    savePendingPartnerWrites(current, projectId);
   }
 }
 
-export function persistPartnersToStorage(list: PartnerRecord[]): void {
+export function persistPartnersToStorage(list: PartnerRecord[], projectId?: string): void {
   try {
     if (typeof localStorage === 'undefined') return;
     const serialized = JSON.stringify(list);
-    localStorage.setItem(LOCAL_STORAGE_PARTNERS_KEY, serialized);
-    localStorage.setItem(LOCAL_STORAGE_PARTNERS_VAULT_KEY, serialized);
+    writeProjectScopedStorage(LOCAL_STORAGE_PARTNERS_KEY, serialized, projectId);
+    writeProjectScopedStorage(LOCAL_STORAGE_PARTNERS_VAULT_KEY, serialized, projectId);
   } catch {
     // Ignore storage quota errors
   }
 }
 
-export function loadPartnersFromStorage(): PartnerRecord[] {
+export function loadPartnersFromStorage(projectId?: string): PartnerRecord[] {
   try {
     if (typeof localStorage === 'undefined') return [];
-    const cached1 = localStorage.getItem(LOCAL_STORAGE_PARTNERS_KEY);
-    const cached2 = localStorage.getItem(LOCAL_STORAGE_PARTNERS_VAULT_KEY);
+    const cached1 = readProjectScopedStorage(LOCAL_STORAGE_PARTNERS_KEY, projectId);
+    const cached2 = readProjectScopedStorage(LOCAL_STORAGE_PARTNERS_VAULT_KEY, projectId);
     const p1: PartnerRecord[] = cached1 ? JSON.parse(cached1) : [];
     const p2: PartnerRecord[] = cached2 ? JSON.parse(cached2) : [];
-    const pendingMap = getPendingPartnerWrites();
+    const pendingMap = getPendingPartnerWrites(projectId);
     return mergePartnerListsDeterministically(p2, p1, { pendingMap });
   } catch {
     return [];
@@ -243,7 +264,8 @@ export function loadPartnersFromStorage(): PartnerRecord[] {
 export async function flushPendingPartnerWrites(
   customSyncFn?: (record: PartnerRecord) => Promise<void>
 ): Promise<{ synced: number; remaining: number }> {
-  const pendingMap = getPendingPartnerWrites();
+  const capturedCtx = captureProjectContext();
+  const pendingMap = getPendingPartnerWrites(capturedCtx.projectId);
   const entries = Object.values(pendingMap);
   if (entries.length === 0) {
     return { synced: 0, remaining: 0 };
@@ -251,6 +273,9 @@ export async function flushPendingPartnerWrites(
 
   let synced = 0;
   for (const entry of entries) {
+    if (!isProjectContextCurrent(capturedCtx)) {
+      break;
+    }
     const updatedAt = entry.updatedAt || Date.now();
     try {
       if (customSyncFn) {
@@ -259,7 +284,7 @@ export async function flushPendingPartnerWrites(
         const docId = getPartnerDocId(entry.resellerName);
         if (!docId) continue;
         const instance = getFirestoreInstance();
-        if (!instance.isReady || !instance.db) {
+        if (!instance.isReady || !instance.db || !isProjectContextCurrent(capturedCtx)) {
           continue;
         }
         const docRef = doc(instance.db, 'partners_xcl', docId);
@@ -273,14 +298,16 @@ export async function flushPendingPartnerWrites(
           { merge: true }
         );
       }
-      markPendingPartnerWriteSynced(entry.resellerName, updatedAt);
-      synced += 1;
+      if (isProjectContextCurrent(capturedCtx)) {
+        markPendingPartnerWriteSynced(entry.resellerName, updatedAt, capturedCtx.projectId);
+        synced += 1;
+      }
     } catch {
       // Leave in pending queue for next retry
     }
   }
 
-  const remaining = Object.keys(getPendingPartnerWrites()).length;
+  const remaining = Object.keys(getPendingPartnerWrites(capturedCtx.projectId)).length;
   return { synced, remaining };
 }
 
@@ -309,6 +336,7 @@ export function usePartnerDatabase(originalBomName: string) {
   // 1. Suscripción a Firestore + sincronización de escrituras pendientes al recuperar red
   useEffect(() => {
     let db: Firestore | null = null;
+    const capturedCtx = captureProjectContext();
     try {
       const instance = getFirestoreInstance();
       if (instance.isReady && instance.db) {
@@ -339,9 +367,12 @@ export function usePartnerDatabase(originalBomName: string) {
 
     try {
       const partnersRef = collection(db, 'partners_xcl');
-      const unsubscribe = onSnapshot(
+      const rawUnsubscribe = onSnapshot(
         partnersRef,
         (snapshot) => {
+          if (!isProjectContextCurrent(capturedCtx)) {
+            return;
+          }
           const loaded: PartnerRecord[] = [];
           const incomingFromCache = Boolean(snapshot.metadata?.fromCache);
 
@@ -356,8 +387,8 @@ export function usePartnerDatabase(originalBomName: string) {
             }
           });
 
-          if (loaded.length > 0) {
-            const pendingMap = getPendingPartnerWrites();
+          if (loaded.length > 0 && isProjectContextCurrent(capturedCtx)) {
+            const pendingMap = getPendingPartnerWrites(capturedCtx.projectId);
             setPartners((prev) =>
               mergePartnerListsDeterministically(prev, loaded, {
                 pendingMap,
@@ -373,8 +404,10 @@ export function usePartnerDatabase(originalBomName: string) {
           );
         }
       );
+      const unregisterListener = registerProjectListener('partners_xcl_listener', rawUnsubscribe);
       return () => {
-        unsubscribe();
+        unregisterListener();
+        rawUnsubscribe();
         if (typeof window !== 'undefined') {
           window.removeEventListener('online', handleOnline);
         }
@@ -389,19 +422,19 @@ export function usePartnerDatabase(originalBomName: string) {
     }
   }, []);
 
-  // Escuchar actualizaciones locales inmediatas (ej. carga desde DsvPartnerUploader)
+  // Escuchar actualizaciones locales inmediatas o cambio de proyecto Firebase
   useEffect(() => {
     const handleLocalUpdate = () => {
       const loaded = loadPartnersFromStorage();
-      if (loaded.length > 0) {
-        setPartners(loaded);
-      }
+      setPartners(loaded);
     };
 
     window.addEventListener('cisco_partners_updated', handleLocalUpdate);
+    window.addEventListener('cisco-firebase-project-switched', handleLocalUpdate);
     window.addEventListener('storage', handleLocalUpdate);
     return () => {
       window.removeEventListener('cisco_partners_updated', handleLocalUpdate);
+      window.removeEventListener('cisco-firebase-project-switched', handleLocalUpdate);
       window.removeEventListener('storage', handleLocalUpdate);
     };
   }, []);

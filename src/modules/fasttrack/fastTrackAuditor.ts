@@ -7,7 +7,8 @@ import { isCloudSubscriptionSku } from '../../core/calculations';
 import { FastTrackAuditResult, FastTrackAuditMatch, FastTrackProduct } from './types';
 import {
   isFastTrackAuditEnabled,
-  getFastTrackItem,
+  getFastTrackItemsBatch,
+  sanitizePartNumberKey,
   getFastTrackCount,
   getFastTrackExpirationStatus,
   getFastTrackStats,
@@ -80,12 +81,16 @@ export async function auditEstimateWithFastTrack(
     };
   }
 
-  // 4. Consultar concurrentemente en IndexedDB todos los SKUs candidatos
-  const ftProducts = await Promise.all(
-    candidates.map((item) =>
-      fastTrackLookup ? fastTrackLookup(item.partNumber) : getFastTrackItem(item.partNumber)
-    )
-  );
+  // 4. Consultar en lote todos los SKUs candidatos en una sola transacción readonly de IndexedDB (Item 10)
+  let ftProducts: Array<FastTrackProduct | null>;
+  if (fastTrackLookup) {
+    ftProducts = await Promise.all(candidates.map((item) => fastTrackLookup(item.partNumber)));
+  } else {
+    const batchRes = await getFastTrackItemsBatch(candidates.map((c) => c.partNumber));
+    ftProducts = candidates.map(
+      (c) => batchRes.items[sanitizePartNumberKey(c.partNumber)] ?? null
+    );
+  }
 
   const matches: FastTrackAuditMatch[] = [];
   let accumulatedSavings = 0;

@@ -4,6 +4,26 @@
 // dimensionamiento preventa según usuarios/fibra, y completitud de jerarquía Madre-Hijo.
 // ============================================================================
 
+// Provide in-memory storage mock to suppress Node 22 ExperimentalWarning
+const mockStorageBackend = new Map<string, string>();
+const mockStorageObj = {
+  getItem: (k: string) => mockStorageBackend.get(k) ?? null,
+  setItem: (k: string, v: string) => mockStorageBackend.set(k, String(v)),
+  removeItem: (k: string) => mockStorageBackend.delete(k),
+  clear: () => mockStorageBackend.clear(),
+  key: (i: number) => Array.from(mockStorageBackend.keys())[i] ?? null,
+  get length() { return mockStorageBackend.size; },
+};
+try {
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: mockStorageObj,
+    configurable: true,
+    writable: true,
+  });
+} catch {
+  (globalThis as any).localStorage = mockStorageObj;
+}
+
 import {
   extractWithLocalDeterministicEngine,
   healClientTypoString,
@@ -146,7 +166,73 @@ async function runConfiguriatorNlpMinimalTests() {
     resEol.items[0].suggestedActiveSku === 'C9200L-24P-4G-E',
     `Error: Reemplazo debe ser C9200L-24P-4G-E, obtuvo ${resEol.items[0].suggestedActiveSku}`
   );
-  console.log('✅ Test 8: Detección de EOL y reemplazo automático a CCW 2026 vigente verificado.');
+  // --------------------------------------------------------------------------
+  // Test 9: Protección contra "Failed to execute 'fetch' on 'Window': Illegal invocation"
+  // --------------------------------------------------------------------------
+  const mockWindowObj = {};
+  (globalThis as any).window = mockWindowObj;
+  let invokedWithValidReceiver: boolean = false;
+
+  const strictWindowFetch = function (this: any, _url: any, _init: any) {
+    if (this !== mockWindowObj && this !== globalThis) {
+      throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+    }
+    invokedWithValidReceiver = true;
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      clientName: 'Cliente Test',
+                      items: [
+                        {
+                          originalPartNumber: 'C9200L-24P-4G-E',
+                          suggestedActiveSku: 'C9200L-24P-4G-E',
+                          description: 'Catalyst 9200L 24P PoE+',
+                          quantity: 1,
+                          ports: 24,
+                          isPoe: true,
+                          aiSubItems: [],
+                        },
+                      ],
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+  } as unknown as typeof fetch;
+
+  const { extractBOMRequirementsFromInput } = await import(
+    '../src/modules/configuriator/aiBomExtractor'
+  );
+
+  const resStrict = await extractBOMRequirementsFromInput(
+    { text: '1 switch 24 poe' },
+    {
+      explicitApiKey: 'AIzaSyTestMockKey12345',
+      fetchImpl: strictWindowFetch,
+      perAttemptTimeoutMs: 2000,
+    }
+  );
+
+  console.assert(
+    Boolean(invokedWithValidReceiver),
+    'Error: strictWindowFetch debe haberse ejecutado con receiver Window válido'
+  );
+  console.assert(
+    resStrict.items.length === 1 && resStrict.items[0].suggestedActiveSku === 'C9200L-24P-4G-E',
+    'Error: La extracción con strictWindowFetch debe haber devuelto los ítems correctamente'
+  );
+  console.log('✅ Test 9: Protección contra "Failed to execute \'fetch\' on \'Window\': Illegal invocation" verificada al 100%.');
 
   console.log('\n🎉 ¡TODAS LAS PRUEBAS DE NLP DEDUCTIVO Y ENSAMBLADO MADRE-HIJO PASARON EXITOSAMENTE!');
 }

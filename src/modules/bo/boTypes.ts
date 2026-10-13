@@ -42,8 +42,17 @@ export function formatBoPartNumber(pn: string): string {
  * la coincidencia con el catálogo de SKUs de Intcomex y reglas de clasificación.
  */
 export function normalizeBasePartNumber(pn: string): string {
-  const trimmed = (pn || '').trim();
-  return trimmed.replace(/[-_\s]+CBN$/i, '').trim();
+  let trimmed = (pn || '').trim();
+  // Strip trailing Cisco variant suffixes (=, -CBN, _CBN, ' CBN', -RF, -WS) iteratively
+  let prev = '';
+  while (trimmed && trimmed !== prev) {
+    prev = trimmed;
+    trimmed = trimmed
+      .replace(/=$/, '')
+      .replace(/[-_\s]+(CBN|RF|WS)$/i, '')
+      .trim();
+  }
+  return trimmed;
 }
 
 /**
