@@ -347,7 +347,15 @@ export function reconstructProcessedResultFromCloudRecord(record: CloudEstimateR
     smartAccountMandatory: '',
     description: it.description || '',
     serviceDurationMonths: '',
-    originalLeadTimeDays: '',
+    originalLeadTimeDays:
+      it.originalLeadTimeDays !== undefined && it.originalLeadTimeDays !== ''
+        ? it.originalLeadTimeDays
+        : it.transformedLeadTime
+        ? (() => {
+            const m = String(it.transformedLeadTime).match(/(\d+)\s*(?:a\s*\d+\s*)?semana/i);
+            return m ? Math.max(0, (parseInt(m[1], 10) - 2) * 7) : '';
+          })()
+        : '',
     transformedLeadTime: it.transformedLeadTime || '',
     unitListPrice: it.unitListPrice || 0,
     pricingTerm: '',

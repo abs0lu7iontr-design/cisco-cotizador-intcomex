@@ -37,6 +37,7 @@ export interface CloudEstimateItem {
   unitListPrice: number;
   netCiscoUnit: number;
   discPct: number;
+  originalLeadTimeDays?: string | number;
   transformedLeadTime: string;
   
   // Classification & Override State (Critical for restoration)

@@ -49,6 +49,7 @@ const listeners: Record<string, Function[]> = {};
       listeners[event.type].forEach((cb) => cb(event));
     }
   },
+  localStorage: (global as any).localStorage,
 };
 
 // --- Test 1: Snapshot referencialmente estable cuando el almacenamiento no cambia ---

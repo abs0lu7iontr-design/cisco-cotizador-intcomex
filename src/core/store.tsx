@@ -886,6 +886,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           unitListPrice: it.unitListPrice || 0,
           netCiscoUnit: it.netCiscoUnit || 0,
           discPct: it.discPct || 0,
+          originalLeadTimeDays: it.originalLeadTimeDays ?? '',
           transformedLeadTime: it.transformedLeadTime || '',
           overrideType:
             customOverrideMap[it.rowIdx] ||

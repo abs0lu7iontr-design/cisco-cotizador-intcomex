@@ -843,8 +843,40 @@ export async function parseEstimateWorkbook(
     }
 
     const rawLeadTime = colMap.colLead > 0 ? worksheet.getCell(r, colMap.colLead).value : 0;
-    const leadTimeNum = getDistinctColumnNumeric(worksheet, r, colMap.colLead) || parseNumericValue(rawLeadTime);
-    const transformedLeadTime = formatLeadTime(leadTimeNum);
+    const rawLeadTimeStr = colMap.colLead > 0 ? getCellString(worksheet.getCell(r, colMap.colLead)).trim() : '';
+    const isAlreadyFormattedString =
+      /semana/i.test(rawLeadTimeStr) ||
+      /pedido/i.test(rawLeadTimeStr) ||
+      /stock/i.test(rawLeadTimeStr) ||
+      /digital/i.test(rawLeadTimeStr);
+
+    let leadTimeNum = 0;
+    let transformedLeadTime = '';
+
+    if (
+      isPreviouslyProcessed &&
+      shadowSnapshot[lineNumStr]?.limon !== undefined &&
+      shadowSnapshot[lineNumStr]?.limon !== ''
+    ) {
+      // 1. Restauración exacta desde shadow snapshot (sys_metadata)
+      const snapLead = shadowSnapshot[lineNumStr].limon;
+      leadTimeNum = typeof snapLead === 'number' ? snapLead : parseNumericValue(snapLead);
+      transformedLeadTime = shadowSnapshot[lineNumStr].nuez || formatLeadTime(leadTimeNum);
+    } else if (isAlreadyFormattedString) {
+      // 2. Archivo previamente exportado con texto formateado en celda: PRESERVAR texto sin re-dividir
+      transformedLeadTime = rawLeadTimeStr;
+      const weeksMatch = rawLeadTimeStr.match(/(\d+)\s*(?:a\s*\d+\s*)?semana/i);
+      if (weeksMatch) {
+        const parsedWeeks = parseInt(weeksMatch[1], 10);
+        leadTimeNum = Math.max(0, (parsedWeeks - 2) * 7);
+      } else {
+        leadTimeNum = 0;
+      }
+    } else {
+      // 3. Archivo original directo desde CCW (número de días calendario de fábrica)
+      leadTimeNum = getDistinctColumnNumeric(worksheet, r, colMap.colLead) || parseNumericValue(rawLeadTime);
+      transformedLeadTime = formatLeadTime(leadTimeNum);
+    }
 
     const pricingTerm = getDistinctColumnString(worksheet, r, colMap.colTerm) || '';
     const rawQtyCell = colMap.colQty > 0 ? worksheet.getCell(r, colMap.colQty).value : 1;
@@ -884,6 +916,12 @@ export async function parseEstimateWorkbook(
       realUnitCost = healedPera;
       if (snap.mango) detectedDurationMonths = snap.mango;
       isPeriodicSubscription = healedSandia;
+      if (snap.limon !== undefined && snap.limon !== '') {
+        leadTimeNum = typeof snap.limon === 'number' ? snap.limon : parseNumericValue(snap.limon);
+      }
+      if (snap.nuez) {
+        transformedLeadTime = String(snap.nuez).trim();
+      }
     }
 
     const effectiveLineNumber = lineNumStr || `${items.length + 1}.0`;
@@ -1108,7 +1146,7 @@ export async function parseEstimateWorkbook(
     (overrides && Object.keys(overrides).length > 0)
   );
 
-  const cleanBase = fileName.replace(/\.[^/.]+$/, '');
+  const cleanBase = (fileName || 'Estimate.xlsx').replace(/\.[^/.]+$/, '');
   const parts = cleanBase.split(/[_.\s-]+/);
   const partnerFromName = parts[0] && !parts[0].match(/^(estimate|\d+)$/i) ? parts[0] : 'Intcomex';
   const clientFromName = parts[1] && !parts[1].match(/^(estimate|\d+)$/i) ? parts[1] : 'Cliente';
@@ -1688,6 +1726,8 @@ export async function generateOptimizedWorkbook(
     pera: item.realUnitCost ?? item.originalUnitCost ?? item.originalNetCiscoUnit ?? item.netCiscoUnit ?? 0,
     mango: item.detectedDurationMonths ?? item.months ?? (parseInt(item.serviceDurationMonths, 10) || 1),
     sandia: Boolean(item.isPeriodicSubscription),
+    limon: item.originalLeadTimeDays !== undefined && item.originalLeadTimeDays !== '' ? item.originalLeadTimeDays : 0,
+    nuez: item.transformedLeadTime || '',
   }));
 
   const payload = {
@@ -2246,7 +2286,40 @@ export async function synthesizeOfficialEstimateWorkbook(
   const validityRow = totalRowIndex + 2;
   worksheet.getCell(`A${validityRow}`).value = 'Oferta válida por 30 días calendario a contar de la fecha de emisión.';
   worksheet.getCell(`A${validityRow}`).font = { name: 'Arial', size: 8.5, italic: true, color: { argb: 'FF475569' } };
-  worksheet.getCell(`A${validityRow}`).alignment = { vertical: 'middle', horizontal: 'left' };
+  // 8. Inyección de Snapshot espejo en hoja ultra-oculta (sys_metadata)
+  let metaSheet = workbook.getWorksheet('sys_metadata');
+  if (!metaSheet) {
+    metaSheet = workbook.addWorksheet('sys_metadata', { state: 'veryHidden' });
+  } else {
+    metaSheet.state = 'veryHidden';
+  }
+
+  const shadowLedger = items.map((item) => ({
+    line: item.lineNumber,
+    manzana: item.unitListPrice ?? 0,
+    cereza: (item.unitNetPriceCcw ?? 0) > 0 && (item.unitListPrice ?? 0) > 0
+      ? ((1 - ((item.unitNetPriceCcw ?? 0) / item.unitListPrice)) * 100)
+      : (item.discPct ?? 0),
+    pera: item.realUnitCost ?? item.originalUnitCost ?? item.originalNetCiscoUnit ?? item.netCiscoUnit ?? 0,
+    mango: item.detectedDurationMonths ?? item.months ?? (parseInt(item.serviceDurationMonths, 10) || 1),
+    sandia: Boolean(item.isPeriodicSubscription),
+    limon: item.originalLeadTimeDays !== undefined && item.originalLeadTimeDays !== '' ? item.originalLeadTimeDays : 0,
+    nuez: item.transformedLeadTime || '',
+  }));
+
+  const payload = {
+    platano: params.targetMargin ?? params.margenPct,
+    uva: params.internacionPct ?? 7.0,
+    naranja: params.arancelPct ?? 6.0,
+    kiwi: new Date().toISOString(),
+    huerto: shadowLedger,
+    token: 'cisco-ca-v2',
+  };
+
+  const jsonString = JSON.stringify(payload);
+  const encodedPayload = encodeBase64Utf8(jsonString);
+  metaSheet.getCell('A1').value = encodedPayload;
+  await metaSheet.protect('cisco-vault-hash-key', {});
 
   sanitizeWorkbookForExport(workbook);
 

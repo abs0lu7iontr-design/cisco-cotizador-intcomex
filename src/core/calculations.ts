@@ -301,18 +301,33 @@ export function checkLlevaArancel(
 }
 
 /**
- * Formats lead time in days to business weeks:
+ * Formats lead time in days to business weeks (Intcomex CCW Golden Rule):
+ * - If already a formatted string containing 'semana', 'pedido', 'stock', 'digital', returns as-is (Idempotent protection).
  * - If days <= 2: returns empty string "" (Stock inmediato)
- * - If days > 2: Math.ceil(days / 7) + 2 weeks
+ * - If days > 2: Math.ceil(days / 7) + 2 transit weeks:
  *   - Si el total calculado da 3 semanas: agrega 1 semana más -> "4 semanas a pedido"
  *   - Si el total calculado da 4 semanas: formatear como "4 a 5 semanas a pedido"
- *   - En los demás casos (5, 6, 7...): "X semanas a pedido"
+ *   - En los demás casos (5, 6, 7... 27...): "X semanas a pedido"
  */
-export function formatLeadTime(leadTimeDays: number): string {
-  if (isNaN(leadTimeDays) || leadTimeDays <= 2) {
+export function formatLeadTime(leadTimeDays: number | string): string {
+  if (typeof leadTimeDays === 'string') {
+    const trimmed = leadTimeDays.trim();
+    if (
+      /semana/i.test(trimmed) ||
+      /pedido/i.test(trimmed) ||
+      /stock/i.test(trimmed) ||
+      /digital/i.test(trimmed) ||
+      /inmediato/i.test(trimmed)
+    ) {
+      return trimmed;
+    }
+  }
+
+  const days = typeof leadTimeDays === 'number' ? leadTimeDays : safeParseFloat(leadTimeDays);
+  if (isNaN(days) || days <= 2) {
     return '';
   }
-  const semanas = Math.ceil(leadTimeDays / 7) + 2;
+  const semanas = Math.ceil(days / 7) + 2;
   if (semanas === 3) {
     return '4 semanas a pedido';
   }
