@@ -1317,35 +1317,7 @@ const CLIENT_TYPO_COHERENT_MAP: Record<
     targetSku: 'C9200L-48T-4G-E',
     reason: 'SKU incompleto normalizado a C9200L-48T-4G-E.',
   },
-  // Resoluciones de familia genérica C9300 y C9200
-  'C9300': {
-    targetSku: 'C9300L-48P-4X-E',
-    reason: 'Familia Catalyst 9300 resuelta al modelo oficial vigente más solicitado en Fast Track: C9300L-48P-4X-E (48P PoE+ 4x10G).',
-    alternatives: [
-      {
-        recommendedSku: 'C9300L-48P-4X-E',
-        title: 'Catalyst C9300L-48P-4X-E (Fast Track 4x10G)',
-        description: 'Switch Enterprise 48 puertos PoE+ con 4x 10G SFP+ fijos y DNA Essentials.',
-        type: 'direct_equivalent',
-      },
-      {
-        recommendedSku: 'C9300-48P-E',
-        title: 'Catalyst C9300-48P-E (Chasis Modular StackWise-480)',
-        description: 'Switch 48 puertos PoE+ modular con módulo uplink intercambiable.',
-        type: 'catalyst_alternative',
-      },
-      {
-        recommendedSku: 'C9300L-24P-4X-E',
-        title: 'Catalyst C9300L-24P-4X-E (24 Puertos)',
-        description: 'Switch Enterprise de 24 puertos PoE+ con 4x 10G SFP+ integrados.',
-        type: 'cost_effective',
-      },
-    ],
-  },
-  'C9300L': {
-    targetSku: 'C9300L-48P-4X-E',
-    reason: 'Familia Catalyst 9300L resuelta a C9300L-48P-4X-E.',
-  },
+  // Resoluciones de SKUs específicos de familia C9300 y C9200 (sin sobreescribir la familia genérica)
   'C9300-48': {
     targetSku: 'C9300L-48P-4X-E',
     reason: 'SKU C9300-48 normalizado a Catalyst C9300L-48P-4X-E.',
@@ -1377,14 +1349,6 @@ const CLIENT_TYPO_COHERENT_MAP: Record<
   'C9300L-24POE': {
     targetSku: 'C9300L-24P-4X-E',
     reason: 'Solicitud C9300L 24 PoE resuelta a Catalyst C9300L-24P-4X-E.',
-  },
-  'C9200': {
-    targetSku: 'C9200L-24P-4G-E',
-    reason: 'Familia Catalyst 9200 resuelta a modelo oficial de acceso estándar: C9200L-24P-4G-E.',
-  },
-  'C9200L': {
-    targetSku: 'C9200L-24P-4G-E',
-    reason: 'Familia Catalyst 9200L resuelta a C9200L-24P-4G-E.',
   },
   'C9200-48': {
     targetSku: 'C9200L-48P-4G-E',
@@ -1469,7 +1433,12 @@ export interface OfficialSkuValidationResult {
  */
 export function validateOfficialCiscoSku(
   rawSku: string,
-  contextHint?: { ports?: number; isPoe?: boolean }
+  contextHint?: {
+    ports?: number;
+    isPoe?: boolean;
+    tier?: 'Essentials' | 'Advantage';
+    isModular?: boolean;
+  }
 ): OfficialSkuValidationResult {
   const clean = (rawSku || '').trim().toUpperCase();
   if (!clean) {
@@ -1522,17 +1491,18 @@ export function validateOfficialCiscoSku(
     };
   }
 
-  // 2. Verificar si es un SKU Catalyst 9200L/9300L al que solo le faltó el sufijo "-E"
+  // 2. Verificar si es un SKU Catalyst 9200L/9300L al que solo le faltó el sufijo "-E" o "-A"
   if (/^C9[23]00L?-(?:24|48)(?:T|P|FP|PF)-(?:4G|4X)$/i.test(clean)) {
-    const withE = `${clean}-E`;
+    const defaultSuffix = contextHint?.tier === 'Advantage' ? '-A' : '-E';
+    const withSuffix = `${clean}${defaultSuffix}`;
     return {
       isValidOfficialSku: true,
       isNonExistentSku: false,
       isKnownEolSku: false,
       wasCorrectedFromClientTypo: true,
-      cleanSku: withE,
-      recommendedValidSku: withE,
-      reason: `Se normalizó el SKU agregando el sufijo de licenciamiento oficial (${withE}).`,
+      cleanSku: withSuffix,
+      recommendedValidSku: withSuffix,
+      reason: `Se normalizó el SKU agregando el sufijo de licenciamiento oficial (${withSuffix}).`,
       alternatives: [],
     };
   }
@@ -1550,14 +1520,14 @@ export function validateOfficialCiscoSku(
     };
   }
 
-  // 4. Si NO calza con ningún patrón oficial -> Analizar intención técnica del cliente (puertos, PoE, uplinks, familia)
+  // 4. Si NO calza con ningún patrón oficial -> Analizar intención técnica del cliente (puertos, PoE, uplinks, familia, licencia)
   // para entregar un Part Number 100% coherente y vigente en CCW
   const is48 = clean.includes('48') || contextHint?.ports === 48;
   const is8 = /\b8[PTX]|\b08[PTX]|-8[PTX]/i.test(clean) || contextHint?.ports === 8;
   const isFullPoe = clean.includes('FP') || clean.includes('740W') || clean.includes('1100W');
   const isNoPoe = /-(?:24|48|8|16)T\b/i.test(clean) || contextHint?.isPoe === false;
   const is10G = clean.includes('4X') || clean.includes('10G') || clean.includes('Y4C') || clean.includes('8X');
-  const tierCode = clean.endsWith('-A') ? 'A' : 'E';
+  const tierCode = (clean.endsWith('-A') || contextHint?.tier === 'Advantage') ? 'A' : 'E';
   const portNum = is48 ? '48' : '24';
   const poeCode = isNoPoe ? 'T' : isFullPoe && is48 ? 'FP' : 'P';
 
@@ -1579,28 +1549,52 @@ export function validateOfficialCiscoSku(
     let chosenAlternatives: EolAlternative[] = [];
 
     if (is9300Family) {
-      recommendedValidSku = rec9300L;
-      chosenFamilyTitle = 'Catalyst 9300L / 9300';
-      chosenAlternatives = [
-        {
-          recommendedSku: rec9300L,
-          title: `Catalyst ${rec9300L} (Uplinks 10G Fast Track)`,
-          description: `Switch oficial Cisco Catalyst 9300L de ${portNum} puertos ${isNoPoe ? 'Data' : 'PoE+'} con 4x 10G SFP+ integrados y DNA Essentials.`,
-          type: 'direct_equivalent',
-        },
-        {
-          recommendedSku: rec9300Modular,
-          title: `Catalyst ${rec9300Modular} (Chasis Modular StackWise-480)`,
-          description: `Switch oficial Cisco Catalyst 9300 modular de ${portNum} puertos con soporte de módulos de red C9300-NM.`,
-          type: 'catalyst_alternative',
-        },
-        {
-          recommendedSku: recAccessFixed,
-          title: `Catalyst ${recAccessFixed} (Opción Optimización Acceso 9200L)`,
-          description: `Alternativa de menor costo en serie Catalyst 9200L de ${portNum} puertos.`,
-          type: 'cost_effective',
-        },
-      ];
+      // Si el cliente pide C9300 modular explícito, o pide licencia Advantage, el modelo insigne es el modular C9300-XXP-A
+      const isModularRequest = (!clean.includes('9300L') && !clean.includes('L-')) || Boolean(contextHint?.isModular);
+      const preferModular = isModularRequest || tierCode === 'A';
+      recommendedValidSku = preferModular ? rec9300Modular : rec9300L;
+      chosenFamilyTitle = preferModular ? 'Catalyst 9300 Modular' : 'Catalyst 9300L';
+      chosenAlternatives = preferModular
+        ? [
+            {
+              recommendedSku: rec9300Modular,
+              title: `Catalyst ${rec9300Modular} (Chasis Modular StackWise-480)`,
+              description: `Switch oficial Cisco Catalyst 9300 modular de ${portNum} puertos ${isNoPoe ? 'Data' : 'PoE+'} con soporte de módulos de red C9300-NM y licencia Network ${tierCode === 'A' ? 'Advantage' : 'Essentials'}.`,
+              type: 'direct_equivalent',
+            },
+            {
+              recommendedSku: rec9300L,
+              title: `Catalyst ${rec9300L} (Uplinks 10G Fast Track Fijo)`,
+              description: `Alternativa de uplinks 4x 10G fijos en serie Catalyst 9300L de ${portNum} puertos.`,
+              type: 'catalyst_alternative',
+            },
+            {
+              recommendedSku: recAccessModular,
+              title: `Catalyst ${recAccessModular} (Opción Acceso Modular 9200)`,
+              description: `Alternativa de menor costo en serie Catalyst 9200 modular de ${portNum} puertos.`,
+              type: 'cost_effective',
+            },
+          ]
+        : [
+            {
+              recommendedSku: rec9300L,
+              title: `Catalyst ${rec9300L} (Uplinks 10G Fast Track)`,
+              description: `Switch oficial Cisco Catalyst 9300L de ${portNum} puertos ${isNoPoe ? 'Data' : 'PoE+'} con 4x 10G SFP+ integrados y DNA Essentials.`,
+              type: 'direct_equivalent',
+            },
+            {
+              recommendedSku: rec9300Modular,
+              title: `Catalyst ${rec9300Modular} (Chasis Modular StackWise-480)`,
+              description: `Switch oficial Cisco Catalyst 9300 modular de ${portNum} puertos con soporte de módulos de red C9300-NM.`,
+              type: 'catalyst_alternative',
+            },
+            {
+              recommendedSku: recAccessFixed,
+              title: `Catalyst ${recAccessFixed} (Opción Optimización Acceso 9200L)`,
+              description: `Alternativa de menor costo en serie Catalyst 9200L de ${portNum} puertos.`,
+              type: 'cost_effective',
+            },
+          ];
     } else if (is9500Family) {
       recommendedValidSku = recCore;
       chosenFamilyTitle = 'Catalyst 9500 Core';

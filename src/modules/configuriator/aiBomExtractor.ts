@@ -132,8 +132,9 @@ REGLAS OBLIGATORIAS DE COHERENCIA TÉCNICA, DEDUCCIÓN PREVENTA ANTE SOLICITUDES
        -> Deducir **"C9200L-48P-4G-E"** (o **"C9200L-48FP-4G-E"** si menciona Full PoE / 740W). Sub-hijos: "C9200L-DNA-E-48-3Y", fuente, cable "CAB-ACA" y Network Essentials.
      * B.1) **"c9300 48 poe" / "c9300 48" / "catalyst 9300 48 poe" / "c9300 48 puertos"**:
        -> Deducir switch Enterprise Catalyst 9300L 48P PoE+ 4x10G SFP+ (Fast Track): **"C9300L-48P-4X-E"** (o **"C9300-48P-E"** modular). Sub-hijos obligatorios: "C9300-DNA-E-48-3Y" (Prepaid Term 36 meses), fuente "PWR-C1-715WAC-P", cable Norma Chile "CAB-TA-IT" y "C9300-NW-E-48". NUNCA degradar a C9200L ni a 24 bocas si el cliente pide expresamente C9300 de 48 puertos.
-     * B.2) **"c9300 24 poe" / "c9300 24" / "catalyst 9300 24 poe"**:
-       -> Deducir **"C9300L-24P-4X-E"** (o **"C9300-24P-E"** modular). Sub-hijos: "C9300-DNA-E-24-3Y", "PWR-C1-715WAC-P", "CAB-TA-IT" y "C9300-NW-E-24".
+      * B.2) **"c9300 24 poe" / "c9300 24" / "catalyst 9300 24 poe" / "c9300 de 24 poe"**:
+        -> Si el cliente pide "Advantage" o "avantage" o "Capa 3": Deducir Catalyst 9300 modular 24P PoE+ Advantage: **"C9300-24P-A"** (con módulo uplink C9300-NM-8X, cable stack STACK-T1-50CM, fuente PWR-C1-715WAC-P y licencia C9300-DNA-A-24-3Y).
+        -> Si pide Essentials o no especifica licencia: Deducir **"C9300L-24P-4X-E"** (o **"C9300-24P-E"** modular). Sub-hijos: "C9300-DNA-E-24-3Y", "PWR-C1-715WAC-P", "CAB-TA-IT" y "C9300-NW-E-24". NUNCA configurar 48 puertos si el cliente pidió 24 puertos.
      * C) **Mención de "con fibra", "enlace fibra", "10G", "SFP+"**:
        -> Deducir switch con uplinks 4x10G SFP+: **"C9200L-24P-4X-E"** o **"C9200L-48P-4X-E"** (o C9300 con C9300-NM-8X) y sugerir transceivers vigentes "SFP-10G-SR-S".
      * D) **Dimensionamiento por Puestos / Usuarios (ej. "oficina para 15 usuarios", "sucursal 20 personas")**:
@@ -718,6 +719,12 @@ export function healClientTypoString(raw: string): string {
     .replace(/\bcat\s*9200\b/gi, 'Catalyst 9200')
     .replace(/\bcat\s*9300\b/gi, 'Catalyst 9300')
     .replace(/\bmeraky\b/gi, 'Meraki')
+    .replace(/\b(?:avantage|advanatage|advatage)\b/gi, 'advantage')
+    // C9300 con Advantage
+    .replace(/\b(?:c9300l?|catalyst\s*9300|cat\s*9300)\s*(?:de\s+)?48\s*(?:p|poe|\+)?\s*(?:advantage|advanatage|avantage)\b/gi, 'C9300-48P-A')
+    .replace(/\b(?:c9300l?|catalyst\s*9300|cat\s*9300)\s*(?:de\s+)?24\s*(?:p|poe|\+)?\s*(?:advantage|advanatage|avantage)\b/gi, 'C9300-24P-A')
+    .replace(/\b(?:c9300l?|catalyst\s*9300|cat\s*9300)\s*de\s*24\s*(?:p|poe|\+)?\b/gi, 'C9300L-24P-4X-E')
+    .replace(/\b(?:c9300l?|catalyst\s*9300|cat\s*9300)\s*de\s*48\s*(?:p|poe|\+)?\b/gi, 'C9300L-48P-4X-E')
     // C9300 / Catalyst 9300 resoluciones deterministas
     .replace(/\b(?:c9300l?|catalyst\s*9300|cat\s*9300)\s*(?:-|_\s*)?48\s*(?:fp|full\s*poe)\b/gi, 'C9300L-48PF-4X-E')
     .replace(/\b(?:c9300l?|catalyst\s*9300|cat\s*9300)\s*(?:-|_\s*)?48\s*(?:p|poe|\+)?\b/gi, 'C9300L-48P-4X-E')
@@ -893,6 +900,12 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
         }
         if ((contextPorts === 48 || segHas48) && (suggestedSku.includes('-24') || suggestedSku.includes('24P') || suggestedSku.includes('24T'))) {
           suggestedSku = suggestedSku.replace(/24([PTF])/g, '48$1');
+        }
+        if ((contextPorts === 24 || segHas24) && (suggestedSku.includes('-48') || suggestedSku.includes('48P') || suggestedSku.includes('48T') || suggestedSku.includes('48PF') || suggestedSku.includes('48FP'))) {
+          suggestedSku = suggestedSku.replace(/48(?:PF|FP)/g, '24P').replace(/48([PT])/g, '24$1');
+        }
+        if (licenseTier === 'Advantage' && /-(?:E)$/i.test(suggestedSku)) {
+          suggestedSku = suggestedSku.replace(/-E$/i, '-A');
         }
 
         const isNonExistentSku = Boolean(
@@ -1279,11 +1292,13 @@ export function postProcessExtractedResult(
   }
 
   const processedItems = (result.items || []).map((item, idx) => {
-    const tier: 'Essentials' | 'Advantage' =
-      item.licenseTier === 'Advantage' ? 'Advantage' : 'Essentials';
-    const tierSuffix = tier === 'Advantage' ? 'A' : 'E';
     const lineContext = inputLines[idx] || '';
     const itemContext = `${lineContext} ${item.rawMentionedSku || ''} ${item.notes || ''}`;
+    const contextHasAdvantage = /\b(?:advantage|avantage|advanatage|capa\s*3|bgp|ospf)\b/i.test(itemContext);
+    const tier: 'Essentials' | 'Advantage' =
+      (item.licenseTier === 'Advantage' || contextHasAdvantage) ? 'Advantage' : 'Essentials';
+    const tierSuffix = tier === 'Advantage' ? 'A' : 'E';
+    item.licenseTier = tier;
 
     // Limpiar rawMentionedSku si el LLM incluyó texto descriptivo junto al código (ej: "C9200-24P MODULAR CON UPLINKS 10G")
     let rawSku = (item.rawMentionedSku || '').trim().toUpperCase();
@@ -1314,7 +1329,13 @@ export function postProcessExtractedResult(
     if (item.isPoe === undefined && contextHasPoe) {
       item.isPoe = true;
     }
-    const contextHint = { ports: item.ports || contextPorts, isPoe: item.isPoe };
+    const isModularContext = /\bmodular\b/i.test(itemContext) || /^c9[23]00-(?:24|48)/i.test(rawSku || item.suggestedActiveSku || '');
+    const contextHint = {
+      ports: item.ports || contextPorts,
+      isPoe: item.isPoe,
+      tier,
+      isModular: isModularContext,
+    };
 
     const rawCheck = rawSku ? validateOfficialCiscoSku(rawSku, contextHint) : null;
     const suggestedCheck = item.suggestedActiveSku
@@ -1350,12 +1371,29 @@ export function postProcessExtractedResult(
             suggestedCheck?.isNonExistentSku
         );
 
-    let suggested = normalizeParentChassisSku(
-      rawCheck?.wasCorrectedFromClientTypo
-        ? rawCheck.recommendedValidSku
-        : rawSanitized.sanitizedSku || item.suggestedActiveSku || '',
-      tier
+    const isAiSuggestedValidOfficial = Boolean(
+      suggestedCheck?.isValidOfficialSku &&
+        !suggestedCheck?.isKnownEolSku &&
+        !suggestedCheck?.isNonExistentSku
     );
+
+    let suggested = '';
+    if (isAiSuggestedValidOfficial && item.suggestedActiveSku) {
+      // Prioridad a la IA: Si la IA ya dedujo un SKU oficial válido, vigente y no EOL, respetarlo
+      suggested = normalizeParentChassisSku(item.suggestedActiveSku, tier);
+    } else if (rawCheck?.wasCorrectedFromClientTypo) {
+      suggested = normalizeParentChassisSku(rawCheck.recommendedValidSku, tier);
+    } else {
+      suggested = normalizeParentChassisSku(
+        rawSanitized.sanitizedSku || item.suggestedActiveSku || '',
+        tier
+      );
+    }
+
+    if (tier === 'Advantage' && /-(?:E)$/i.test(suggested)) {
+      suggested = suggested.replace(/-E$/i, '-A');
+      item.suggestedActiveSku = suggested;
+    }
 
     // Si el contexto del cliente en esa línea pide explícitamente C9200 modular (sin -4G/-4X o diciendo "modular" / "NM-4X")
     if (
@@ -1378,10 +1416,16 @@ export function postProcessExtractedResult(
       item.suggestedActiveSku = suggested;
     }
 
-    // Protección de Puertos: Si el cliente solicitó 48 puertos, jamás debe configurarse con 24 puertos
+    // Protección de Puertos 48: Si el cliente solicitó 48 puertos, jamás debe configurarse con 24 puertos
     if ((item.ports === 48 || contextHas48) && (suggested.includes('-24') || suggested.includes('24P') || suggested.includes('24T'))) {
       suggested = suggested.replace(/24([PTF])/g, '48$1');
       item.ports = 48;
+      item.suggestedActiveSku = suggested;
+    }
+    // Protección de Puertos 24: Si el cliente solicitó 24 puertos, jamás debe configurarse con 48 puertos
+    if ((item.ports === 24 || contextHas24) && (suggested.includes('-48') || suggested.includes('48P') || suggested.includes('48T') || suggested.includes('48FP') || suggested.includes('48PF'))) {
+      suggested = suggested.replace(/48(?:PF|FP)/g, '24P').replace(/48([PT])/g, '24$1');
+      item.ports = 24;
       item.suggestedActiveSku = suggested;
     }
 
