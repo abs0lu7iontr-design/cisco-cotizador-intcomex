@@ -71,7 +71,9 @@ export const BoRequestModal: React.FC<Props> = ({
   const [cloudStatus, setCloudStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [memorizedSkuCount, setMemorizedSkuCount] = useState<number>(0);
   const [isImportingExcel, setIsImportingExcel] = useState<boolean>(false);
-  const [importNotice, setImportNotice] = useState<string | null>(null);
+  const [importNotice, setImportNotice] = useState<
+    { type: 'success' | 'error' | 'info'; message: string } | string | null
+  >(null);
   const statusTimerRef = useRef<any>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
 
@@ -314,12 +316,16 @@ export const BoRequestModal: React.FC<Props> = ({
             ? 'Tabla BO copiada con formato enriquecido HTML (lista para pegar en Outlook).'
             : 'Tabla BO copiada en texto plano tabulado (formato HTML no disponible en este navegador).',
       });
-      setTimeout(() => setCopied(false), 3500);
+      setTimeout(() => {
+        setCopied(false);
+        setImportNotice(null);
+      }, 3500);
     } else {
       setImportNotice({
         type: 'error',
         message: copyRes.error || copyRes.message || 'No se pudo copiar la tabla BO al portapapeles.',
       });
+      setTimeout(() => setImportNotice(null), 4500);
     }
   };
 
@@ -512,8 +518,15 @@ export const BoRequestModal: React.FC<Props> = ({
               </button>
 
               {importNotice && (
-                <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-800/80 px-2 py-0.5 rounded animate-fade-in">
-                  {importNotice}
+                <span
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded animate-fade-in border ${
+                    (typeof importNotice === 'object' && importNotice.type === 'error') ||
+                    (typeof importNotice === 'string' && importNotice.startsWith('Error'))
+                      ? 'text-rose-300 bg-rose-950/60 border-rose-800/80'
+                      : 'text-cyan-300 bg-cyan-950/60 border-cyan-800/80'
+                  }`}
+                >
+                  {typeof importNotice === 'string' ? importNotice : importNotice.message}
                 </span>
               )}
             </div>
