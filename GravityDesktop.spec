@@ -9,6 +9,8 @@ a = Analysis(
         ('dist/index.html', 'dist'),
         ('dist/index.html', '.'),
         ('desktop_app/schema.sql', 'desktop_app'),
+        ('desktop_app/version.json', 'desktop_app'),
+        ('desktop_app/version.json', '.'),
     ],
     hiddenimports=[
         'webview',
@@ -22,6 +24,9 @@ a = Analysis(
         're',
         'csv',
         'hashlib',
+        'urllib.request',
+        'urllib.parse',
+        'urllib.error',
         'clr',
         'pythonnet',
     ],

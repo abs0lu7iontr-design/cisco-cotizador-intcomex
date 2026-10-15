@@ -8,6 +8,8 @@
     "build": "vite build",
     "build:web": "vite build",
     "build:portable": "node -e \"process.env.VITE_SINGLE_FILE='true'; require('child_process').execSync('npx vite build', {stdio:'inherit', env: process.env})\"",
+    "build:exe": "npm run build:portable && python -m PyInstaller --noconfirm GravityDesktopPortable.spec",
+    "build:desktop": "npm run build:portable && python -m PyInstaller --noconfirm GravityDesktop.spec",
     "build:dev": "vite build --mode development",
     "build:prod": "vite build --mode production",
     "preview": "npm run build && wrangler dev",
