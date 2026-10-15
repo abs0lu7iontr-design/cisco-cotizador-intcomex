@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
   "version": "2.1.0",
-  "git_commit": "12379f3",
+  "git_commit": "2fa53d0",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-15T02:24:38.413Z",
-  "release_notes": "fix(bo): fix React error #31 by rendering notice message string instead of raw object",
+  "build_timestamp": "2026-10-15T02:27:29.787Z",
+  "release_notes": "feat(updater): implement seamless 1-click desktop auto-update via Cloudflare Pages and Git versioning",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"
