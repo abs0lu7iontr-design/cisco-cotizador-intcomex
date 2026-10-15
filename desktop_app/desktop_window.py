@@ -349,36 +349,262 @@ class DesktopBridge:
         except Exception as e:
             return {"success": False, "error": str(e), "results": []}
 
+    def _get_local_version_metadata(self) -> dict:
+        """Reads local version.json metadata to determine current build commit and date."""
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        current_file_dir = os.path.dirname(os.path.abspath(__file__))
+        candidates = [
+            os.path.join(exe_dir, "_internal", "version.json"),
+            os.path.join(exe_dir, "version.json"),
+            os.path.join(current_file_dir, "version.json"),
+            get_resource_path("version.json"),
+            os.path.join(os.getcwd(), "dist", "version.json"),
+            os.path.join(os.getcwd(), "public", "version.json"),
+        ]
+        for c in candidates:
+            if os.path.exists(c):
+                try:
+                    with open(c, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        if isinstance(data, dict) and data.get("git_commit"):
+                            return data
+                except Exception:
+                    pass
+        return {
+            "name": "cisco-automated",
+            "version": "2.1.0",
+            "git_commit": "12379f3",
+            "git_branch": "develop",
+            "build_timestamp": "2026-10-15T00:00:00.000Z",
+            "release_notes": "Versión base integrada",
+            "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
+            "channel": "develop"
+        }
+
     def check_for_updates(self):
-        """Checks for latest release info against online deployment / GitHub."""
-        current_version = "2.1.0"
-        try:
-            import urllib.request
-            url = "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/package.json"
-            req = urllib.request.Request(url, headers={'User-Agent': 'CiscoAutomatedDesktop'})
-            with urllib.request.urlopen(req, timeout=3) as response:
-                if response.status == 200:
-                    data = json.loads(response.read().decode('utf-8'))
-                    remote_ver = data.get("version", current_version)
-                    has_update = remote_ver != current_version
-                    return {
-                        "success": True,
-                        "has_update": has_update,
-                        "current_version": current_version,
-                        "latest_version": remote_ver,
-                        "release_url": "https://develop.cisco-automated.pages.dev",
-                        "release_notes": "Nueva versión disponible." if has_update else "La aplicación está actualizada."
+        """
+        Checks for latest release info by querying Cloudflare Pages CDN version.json
+        with fallback to GitHub raw repository.
+        Compares git_commit, build_timestamp, and version.
+        """
+        local_meta = self._get_local_version_metadata()
+        current_version = local_meta.get("version", "2.1.0")
+        current_commit = str(local_meta.get("git_commit", "12379f3"))
+        current_timestamp = str(local_meta.get("build_timestamp", ""))
+
+        remote_urls = [
+            "https://develop.cisco-automated.pages.dev/version.json",
+            "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/public/version.json",
+        ]
+
+        remote_data = None
+        for u in remote_urls:
+            try:
+                import urllib.request
+                req = urllib.request.Request(
+                    u,
+                    headers={
+                        'User-Agent': 'CiscoAutomatedDesktop/2.1',
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache'
                     }
-        except Exception:
-            pass
+                )
+                with urllib.request.urlopen(req, timeout=4) as response:
+                    if response.status == 200:
+                        raw_text = response.read().decode('utf-8')
+                        parsed = json.loads(raw_text)
+                        if isinstance(parsed, dict) and ("git_commit" in parsed or "version" in parsed):
+                            remote_data = parsed
+                            break
+            except Exception:
+                continue
+
+        if remote_data:
+            latest_version = remote_data.get("version", current_version)
+            latest_commit = str(remote_data.get("git_commit", current_commit))
+            latest_timestamp = str(remote_data.get("build_timestamp", ""))
+            release_notes = remote_data.get("release_notes", "Mejoras generales y correcciones.")
+            download_url = remote_data.get("download_url", "https://develop.cisco-automated.pages.dev/desktop_build.html")
+            fallback_url = remote_data.get("fallback_url", "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html")
+
+            has_update = False
+            if latest_commit and current_commit and latest_commit != current_commit:
+                has_update = True
+            elif latest_version != current_version:
+                has_update = True
+            elif latest_timestamp and current_timestamp and latest_timestamp > current_timestamp:
+                has_update = True
+
+            return {
+                "success": True,
+                "has_update": has_update,
+                "current_version": current_version,
+                "latest_version": latest_version,
+                "current_commit": current_commit,
+                "latest_commit": latest_commit,
+                "current_timestamp": current_timestamp,
+                "latest_timestamp": latest_timestamp,
+                "download_url": download_url,
+                "fallback_url": fallback_url,
+                "release_url": "https://develop.cisco-automated.pages.dev",
+                "release_notes": release_notes,
+                "channel": remote_data.get("channel", "develop")
+            }
+
         return {
             "success": True,
             "has_update": False,
             "current_version": current_version,
             "latest_version": current_version,
+            "current_commit": current_commit,
+            "latest_commit": current_commit,
+            "current_timestamp": current_timestamp,
+            "latest_timestamp": current_timestamp,
+            "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
             "release_url": "https://develop.cisco-automated.pages.dev",
-            "release_notes": "Versión 2.1.0 (Al día)"
+            "release_notes": "La aplicación está en su versión más reciente (al día)."
         }
+
+    def apply_desktop_update(self, download_url=None):
+        """
+        Downloads and hot-replaces the portable singlefile bundle (index.html)
+        without requiring re-installation of the .exe wrapper, and reloads the WebView.
+        """
+        import urllib.request
+        import shutil
+
+        # 1. Determine destination path
+        target_path = get_index_html_path()
+        if not target_path or not os.path.exists(target_path):
+            exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+            target_path = os.path.join(exe_dir, "_internal", "index.html")
+            if not os.path.exists(os.path.dirname(target_path)):
+                target_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
+
+        target_dir = os.path.dirname(target_path)
+        os.makedirs(target_dir, exist_ok=True)
+
+        # 2. URLs to attempt
+        urls_to_try = []
+        if download_url and isinstance(download_url, str) and (download_url.startswith("http") or download_url.startswith("file:")):
+            urls_to_try.append(download_url)
+        urls_to_try.extend([
+            "https://develop.cisco-automated.pages.dev/desktop_build.html",
+            "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
+        ])
+
+        downloaded_bytes = None
+        last_error = "No se pudo conectar a los servidores de actualización"
+
+        for u in urls_to_try:
+            try:
+                content = None
+                if u.startswith("file:"):
+                    with urllib.request.urlopen(u) as resp:
+                        if resp.status in (200, None):
+                            content = resp.read()
+                else:
+                    req = urllib.request.Request(
+                        u,
+                        headers={
+                            'User-Agent': 'CiscoAutomatedDesktop/2.1',
+                            'Cache-Control': 'no-cache',
+                            'Pragma': 'no-cache'
+                        }
+                    )
+                    with urllib.request.urlopen(req, timeout=30) as resp:
+                        if resp.status == 200:
+                            content = resp.read()
+
+                if content:
+                    # Minimum sanity check: must be > 500 KB and contain html declaration
+                    if len(content) > 500 * 1024:
+                        head_chunk = content[:2048].decode('utf-8', errors='ignore').lower()
+                        if '<!doctype html' in head_chunk or '<html' in head_chunk:
+                            downloaded_bytes = content
+                            break
+                        else:
+                            last_error = f"El archivo descargado desde {u} no contiene HTML válido"
+                    else:
+                        last_error = f"El archivo descargado desde {u} es demasiado pequeño ({len(content)} bytes)"
+            except Exception as e:
+                last_error = f"Error conectando a {u}: {str(e)}"
+
+        if not downloaded_bytes:
+            return {"success": False, "error": last_error}
+
+        # 3. Create safety backup
+        bak_path = target_path + ".bak"
+        try:
+            if os.path.exists(target_path):
+                shutil.copy2(target_path, bak_path)
+        except Exception as e:
+            print(f"[DesktopUpdate] Advertencia creando backup: {e}")
+
+        # 4. Atomic write
+        tmp_path = target_path + ".tmp"
+        try:
+            with open(tmp_path, "wb") as f:
+                f.write(downloaded_bytes)
+
+            # Replace target
+            if os.path.exists(target_path):
+                try:
+                    os.replace(tmp_path, target_path)
+                except PermissionError:
+                    # Windows file locked retry: write directly
+                    with open(target_path, "wb") as f:
+                        f.write(downloaded_bytes)
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
+            else:
+                os.rename(tmp_path, target_path)
+        except Exception as write_err:
+            if os.path.exists(bak_path):
+                try:
+                    shutil.copy2(bak_path, target_path)
+                except Exception:
+                    pass
+            return {"success": False, "error": f"Error escribiendo actualización: {str(write_err)}"}
+
+        # 5. Also sync version.json in same target directory
+        try:
+            version_url = "https://develop.cisco-automated.pages.dev/version.json"
+            req_v = urllib.request.Request(version_url, headers={'User-Agent': 'CiscoAutomatedDesktop/2.1'})
+            with urllib.request.urlopen(req_v, timeout=5) as resp_v:
+                if resp_v.status == 200:
+                    v_bytes = resp_v.read()
+                    target_v_path = os.path.join(target_dir, "version.json")
+                    with open(target_v_path, "wb") as f_v:
+                        f_v.write(v_bytes)
+        except Exception as v_err:
+            print(f"[DesktopUpdate] Nota: No se pudo actualizar version.json local ({v_err})")
+
+        # 6. Audit event
+        try:
+            curr_user = self._auth.get_current_username() or "system"
+            self._db.log_audit_event(
+                curr_user,
+                "AUTO_UPDATE_APPLIED",
+                f"Actualización desktop instalada exitosamente ({len(downloaded_bytes)} bytes) en {target_path}"
+            )
+        except Exception:
+            pass
+
+        # 7. Reload active window
+        if self._window:
+            try:
+                self._window.evaluate_js("window.location.reload();")
+            except Exception:
+                pass
+
+        return {
+            "success": True,
+            "message": "¡Actualización instalada con éxito! La aplicación se ha recargado a la última versión.",
+            "target_path": target_path,
+            "bytes_updated": len(downloaded_bytes)
+        }
+
 
 
     # -------------------------------------------------------------------------

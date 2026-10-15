@@ -172,8 +172,23 @@ export interface DesktopUpdateResult {
   has_update: boolean;
   current_version: string;
   latest_version: string;
+  current_commit?: string;
+  latest_commit?: string;
+  current_timestamp?: string;
+  latest_timestamp?: string;
+  download_url?: string;
+  fallback_url?: string;
   release_url: string;
   release_notes: string;
+  channel?: string;
+}
+
+export interface DesktopApplyUpdateResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+  target_path?: string;
+  bytes_updated?: number;
 }
 
 /**
@@ -216,7 +231,7 @@ export async function searchDesktopStorage(queryText: string): Promise<DesktopSe
 }
 
 /**
- * Comprueba si existe una versión más reciente de la aplicación en la nube.
+ * Comprueba si existe una versión más reciente de la aplicación (en Desktop vía Python o Web vía version.json).
  */
 export async function checkDesktopUpdate(): Promise<DesktopUpdateResult | null> {
   const api = getDesktopApi();
@@ -227,10 +242,55 @@ export async function checkDesktopUpdate(): Promise<DesktopUpdateResult | null> 
         return res;
       }
     } catch (e) {
-      console.warn('[DesktopBridge] Error comprobando actualizaciones:', e);
+      console.warn('[DesktopBridge] Error comprobando actualizaciones en desktop:', e);
     }
   }
+
+  // Web fallback: consultar version.json directamente
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch(`./version.json?t=${Date.now()}`, { cache: 'no-store' });
+      if (res.ok) {
+        const data = (await res.json()) as any;
+        return {
+          success: true,
+          has_update: false,
+          current_version: data.version || '2.1.0',
+          latest_version: data.version || '2.1.0',
+          current_commit: data.git_commit,
+          latest_commit: data.git_commit,
+          current_timestamp: data.build_timestamp,
+          latest_timestamp: data.build_timestamp,
+          download_url: data.download_url,
+          fallback_url: data.fallback_url,
+          release_url: 'https://develop.cisco-automated.pages.dev',
+          release_notes: data.release_notes || 'Aplicación web al día.',
+          channel: data.channel || 'develop',
+        };
+      }
+    } catch (e) {
+      console.warn('[DesktopBridge] Fallback web para version.json no disponible:', e);
+    }
+  }
+
   return null;
+}
+
+/**
+ * Aplica la actualización en caliente en la aplicación de escritorio reemplazando index.html y recargando la vista.
+ */
+export async function applyDesktopUpdate(downloadUrl?: string): Promise<DesktopApplyUpdateResult> {
+  const api = getDesktopApi();
+  if (api && typeof api.apply_desktop_update === 'function') {
+    try {
+      const res = await api.apply_desktop_update(downloadUrl);
+      return res;
+    } catch (e: any) {
+      console.error('[DesktopBridge] Error en applyDesktopUpdate:', e);
+      return { success: false, error: e?.message || 'Error al aplicar actualización' };
+    }
+  }
+  return { success: false, error: 'Función de actualización automática nativa no disponible en este entorno' };
 }
 
 /**

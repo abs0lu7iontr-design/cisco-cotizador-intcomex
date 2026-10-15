@@ -12,6 +12,10 @@ import {
   Trash2,
   ShieldCheck,
   RefreshCw,
+  Download,
+  ExternalLink,
+  Sparkles,
+  ArrowRight,
 } from 'lucide-react';
 import { APP_THEMES, getSavedThemeId } from '../core/themeEngine';
 import {
@@ -24,7 +28,7 @@ import {
   syncAiSettingsFromDesktopBridge,
 } from '../modules/configuriator';
 import { CiscoApiStatusModal, getCiscoConfig } from '../modules/ciscoApi';
-import { checkDesktopUpdate, DesktopUpdateResult, isDesktopApp } from '../core/desktopBridge';
+import { checkDesktopUpdate, applyDesktopUpdate, DesktopUpdateResult, isDesktopApp } from '../core/desktopBridge';
 
 interface SettingsViewProps {
   onOpenThemes?: () => void;
@@ -52,9 +56,12 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
   const [aiSavedMsg, setAiSavedMsg] = useState<string | null>(null);
   const [updateInfo, setUpdateInfo] = useState<DesktopUpdateResult | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState<boolean>(false);
+  const [isApplyingUpdate, setIsApplyingUpdate] = useState<boolean>(false);
+  const [updateInstallResult, setUpdateInstallResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const handleCheckUpdate = async () => {
     setIsCheckingUpdate(true);
+    setUpdateInstallResult(null);
     try {
       const res = await checkDesktopUpdate();
       if (res) {
@@ -83,8 +90,41 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
     }
   };
 
+  const handleApplyUpdate = async () => {
+    if (!updateInfo) return;
+    setIsApplyingUpdate(true);
+    setUpdateInstallResult(null);
+    try {
+      const res = await applyDesktopUpdate(updateInfo.download_url);
+      if (res && res.success) {
+        setUpdateInstallResult({
+          success: true,
+          message: res.message || '¡Actualización instalada con éxito! Recargando aplicación...',
+        });
+        setTimeout(() => {
+          if (typeof window !== 'undefined') window.location.reload();
+        }, 1000);
+      } else {
+        setUpdateInstallResult({
+          success: false,
+          message: res?.error || 'No se pudo aplicar la actualización automáticamente.',
+        });
+      }
+    } catch (err: any) {
+      setUpdateInstallResult({
+        success: false,
+        message: err?.message || 'Error inesperado durante la actualización.',
+      });
+    } finally {
+      setIsApplyingUpdate(false);
+    }
+  };
+
   useEffect(() => {
     syncAiSettingsFromDesktopBridge().then((synced) => setAiSettings(synced));
+    checkDesktopUpdate().then((res) => {
+      if (res) setUpdateInfo(res);
+    }).catch(() => {});
   }, []);
 
   const handleAddAiKey = () => {
@@ -497,54 +537,127 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2.5 text-slate-300 font-bold text-xs uppercase tracking-wider">
             <RefreshCw className="w-4 h-4 text-emerald-400" />
-            <span>Actualizaciones del Software</span>
+            <span>Actualizaciones del Software & Auto-Deploy</span>
           </div>
           <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-            {isDesktopApp() ? 'App Portable .EXE' : 'Web Deployment'}
+            {isDesktopApp() ? 'App Portable .EXE (Desktop Bridge)' : 'Cloudflare Pages CDN'}
           </span>
         </div>
 
-        <p className="text-xs text-slate-400">
-          Comprueba si existen nuevas versiones de Cisco Automated publicadas en GitHub o en la nube de Cloudflare Pages.
+        <p className="text-xs text-slate-400 leading-relaxed">
+          Sincroniza la compilación más reciente directamente desde la rama <code className="text-indigo-300 font-mono">develop</code> de GitHub y la red CDN de Cloudflare Pages sin necesidad de reinstalar manualmente.
         </p>
 
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={handleCheckUpdate}
-            disabled={isCheckingUpdate}
+            disabled={isCheckingUpdate || isApplyingUpdate}
             className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
-            <span>{isCheckingUpdate ? 'Comprobando...' : 'Buscar Actualizaciones'}</span>
+            <span>{isCheckingUpdate ? 'Comprobando en la nube...' : 'Buscar Actualizaciones'}</span>
           </button>
         </div>
 
+        {updateInstallResult && (
+          <div
+            className={`p-3.5 rounded-xl border text-xs flex items-center space-x-2.5 animate-fade-in ${
+              updateInstallResult.success
+                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
+                : 'bg-rose-950/60 text-rose-300 border-rose-500/40'
+            }`}
+          >
+            {updateInstallResult.success ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <span className="font-medium">{updateInstallResult.message}</span>
+          </div>
+        )}
+
         {updateInfo && (
           <div
-            className={`p-4 rounded-xl border text-xs flex items-center justify-between gap-3 animate-fade-in ${
+            className={`p-4 rounded-xl border text-xs space-y-3 animate-fade-in ${
               updateInfo.has_update
                 ? 'bg-amber-950/40 text-amber-200 border-amber-500/40'
                 : 'bg-emerald-950/40 text-emerald-200 border-emerald-500/40'
             }`}
           >
-            <div>
-              <span className="font-bold block text-sm">
-                {updateInfo.has_update ? '🚀 ¡Nueva versión disponible!' : '✅ Aplicación al día'}
-              </span>
-              <span className="text-[11px] opacity-90 mt-0.5 block font-mono">
-                Versión actual: v{updateInfo.current_version} &bull; Última versión: v{updateInfo.latest_version} &bull; {updateInfo.release_notes}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-white/10 pb-2.5">
+              <div className="flex items-center gap-2">
+                {updateInfo.has_update ? (
+                  <Sparkles className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                )}
+                <span className="font-bold text-sm">
+                  {updateInfo.has_update ? '🚀 ¡Nueva compilación disponible para actualizar!' : '✅ Aplicación al día con la última compilación'}
+                </span>
+              </div>
+              <span className="text-[10px] font-mono opacity-80">
+                Canal: {updateInfo.channel || 'develop'}
               </span>
             </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] font-mono">
+              <div className="bg-black/20 p-2 rounded-lg">
+                <span className="text-slate-400 block text-[10px] uppercase">Compilación Actual</span>
+                <span className="font-bold text-white">v{updateInfo.current_version}</span>
+                {updateInfo.current_commit && (
+                  <span className="text-slate-400 ml-1.5">({updateInfo.current_commit.slice(0, 7)})</span>
+                )}
+              </div>
+              <div className="bg-black/20 p-2 rounded-lg">
+                <span className="text-slate-400 block text-[10px] uppercase">Compilación en la Nube</span>
+                <span className="font-bold text-white">v{updateInfo.latest_version}</span>
+                {updateInfo.latest_commit && (
+                  <span className="text-slate-400 ml-1.5">({updateInfo.latest_commit.slice(0, 7)})</span>
+                )}
+              </div>
+            </div>
+
+            {updateInfo.release_notes && (
+              <div className="text-[11px] bg-black/20 p-2.5 rounded-lg border border-white/5">
+                <span className="text-slate-400 block text-[10px] uppercase font-semibold mb-0.5">Notas del Release / Commit:</span>
+                <p className="text-slate-200 italic font-sans">{updateInfo.release_notes}</p>
+              </div>
+            )}
+
             {updateInfo.has_update && (
-              <a
-                href={updateInfo.release_url}
-                target="_blank"
-                rel="noreferrer"
-                className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shrink-0 cursor-pointer transition-colors"
-              >
-                Abrir Enlace de Descarga
-              </a>
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                {isDesktopApp() ? (
+                  <button
+                    type="button"
+                    onClick={handleApplyUpdate}
+                    disabled={isApplyingUpdate}
+                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                  >
+                    <Download className={`w-4 h-4 ${isApplyingUpdate ? 'animate-bounce' : ''}`} />
+                    <span>{isApplyingUpdate ? 'Descargando e instalando en caliente...' : '⚡ Actualizar e Instalar Ahora'}</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer flex items-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>🔄 Recargar para Aplicar en Web</span>
+                  </button>
+                )}
+
+                <a
+                  href={updateInfo.release_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <span>Ver Despliegue en la Nube</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
             )}
           </div>
         )}
