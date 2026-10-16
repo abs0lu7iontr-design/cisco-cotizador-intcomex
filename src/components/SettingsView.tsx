@@ -16,6 +16,8 @@ import {
   ExternalLink,
   Sparkles,
   ArrowRight,
+  Calendar,
+  Clock,
 } from 'lucide-react';
 import { APP_THEMES, getSavedThemeId } from '../core/themeEngine';
 import {
@@ -58,6 +60,45 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
   const [isCheckingUpdate, setIsCheckingUpdate] = useState<boolean>(false);
   const [isApplyingUpdate, setIsApplyingUpdate] = useState<boolean>(false);
   const [updateInstallResult, setUpdateInstallResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const formatTimestamp = (ts?: string) => {
+    if (!ts) return null;
+    try {
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return ts;
+      const formattedDate = d.toLocaleDateString('es-CL', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+      const formattedTime = d.toLocaleTimeString('es-CL', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      });
+      return `${formattedDate} ${formattedTime}`;
+    } catch {
+      return ts;
+    }
+  };
+
+  const getRelativeTime = (ts?: string) => {
+    if (!ts) return '';
+    try {
+      const diffMs = Date.now() - new Date(ts).getTime();
+      const diffSec = Math.floor(diffMs / 1000);
+      if (diffSec < 60) return '(recién)';
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return `(hace ${diffMin} min)`;
+      const diffHours = Math.floor(diffMin / 60);
+      if (diffHours < 24) return `(hace ${diffHours} h)`;
+      const diffDays = Math.floor(diffHours / 24);
+      return `(hace ${diffDays} d)`;
+    } catch {
+      return '';
+    }
+  };
 
   const handleCheckUpdate = async () => {
     setIsCheckingUpdate(true);
@@ -525,6 +566,17 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
             <span className="text-slate-500">Roles Activos</span>
             <span className="font-bold text-white">Admin &bull; Product Manager (PM) &bull; Preventa</span>
           </div>
+          <div className="py-2.5 flex justify-between items-center">
+            <span className="text-slate-500">Última Actualización / Despliegue</span>
+            <span className="font-bold text-cyan-400 font-mono text-right flex items-center gap-1.5">
+              <span>{formatTimestamp(updateInfo?.current_timestamp) || 'Sincronizado'}</span>
+              {updateInfo?.current_commit && (
+                <span className="text-slate-400 font-normal text-[10px] bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">
+                  {updateInfo.current_commit.slice(0, 7)}
+                </span>
+              )}
+            </span>
+          </div>
           <div className="py-2.5 flex justify-between">
             <span className="text-slate-500">Autor / Arquitectura</span>
             <span className="font-bold text-white">Mauricio Skill (mauricio.skill@mayor.cl)</span>
@@ -601,19 +653,54 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] font-mono">
-              <div className="bg-black/20 p-2 rounded-lg">
-                <span className="text-slate-400 block text-[10px] uppercase">Compilación Actual</span>
-                <span className="font-bold text-white">v{updateInfo.current_version}</span>
-                {updateInfo.current_commit && (
-                  <span className="text-slate-400 ml-1.5">({updateInfo.current_commit.slice(0, 7)})</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] font-mono">
+              <div className="bg-black/30 p-3 rounded-xl border border-white/5 space-y-1.5">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">
+                  Compilación Actual (Local / Navegador)
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-white text-xs">v{updateInfo.current_version}</span>
+                  {updateInfo.current_commit && (
+                    <span className="text-slate-300 font-mono text-[10px] bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                      Commit: {updateInfo.current_commit.slice(0, 7)}
+                    </span>
+                  )}
+                </div>
+                {updateInfo.current_timestamp && (
+                  <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 font-mono pt-1">
+                    <Clock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="font-semibold">
+                      {formatTimestamp(updateInfo.current_timestamp)}
+                    </span>
+                    <span className="text-slate-400 text-[10px] font-sans">
+                      {getRelativeTime(updateInfo.current_timestamp)}
+                    </span>
+                  </div>
                 )}
               </div>
-              <div className="bg-black/20 p-2 rounded-lg">
-                <span className="text-slate-400 block text-[10px] uppercase">Compilación en la Nube</span>
-                <span className="font-bold text-white">v{updateInfo.latest_version}</span>
-                {updateInfo.latest_commit && (
-                  <span className="text-slate-400 ml-1.5">({updateInfo.latest_commit.slice(0, 7)})</span>
+
+              <div className="bg-black/30 p-3 rounded-xl border border-white/5 space-y-1.5">
+                <span className="text-slate-400 block text-[10px] uppercase font-bold tracking-wider">
+                  Última Compilación en la Nube (Cloudflare / GitHub)
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-white text-xs">v{updateInfo.latest_version}</span>
+                  {updateInfo.latest_commit && (
+                    <span className="text-cyan-300 font-mono text-[10px] bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800/60">
+                      Commit: {updateInfo.latest_commit.slice(0, 7)}
+                    </span>
+                  )}
+                </div>
+                {updateInfo.latest_timestamp && (
+                  <div className="text-[11px] text-cyan-300 flex items-center gap-1.5 font-mono pt-1">
+                    <Clock className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                    <span className="font-semibold">
+                      {formatTimestamp(updateInfo.latest_timestamp)}
+                    </span>
+                    <span className="text-slate-400 text-[10px] font-sans">
+                      {getRelativeTime(updateInfo.latest_timestamp)}
+                    </span>
+                  </div>
                 )}
               </div>
             </div>
