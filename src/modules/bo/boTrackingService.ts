@@ -26,6 +26,7 @@ import {
   BoDailyNote,
 } from './boTrackingTypes';
 import { ProcessedEstimateResult } from '../../core/types';
+import { BoLineItem } from './boTypes';
 import { sanitizeForFirestore } from '../cloud/firestoreService';
 import {
   getCollectionRecordsSync,
@@ -784,3 +785,272 @@ export function createBoTrackingRecordFromEstimate(
     ],
   };
 }
+
+export interface SyncBoOrderFromEstimateParams {
+  estimate?: ProcessedEstimateResult | null;
+  clientName: string;
+  lines: BoLineItem[];
+  bodega: 'E1' | 'ED';
+  author?: string;
+  partnerName?: string;
+  actionSource?: 'COPY_HTML' | 'OPEN_OUTLOOK' | 'MODAL_ACTION';
+}
+
+/**
+ * Registra o actualiza de forma automática e idempotente la transición de un Estimate a BO (Etapa 1: OC_RECEIVED)
+ * en la base de datos de seguimiento logístico (Firestore + IndexedDB + LocalStorage).
+ */
+export async function syncBoOrderFromEstimateModal(
+  params: SyncBoOrderFromEstimateParams
+): Promise<{ success: boolean; record?: BoOrderTrackingRecord; error?: string }> {
+  try {
+    const {
+      estimate,
+      clientName,
+      lines,
+      bodega,
+      author = 'Usuario',
+      partnerName,
+      actionSource = 'MODAL_ACTION',
+    } = params;
+
+    const header = estimate?.headerInfo || ({} as any);
+    const resolvedPartner = partnerName || header.customerName || 'Partner Intcomex';
+    const resolvedClient = (clientName || header.companyName || header.endUser || 'Cliente Final').trim();
+    const estimateId = header.estimateId || header.quoteName || `EST-${Date.now().toString(36).toUpperCase()}`;
+    const dealId = header.dealId || '';
+    const versionTag = estimate?.versionTag || 'v1';
+
+    const activeLines = lines.filter((l) => (Number(l.qty) || 0) > 0);
+    const totalSale = activeLines.reduce((acc, l) => acc + (Number(l.extendedNetPrice) || 0), 0);
+    const netCisco = estimate?.originalProductTotal || 0;
+    const grossProfit = Math.max(0, totalSale - netCisco);
+    const marginPct =
+      totalSale > 0 && grossProfit > 0 ? Number(((grossProfit / totalSale) * 100).toFixed(1)) : 0;
+
+    const existingRecords = await getBoTrackings();
+    // Buscar si ya existe una orden de seguimiento para este Estimate o Deal
+    const existingOrder = existingRecords.find(
+      (r) =>
+        (estimateId && r.estimateId === estimateId) ||
+        (dealId && r.dealId && r.dealId === dealId)
+    );
+
+    const nowIso = new Date().toISOString();
+    const sourceLabel =
+      actionSource === 'OPEN_OUTLOOK'
+        ? 'Solicitud abierta en Outlook'
+        : actionSource === 'COPY_HTML'
+        ? 'Tabla HTML copiada para Outlook'
+        : 'Confirmación BO en Cotizador';
+
+    const noteComment = `Cotización confirmada por el cliente (${resolvedClient}). BO generado para compras (${sourceLabel}). Bodega: ${bodega}, Total Venta: US$ ${totalSale.toLocaleString(
+      'en-US',
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+    )} (${activeLines.length} líneas).`;
+
+    let orderRecord: BoOrderTrackingRecord;
+
+    if (existingOrder) {
+      // Reconciliar con bitácora existente sin perder notas
+      const reconciled = reconcileBoOrderNotesWithEventStore(existingOrder);
+      orderRecord = {
+        ...reconciled,
+        partnerName: resolvedPartner,
+        endCustomerName: resolvedClient,
+        estimateVersionTag: versionTag,
+        totalSaleUsd: totalSale > 0 ? totalSale : reconciled.totalSaleUsd,
+        grossProfitUsd: grossProfit > 0 ? grossProfit : reconciled.grossProfitUsd,
+        marginPct: marginPct > 0 ? marginPct : reconciled.marginPct,
+        itemsCount: activeLines.length > 0 ? activeLines.length : reconciled.itemsCount,
+        bodegaDestino: bodega,
+        updatedAt: nowIso,
+        lastDailyReviewAt: nowIso,
+        notes: [
+          ...(reconciled.notes || []),
+          {
+            id: `note-${Date.now()}`,
+            date: nowIso,
+            author,
+            stage: reconciled.currentStage || 'OC_RECEIVED',
+            comment: noteComment,
+          },
+        ],
+      };
+    } else {
+      const cleanEstimate = estimateId.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 30);
+      const trackingId = `BO-${cleanEstimate}-${Date.now().toString(36).toUpperCase()}`;
+
+      orderRecord = {
+        id: trackingId,
+        estimateId,
+        estimateVersionTag: versionTag,
+        dealId: dealId || 'DEAL-N/A',
+        partnerName: resolvedPartner,
+        endCustomerName: resolvedClient,
+        clientPoNumber: 'OC-PENDIENTE', // Requerido por reglas de seguridad Firestore
+        courier: 'FedEx',
+        currentStage: 'OC_RECEIVED',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        lastDailyReviewAt: nowIso,
+        totalSaleUsd: totalSale,
+        grossProfitUsd: grossProfit,
+        marginPct,
+        itemsCount: activeLines.length,
+        bodegaDestino: bodega,
+        notes: [
+          {
+            id: `note-${Date.now()}`,
+            date: nowIso,
+            author,
+            stage: 'OC_RECEIVED',
+            comment: noteComment,
+          },
+        ],
+      };
+    }
+
+    const saveResult = await saveBoTracking(orderRecord);
+    if (!saveResult.success) {
+      return { success: false, error: saveResult.error };
+    }
+
+    return { success: true, record: orderRecord };
+  } catch (err: any) {
+    console.error('[BoTrackingService] Error en syncBoOrderFromEstimateModal:', err);
+    return { success: false, error: err?.message || 'Error al sincronizar orden BO' };
+  }
+}
+
+export interface SyncBoOrderFromDsvParams {
+  dealId?: string;
+  soNumber?: string;
+  poNumber?: string;
+  partnerName?: string;
+  endCustomerName?: string;
+  totalSaleUsd?: number;
+  itemsCount?: number;
+  author?: string;
+  notesComment?: string;
+}
+
+/**
+ * Sincroniza una orden procesada o exportada en el módulo DSV con la base de datos de seguimiento
+ * de Back Orders (bo_order_tracking), vinculando SO Cisco y PO Cliente, y avanzando a la etapa 2: CISCO_SO_BOOKED.
+ */
+export async function syncBoOrderFromDsvRecord(
+  params: SyncBoOrderFromDsvParams
+): Promise<{ success: boolean; record?: BoOrderTrackingRecord; error?: string }> {
+  try {
+    const {
+      dealId = '',
+      soNumber = '',
+      poNumber = '',
+      partnerName = 'Intcomex Partner',
+      endCustomerName = 'Cliente Final',
+      totalSaleUsd = 0,
+      itemsCount = 0,
+      author = 'Usuario Intcomex',
+      notesComment,
+    } = params;
+
+    const cleanSo = (soNumber || '').trim();
+    const cleanPo = (poNumber || '').trim() || 'OC-DSV';
+    const cleanDeal = (dealId || '').trim();
+
+    if (!cleanSo && !cleanDeal && !cleanPo) {
+      return { success: false, error: 'Se requiere al menos Deal ID, SO o PO para sincronizar el DSV' };
+    }
+
+    const existingRecords = await getBoTrackings();
+    const existingOrder = existingRecords.find(
+      (r) =>
+        (cleanDeal && r.dealId && r.dealId === cleanDeal) ||
+        (cleanDeal && r.estimateId && r.estimateId === cleanDeal) ||
+        (cleanSo && r.ciscoSoNumber && r.ciscoSoNumber === cleanSo) ||
+        (cleanPo && cleanPo !== 'OC-DSV' && cleanPo !== 'PO-PENDING' && r.clientPoNumber === cleanPo)
+    );
+
+    const nowIso = new Date().toISOString();
+    const comment =
+      notesComment ||
+      `Orden confirmada en Cisco CCW (DSV). SO Cisco: ${cleanSo || 'Pendiente'}, PO Cliente: ${cleanPo || 'Pendiente'}.`;
+
+    let orderRecord: BoOrderTrackingRecord;
+
+    if (existingOrder) {
+      const reconciled = reconcileBoOrderNotesWithEventStore(existingOrder);
+      // Avanzar automáticamente a CISCO_SO_BOOKED si la orden aún estaba en OC_RECEIVED
+      const nextStage: BoStage =
+        reconciled.currentStage === 'OC_RECEIVED' ? 'CISCO_SO_BOOKED' : reconciled.currentStage;
+
+      orderRecord = {
+        ...reconciled,
+        ciscoSoNumber: cleanSo || reconciled.ciscoSoNumber,
+        clientPoNumber: cleanPo && cleanPo !== 'PO-PENDING' ? cleanPo : reconciled.clientPoNumber,
+        currentStage: nextStage,
+        partnerName: partnerName || reconciled.partnerName,
+        endCustomerName: endCustomerName || reconciled.endCustomerName,
+        totalSaleUsd: totalSaleUsd > 0 ? totalSaleUsd : reconciled.totalSaleUsd,
+        itemsCount: itemsCount > 0 ? itemsCount : reconciled.itemsCount,
+        updatedAt: nowIso,
+        lastDailyReviewAt: nowIso,
+        notes: [
+          ...(reconciled.notes || []),
+          {
+            id: `note-${Date.now()}`,
+            date: nowIso,
+            author,
+            stage: nextStage,
+            comment,
+          },
+        ],
+      };
+    } else {
+      // Crear nueva orden de seguimiento en etapa CISCO_SO_BOOKED
+      const idSeed = (cleanSo || cleanDeal || 'DSV').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 30);
+      const trackingId = `BO-DSV-${idSeed}-${Date.now().toString(36).toUpperCase()}`;
+
+      orderRecord = {
+        id: trackingId,
+        estimateId: cleanDeal || cleanSo || 'DSV-ORDEN',
+        estimateVersionTag: 'DSV',
+        dealId: cleanDeal || 'DEAL-N/A',
+        partnerName,
+        endCustomerName,
+        clientPoNumber: cleanPo,
+        ciscoSoNumber: cleanSo || undefined,
+        courier: 'FedEx',
+        currentStage: 'CISCO_SO_BOOKED',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        lastDailyReviewAt: nowIso,
+        totalSaleUsd,
+        grossProfitUsd: 0,
+        itemsCount,
+        bodegaDestino: 'ED',
+        notes: [
+          {
+            id: `note-${Date.now()}`,
+            date: nowIso,
+            author,
+            stage: 'CISCO_SO_BOOKED',
+            comment,
+          },
+        ],
+      };
+    }
+
+    const saveResult = await saveBoTracking(orderRecord);
+    if (!saveResult.success) {
+      return { success: false, error: saveResult.error };
+    }
+
+    return { success: true, record: orderRecord };
+  } catch (err: any) {
+    console.error('[BoTrackingService] Error en syncBoOrderFromDsvRecord:', err);
+    return { success: false, error: err?.message || 'Error al sincronizar DSV en tracking' };
+  }
+}
+

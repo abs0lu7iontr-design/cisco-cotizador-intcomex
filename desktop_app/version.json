@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
   "version": "2.1.0",
-  "git_commit": "dff748d",
+  "git_commit": "92ff92e",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-15T03:30:37.216Z",
-  "release_notes": "chore(release): bump version metadata for commit afa2d75",
+  "build_timestamp": "2026-10-16T19:01:47.773Z",
+  "release_notes": "docs(rules): enforce permanent auto-sync rule (AGENTS.md & GEMINI.md) for automatic build, deploy, and push",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

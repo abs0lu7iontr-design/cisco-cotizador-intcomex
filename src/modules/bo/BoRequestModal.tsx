@@ -23,7 +23,11 @@ import {
   batchSaveBoSkuMappings,
   findSkuInCatalog,
   importBoSkuMappingsFromExcel,
+  getLocalBoSkuCache,
 } from './boSkuCatalogService';
+import { syncBoOrderFromEstimateModal } from './boTrackingService';
+import { BoOrderTrackingRecord } from './boTrackingTypes';
+import { ProcessedEstimateResult } from '../../core/types';
 import { openDesktopEmailClient } from '../../core/desktopBridge';
 import {
   ChevronDown,
@@ -45,16 +49,25 @@ interface Props {
   initialClientName: string;
   initialLines: BoLineItem[];
   assignedBodega?: 'E1' | 'ED';
+  estimateResult?: ProcessedEstimateResult | null;
+  detectedPartner?: string;
+  currentUser?: any;
   onClose: () => void;
   onRegisterTracking?: () => void;
+  onOrderSynced?: (record: BoOrderTrackingRecord) => void;
 }
 
 export const BoRequestModal: React.FC<Props> = ({
   isOpen,
   initialClientName,
   initialLines,
+  assignedBodega,
+  estimateResult,
+  detectedPartner,
+  currentUser,
   onClose,
   onRegisterTracking,
+  onOrderSynced,
 }) => {
   const [recipientEmail, setRecipientEmail] = useState(DEFAULT_BO_EMAIL_TO);
   const [ccEmail, setCcEmail] = useState(DEFAULT_BO_EMAIL_CC);
@@ -294,32 +307,66 @@ export const BoRequestModal: React.FC<Props> = ({
     setIsDiscardedExpanded(true);
   };
 
-  // Copiar tabla HTML al portapapeles y sincronizar SKUs a la nube
-  const handleCopy = async () => {
-    // Sincronizar todos los SKUs cargados a la base de datos antes de copiar
-    const validItemsToSync = lines
-      .filter((l) => l.partNumber && l.sku)
-      .map((l) => ({ partNumber: l.partNumber, sku: l.sku }));
-
-    if (validItemsToSync.length > 0) {
-      batchSaveBoSkuMappings(validItemsToSync);
+  // Guardar de forma robusta e inmediata todos los SKUs cargados (tabla activa y descartados)
+  const syncAllCurrentSkus = async (): Promise<void> => {
+    const allItems: Array<{ partNumber: string; sku: string }> = [];
+    for (const l of lines) {
+      if (l.partNumber && l.sku && l.sku.trim()) {
+        allItems.push({ partNumber: l.partNumber.trim(), sku: l.sku.trim() });
+      }
     }
+    for (const d of discardedLines) {
+      if (d.partNumber && d.sku && d.sku.trim()) {
+        allItems.push({ partNumber: d.partNumber.trim(), sku: d.sku.trim() });
+      }
+    }
+    if (allItems.length > 0) {
+      setCloudStatus('saving');
+      await batchSaveBoSkuMappings(allItems);
+      const refreshed = getLocalBoSkuCache();
+      setSkuCatalog(refreshed);
+      setMemorizedSkuCount(Object.keys(refreshed).length);
+      setCloudStatus('saved');
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+      statusTimerRef.current = setTimeout(() => setCloudStatus('idle'), 3000);
+    }
+  };
 
+  // Copiar tabla HTML al portapapeles, sincronizar SKUs a la nube y registrar BO en tracking
+  const handleCopy = async () => {
+    // 1. Guardar y sincronizar todos los SKUs cargados a la base de datos antes de copiar
+    await syncAllCurrentSkus();
+
+    // 2. Copiar tabla enriquecida para Outlook
     const linesWithCurrentBodega = lines.map((l) => ({ ...l, bodega: currentBodega }));
     const copyRes = await copyBoTableWithDetail(linesWithCurrentBodega);
+
+    // 3. Registrar la transición del Estimate a Back Order (BO) en la base de datos de seguimiento logístico
+    const syncRes = await syncBoOrderFromEstimateModal({
+      estimate: estimateResult,
+      clientName,
+      lines: linesWithCurrentBodega,
+      bodega: currentBodega,
+      author: currentUser?.full_name || currentUser?.username || 'Usuario',
+      partnerName: detectedPartner,
+      actionSource: 'COPY_HTML',
+    });
+
+    if (syncRes.success && syncRes.record && onOrderSynced) {
+      onOrderSynced(syncRes.record);
+    }
+
     if (copyRes.success) {
       setCopied(true);
       setImportNotice({
         type: 'success',
         message:
-          copyRes.mode === 'rich'
-            ? 'Tabla BO copiada con formato enriquecido HTML (lista para pegar en Outlook).'
-            : 'Tabla BO copiada en texto plano tabulado (formato HTML no disponible en este navegador).',
+          '¡Tabla BO copiada para Outlook y registrada en Base de Datos & Tracking (Etapa: OC Recibida)!',
       });
       setTimeout(() => {
         setCopied(false);
         setImportNotice(null);
-      }, 3500);
+      }, 4000);
     } else {
       setImportNotice({
         type: 'error',
@@ -329,8 +376,27 @@ export const BoRequestModal: React.FC<Props> = ({
     }
   };
 
-  // Abrir cliente de correo con saludo dinámico según la hora ("Buenos días" / "Buenas tardes")
+  // Abrir cliente de correo, sincronizar SKUs y registrar transición a BO
   const handleOpenOutlook = async () => {
+    // 1. Guardar y sincronizar todos los SKUs cargados
+    await syncAllCurrentSkus();
+
+    // 2. Registrar la transición del Estimate a Back Order (BO) en la base de datos de seguimiento logístico
+    const linesWithCurrentBodega = lines.map((l) => ({ ...l, bodega: currentBodega }));
+    const syncRes = await syncBoOrderFromEstimateModal({
+      estimate: estimateResult,
+      clientName,
+      lines: linesWithCurrentBodega,
+      bodega: currentBodega,
+      author: currentUser?.full_name || currentUser?.username || 'Usuario',
+      partnerName: detectedPartner,
+      actionSource: 'OPEN_OUTLOOK',
+    });
+
+    if (syncRes.success && syncRes.record && onOrderSynced) {
+      onOrderSynced(syncRes.record);
+    }
+
     const greeting = getBoTimeBasedGreeting();
     const rawSubject = `RV: Cotización ${clientName.trim()}`;
     const rawBody = `Estimado,\n\n${greeting}, por favor crear BO.\n\n(Pega aquí la tabla copiada usando CTRL+V)\n\nSaludos,`;
@@ -343,6 +409,12 @@ export const BoRequestModal: React.FC<Props> = ({
       const body = encodeURIComponent(rawBody);
       window.location.href = `mailto:${recipientEmail}?cc=${ccEmail}&subject=${subject}&body=${body}`;
     }
+
+    setImportNotice({
+      type: 'success',
+      message: '¡Solicitud BO abierta en Outlook y registrada en Base de Datos & Tracking (Etapa: OC Recibida)!',
+    });
+    setTimeout(() => setImportNotice(null), 4000);
   };
 
   // Importación masiva de catálogo Part Number <-> SKU desde archivo Excel
@@ -891,7 +963,21 @@ export const BoRequestModal: React.FC<Props> = ({
             {onRegisterTracking && (
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
+                  await syncAllCurrentSkus();
+                  const linesWithCurrentBodega = lines.map((l) => ({ ...l, bodega: currentBodega }));
+                  const syncRes = await syncBoOrderFromEstimateModal({
+                    estimate: estimateResult,
+                    clientName,
+                    lines: linesWithCurrentBodega,
+                    bodega: currentBodega,
+                    author: currentUser?.full_name || currentUser?.username || 'Usuario',
+                    partnerName: detectedPartner,
+                    actionSource: 'MODAL_ACTION',
+                  });
+                  if (syncRes.success && syncRes.record && onOrderSynced) {
+                    onOrderSynced(syncRes.record);
+                  }
                   onRegisterTracking();
                   onClose();
                 }}

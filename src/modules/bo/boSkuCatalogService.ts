@@ -478,7 +478,7 @@ export async function fetchBoSkuCatalog(): Promise<{
     if (isReady && db) {
       isCloudConnected = true;
       const colRef = collection(db, BO_SKU_COLLECTION);
-      const snapshot = await withTimeout(getDocs(colRef), 2500);
+      const snapshot = await withTimeout(getDocs(colRef), 8000);
 
       if (!isProjectContextCurrent(projectCtx)) {
         return { catalog: getLocalBoSkuCache(), isCloudConnected: false };
@@ -526,6 +526,9 @@ export async function fetchBoSkuCatalog(): Promise<{
 /**
  * Guarda o actualiza un mapeo de Part Number a SKU Intcomex en la nube y localmente.
  * Item 13: Nunca sobrescribe el SKU de otra variante que comparta el mismo `basePartNumber`.
+ * Sincroniza bidireccionalmente la clave exacta y su contraparte base o -CBN para que
+ * las búsquedas tanto en el Cotizador (P/N CCW base) como en el BO (P/N con sufijo -CBN)
+ * resuelvan el SKU de forma instantánea y permanente.
  */
 export async function saveBoSkuMapping(
   partNumber: string,
@@ -544,6 +547,7 @@ export async function saveBoSkuMapping(
   if (!cleanPn) return { success: false, isCloud: false, error: 'Part Number requerido' };
 
   const basePn = normalizeBasePartNumber(cleanPn);
+  const boFormattedPn = formatBoPartNumber(cleanPn);
   const now = new Date().toISOString();
 
   // 1. Actualizar catálogo estructurado + vista plana local sin pisar variantes hermanas
@@ -558,6 +562,33 @@ export async function saveBoSkuMapping(
     isExactVariant: true,
   };
   registerStructuredSkuRecord(structured, record);
+
+  // Registrar contraparte base si no tiene SKU registrado aún
+  if (basePn && basePn.toUpperCase() !== cleanPn.toUpperCase()) {
+    registerStructuredSkuRecord(structured, {
+      partNumber: basePn,
+      basePartNumber: basePn,
+      sku: cleanSku,
+      updatedAt: now,
+      updatedBy: user || 'usuario',
+      source,
+      isExactVariant: false,
+    });
+  }
+
+  // Registrar contraparte formateada con -CBN si difiere
+  if (boFormattedPn && boFormattedPn.toUpperCase() !== cleanPn.toUpperCase()) {
+    registerStructuredSkuRecord(structured, {
+      partNumber: boFormattedPn,
+      basePartNumber: basePn,
+      sku: cleanSku,
+      updatedAt: now,
+      updatedBy: user || 'usuario',
+      source,
+      isExactVariant: true,
+    });
+  }
+
   saveStructuredBoSkuCatalog(structured);
 
   const currentLocal = deriveFlatCatalogFromStructured(structured, getLocalBoSkuCache());
@@ -568,18 +599,54 @@ export async function saveBoSkuMapping(
     const pyApi = (window as any).pywebview?.api;
     if (pyApi && typeof pyApi.save_bo_sku === 'function') {
       pyApi.save_bo_sku(cleanPn, cleanSku, basePn);
+      if (basePn && basePn.toUpperCase() !== cleanPn.toUpperCase()) {
+        pyApi.save_bo_sku(basePn, cleanSku, basePn);
+      }
+      if (boFormattedPn && boFormattedPn.toUpperCase() !== cleanPn.toUpperCase()) {
+        pyApi.save_bo_sku(boFormattedPn, cleanSku, basePn);
+      }
     }
   } catch (_) {}
 
-  // 3. Persistir en Firestore Cloud (SOLO bajo el documento exacto de la variante `cleanPn`,
-  //    evitando sobrescribir un documento `basePn` compartido por múltiples variantes)
+  // 3. Persistir en Firestore Cloud
   try {
     const { db, isReady, error } = getFirestoreInstance();
     if (isReady && db && isProjectContextCurrent(projectCtx)) {
       const safeDocId = encodeURIComponent(cleanPn.toUpperCase()).replace(/\./g, '%2E');
       const docRef = doc(db, BO_SKU_COLLECTION, safeDocId);
 
-      await withTimeout(setDoc(docRef, sanitizeForFirestore(record), { merge: true }), 2500);
+      await withTimeout(setDoc(docRef, sanitizeForFirestore(record), { merge: true }), 8000);
+
+      // Persistir recíprocamente base o variante formateada para asegurar consistencia nube
+      if (basePn && basePn.toUpperCase() !== cleanPn.toUpperCase()) {
+        const safeBaseDocId = encodeURIComponent(basePn.toUpperCase()).replace(/\./g, '%2E');
+        const baseDocRef = doc(db, BO_SKU_COLLECTION, safeBaseDocId);
+        const baseRecord: BoSkuCatalogRecord = {
+          partNumber: basePn,
+          basePartNumber: basePn,
+          sku: cleanSku,
+          updatedAt: now,
+          updatedBy: user || 'usuario',
+          source,
+          isExactVariant: false,
+        };
+        setDoc(baseDocRef, sanitizeForFirestore(baseRecord), { merge: true }).catch(() => {});
+      }
+
+      if (boFormattedPn && boFormattedPn.toUpperCase() !== cleanPn.toUpperCase()) {
+        const safeBoDocId = encodeURIComponent(boFormattedPn.toUpperCase()).replace(/\./g, '%2E');
+        const boDocRef = doc(db, BO_SKU_COLLECTION, safeBoDocId);
+        const boRecord: BoSkuCatalogRecord = {
+          partNumber: boFormattedPn,
+          basePartNumber: basePn,
+          sku: cleanSku,
+          updatedAt: now,
+          updatedBy: user || 'usuario',
+          source,
+          isExactVariant: true,
+        };
+        setDoc(boDocRef, sanitizeForFirestore(boRecord), { merge: true }).catch(() => {});
+      }
 
       return {
         success: true,

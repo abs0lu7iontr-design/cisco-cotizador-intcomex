@@ -448,8 +448,19 @@ function AppContent() {
         initialClientName={defaultClient}
         initialLines={boLines}
         assignedBodega={boLines.length > 0 ? boLines[0].bodega : 'E1'}
+        estimateResult={processedResult}
+        detectedPartner={detectedPartner}
+        currentUser={currentUser}
         onClose={() => setIsBoModalOpen(false)}
         onRegisterTracking={() => setCurrentView('bo_tracking')}
+        onOrderSynced={() => {
+          getBoTrackings()
+            .then((records) => {
+              const count = records.filter((r) => r.currentStage !== 'DELIVERED').length;
+              setActiveBoCount(count);
+            })
+            .catch(() => {});
+        }}
       />
 
       {/* Global Proactive Deal Reminder Pop-up (12:00 Midday & 17:30 End-of-Day) */}
