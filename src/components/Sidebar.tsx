@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   Menu,
   Truck,
+  MessageSquare,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { NavViewId } from '../core/store';
@@ -31,6 +32,7 @@ interface SidebarProps {
   isOpen?: boolean;
   onToggleOpen?: () => void;
   activeBoCount?: number;
+  unreadFeedbackCount?: number;
 }
 
 export function Sidebar({
@@ -41,6 +43,7 @@ export function Sidebar({
   isOpen = true,
   onToggleOpen,
   activeBoCount,
+  unreadFeedbackCount,
 }: SidebarProps) {
   const isAdmin = currentUser.role === 'admin';
 
@@ -87,6 +90,13 @@ export function Sidebar({
       label: 'Tracking BO',
       icon: Truck,
       badge: activeBoCount !== undefined && activeBoCount > 0 ? activeBoCount : undefined,
+      section: 'main',
+    },
+    {
+      id: 'feedback' as NavViewId,
+      label: 'Mejoras & Soporte',
+      icon: MessageSquare,
+      badge: unreadFeedbackCount !== undefined && unreadFeedbackCount > 0 ? unreadFeedbackCount : undefined,
       section: 'main',
     },
     ...(isAdmin

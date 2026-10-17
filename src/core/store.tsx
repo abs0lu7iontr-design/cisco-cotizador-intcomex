@@ -59,6 +59,7 @@ export type NavViewId =
   | 'configuriator'
   | 'estimates'
   | 'bo_tracking'
+  | 'feedback'
   | 'users'
   | 'audit'
   | 'settings';

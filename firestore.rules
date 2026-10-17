@@ -9,7 +9,7 @@ rules_version = '2';
 // backed by the `users` collection and local failsafe cache rather than
 // Firebase Authentication (`request.auth` is null for standard Web/Desktop
 // client operations). Rules below remove any 30-day Test Mode timestamp
-// expiration, enforce collection-level isolation (10 explicit collections),
+// expiration, enforce collection-level isolation (11 explicit collections),
 // validate payload schemas and field bounds on both create and update,
 // and deny all other paths by default.
 //
@@ -153,6 +153,23 @@ rules_version = '2';
 //   - createdBy: string (optional)
 //   - archived: bool (optional)
 //
+// Collection 11: app_feedback_tickets/{ticketId}
+//   - Sistema de Tickets de Feedback, Reporte de Errores y Sugerencias de Cisco Automated
+//   - id: string
+//   - title: string (required)
+//   - description: string (required)
+//   - type: string ('BUG' | 'IMPROVEMENT' | 'FEATURE_REQUEST' | 'UX_UI' | 'DATA_CATALOG' | 'OTHER') (required)
+//   - priority: string ('CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW') (required)
+//   - status: string ('OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED' | 'REJECTED') (required)
+//   - module: string (optional)
+//   - author: map (username, fullName, email, role)
+//   - sla: map / target fields (targetHours, dueAt, resolvedAt)
+//   - technicalContext: map (appVersion, gitCommit, environment, userAgent, activeView)
+//   - responses: list (historial de mensajes y feedback del equipo técnico)
+//   - attachments: list (capturas o pantallazos)
+//   - createdAt: string (ISO 8601)
+//   - updatedAt: string (ISO 8601)
+//
 // ===============================================================
 
 service cloud.firestore {
@@ -278,6 +295,16 @@ service cloud.firestore {
         'escalationChannel' in data && data.escalationChannel is string && data.escalationChannel.size() <= 100;
     }
 
+    function isValidFeedbackTicket(data) {
+      return data is map &&
+        isValidPayloadSize(data) &&
+        'title' in data && data.title is string && data.title.size() <= 500 &&
+        'description' in data && data.description is string && data.description.size() <= 25000 &&
+        'type' in data && data.type is string && data.type.size() <= 50 &&
+        'status' in data && data.status is string && data.status.size() <= 50 &&
+        'priority' in data && data.priority is string && data.priority.size() <= 50;
+    }
+
     // ------------------------------------------------------------------------
     // 1. COLECCIÓN ESTIMATES (Cotizaciones CCW)
     // ------------------------------------------------------------------------
@@ -378,6 +405,15 @@ service cloud.firestore {
     match /deal_reminders/{reminderId} {
       allow read: if true;
       allow create, update: if isValidDealReminder(request.resource.data);
+      allow delete: if isAdmin() || !isAuthenticated();
+    }
+
+    // ------------------------------------------------------------------------
+    // 11. COLECCIÓN APP_FEEDBACK_TICKETS (Feedback, Bugs & Mejoras)
+    // ------------------------------------------------------------------------
+    match /app_feedback_tickets/{ticketId} {
+      allow read: if true;
+      allow create, update: if isValidFeedbackTicket(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
 

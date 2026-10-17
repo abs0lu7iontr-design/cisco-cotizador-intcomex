@@ -52,7 +52,7 @@ import { applyTheme, getSavedThemeId } from './core/themeEngine';
 import { useSessionInactivity, SessionInactivityModal } from './modules/security';
 import { SharedSkuManagerModal, SkuOverrideAuthorizationModal } from './modules/skuOverrides';
 import { EstimateDiffModal } from './modules/estimate';
-import { copyEstimateEmailSummaryToClipboard } from './core/emailClipboardHelper';
+import { FeedbackView, CreateTicketModal, getFeedbackTickets } from './modules/feedback';
 
 import {
   FileSpreadsheet,
@@ -64,6 +64,7 @@ import {
   RefreshCw,
   GitCompare,
   Zap,
+  MessageSquarePlus,
 } from 'lucide-react';
 
 function AppContent() {
@@ -153,6 +154,8 @@ function AppContent() {
 
   // Active Back Order (BO) Count for Sidebar Badge
   const [activeBoCount, setActiveBoCount] = useState<number>(0);
+  const [unreadFeedbackCount, setUnreadFeedbackCount] = useState<number>(0);
+  const [isCreateFeedbackModalOpen, setIsCreateFeedbackModalOpen] = useState(false);
 
   // Proactive Deal Reminder Pop-up Monitor (Midday 12:00 & End of Day 17:30)
   const {
@@ -169,7 +172,20 @@ function AppContent() {
         setActiveBoCount(count);
       })
       .catch(() => {});
-  }, [currentView]);
+
+    getFeedbackTickets()
+      .then((tickets) => {
+        if (!currentUser) return;
+        const isSupport = currentUser.role === 'admin' || currentUser.role === 'pm';
+        const unread = tickets.filter((t) => {
+          if (isSupport && !t.readBySupport) return true;
+          if (t.author.username === currentUser.username && !t.readByAuthor) return true;
+          return false;
+        }).length;
+        setUnreadFeedbackCount(unread);
+      })
+      .catch(() => {});
+  }, [currentView, currentUser]);
 
   // Modal States
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
@@ -471,6 +487,35 @@ function AppContent() {
         onRefreshData={refreshDealAlerts}
       />
 
+      {/* Global Quick Feedback & Bug Report Modal */}
+      {currentUser && (
+        <CreateTicketModal
+          isOpen={isCreateFeedbackModalOpen}
+          onClose={() => setIsCreateFeedbackModalOpen(false)}
+          currentUser={currentUser}
+          onTicketCreated={() => {
+            setCloudToast({
+              message: '✅ ¡Reporte / Sugerencia registrada exitosamente en la base de datos!',
+              type: 'success',
+            });
+            setTimeout(() => setCloudToast(null), 4000);
+            getFeedbackTickets()
+              .then((tickets) => {
+                const isSupport = currentUser.role === 'admin' || currentUser.role === 'pm';
+                const unread = tickets.filter((t) => {
+                  if (isSupport && !t.readBySupport) return true;
+                  if (t.author.username === currentUser.username && !t.readByAuthor) return true;
+                  return false;
+                }).length;
+                setUnreadFeedbackCount(unread);
+              })
+              .catch(() => {});
+          }}
+          currentEstimateFileName={currentFileName}
+          dealId={processedResult?.headerInfo?.dealId}
+        />
+      )}
+
       {/* Estimate Version History & Snapshot Diff Modal */}
       {processedResult && (
         <EstimateDiffModal
@@ -519,6 +564,7 @@ function AppContent() {
         isOpen={isNavSidebarOpen}
         onToggleOpen={() => setIsNavSidebarOpen((prev) => !prev)}
         activeBoCount={activeBoCount}
+        unreadFeedbackCount={unreadFeedbackCount}
       />
 
       {/* Main Content Area */}
@@ -560,6 +606,21 @@ function AppContent() {
           >
             <span>{cloudToast.message}</span>
           </div>
+        )}
+
+        {/* Floating Quick Action: Reportar Mejora / Error (accessible from any view) */}
+        {currentView !== 'feedback' && (
+          <button
+            onClick={() => setIsCreateFeedbackModalOpen(true)}
+            className="fixed bottom-6 right-6 z-40 px-3.5 py-2.5 rounded-2xl bg-slate-900/90 hover:bg-indigo-600 text-slate-300 hover:text-white border border-slate-700/80 hover:border-indigo-500 shadow-2xl backdrop-blur-md text-xs font-bold transition-all duration-300 flex items-center space-x-2 group cursor-pointer hover:shadow-indigo-600/30"
+            title="Reportar problema o sugerir mejora desde cualquier pantalla"
+          >
+            <MessageSquarePlus className="w-4 h-4 text-indigo-400 group-hover:text-white transition-colors" />
+            <span className="hidden sm:inline">Mejoras / Soporte</span>
+            {unreadFeedbackCount > 0 && (
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+            )}
+          </button>
         )}
 
         {/* Scrollable View Container */}
@@ -642,6 +703,16 @@ function AppContent() {
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
               <BoTrackingView />
+            </ErrorBoundary>
+          )}
+
+          {currentView === 'feedback' && (
+            <ErrorBoundary
+              fallbackTitle="Error en Módulo de Mejoras, Feedback & Soporte"
+              resetKeys={[currentView]}
+              onReturnToSafeView={() => setCurrentView('quoter')}
+            >
+              <FeedbackView />
             </ErrorBoundary>
           )}
 
