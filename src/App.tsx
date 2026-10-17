@@ -585,6 +585,7 @@ function AppContent() {
           onMiningAuditClick={() => setIsMiningAuditModalOpen(true)}
           miningAuditReport={miningAuditData}
           onThemeClick={() => setIsThemeModalOpen(true)}
+          onFeedbackClick={() => setCurrentView('feedback')}
           onClearClick={clearEstimate}
           onToggleSidebar={() => setIsNavSidebarOpen((prev) => !prev)}
           isSidebarOpen={isNavSidebarOpen}

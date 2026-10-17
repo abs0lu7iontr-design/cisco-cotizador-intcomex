@@ -22,6 +22,7 @@ import {
   Pickaxe,
   Mail,
   Check,
+  MessageSquare,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI, INTCOMEX_LOGO_DATA_URI } from '../core/brandingLogos';
 import { useAppTheme } from '../context/ThemeContext';
@@ -40,6 +41,7 @@ interface NavbarProps {
   onMiningAuditClick?: () => void;
   miningAuditReport?: any;
   onThemeClick?: () => void;
+  onFeedbackClick?: () => void;
   onClearClick: () => void;
   onCopyEmailClick?: () => void;
   isCopiedEmail?: boolean;
@@ -65,6 +67,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onMiningAuditClick,
   miningAuditReport,
   onThemeClick,
+  onFeedbackClick,
   onClearClick,
   onCopyEmailClick,
   isCopiedEmail = false,
@@ -227,6 +230,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Share2 className="w-4 h-4 text-cyan-400" />
               <span className="hidden sm:inline">Reglas SKU</span>
+            </button>
+          )}
+
+          {/* Mejoras & Soporte Button */}
+          {onFeedbackClick && (
+            <button
+              id="btn-navbar-feedback"
+              onClick={onFeedbackClick}
+              className="inline-flex items-center space-x-1.5 text-xs font-semibold bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-700/50 hover:text-white px-3 py-2 rounded-xl transition-colors cursor-pointer shadow-sm shadow-indigo-950/30"
+              title="Abrir mesa de Mejoras, Reportes & Soporte"
+            >
+              <MessageSquare className="w-4 h-4 text-indigo-400" />
+              <span className="hidden md:inline">Mejoras & Soporte</span>
             </button>
           )}
 
