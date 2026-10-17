@@ -564,3 +564,42 @@ export function generateOutlookMailtoLink(ticket: FeedbackTicket, replyText?: st
 
   return `mailto:${targetEmail}?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
 }
+
+/**
+ * Persists an AI diagnosis (feasibility + proposed solution) to the ticket in local cache and Firestore.
+ */
+export async function saveTicketAiDiagnosis(
+  ticketId: string,
+  diagnosis: import('./aiFeedbackAdvisor').AiTicketDiagnosis
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const tickets = await getFeedbackTickets();
+    const index = tickets.findIndex((t) => t.id === ticketId);
+    if (index === -1) return { success: false, error: 'Ticket no encontrado' };
+
+    const currentTicket = tickets[index];
+    const updatedTicket: FeedbackTicket = {
+      ...currentTicket,
+      aiDiagnosis: diagnosis,
+      updatedAt: new Date().toISOString(),
+    };
+
+    tickets[index] = updatedTicket;
+    setLocalCachedTickets([...tickets]);
+
+    try {
+      const { db, isReady } = getFirestoreInstance();
+      if (isReady && db) {
+        const docRef = doc(db, FEEDBACK_TICKETS_COLLECTION, ticketId);
+        await setDoc(docRef, sanitizeForFirestore(updatedTicket), { merge: true });
+      }
+    } catch (fsErr) {
+      console.warn('[feedbackService] Error guardando dictamen IA en Firestore:', fsErr);
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Error guardando diagnóstico de IA' };
+  }
+}
+

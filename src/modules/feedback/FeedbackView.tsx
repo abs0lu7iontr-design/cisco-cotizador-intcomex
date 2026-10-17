@@ -28,6 +28,7 @@ import {
   Calendar,
   FileCheck,
   Activity,
+  Bot,
 } from 'lucide-react';
 import { useCiscoAutomatedStore } from '../../core/store';
 import {
@@ -569,6 +570,11 @@ export function FeedbackView() {
                             <span className="font-mono font-bold text-indigo-400">
                               {t.id}
                             </span>
+                            {t.aiDiagnosis && (
+                              <span className="p-0.5 rounded bg-indigo-500/20 text-indigo-400" title={`Dictamen IA: ${t.aiDiagnosis.feasibilityVerdict}`}>
+                                <Bot className="w-3.5 h-3.5" />
+                              </span>
+                            )}
                             {isUnreadForMe && (
                               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" title="Feedback nuevo sin leer" />
                             )}

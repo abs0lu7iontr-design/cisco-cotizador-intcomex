@@ -111,6 +111,9 @@ export interface FeedbackTicket {
   readByAuthor: boolean;
   readBySupport: boolean;
 
+  // AI Triage & Feasibility Analysis (Without code modification)
+  aiDiagnosis?: import('./aiFeedbackAdvisor').AiTicketDiagnosis;
+
   // Timestamps
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601

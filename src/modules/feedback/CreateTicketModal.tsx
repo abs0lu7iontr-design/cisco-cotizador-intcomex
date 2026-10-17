@@ -273,6 +273,19 @@ export function CreateTicketModal({
     setIsSubmitting(false);
 
     if (res.success) {
+      if (res.ticket) {
+        // Trigger background AI evaluation & proposed solution without blocking modal close
+        import('./aiFeedbackAdvisor')
+          .then(({ analyzeTicketWithAi }) => analyzeTicketWithAi(res.ticket!))
+          .then((diagnosis) => {
+            if (res.ticket) {
+              return import('./feedbackService').then(({ saveTicketAiDiagnosis }) =>
+                saveTicketAiDiagnosis(res.ticket!.id, diagnosis)
+              );
+            }
+          })
+          .catch(() => {});
+      }
       setTitle('');
       setDescription('');
       setAttachments([]);

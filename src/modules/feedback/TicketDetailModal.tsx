@@ -24,6 +24,10 @@ import {
   ChevronDown,
   ChevronUp,
   Trash2,
+  Bot,
+  Wrench,
+  Lightbulb,
+  CheckCircle2,
 } from 'lucide-react';
 import { UserSession } from '../../core/types';
 import {
@@ -40,7 +44,9 @@ import {
   deleteFeedbackTicket,
   generateOutlookMailtoLink,
   markTicketAsRead,
+  saveTicketAiDiagnosis,
 } from './feedbackService';
+import { analyzeTicketWithAi, AiTicketDiagnosis } from './aiFeedbackAdvisor';
 
 interface TicketDetailModalProps {
   ticket: FeedbackTicket | null;
@@ -94,6 +100,8 @@ export function TicketDetailModal({
   const [copiedResponse, setCopiedResponse] = useState(false);
   const [showTechContext, setShowTechContext] = useState(false);
   const [activeImageZoom, setActiveImageZoom] = useState<string | null>(null);
+  const [isAnalyzingAi, setIsAnalyzingAi] = useState(false);
+  const [copiedAiAnalysis, setCopiedAiAnalysis] = useState(false);
 
   const isSupportTeam = currentUser.role === 'admin' || currentUser.role === 'pm';
   const isAuthor = ticket ? ticket.author.username === currentUser.username : false;
@@ -103,6 +111,49 @@ export function TicketDetailModal({
       markTicketAsRead(ticket.id, isAuthor);
     }
   }, [isOpen, ticket, isAuthor]);
+
+  const handleRunAiAnalysis = async () => {
+    if (!ticket) return;
+    setIsAnalyzingAi(true);
+    try {
+      const diag = await analyzeTicketWithAi(ticket);
+      await saveTicketAiDiagnosis(ticket.id, diag);
+      onTicketUpdated();
+    } catch (err) {
+      console.warn('[TicketDetailModal] Error analizando con IA:', err);
+    } finally {
+      setIsAnalyzingAi(false);
+    }
+  };
+
+  const handleUseAiResponse = () => {
+    if (!ticket?.aiDiagnosis?.recommendedResponseToUser) return;
+    setReplyMessage(ticket.aiDiagnosis.recommendedResponseToUser);
+  };
+
+  const handleCopyAiAnalysis = () => {
+    if (!ticket?.aiDiagnosis) return;
+    const d = ticket.aiDiagnosis;
+    const text = [
+      `=== DICTAMEN & ANÁLISIS DE LA IA (CISCO AUTOMATED) ===`,
+      `Ticket: ${ticket.id} - ${ticket.title}`,
+      `Viabilidad: ${d.feasibilityVerdict}`,
+      `Esfuerzo Estimado: ${d.estimatedEffort}`,
+      `\n[CAUSA RAÍZ]`,
+      d.rootCauseAnalysis,
+      `\n[PROPUESTA DE SOLUCIÓN TÉCNICA (SIN IMPLEMENTAR)]`,
+      d.proposedSolution,
+      `\n[IMPACTO TÉCNICO]`,
+      d.technicalImpact,
+      `\n[ARCHIVOS / MÓDULOS INVOLUCRADOS]`,
+      d.affectedModules.join(', '),
+      `\nAnalizado por: ${d.analyzedByModel} (${new Date(d.analyzedAt).toLocaleString('es-CL')})`,
+    ].join('\n');
+
+    navigator.clipboard.writeText(text);
+    setCopiedAiAnalysis(true);
+    setTimeout(() => setCopiedAiAnalysis(false), 3000);
+  };
 
   if (!isOpen || !ticket) return null;
 
@@ -378,6 +429,147 @@ export function TicketDetailModal({
                 )}
               </div>
             )}
+
+            {/* AI Triaging, Feasibility & Proposed Solution (Without modifying code) */}
+            <div className="rounded-3xl border border-indigo-500/30 bg-gradient-to-br from-indigo-950/40 via-slate-900 to-slate-950 p-5 shadow-xl space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center space-x-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/40 flex items-center justify-center">
+                    <Bot className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-300">
+                        Diagnóstico & Dictamen de la IA (Antigravity / Gemini)
+                      </h3>
+                      {ticket.aiDiagnosis && (
+                        <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded-md border border-slate-800">
+                          {ticket.aiDiagnosis.analyzedByModel}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Evaluación técnica de viabilidad y propuesta de solución (análisis conceptual sin intervención de código).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={handleRunAiAnalysis}
+                    disabled={isAnalyzingAi}
+                    className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 ${isAnalyzingAi ? 'animate-spin' : ''}`} />
+                    <span>{isAnalyzingAi ? 'Analizando con IA...' : ticket.aiDiagnosis ? 'Re-analizar con IA' : 'Analizar con IA'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {ticket.aiDiagnosis ? (
+                <div className="space-y-4 pt-2 border-t border-slate-800/80">
+                  {/* Verdict & Effort Badges */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`px-3 py-1 rounded-xl text-xs font-bold border ${
+                        ticket.aiDiagnosis.isFeasible === 'YES'
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                          : ticket.aiDiagnosis.isFeasible === 'CONDITIONAL'
+                          ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                          : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                      }`}
+                    >
+                      {ticket.aiDiagnosis.feasibilityVerdict}
+                    </span>
+
+                    <span className="px-2.5 py-1 rounded-xl text-xs font-medium bg-slate-900 border border-slate-800 text-slate-300">
+                      Esfuerzo Estimado: <strong className="text-white">{ticket.aiDiagnosis.estimatedEffort}</strong>
+                    </span>
+                  </div>
+
+                  {/* Root Cause Analysis */}
+                  <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center space-x-1.5">
+                      <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Causa Raíz / Diagnóstico Técnico:</span>
+                    </span>
+                    <p className="text-xs text-slate-200 leading-relaxed">
+                      {ticket.aiDiagnosis.rootCauseAnalysis}
+                    </p>
+                  </div>
+
+                  {/* Proposed Solution (Without code implementation) */}
+                  <div className="p-4 rounded-2xl bg-slate-950/80 border border-indigo-500/30 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300 flex items-center space-x-1.5">
+                        <Wrench className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Solución Propuesta por la IA (Blueprint de Diseño):</span>
+                      </span>
+                      <span className="text-[9px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-md">
+                        Propuesta conceptual • Código no modificado
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap font-mono text-[11px] bg-slate-900/80 p-3 rounded-xl border border-slate-800">
+                      {ticket.aiDiagnosis.proposedSolution}
+                    </p>
+                    <p className="text-[10px] text-slate-400 italic">
+                      Impacto técnico: {ticket.aiDiagnosis.technicalImpact}
+                    </p>
+                  </div>
+
+                  {/* Affected Modules */}
+                  {ticket.aiDiagnosis.affectedModules && ticket.aiDiagnosis.affectedModules.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] font-bold uppercase text-slate-400 mr-1">
+                        Archivos / Módulos Involucrados:
+                      </span>
+                      {ticket.aiDiagnosis.affectedModules.map((f, idx) => (
+                        <span
+                          key={idx}
+                          className="font-mono text-[10px] bg-slate-900 border border-slate-800 text-indigo-300 px-2 py-0.5 rounded-md"
+                        >
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/60">
+                    <span className="text-[10px] text-slate-500">
+                      Analizado el {new Date(ticket.aiDiagnosis.analyzedAt).toLocaleString('es-CL')}
+                    </span>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={handleCopyAiAnalysis}
+                        className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold border border-slate-800 transition-colors flex items-center space-x-1.5 cursor-pointer"
+                      >
+                        {copiedAiAnalysis ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedAiAnalysis ? 'Copiado' : 'Copiar Dictamen'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleUseAiResponse}
+                        className="px-3 py-1.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 hover:text-white border border-indigo-500/40 text-xs font-bold transition-colors flex items-center space-x-1.5 cursor-pointer"
+                        title="Pegar la respuesta recomendada por la IA en la caja de respuesta al usuario"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>Usar como Respuesta al Usuario</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-slate-950/40 border border-dashed border-slate-800 text-center space-y-2">
+                  <p className="text-xs text-slate-400">
+                    Presiona <strong>"Analizar con IA"</strong> para que Gemini / Antigravity evalúe si la solicitud del usuario es viable y qué solución técnica recomendaría sin alterar el código.
+                  </p>
+                </div>
+              )}
+            </div>
 
             {/* Feedback & Conversation Timeline */}
             <div className="space-y-4">
