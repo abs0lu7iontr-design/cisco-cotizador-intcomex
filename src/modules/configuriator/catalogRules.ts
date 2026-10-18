@@ -3136,19 +3136,32 @@ function buildCollaborationRule(
  * Regla de ensamble para Licenciamiento y Colaboración Cloud Cisco Webex (A-FLEX-3)
  */
 function buildWebexSoftwareRule(parentSku: string, description: string): ChassisConfigRule {
+  const cleanUpper = (parentSku || '').toUpperCase();
+  const isOnlyCalling = cleanUpper.includes('CALL');
+  const isOnlyMeeting = cleanUpper.includes('MTG') || cleanUpper.includes('MEETING');
+  const actualParent = isOnlyCalling ? 'A-FLEX-CALL-E-USR' : isOnlyMeeting ? 'A-FLEX-MTG-ENT' : 'A-FLEX-3';
+
   return {
-    parentSku: 'A-FLEX-3',
+    parentSku: actualParent,
     family: 'webex_software',
-    description: description || 'Cisco Collaboration Flex Plan 3.0 (Webex Calling & Meetings)',
+    description:
+      description ||
+      (isOnlyCalling
+        ? 'Cisco Webex Calling Standalone Cloud PBX'
+        : isOnlyMeeting
+          ? 'Cisco Webex Meetings Enterprise Suite'
+          : 'Cisco Collaboration Flex Plan 3.0 (Webex Calling & Meetings)'),
     officialUrl: 'https://www.cisco.com/c/en/us/products/unified-communications/collaboration-flex-plan/index.html',
     isGoldenTemplate: true,
-    goldenTemplateName: 'Cisco Collaboration Flex Plan 3.0 (Webex Calling & Meetings) Golden Template',
+    goldenTemplateName: `Cisco Collaboration Flex Plan 3.0 (${isOnlyCalling ? 'Calling' : isOnlyMeeting ? 'Meetings' : 'Webex Suite'}) Golden Template`,
     goldenTemplateSource: 'Cisco CCW',
     defaultSubItems: (opts) => {
       const termYears = opts.termYears && opts.termYears > 0 ? opts.termYears : 1;
       const months = termYears * 12;
-      return [
-        {
+      const subs: SubItemConfig[] = [];
+
+      if (!isOnlyMeeting) {
+        subs.push({
           partNumber: 'A-FLEX-CALL-E-USR',
           qtyMultiplier: 1,
           durationMonths: months,
@@ -3157,8 +3170,11 @@ function buildWebexSoftwareRule(parentSku: string, description: string): Chassis
           unitListPriceUsd: 17.0 * months,
           description: `Webex Calling Enterprise Named User Subscription (${months}M Term)`,
           category: 'dna_license',
-        },
-        {
+        });
+      }
+
+      if (!isOnlyCalling) {
+        subs.push({
           partNumber: 'A-FLEX-MTG-ENT',
           qtyMultiplier: 1,
           durationMonths: months,
@@ -3167,8 +3183,11 @@ function buildWebexSoftwareRule(parentSku: string, description: string): Chassis
           unitListPriceUsd: 15.0 * months,
           description: `Webex Meetings Enterprise Suite Named User (${months}M Term)`,
           category: 'dna_license',
-        },
-        {
+        });
+      }
+
+      if (!isOnlyCalling && !isOnlyMeeting) {
+        subs.push({
           partNumber: 'A-FLEX-DEV-REG',
           qtyMultiplier: 1,
           durationMonths: months,
@@ -3177,18 +3196,21 @@ function buildWebexSoftwareRule(parentSku: string, description: string): Chassis
           unitListPriceUsd: 0,
           description: `Webex Cloud Device Registration for Desk Phones & Video Bars (${months}M Term)`,
           category: 'dna_license',
-        },
-        {
-          partNumber: 'SVS-FLEX-SUPT-BAS',
-          qtyMultiplier: 1,
-          durationMonths: months,
-          initialTerm: months,
-          billingModel: 'Prepaid Term',
-          unitListPriceUsd: 0,
-          description: 'Basic 24x7 Cloud Support for Cisco Collaboration Flex Plan',
-          category: 'support',
-        },
-      ];
+        });
+      }
+
+      subs.push({
+        partNumber: 'SVS-FLEX-SUPT-BAS',
+        qtyMultiplier: 1,
+        durationMonths: months,
+        initialTerm: months,
+        billingModel: 'Prepaid Term',
+        unitListPriceUsd: 0,
+        description: 'Basic 24x7 Cloud Support for Cisco Collaboration Flex Plan',
+        category: 'support',
+      });
+
+      return subs;
     },
   };
 }
@@ -4338,8 +4360,240 @@ export function generateHomologatedProposalsForItem(
 
   const seeds: CandidateSeed[] = [];
 
-  // 1. Evaluar por familia de producto para generar al menos 3 propuestas idealmente 100% homologadas
-  if (
+  // 0. FAMILIA DE LICENCIAMIENTO PURO, SOFTWARE, SUSCRIPCIONES CLOUD SAAS, CISCO EA Y RENOVACIONES (100% SOFTWARE / CERO EQUIPOS)
+  const isLicenseRequest =
+    params.deviceType === 'license_only' ||
+    primaryRefSku.startsWith('A-FLEX') ||
+    primaryRefSku.startsWith('A-SPK') ||
+    primaryRefSku.startsWith('E3-') ||
+    primaryRefSku.startsWith('EA-') ||
+    primaryRefSku.startsWith('UMB-') ||
+    primaryRefSku.startsWith('DUO-') ||
+    primaryRefSku.startsWith('SEC-') ||
+    primaryRefSku.startsWith('CON-SNT') ||
+    primaryRefSku.startsWith('CON-ECDN') ||
+    primaryRefSku.startsWith('LIC-') ||
+    primaryRefSku.startsWith('AC-') ||
+    combinedSku.includes('WEBEX') ||
+    combinedSku.includes('FLEX') ||
+    combinedSku.includes('ENTERPRISE AGREEMENT') ||
+    combinedSku.includes('UMBRELLA') ||
+    combinedSku.includes('DUO') ||
+    combinedSku.includes('RENOVACION') ||
+    combinedSku.includes('SMARTNET');
+
+  if (isLicenseRequest) {
+    if (
+      primaryRefSku.startsWith('A-FLEX') ||
+      primaryRefSku.startsWith('A-SPK') ||
+      combinedSku.includes('WEBEX') ||
+      combinedSku.includes('FLEX') ||
+      combinedSku.includes('CALLING') ||
+      combinedSku.includes('MEETING')
+    ) {
+      seeds.push(
+        {
+          sku: 'A-FLEX-3',
+          title: `Propuesta #1 Webex Suite Full: Cisco Collaboration Flex Plan 3.0 (${years * 12}M)`,
+          description: `Suscripción cloud oficial completa que incluye Webex Calling para telefonía en la nube, Webex Meetings hasta 1000 participantes, mensajería empresarial y soporte TAC 24x7.`,
+          type: 'direct_equivalent',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Webex Suite Completa (Calling + Meetings)',
+          matchedSpecs: [
+            `Webex Calling Enterprise User (${years * 12}M)`,
+            'Webex Meetings Enterprise (1000 Asistentes)',
+            'Registro de Dispositivos Webex en la Nube',
+            'Soporte Oficial Basic Support Flex Plan 24x7',
+            '100% Cloud SaaS / Cero cables o chasis',
+          ],
+          customDiscountPct: 52.0,
+        },
+        {
+          sku: 'A-FLEX-CALL-E-USR',
+          title: `Propuesta Enfoque Telefónico Cloud: Cisco Webex Calling Standalone (${years * 12}M)`,
+          description: `Alternativa optimizada para organizaciones que requieren modernizar su central telefónica a Cloud PBX sin costo adicional de salas de conferencia masivas.`,
+          type: 'cost_effective',
+          compatibilityPct: 98,
+          homologationLabel: '98% Homologado • Telefonía Cloud PBX (Optimización Costo)',
+          matchedSpecs: [
+            `Webex Calling Enterprise (${years * 12}M)`,
+            'Central Telefónica en la Nube / Cloud PBX',
+            'Compatible con Softphone PC/Móvil y Teléfonos IP',
+            '100% Software Cloud / Cero hardware',
+          ],
+          customDiscountPct: 50.0,
+        },
+        {
+          sku: 'E3-ENT-AGMT',
+          title: `Propuesta Corporativa EA 3.0: Cisco Enterprise Agreement Collaboration`,
+          description: `Contrato marco plurianual que otorga licenciamiento para toda la empresa con True Forward anual, soporte Solution Support y tarifas preferenciales.`,
+          type: 'catalyst_alternative',
+          compatibilityPct: 95,
+          homologationLabel: '95% Homologado • Contrato Marco Cisco EA 3.0 Corporativo',
+          matchedSpecs: [
+            'Licenciamiento Cisco EA 3.0 Collab Suite',
+            `Plazo Plurianual (${Math.max(3, years)} Años)`,
+            'True Forward (Crecimiento sin penalizaciones)',
+            'Soporte Enterprise Solution Support',
+          ],
+          customDiscountPct: 58.0,
+        }
+      );
+    } else if (
+      primaryRefSku.startsWith('E3-') ||
+      primaryRefSku.startsWith('EA-') ||
+      combinedSku.includes('ENTERPRISE AGREEMENT') ||
+      combinedSku.includes('CISCO EA')
+    ) {
+      seeds.push(
+        {
+          sku: 'E3-ENT-AGMT',
+          title: `Propuesta #1 Contrato Marco: Cisco Enterprise Agreement 3.0 Multi-Suite`,
+          description: `Acuerdo marco plurianual que unifica Suites de Colaboración, Seguridad y Networking bajo un contrato único de facturación predecible.`,
+          type: 'direct_equivalent',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • EA 3.0 Oficial Cisco',
+          matchedSpecs: [
+            'Suite Colaboración (Webex Calling/Meetings)',
+            'Suite Seguridad (Umbrella, Duo, Secure Client)',
+            'Suite Redes (Catalyst DNA / Meraki Cloud)',
+            `Término ${Math.max(3, years)} Años con True Forward`,
+          ],
+          customDiscountPct: 58.0,
+        },
+        {
+          sku: 'A-FLEX-3',
+          title: `Propuesta Suscripción Modular: Cisco Collaboration Flex Plan 3.0`,
+          description: `Alternativa modular por usuario para organizaciones que no requieren comprometer un contrato masivo a nivel corporativo.`,
+          type: 'cost_effective',
+          compatibilityPct: 95,
+          homologationLabel: '95% Homologado • Suscripción Modular Flex Plan',
+          matchedSpecs: [
+            'Webex Calling + Meetings por usuario',
+            'Sin compromiso de volumen corporativo mínimo',
+            `Término ${years * 12}M Prepaid`,
+          ],
+          customDiscountPct: 52.0,
+        },
+        {
+          sku: 'UMB-SIG-ESS',
+          title: `Propuesta Seguridad Cloud EA: Cisco Umbrella SIG Essentials`,
+          description: `Suite de ciberseguridad cloud SASE integrada para protección perimetral, navegación web y DNS seguro.`,
+          type: 'catalyst_alternative',
+          compatibilityPct: 90,
+          homologationLabel: '90% Homologado • Suite de Seguridad Cloud SASE',
+          matchedSpecs: [
+            'Protección Cloud DNS + SWG + Cloud Firewall',
+            'Integrable directamente a contrato Cisco EA 3.0',
+            `Término ${years * 12}M`,
+          ],
+          customDiscountPct: 55.0,
+        }
+      );
+    } else if (
+      primaryRefSku.startsWith('UMB-') ||
+      primaryRefSku.startsWith('DUO-') ||
+      primaryRefSku.startsWith('AC-') ||
+      primaryRefSku.startsWith('SEC-') ||
+      combinedSku.includes('UMBRELLA') ||
+      combinedSku.includes('DUO') ||
+      combinedSku.includes('ANYCONNECT')
+    ) {
+      seeds.push(
+        {
+          sku: 'UMB-SIG-ESS',
+          title: `Propuesta SASE Cloud: Cisco Umbrella SIG Essentials`,
+          description: `Seguridad perimetral en la nube con filtrado DNS, Secure Web Gateway (SWG), DLP y Cloud-Delivered Firewall.`,
+          type: 'direct_equivalent',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Cisco Umbrella SIG Essentials',
+          matchedSpecs: [
+            'Filtrado y Protección DNS + SWG Cloud',
+            'Bloqueo preventivo de Phishing y Ransomware',
+            `Suscripción Cloud ${years * 12}M`,
+            '100% Software SaaS / Sin hardware',
+          ],
+          customDiscountPct: 50.0,
+        },
+        {
+          sku: 'DUO-MFA',
+          title: `Propuesta Zero Trust & Identidad: Cisco Duo MFA`,
+          description: `Autenticación multifactor segura (MFA) para proteger accesos a VPN, aplicaciones cloud y escritorios de trabajo.`,
+          type: 'cost_effective',
+          compatibilityPct: 98,
+          homologationLabel: '98% Homologado • Autenticación Multifactor MFA',
+          matchedSpecs: [
+            'Notificaciones push seguras en smartphones',
+            'Verificación de postura de seguridad del dispositivo',
+            `Suscripción Cloud ${years * 12}M`,
+          ],
+          customDiscountPct: 48.0,
+        },
+        {
+          sku: 'AC-PLS-P-3Y-S',
+          title: `Propuesta Endpoint & VPN: Cisco Secure Client (AnyConnect Plus)`,
+          description: `Acceso remoto VPN corporativo de alto rendimiento con cifrado avanzado y monitoreo de telemetría de endpoint.`,
+          type: 'catalyst_alternative',
+          compatibilityPct: 95,
+          homologationLabel: '95% Homologado • Acceso Remoto Seguro AnyConnect',
+          matchedSpecs: [
+            'Licencia Cisco Secure Client / AnyConnect Plus',
+            'VPN SSL / IPsec con máxima velocidad y estabilidad',
+            `Plazo ${years * 12} Meses`,
+          ],
+          customDiscountPct: 52.0,
+        }
+      );
+    } else {
+      const sntModel = combinedSku.includes('9300') ? 'C930048' : 'C9200L24';
+      seeds.push(
+        {
+          sku: `CON-SNT-${sntModel}`,
+          title: `Propuesta #1 Continuidad Operativa: Cisco SmartNet Total Care (8x5xNBD)`,
+          description: `Soporte oficial del fabricante con reemplazo de hardware al siguiente día hábil (NBD), actualizaciones IOS-XE y acceso 24x7 al Cisco TAC.`,
+          type: 'direct_equivalent',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Cobertura Oficial Cisco SNTC 8x5xNBD',
+          matchedSpecs: [
+            'Reemplazo de partes en próximo día hábil (NBD)',
+            'Acceso 24x7 a ingenieros especializados Cisco TAC',
+            'Actualizaciones y parches de seguridad de software',
+            `Plazo de Cobertura: ${years} Año(s)`,
+          ],
+          customDiscountPct: 35.0,
+        },
+        {
+          sku: `CON-SNTP-${sntModel}`,
+          title: `Propuesta Misión Crítica 24x7x4: Cisco SmartNet Total Care (24x7x4)`,
+          description: `Soporte de máxima disponibilidad con entrega y reemplazo de repuestos en sitio en menos de 4 horas continuas (24x7).`,
+          type: 'catalyst_alternative',
+          compatibilityPct: 100,
+          homologationLabel: '100% Homologado • Misión Crítica Reemplazo 4 Horas',
+          matchedSpecs: [
+            'Reemplazo de partes en sitio en 4 horas (24x7)',
+            'Prioridad crítica en colas de atención Cisco TAC',
+            `Plazo de Cobertura: ${years} Año(s)`,
+          ],
+          customDiscountPct: 30.0,
+        },
+        {
+          sku: 'LIC-MS130-24-1Y',
+          title: `Propuesta Renovación Cloud: Licencia Cisco Meraki Enterprise (${years}Y)`,
+          description: `Renovación de licenciamiento Meraki Dashboard con soporte telefónico 24x7 directo con Meraki y garantía de hardware de por vida.`,
+          type: 'cost_effective',
+          compatibilityPct: 95,
+          homologationLabel: '95% Homologado • Renovación Gestión Meraki Cloud',
+          matchedSpecs: [
+            'Gestión centralizada en la nube Meraki Dashboard',
+            'Soporte telefónico 24x7 con ingenieros Meraki',
+            'Garantía de hardware de por vida (Lifetime Warranty)',
+            `Plazo: ${years} Año(s)`,
+          ],
+          customDiscountPct: 45.0,
+        }
+      );
+    }
+  } else if (
     params.deviceType === 'industrial_switch' ||
     primaryRefSku.startsWith('IE-')
   ) {

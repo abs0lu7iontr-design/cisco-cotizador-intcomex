@@ -2489,6 +2489,17 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                                       suggestedActiveSku: prop.recommendedSku,
                                       keepOriginalSku: false,
                                       discountPct: isPureGplMode ? 0 : rawDisc,
+                                      deviceType:
+                                        prop.recommendedSku.startsWith('A-FLEX') ||
+                                        prop.recommendedSku.startsWith('E3-') ||
+                                        prop.recommendedSku.startsWith('EA-') ||
+                                        prop.recommendedSku.startsWith('UMB-') ||
+                                        prop.recommendedSku.startsWith('DUO-') ||
+                                        prop.recommendedSku.startsWith('CON-') ||
+                                        prop.recommendedSku.startsWith('LIC-') ||
+                                        prop.recommendedSku.startsWith('AC-')
+                                          ? 'license_only'
+                                          : item.deviceType,
                                     })
                                   }
                                   className={`text-left p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${

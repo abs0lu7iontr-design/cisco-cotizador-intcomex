@@ -410,3 +410,24 @@ En la versión **v2.2.1**, el motor de IA preventiva y extracción determinista 
    - Para cualquier ítem clasificado como `deviceType: 'license_only'`, el sistema omite de manera estricta fuentes de poder (`PWR-C5`) y cables de alimentación eléctrica (`CAB-ACA`, `CAB-TA-IT`).
    - La interfaz visual presenta la insignia destacada: `SUSCRIPCIÓN #N (Licencia Software CCW)`.
    - El auditor de discrepancias omite validaciones de hardware (puertos, PoE, uplinks) y se enfoca en verificar la duración del contrato y cumplimiento del SLA de software.
+
+---
+
+## 10. CORRECCIÓN Y REFINAMIENTO DE PROPUESTAS HOMOLOGADAS EN CONFIGURIATOR (v2.2.2)
+
+En la versión **v2.2.2**, se perfeccionó el comparador de **3+ Propuestas Homologadas con Valor GPL** (`generateHomologatedProposalsForItem` en `catalogRules.ts`) para eliminar la visualización errónea de switches físicos (`C9200L-24T-4G-E`, `C9200L-24T-4X-E`, `MS130-SWITCHES`, `C9200-24T-E`) ante cotizaciones de licencias y software:
+
+### Mejoras Implementadas:
+1. **Divergencia Estricta por Tipo de Licencia / Software (`deviceType: 'license_only'`)**:
+   - Al cotizar **Webex Flex 3.0 / Calling / Meetings**, el panel presenta exclusivamente 3 alternativas de software:
+     * **#1 Prioridad Óptima (100% Homologado)**: `A-FLEX-3` (Webex Suite Full con Calling + Meetings + Device Registration + Soporte Cloud Basic 24x7).
+     * **#2 Propuesta Alternativa (95% Homologado)**: `E3-ENT-AGMT` (Cisco Enterprise Agreement 3.0 Collab Suite con True Forward y Solution Support).
+     * **#3 Propuesta Costo-Efectiva (98% Homologado)**: `A-FLEX-CALL-E-USR` (Webex Calling Standalone Cloud PBX para telefonía pura en la nube).
+   - Al cotizar **Cisco EA 3.0**, entrega comparativas entre contrato Enterprise Agreement multi-suite (`E3-ENT-AGMT`), suscripción modular Flex (`A-FLEX-3`) y suite de seguridad Umbrella SIG (`UMB-SIG-ESS`).
+   - Al cotizar **Ciberseguridad Cloud**, entrega Umbrella SIG Essentials (`UMB-SIG-ESS`), Duo MFA (`DUO-MFA`) y Cisco Secure Client (`AC-PLS-P-3Y-S`).
+   - Al cotizar **Renovaciones de Soporte**, entrega SmartNet 8x5xNBD (`CON-SNT`), SmartNet 24x7x4 (`CON-SNTP`) y renovación Meraki Enterprise (`LIC-MS130`).
+2. **Cero Hardware en Desglose de Propuestas**:
+   - Cada propuesta de software calcula su Valor GPL considerando únicamente los sub-hijos de licenciamiento y soporte SaaS.
+   - Cero chasis físicos, cero cables Norma Chile/Italia y cero fuentes de alimentación eléctrica.
+3. **Interacción y Selección en 1 Clic**:
+   - Al pulsar sobre cualquiera de las tarjetas de propuesta de software, la configuración se actualiza preservando de forma garantizada `deviceType: 'license_only'`, reconstruyendo el árbol CCW en caliente.
