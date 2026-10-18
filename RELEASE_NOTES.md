@@ -4,71 +4,81 @@
 
 ---
 
+## 📅 Tabla General de Versiones y Releases
+
+| Versión | Commit Principal | Fecha / Periodo | Hitos y Cambios Arquitectónicos Principales | Estado |
+|---|---|---|---|---|
+| **v2.1.0 (Enterprise)** | `7b4d35e` / `511c934` | Octubre 2026 | **Módulo de Mejoras & Soporte** con triaje y diagnóstico de IA (Gemini 3.6 Flash / OpenRouter), SLA dinámico y Firestore Col 11. Transición automática a Back Order (BO), catálogo de SKUs manuales en Firestore (`cisco_bo_sku_catalog`), pipeline logístico Kanban (`bo_order_tracking`) con FedEx/UPS/DHL, recordador de Deals escalados (`deal_reminders`), auto-updater de 1-clic para Desktop con Cloudflare CDN, y despliegue de reglas Cloud Firestore. | **VIGENTE / PRODUCCIÓN** |
+| **v2.0.8** | `2fa53d0` | Octubre 2026 | Implementación del motor de auto-actualización en caliente de 1-clic para la App de Escritorio Windows conectado a `version.json` en Cloudflare CDN. | Estable |
+| **v2.0.7** | `c58d432` | Octubre 2026 | Sistema de Multi-Versionamiento de Cotizaciones CCW (`estimates/{id}/versions/{vId}`) con `v0_RAW` inmutable y modal comparador de versiones. | Estable |
+| **v2.0.6** | `2667366` | Octubre 2026 | Arquitectura Database Armor con bóveda redundante multi-capa (LocalStorage Vault + IndexedDB `CiscoAppCollectionsDB` + Tombstones `deleted_ids`). | Estable |
+| **v2.0.5** | `17b5126` | Octubre 2026 | Integración de indicadores oficiales de Banco Central de Chile (USD / UF) con spread comercial preventivo de +10 CLP para cotizaciones en moneda local. | Estable |
+| **v2.0.4** | `723ffff` | Octubre 2026 | Regla estricta de Lead Time Miami (175 días corridos = 27 semanas de entrega) con anti-degradación idempotente y snapshot `sys_metadata`. | Estable |
+| **v2.0.3** | `e00c3a0` | Octubre 2026 | Clasificación de accesorios en Líneas Madre $N.0$ (Cámaras Meraki `MV*`, Sensores `MT*`, Teléfonos IP `CP-*/DP-*`, Webex Room Bar `CS-*`) con Arancel Aduanero del 6.0%. | Estable |
+| **v2.0.2** | `34a89c4` | Octubre 2026 | Cascada de IA con Google Gemini 3.6 Flash para ConfigurIAtor con fallback a OpenRouter y motor heurístico determinista offline. | Estable |
+| **v2.0.1** | `6b00ee7` | Octubre 2026 | Sincronización en la nube del catálogo Fast Track mediante particionado en bloques (chunks) en `cisco_fast_track_catalog`. | Estable |
+| **v2.0.0** | `42a385e` | Septiembre 2026 | Lanzamiento inicial v2.0: Cotizador CCW con Goal Seek, Generador DSV 48 columnas, Auditor Fast Track en IndexedDB y wrapper Desktop PyInstaller. | Predecesora |
+
+---
+
 ## [v2.1.0] - Octubre 2026 (Enterprise Release Actual)
 
-### 🚀 Nuevos Módulos Principales
-1. **Módulo de Feedback, Mejoras y Soporte Técnico con Triaje IA:**
-   - Creación de tickets de reporte de errores, mejoras y sugerencias en Firestore (`app_feedback_tickets`).
-   - SLA dinámico según prioridad (4h para Crítico, 12h para Alto, 24h para Medio, 48h para Bajo).
-   - Captura automática de metadatos técnicos (commit de Git, versión, vista activa, agente de usuario).
-   - **Asesor de Soluciones con Inteligencia Artificial:** Diagnóstico de factibilidad (`YES` / `CONDITIONAL` / `NO`), causa raíz, propuesta técnica paso a paso y estimación de esfuerzo sin modificar el código fuente.
-   - Botón directo en la barra de navegación superior (Navbar) para acceso inmediato en toda la aplicación.
-
-2. **Transición Automática de Cotizaciones a Back Order (BO):**
-   - La cotización se marca automáticamente como aceptada por el cliente al exportar el correo o emitir el archivo DSV.
-   - Registro instantáneo en el pipeline logístico de compras y fulfillment.
-
-3. **Catálogo Persistente de SKUs Manuales de BO (`cisco_bo_sku_catalog`):**
-   - Almacenamiento permanente en Cloud Firestore de códigos ingresados manualmente, previniendo su pérdida entre actualizaciones o reinicios de sesión.
-
-4. **Fulfillment Logístico y Seguimiento de Órdenes BO (`bo_order_tracking`):**
-   - Tablero Kanban interactivo con 6 etapas logísticas (`PO_RECIBIDA`, `ORDENADA_CISCO`, `TRANSITO_MIAMI`, `EN_ADUANA_CHILE`, `EN_BODEGA_INTCOMEX`, `ENTREGADO_CLIENTE`).
-   - Rastreo de guías de courier internacional (FedEx, UPS, DHL).
-   - Indicadores de venta total en USD, margen bruto y costos de internación.
-
-5. **Notificador y Recordador de DEALS Escalados (`deal_reminders`):**
-   - Monitoreo de Deals enviados a Account Managers de Cisco o Velocity Hub.
-   - Alertas emergentes automáticas programadas en horarios clave (12:00 y 17:30).
-   - Generación de plantillas de correo con respaldo offline.
-
-6. **Auto-Updater en Caliente de 1-Clic para la App de Escritorio:**
-   - La aplicación desktop consulta de forma transparente el archivo `version.json` en Cloudflare Pages CDN.
-   - Permite descargar e instalar la última versión compilada con 1 solo clic sin reinstalar el ejecutable.
+### 🚀 Módulo Destacado: Mejoras, Reporte de Errores y Soporte Técnico con Triaje IA
+- **Bandeja Centralizada de Tickets (`app_feedback_tickets` en Firestore):**
+  - Registro estructurado de solicitudes de usuarios clasificados en 6 categorías: `BUG` (error técnico), `IMPROVEMENT` (optimización existente), `FEATURE_REQUEST` (nueva función), `UX_UI` (diseño y visualización), `DATA_CATALOG` (reglas o SKUs) y `OTHER` (consultas generales).
+  - **SLA Dinámico por Prioridad:**
+    - `CRITICAL`: 4 horas (bloqueo de cálculos comerciales o bases de datos).
+    - `HIGH`: 24 horas (falla severa sin workaround ágil).
+    - `MEDIUM`: 72 horas (mejora relevante o problema menor).
+    - `LOW`: 120 horas (sugerencia estética o idea futura).
+    - Indicadores de tiempo real de SLA: `ON_TIME` (en plazo), `NEAR_BREACH` (en riesgo, menos del 25% restante) y `BREACHED` (plazo vencido).
+  - **Captura Técnica Automática:** Incluye hash de commit de Git, versión de la app, entorno (Web/Desktop), resolución de pantalla y vista activa al momento del reporte.
+  - **Adjuntos Visuales:** Soporte para adjuntar y pegar imágenes (`Ctrl + V`) directamente en el modal de creación.
+- **Asesor de Soluciones y Triaje con Inteligencia Artificial (`aiFeedbackAdvisor.ts`):**
+  - Cascada multi-modelo (Google Gemini 3.6 Flash primario, OpenRouter secundario, heurístico determinista offline).
+  - **Dictamen Estructurado:**
+    1. *Factibilidad:* Veredicto claro (`YES` / `CONDITIONAL` / `NO`) indicando si es viable realizar lo que solicita el usuario.
+    2. *Diagnóstico de Causa Raíz:* Explicación técnica detallada de por qué ocurre el error o cómo funciona el flujo actual.
+    3. *Propuesta de Solución Técnica:* Plano de diseño e ingeniería paso a paso, archivos a intervenir e impacto técnico.
+    4. *Estimación de Esfuerzo:* `Bajo (1-2h)`, `Medio`, `Alto` o `Complejo`.
+    5. *Respuesta Recomendada al Usuario:* Texto cordial y profesional listo para enviar como feedback.
+  - **Directiva Estricta de No Modificación:** La IA formula la propuesta técnica y el dictamen de factibilidad sin aplicar modificaciones automáticas en el código fuente, garantizando el control del equipo de ingeniería.
+  - **Acciones Rápidas:** Botón *"Usar como Respuesta al Usuario"*, *"Copiar Dictamen"* y *"Re-analizar con IA"*.
+- **Acceso Inmediato en Navbar:** Botón violeta dedicado con icono de salvavidas integrado en la barra de navegación superior para máxima accesibilidad.
 
 ---
 
-### ⚙️ Optimizaciones de Cálculo y Reglas Comerciales
-- **Lead Time Miami (175 días / 27 semanas):**
-  - Implementación de regla anti-degradación idempotente para tiempos de entrega desde Miami.
-  - Preservación del estado canónico original mediante snapshot en la metadata oculta de Excel (`sys_metadata`).
-- **Clasificación Avanzada de Hardware y Arancel:**
-  - Clasificación de accesorios en Líneas Madre (`N.0`): Cámaras Meraki (`MV*`), Sensores IoT (`MT*`), Teléfonos IP (`CP-*`, `DP-*`) y terminales Webex Room Bar (`CS-*`) aplican Arancel Aduanero del 6.0%.
-  - Soporte de cables `CAB-*` como Tangibles (sin `=`) o Arancel (con `=`) preservando su costeo en sublíneas.
-  - Corrección de clasificación para familias Cisco Catalyst 1000/1200/1300 y routers Cisco ISR 1100.
-- **Multi-Moneda en Vivo (Banco Central de Chile):**
-  - Consumo en vivo de tipo de cambio USD y UF oficial.
-  - Aplicación automática de spread comercial preventivo de **+10 CLP** sobre el Dólar Observado para cotizaciones en moneda local.
-- **Exportación Enriquecida para Outlook:**
-  - Botón de copia al portapapeles con formato HTML corporativo y saludo dinámico adaptado a la hora del día.
+### 🔄 Sistema Dual de Versionamiento
+1. **Versionamiento del Software y Auto-Deploy en Caliente:**
+   - Script de build `scripts/generate_build_info.js` sincronizado con metadatos de Git.
+   - Publicación automática de `version.json` en Cloudflare Pages CDN.
+   - Auto-updater de 1-clic para la versión Desktop de Windows sin requerir instaladores externos.
+   - Panel de control en `SettingsView.tsx` con hora local chilena y antigüedad del despliegue.
+2. **Versionamiento Comercial de Cotizaciones:**
+   - Subcolección `estimates/{estimateId}/versions/{versionId}` en Cloud Firestore.
+   - Versión original inmutable `v0_RAW` para respaldo y auditoría permanente.
+   - Generación de revisiones comerciales (`v1`, `v2`, etc.) al aplicar Goal Seek o descuentos.
+   - Modal comparador lado a lado con variaciones de margen y precios línea por línea.
 
 ---
 
-### 🛡️ Blindaje de Persistencia y Seguridad (Database Armor)
-- **11 Colecciones en Cloud Firestore:**
-  - Despliegue de reglas de seguridad declarativas completas para las 11 colecciones del sistema.
-  - Eliminación de expiraciones temporales de modo de prueba de Firebase.
-- **Multi-Versionamiento de Estimates:**
-  - Subcolección `estimates/{estimateId}/versions/{versionId}` con versión original `v0_RAW` inmutable y modal de comparación lado a lado.
-- **Sincronización en la Nube de Fast Track:**
-  - Persistencia de catálogos promocionales en `cisco_fast_track_catalog` mediante particionado en bloques (chunks) para almacenamiento a gran escala.
-- **Bóveda Redundante y Tombstones:**
-  - Almacenamiento redundante en LocalStorage e IndexedDB (`CiscoAppCollectionsDB` y `CiscoFastTrackDB`) con registro de tombstones (`deleted_ids`) para evitar reaparición de registros eliminados.
+### 📦 Gestión de Back Order (BO) y Fulfillment Logístico
+- **Transición Automática:** Al copiar el correo comercial o generar el archivo DSV, la cotización se marca automáticamente como aceptada por el cliente y se transiciona al estado de Back Order.
+- **Catálogo de SKUs Manuales (`cisco_bo_sku_catalog`):** Persistencia permanente en Cloud Firestore de SKUs ingresados manualmente, evitando su pérdida entre sesiones o actualizaciones.
+- **Tablero Kanban de Fulfillment (`bo_order_tracking`):** 6 etapas logísticas (`PO_RECIBIDA`, `ORDENADA_CISCO`, `TRANSITO_MIAMI`, `EN_ADUANA_CHILE`, `EN_BODEGA_INTCOMEX`, `ENTREGADO_CLIENTE`) con rastreo de guías FedEx, UPS y DHL.
+- **Notificador de Deals Escalados (`deal_reminders`):** Monitoreo de Deals en revisión por Account Managers de Cisco o Velocity Hub, con alertas automáticas programadas (12:00 y 17:30) y generación de correos con respaldo offline.
 
 ---
 
-## [v2.0.0] - Septiembre 2026 (Lanzamiento Inicial Híbrido)
-- Cotizador comercial Cisco CCW con clasificación multinivel de hardware, intangibles y aranceles.
-- Solver Goal Seek equitativo de 2 fases con arancel aduanero del 6.0% blindado.
-- Generador de matriz oficial DSV de 48 columnas (A a AV).
-- Auditor Fast Track local en IndexedDB con Kill Switch.
-- Arquitectura híbrida Web Single-File y ejecutable portable de escritorio para Windows.
+### 📐 Cálculos Comerciales, Moneda y Clasificación
+- **Lead Time Miami (175 días / 27 semanas):** Regla anti-degradación idempotente y snapshot canónico en `sys_metadata` de Excel.
+- **Accesorios en Líneas Madre $N.0$:** Aplicación de Arancel Aduanero del 6.0% a Cámaras Meraki (`MV*`), Sensores (`MT*`), Telefonía IP (`CP-*/DP-*`) y terminales Webex Room Bar (`CS-*`).
+- **Cables `CAB-*`:** Clasificación fiel en sublíneas (Tangibles sin `=`, Arancel con `=`).
+- **Multi-Moneda en Vivo:** Integración de Dólar Observado y UF de Banco Central de Chile con spread comercial de **+10 CLP** sobre el dólar interbancario.
+
+---
+
+### 🛡️ Seguridad y Database Armor
+- Despliegue oficial de reglas de seguridad en Cloud Firestore para las 11 colecciones.
+- Bóveda de almacenamiento redundante multi-capa (LocalStorage Vault + IndexedDB `CiscoAppCollectionsDB` + Tombstones de eliminación).
+- Autenticación custom RBAC con SHA-256 salted hashes.

@@ -1,5 +1,5 @@
 # Cisco Automated v4.0 (Enterprise Suite v2.1.0)
-### Intcomex Chile | Aplicación Híbrida Web Standalone, Cloud CDN & Desktop Portable
+### Intcomex Chile | Aplicación Híbrida Web Standalone, Cloud CDN & Desktop Portable con IA
 
 [![React 19](https://img.shields.io/badge/React-19.0.1-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.2-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -16,89 +16,105 @@
 
 ## 🌟 Descripción General
 
-**Cisco Automated v4.0** es la plataforma tecnológica integral diseñada para **Intcomex Chile** que automatiza de extremo a extremo el ciclo de cotización, análisis de rentabilidad, generación de pedidos directos a fábrica, configuración con inteligencia artificial, gestión logística de compras y mesa de ayuda técnica.
+**Cisco Automated v4.0** es la suite de ingeniería de preventa y operaciones comerciales desarrollada para **Intcomex Chile**. Automatiza de principio a fin el ciclo de cotización CCW, ajuste de precios inverso (Goal Seek), auditoría de promociones Fast Track, generación de matrices oficiales DSV de 48 columnas, configuración de arquitecturas con IA, seguimiento logístico de compras (Back Order), sistema dual de versionamiento y mesa de ayuda técnica con triaje asistido por IA.
 
-Opera bajo una arquitectura híbrida de alta disponibilidad:
-- **Cloud Web CDN ([develop.cisco-automated.pages.dev](https://develop.cisco-automated.pages.dev)):** Despliegue global en Cloudflare Pages con tiempos de respuesta inferiores a 50 ms.
-- **Web Standalone Single-File (`desktop_build.html` / `dist/index.html`):** Bundle autocontenido que funciona 100% offline en cualquier navegador moderno sin requerir servidores locales.
-- **App Desktop Portable para Windows (`dist/Cotizador-Cisco-Intcomex-Portable.exe`):** Ejecutable nativo con almacenamiento estructurado, aceleración por hardware y **auto-actualización en caliente de 1-clic**.
+---
+
+## 📅 Historial y Tabla de Versiones del Software (Version History)
+
+El proyecto mantiene un registro semántico y auditable de cada versión y compilación desplegada:
+
+| Versión | Commit | Fecha | Hitos y Novedades Principales | Canal |
+|---|---|---|---|---|
+| **v2.1.0** | `7b4d35e` | Octubre 2026 | **Módulo de Mejoras y Soporte Técnico** con triaje y diagnóstico de IA (Gemini 3.6 Flash / OpenRouter), SLA dinámico y Firestore Colección 11. Transición automática a Back Order (BO), catálogo permanente de SKUs manuales en Firestore (`cisco_bo_sku_catalog`), pipeline logístico Kanban (`bo_order_tracking`) con FedEx/UPS/DHL, recordador de Deals escalados (`deal_reminders`), auto-updater de 1-clic para Desktop con Cloudflare CDN, y despliegue de reglas Cloud Firestore. | **develop (Producción Oficial)** |
+| **v2.0.8** | `2fa53d0` | Octubre 2026 | Motor de actualización en caliente de 1-clic para la App Desktop Windows mediante lectura de `version.json` en Cloudflare Pages CDN. | develop |
+| **v2.0.7** | `c58d432` | Octubre 2026 | Multi-Versionamiento de Cotizaciones CCW (`estimates/{id}/versions/{vId}`) con versión base `v0_RAW` inmutable y modal comparador de versiones. | develop |
+| **v2.0.6** | `2667366` | Octubre 2026 | Arquitectura Database Armor con bóveda redundante multi-capa (LocalStorage Vault + IndexedDB `CiscoAppCollectionsDB` + Tombstones `deleted_ids`). | develop |
+| **v2.0.5** | `17b5126` | Octubre 2026 | Indicadores oficiales en vivo de Banco Central de Chile (USD / UF) con spread comercial preventivo de +10 CLP para cotizaciones en moneda local. | develop |
+| **v2.0.4** | `723ffff` | Octubre 2026 | Regla estricta de Lead Time Miami (175 días corridos = 27 semanas de entrega) con anti-degradación idempotente y snapshot `sys_metadata`. | develop |
+| **v2.0.3** | `e00c3a0` | Octubre 2026 | Clasificación de accesorios en Líneas Madre $N.0$ (Cámaras Meraki `MV*`, Sensores `MT*`, Teléfonos IP `CP-*/DP-*`, Webex Room Bar `CS-*`) con Arancel Aduanero del 6.0%. | develop |
+| **v2.0.2** | `34a89c4` | Octubre 2026 | Cascada de IA con Google Gemini 3.6 Flash para ConfigurIAtor con fallback a OpenRouter y motor heurístico determinista offline. | develop |
+| **v2.0.1** | `6b00ee7` | Octubre 2026 | Sincronización en la nube del catálogo Fast Track mediante particionado en bloques (chunks) en `cisco_fast_track_catalog`. | develop |
+| **v2.0.0** | `42a385e` | Septiembre 2026 | Lanzamiento inicial v2.0: Cotizador CCW con Goal Seek, Generador DSV 48 columnas, Auditor Fast Track en IndexedDB y wrapper Desktop PyInstaller. | develop |
+
+---
+
+## 🔄 Sistema Dual de Versionamiento
+
+La plataforma resuelve el control de versiones en dos capas especializadas:
+
+### 1. Versionamiento del Software y Auto-Deploy en Caliente
+- **Metadatos en Tiempo de Build:** El script `scripts/generate_build_info.js` extrae el hash del commit de Git, fecha/hora exacta en ISO y local, y notas del release, inyectándolos en `version.json`.
+- **Despliegue Inmediato en Cloudflare Pages CDN:** Disponible en [https://develop.cisco-automated.pages.dev/version.json](https://develop.cisco-automated.pages.dev/version.json).
+- **Auto-Updater de 1-Clic para Desktop:** La app de escritorio detecta nuevas compilaciones en la nube y se actualiza en caliente sin reinstalar el ejecutable.
+- **Panel de Control en Ajustes (`SettingsView.tsx`):** Muestra el commit activo, timestamp y tiempo relativo transcurrido.
+
+### 2. Versionamiento Comercial de Cotizaciones (Estimate Multi-Versioning)
+- **Subcolección en Cloud Firestore:** `estimates/{estimateId}/versions/{versionId}`.
+- **Versión Base Inmutable (`v0_RAW`):** Preserva el archivo original subido intacto para auditorías.
+- **Revisiones Comerciales (`v1`, `v2`...):** Guardado de versiones derivadas tras aplicar descuentos, Goal Seek o promociones.
+- **Modal de Comparación:** Permite comparar variaciones de margen y precios línea por línea entre versiones, con opción de rollback en 1 clic.
+
+---
+
+## 🛠️ Módulo Destacado: Mejoras, Reporte de Errores y Soporte con Asesor IA
+
+Accesible de forma permanente en la barra superior (botón violeta **"Mejoras & Soporte"** con ícono de salvavidas), este módulo conecta a los usuarios comerciales con el equipo de ingeniería:
+
+1. **Gestión Integral de Tickets (`app_feedback_tickets` en Firestore):**
+   - Categorización por tipo: `BUG`, `IMPROVEMENT`, `FEATURE_REQUEST`, `UX_UI`, `DATA_CATALOG`, `OTHER`.
+   - Control de SLA dinámico: **4 horas** (Crítico), **24 horas** (Alto), **72 horas** (Medio), **120 horas** (Bajo), con estados `ON_TIME`, `NEAR_BREACH` y `BREACHED`.
+   - Captura técnica automática del estado del sistema: commit de Git, versión, entorno (Web/Desktop) y vista activa.
+   - Adjuntos visuales y pegado de capturas de pantalla (`Ctrl + V`).
+
+2. **Triaje y Asesor de Soluciones con Inteligencia Artificial (`aiFeedbackAdvisor.ts`):**
+   - El motor de IA analiza cada ticket y entrega:
+     - **Veredicto de Factibilidad:** `YES` / `CONDITIONAL` / `NO` (indica claramente si lo solicitado es viable en la arquitectura actual).
+     - **Diagnóstico de Causa Raíz:** Explicación técnica detallada del origen del problema o requerimiento.
+     - **Propuesta de Solución Técnica:** Pasos de implementación técnica y archivos afectados.
+     - **Estimación de Esfuerzo:** `Bajo (1-2h)`, `Medio`, `Alto` o `Complejo`.
+     - **Respuesta Lista para el Usuario:** Texto cordial y profesional listo para enviar como retroalimentación.
+   - **Regla Estricta de Seguridad:** La IA **NO MODIFICA CÓDIGO** automáticamente. Su rol es actuar como asesor de ingeniería para que el equipo humano valide y apruebe las soluciones antes de desplegarlas.
+   - Incluye botones directos: *"Usar como Respuesta al Usuario"*, *"Copiar Dictamen"* y *"Re-analizar con IA"*.
 
 ---
 
 ## ✨ Los 11 Módulos Principales del Sistema
 
-### 1. Cotizador Comercial CCW (Estimate Engine)
-- **Clasificación Inteligente Multinivel:** Reconocimiento de equipos físicos (Hardware), intangibles (Licencias, Suscripciones, Servicios `CON-`, SaaS), accesorios con arancel (`=` al final) y clasificación especial en Líneas Madre (`N.0`) para cámaras Meraki (`MV*`), sensores (`MT*`), telefonía IP (`CP-*/DP-*`) y terminales Webex (`CS-*`).
-- **Fórmula de Margen Comercial Real en Ventas:**
-  $$\text{Precio Venta Unitario} = \frac{\text{Net Cisco} + \text{Costo Internación} + \text{Costo Arancel}}{1 - (\text{Margen\%} / 100)}$$
-- **Ajuste Comercial de Precio Objetivo (Goal Seek Equitativo):** Solver matemático bi-etápico para alcanzar precios o descuentos exactos a $\pm \$0.01$. **El Arancel Aduanero (6.0%) está estrictamente blindado 🔒**.
-- **Regla de Lead Time Miami (175 días / 27 semanas):** Anti-degradación de tiempos de entrega y persistencia en metadatos ocultos `sys_metadata` de Excel.
-- **Exportación Oficial:** Plantilla corporativa oficial de 7 columnas con logo metálico de Intcomex, etiqueta totalizadora `Price Total:`, tipografía `Arial 9` y resumen preformateado en HTML para correo de Microsoft Outlook.
-
-### 2. Generador Oficial Cisco DSV (48 Columnas)
-- **100% Desacoplado:** Módulo independiente en `src/modules/dsv/` para procesar Deal BOMs (`.xls` y `.xlsx`).
-- **Filtro Estricto de Columna O:** Procesa únicamente filas con `LIST_PRICE > 0`, preservando la numeración original de líneas (`LINE#`).
-- **Lógica Financiera Diferenciada (Cols J y K):** Descuento fijo del 42% para Hardware/Suscripciones y anualización calculada para contratos de servicio `CON-`.
-- **Estilos Oficiales ExcelJS:** 48 columnas oficiales, cabeceras en gris plomo (`#BFBFBF`) con texto en rojo/negro, columnas vacías reducidas a ancho 5, columnas Bill-To ocultas e inyección de números nativos sin advertencias verdes.
-
-### 3. Gestor y Auditoría de Catálogo Fast Track
-- **Doble Persistencia:** Motor ultrarrápido en IndexedDB (`CiscoFastTrackDB`) + sincronización en la nube mediante Firestore (`cisco_fast_track_catalog`).
-- **Auditoría Silenciosa en Tiempo Real:** Cruce automático de SKUs al importar cotizaciones CCW; despliega el modal interactivo de oportunidad si detecta mayor margen promocional.
-- **Kill Switch de Seguridad:** Interruptor maestro con modal persuasivo de advertencia de rentabilidad.
-
-### 4. AI ConfigurIAtor (BOM Generator & Discrepancy Auditor)
-- **NLP Deductivo con Inteligencia Artificial:** Extracción de requerimientos en lenguaje natural con soporte multi-modelo (Google Gemini 3.6 Flash como primario y OpenRouter como fallback).
-- **Protección Antidegradación:** Preservación de familias de producto avanzadas (ej. Catalyst 9300 24P/48P Advantage) y validación de compatibilidad con plantillas maestras (`goldenTemplates.ts`).
-
-### 5. Gestión de Back Order (BO) y Catálogo de SKUs Manuales
-- **Transición Comercial Directa:** Promoción de cotizaciones a compras formalmente aprobadas al presionar copiar correo o emitir DSV.
-- **Persistencia de SKUs Manuales:** Almacenamiento transaccional de códigos y mapeos de catálogo en la colección `cisco_bo_sku_catalog`.
-
-### 6. Logística de Fulfillment y Seguimiento de Órdenes (`bo_order_tracking`)
-- **Pipeline Kanban de 6 Etapas:** `PO_RECIBIDA`, `ORDENADA_CISCO`, `TRANSITO_MIAMI`, `EN_ADUANA_CHILE`, `EN_BODEGA_INTCOMEX`, `ENTREGADO_CLIENTE`.
-- **Integración con Couriers:** Rastreo directo de guías FedEx, UPS y DHL.
-- **Auditoría Financiera del BO:** Monitoreo en vivo de ventas brutas, utilidades acumuladas y costos de internación.
-
-### 7. Notificador y Recordador de DEALS Escalados
-- **Gestión de Aprobaciones Especiales:** Seguimiento de Deals en revisión por AM Cisco y Velocity Hub (VF) en la colección `deal_reminders`.
-- **Alertas Emergentes Diarias:** Avisos automáticos en horarios estratégicos (12:00 y 17:30) con plantillas de correo preformateadas y soporte de envío offline.
-
-### 8. Módulo de Mejoras, Reporte de Errores y Soporte Técnico con Triaje IA
-- **Ticketing Corporativo:** Colección `app_feedback_tickets` con control de SLAs por prioridad (4h a 48h).
-- **Captura Técnica Automática:** Recopila commit de Git, versión activa, entorno (Web/Desktop) y vista actual para acelerar la resolución.
-- **Asesor de Soluciones IA:** Analiza el ticket, dictamina la factibilidad (`YES` / `CONDITIONAL` / `NO`), diagnostica la causa raíz y formula una propuesta de solución técnica detallada paso a paso sin modificar código fuente. Incluye botón directo para usar el dictamen como respuesta al usuario.
-
-### 9. Historial Analítico y Multi-Versionamiento de Cotizaciones
-- **Versionamiento Inmutable:** Subcolección `estimates/{estimateId}/versions/{versionId}` con versión original `v0_RAW` protegida contra alteraciones.
-- **Comparador Visual de Versiones:** Modal de contraste de márgenes y diferencias línea a línea entre distintas revisiones comerciales.
-
-### 10. Multi-Moneda y Tipo de Cambio Oficial (Banco Central de Chile)
-- **Consulta en Vivo de Indicadores:** Dólar Observado y Unidad de Fomento (UF) actualizados diariamente desde APIs oficiales chilenas.
-- **Spread Comercial Intcomex (+10 CLP):** Incorporación automática de +10 pesos sobre el dólar interbancario para protección de márgenes en cotizaciones en pesos chilenos.
-
-### 11. Ecosistema Multi-Entorno y Auto-Updater de 1-Clic
-- **Despliegue Continuo en Cloudflare Pages:** Cada cambio se compila y publica en el alias oficial de la rama develop.
-- **Actualización en Caliente de la App Desktop:** La aplicación de escritorio detecta nuevas versiones en la CDN y permite actualizarse con 1 solo clic en caliente sin reinstalaciones.
+1. **Cotizador Comercial CCW Cisco (Estimate Engine):**
+   - Clasificación multinivel (Hardware, Intangibles, Accesorios con Arancel en Líneas Madre $N.0$, cables `CAB-*`).
+   - Fórmula de margen real sobre ventas (Divisor $1 - M$).
+   - Goal Seek equitativo con **Arancel Aduanero (6.0%) blindado e intocable 🔒**.
+   - Lead Time Miami (175 días / 27 semanas) anti-degradación con snapshot `sys_metadata`.
+   - Excel oficial Intcomex de 7 columnas y resumen enriquecido para correo Outlook.
+2. **Generador Oficial Cisco DSV (48 Columnas):** Matriz oficial A-AV, Col J y K calculadas, contratos `CON-` anualizados y filtro estricto de Col O (`LIST_PRICE > 0`).
+3. **Auditor y Catálogo Fast Track:** Doble almacenamiento (IndexedDB + Firestore `cisco_fast_track_catalog`) y alerta interactiva de margen.
+4. **AI ConfigurIAtor:** Creación de BOMs desde lenguaje natural con cascada de modelos (Gemini 3.6 Flash / OpenRouter / Heurístico) y plantillas maestras.
+5. **Gestión de Back Order (BO) y Catálogo de SKUs Manuales:** Transición directa desde Estimate/DSV a compra y persistencia en `cisco_bo_sku_catalog`.
+6. **Logística de Fulfillment y Seguimiento (`bo_order_tracking`):** Tablero Kanban de 6 etapas y tracking directo de guías FedEx, UPS y DHL.
+7. **Notificador y Recordador de DEALS Escalados (`deal_reminders`):** Monitoreo de Deals en AM Cisco / Velocity Hub con alertas automáticas (12:00 y 17:30).
+8. **Módulo de Mejoras y Soporte Técnico:** Sistema de tickets con SLA y triaje de IA.
+9. **Historial Analítico y Multi-Versionamiento:** Subcolección `versions` con versión base `v0_RAW` inmutable y modal comparador.
+10. **Multi-Moneda en Vivo (Banco Central de Chile):** Tipo de cambio USD y UF en vivo con spread preventivo de **+10 CLP**.
+11. **Ecosistema Multi-Entorno y Auto-Updater de 1-Clic:** Web CDN en Cloudflare Pages y ejecutable Windows portable con actualización en caliente.
 
 ---
 
 ## 🗄️ Arquitectura de Persistencia y Base de Datos (11 Colecciones)
 
-El sistema integra **Google Cloud Firestore** (modo producción) complementado con la arquitectura local **Database Armor** (IndexedDB + Bóvedas de Respaldo + Tombstones de eliminación):
-
 ```text
-1.  estimates                  -> Cabeceras y partidas de cotizaciones CCW
+1.  estimates                  -> Cotizaciones CCW maestras
     └── versions               -> Subcolección de versiones comerciales (v0_RAW..vN)
-2.  dsv_records                -> Historial de órdenes de compra DSV de 48 columnas
+2.  dsv_records                -> Órdenes DSV de 48 columnas emitidas
 3.  users                      -> Usuarios RBAC con hash SHA-256 (admin, pm, user, viewer)
 4.  shared_sku_rules           -> Overrides comunitarios de clasificación de SKUs
-5.  partner_custom_params      -> Perfiles de márgenes e internación por Partner
+5.  partner_custom_params      -> Perfiles comerciales por Partner
 6.  partners_xcl               -> Catálogo de clientes y códigos XCL de Intcomex
 7.  cisco_bo_sku_catalog       -> Catálogo persistente de SKUs manuales de Back Order
-8.  bo_order_tracking          -> Fulfillment de órdenes BO y etapas de entrega
+8.  bo_order_tracking          -> Fulfillment de órdenes BO y etapas logísticas Kanban
 9.  cisco_fast_track_catalog   -> Catálogo Fast Track sincronizado por bloques (chunks)
 10. deal_reminders             -> Recordatorios y seguimiento de Deals escalados
-11. app_feedback_tickets       -> Tickets de soporte, mejoras y diagnósticos de IA
+11. app_feedback_tickets       -> Tickets de soporte, mejoras y diagnósticos IA
 ```
 
 ---
@@ -125,4 +141,5 @@ npm run build:desktop
 ## 📄 Licencia y Documentación Maestra
 
 - **Licencia:** MIT License.
-- **Especificación Técnica Completa:** Para consultar la especificación matemática, algorítmica y el Prompt Maestro para Inteligencia Artificial, ver [`INFORME_TECNICO_RECREACION_COTIZADOR_CISCO.md`](INFORME_TECNICO_RECREACION_COTIZADOR_CISCO.md).
+- **Especificación Técnica Completa y Master Prompt:** Ver [`INFORME_TECNICO_RECREACION_COTIZADOR_CISCO.md`](INFORME_TECNICO_RECREACION_COTIZADOR_CISCO.md).
+- **Historial Detallado de Cambios:** Ver [`RELEASE_NOTES.md`](RELEASE_NOTES.md).
