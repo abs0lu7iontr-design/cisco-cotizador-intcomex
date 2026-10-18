@@ -33,6 +33,7 @@ import {
   formatExpirationLabel,
   isProfileActive,
 } from '../modules/cloud';
+import { APP_DISPLAY_NAME, getFormattedAppVersion } from '../core/appVersion';
 
 interface ParameterSidebarProps {
   params: QuoteParameters;
@@ -213,7 +214,7 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
             <h2 className="text-xs font-black uppercase tracking-wider text-white">
               Parámetros CCW
             </h2>
-            <span className="text-[10px] text-slate-500">Cisco Automated v2.1</span>
+            <span className="text-[10px] text-slate-500">{APP_DISPLAY_NAME} {getFormattedAppVersion()}</span>
           </div>
         </div>
 

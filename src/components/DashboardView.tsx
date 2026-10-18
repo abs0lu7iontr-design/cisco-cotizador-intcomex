@@ -12,6 +12,7 @@ import {
   useEstimatesMirror,
 } from '../modules/cloud';
 import { useCiscoAutomatedStore } from '../core/store';
+import { getFormattedAppVersion } from '../core/appVersion';
 import {
   TrendingUp,
   FileSpreadsheet,
@@ -460,7 +461,7 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
           <div className="flex items-center flex-wrap gap-2.5">
             <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
               <TrendingUp className="w-6 h-6 text-indigo-400" />
-              <span>Dashboard Ejecutivo &bull; Cisco Automated v2.1</span>
+              <span>Dashboard Ejecutivo &bull; Cisco Automated {getFormattedAppVersion()}</span>
             </h1>
             <span className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-700/40">
               <Zap className="w-3 h-3 text-cyan-400" />

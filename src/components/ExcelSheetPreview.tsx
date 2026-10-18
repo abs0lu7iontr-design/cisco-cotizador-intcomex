@@ -34,6 +34,7 @@ import {
   Check,
 } from 'lucide-react';
 import { INTCOMEX_LOGO_DATA_URI, CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
+import { APP_DISPLAY_NAME, getFormattedAppVersion } from '../core/appVersion';
 
 interface ExcelSheetPreviewProps {
   data?: ProcessedEstimateResult | null;
@@ -477,7 +478,7 @@ export const ExcelSheetPreview: React.FC<ExcelSheetPreviewProps> = ({
                 <strong>Validez de la Oferta:</strong> Esta cotización tiene una validez de <strong className="text-rose-500">14 días</strong> corridos a contar de su fecha de emisión.
               </span>
             </div>
-            <span className="font-mono text-[11px] text-slate-500">Cisco Automated v2.1</span>
+            <span className="font-mono text-[11px] text-slate-500">{APP_DISPLAY_NAME} {getFormattedAppVersion()}</span>
           </div>
 
           {/* Nueva nota de lead time */}

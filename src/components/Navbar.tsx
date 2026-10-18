@@ -27,6 +27,7 @@ import {
 import { CISCO_AUTOMATED_SEAL_DATA_URI, INTCOMEX_LOGO_DATA_URI } from '../core/brandingLogos';
 import { useAppTheme } from '../context/ThemeContext';
 import { DsvPartnerUploader } from '../modules/dsv/components/DsvPartnerUploader';
+import { getFormattedAppVersion } from '../core/appVersion';
 
 interface NavbarProps {
   onUploadClick: () => void;
@@ -114,7 +115,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 Cisco Automated
               </h1>
               <span className="bg-indigo-950 text-indigo-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-indigo-700/40">
-                v2.1
+                {getFormattedAppVersion()}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 hidden sm:block">
@@ -152,7 +153,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             id="btn-show-rules"
             onClick={onShowRulesClick}
             className="inline-flex items-center space-x-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-2 rounded-xl transition-colors cursor-pointer"
-            title="Ver Documentación Técnica v2.1"
+            title={`Ver Documentación Técnica ${getFormattedAppVersion()}`}
           >
             <HelpCircle className="w-4 h-4 text-indigo-400" />
             <span className="hidden sm:inline">Reglas</span>

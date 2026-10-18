@@ -126,6 +126,19 @@ export function getAppTitle(): string {
     }
   }
 
+  // 4. index.html (<title> tag)
+  const indexPath = path.join(rootDir, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    try {
+      let htmlContent = fs.readFileSync(indexPath, 'utf8');
+      htmlContent = htmlContent.replace(/<title>Cisco Automated [^<]+<\/title>/i, `<title>Cisco Automated v${version} | Intcomex</title>`);
+      fs.writeFileSync(indexPath, htmlContent, 'utf8');
+      console.log(`  ✓ index.html actualizado con título v${version}`);
+    } catch (err) {
+      console.warn(`  ⚠️ No se pudo actualizar index.html:`, err.message);
+    }
+  }
+
   return version;
 }
 

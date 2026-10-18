@@ -5,6 +5,7 @@
 import React, { useState, useEffect } from 'react';
 import { AuditLog } from '../core/types';
 import { ShieldAlert, Search, RefreshCw } from 'lucide-react';
+import { APP_DISPLAY_NAME, getFormattedAppVersion } from '../core/appVersion';
 
 export function AuditLogsView() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -27,7 +28,7 @@ export function AuditLogsView() {
           id: 'log-1',
           username: 'mskill',
           action: 'LOGIN',
-          details: 'Inicio de sesión exitoso en Cisco Automated v2.1',
+          details: `Inicio de sesión exitoso en ${APP_DISPLAY_NAME} ${getFormattedAppVersion()}`,
           created_at: new Date().toISOString(),
         },
         {
@@ -102,7 +103,7 @@ export function AuditLogsView() {
         <div>
           <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2.5">
             <ShieldAlert className="w-6 h-6 text-indigo-400" />
-            <span>Registro de Auditoría &bull; Cisco Automated v2.1</span>
+            <span>Registro de Auditoría &bull; {APP_DISPLAY_NAME} {getFormattedAppVersion()}</span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
             Historial de eventos de seguridad, cambios de roles, subidas y exportaciones.

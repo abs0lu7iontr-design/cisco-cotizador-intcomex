@@ -4,6 +4,7 @@
 
 import React from 'react';
 import { X, CheckCircle2, ShieldAlert, FileText, Truck, DollarSign, Calculator, Sparkles, Layers } from 'lucide-react';
+import { APP_DISPLAY_NAME, getFormattedAppVersion } from '../core/appVersion';
 
 interface RulesExplanationModalProps {
   isOpen: boolean;
@@ -24,7 +25,7 @@ export const RulesExplanationModal: React.FC<RulesExplanationModalProps> = ({ is
             </div>
             <div>
               <h2 className="text-base font-black text-white">
-                Reglas de Negocio & Especificaciones &bull; Cisco Automated v2.1
+                Reglas de Negocio & Especificaciones &bull; {APP_DISPLAY_NAME} {getFormattedAppVersion()}
               </h2>
               <p className="text-xs text-slate-400">
                 Automatización integral de cotizaciones Cisco CCW para Intcomex Chile
@@ -107,7 +108,7 @@ export const RulesExplanationModal: React.FC<RulesExplanationModalProps> = ({ is
 
           {/* Architecture Box */}
           <div className="p-4 bg-indigo-950/30 rounded-2xl border border-indigo-500/20 text-indigo-200 space-y-1 text-xs">
-            <span className="font-bold text-white block">Arquitectura Desacoplada & Shared Core (v2.1)</span>
+            <span className="font-bold text-white block">Arquitectura Desacoplada & Shared Core ({getFormattedAppVersion()})</span>
             <p className="text-slate-400 text-[11px]">
               Toda la lógica de negocio vive en <code className="text-indigo-300">src/core/</code>, compartida directamente entre la versión Web y la Aplicación de Escritorio nativa, con mallas de seguridad Error Boundary y preparación completa para despliegue en la nube (Docker / VPS / Kubernetes).
             </p>
