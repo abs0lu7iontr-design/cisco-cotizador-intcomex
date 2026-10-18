@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
   "version": "2.1.0",
-  "git_commit": "7b4d35e",
+  "git_commit": "73b5465",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-17T23:27:36.252Z",
-  "release_notes": "feat: add direct Mejoras & Soporte access button in Navbar and deploy Firestore rules",
+  "build_timestamp": "2026-10-18T14:22:18.273Z",
+  "release_notes": "chore: synchronize build artifacts and version metadata for commit 7b4d35e",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

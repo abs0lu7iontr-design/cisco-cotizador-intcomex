@@ -1,89 +1,128 @@
-# Cisco Automated v3.3 — Cotizador CCW, Generador DSV & Auditor Fast Track
-### Intcomex Chile | Aplicación Híbrida Web Standalone & Desktop Portable
+# Cisco Automated v4.0 (Enterprise Suite v2.1.0)
+### Intcomex Chile | Aplicación Híbrida Web Standalone, Cloud CDN & Desktop Portable
 
-[![React 19](https://img.shields.io/badge/React-19.0.0-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-6.4-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
-[![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-4.0-38B2AC?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![ExcelJS](https://img.shields.io/badge/ExcelJS-4.4-217346?logo=microsoft-excel&logoColor=white)](https://github.com/exceljs/exceljs)
-[![IndexedDB](https://img.shields.io/badge/IndexedDB-Native-FFA000?logo=google-chrome&logoColor=white)](https://developer.mozilla.org/es/docs/Web/API/IndexedDB_API)
+[![React 19](https://img.shields.io/badge/React-19.0.1-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8.2-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-6.2.3-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-4.1-38B2AC?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![ExcelJS](https://img.shields.io/badge/ExcelJS-4.4.0-217346?logo=microsoft-excel&logoColor=white)](https://github.com/exceljs/exceljs)
+[![Cloud Firestore](https://img.shields.io/badge/Cloud%20Firestore-12.18.0-FFCA28?logo=firebase&logoColor=black)](https://firebase.google.com/)
+[![Cloudflare Pages](https://img.shields.io/badge/Cloudflare%20Pages-CDN%20Global-F38020?logo=cloudflare&logoColor=white)](https://pages.cloudflare.com/)
+[![Google Gemini](https://img.shields.io/badge/Google%20GenAI-Gemini%203.6%20Flash-4285F4?logo=google&logoColor=white)](https://ai.google.dev/)
 [![PyWebView](https://img.shields.io/badge/PyWebView-5.4-3776AB?logo=python&logoColor=white)](https://pywebview.flowrl.com/)
-[![SignPath Foundation](https://img.shields.io/badge/Code%20Signing-SignPath%20Foundation-007ACC?logo=windows&logoColor=white)](https://signpath.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 ---
-
-## 📄 Licencia
-
-Este proyecto se publica bajo la licencia MIT para permitir uso, revisión y adaptación públicas, siempre respetando la atribución y la documentación del proyecto.
 
 ## 🌟 Descripción General
 
-**Cisco Automated v3.3** es una solución integral de ingeniería de software modular desarrollada para **Intcomex Chile**. Automatiza de punta a punta:
-1. **Cotizador Comercial CCW:** Transformación y costeo de cotizaciones de Cisco Commerce Workspace con ajuste comercial inverso (Goal Seek).
-2. **Generador Oficial DSV (48 Columnas):** Conversión de Deal BOMs a la plantilla oficial de órdenes requerida por el portal de Cisco.
-3. **Gestor de Base de Datos y Auditoría Fast Track:** Microservicio cliente que cruza automáticamente las cotizaciones contra el catálogo promocional de Fast Track almacenado en **IndexedDB** para maximizar la rentabilidad de las ofertas.
+**Cisco Automated v4.0** es la plataforma tecnológica integral diseñada para **Intcomex Chile** que automatiza de extremo a extremo el ciclo de cotización, análisis de rentabilidad, generación de pedidos directos a fábrica, configuración con inteligencia artificial, gestión logística de compras y mesa de ayuda técnica.
 
-La aplicación opera bajo una arquitectura híbrida:
-- **Web Single-File Offline (`dist/index.html`):** Archivo HTML autocontenido de ~2.1 MB que funciona 100% offline en cualquier navegador.
-- **App Desktop Standalone Portable (`dist/Cotizador-Cisco-Intcomex-Portable.exe`):** Ejecutable Windows de ~19.0 MB con guardado estructurado (`gravity_storage/Partner/Cliente/Mes/`) y persistencia local.
+Opera bajo una arquitectura híbrida de alta disponibilidad:
+- **Cloud Web CDN ([develop.cisco-automated.pages.dev](https://develop.cisco-automated.pages.dev)):** Despliegue global en Cloudflare Pages con tiempos de respuesta inferiores a 50 ms.
+- **Web Standalone Single-File (`desktop_build.html` / `dist/index.html`):** Bundle autocontenido que funciona 100% offline en cualquier navegador moderno sin requerir servidores locales.
+- **App Desktop Portable para Windows (`dist/Cotizador-Cisco-Intcomex-Portable.exe`):** Ejecutable nativo con almacenamiento estructurado, aceleración por hardware y **auto-actualización en caliente de 1-clic**.
 
 ---
 
-## ✨ Características Principales
+## ✨ Los 11 Módulos Principales del Sistema
 
-### 1. Cotizador Comercial CCW
-- **Clasificación Inteligente Multinivel:** Identifica equipos físicos (Hardware), intangibles (Licencias, Suscripciones, Servicios `CON-`, SmartNet, Cloud SaaS) y accesorios con arancel aduanero (SKUs terminados en `=`).
+### 1. Cotizador Comercial CCW (Estimate Engine)
+- **Clasificación Inteligente Multinivel:** Reconocimiento de equipos físicos (Hardware), intangibles (Licencias, Suscripciones, Servicios `CON-`, SaaS), accesorios con arancel (`=` al final) y clasificación especial en Líneas Madre (`N.0`) para cámaras Meraki (`MV*`), sensores (`MT*`), telefonía IP (`CP-*/DP-*`) y terminales Webex (`CS-*`).
 - **Fórmula de Margen Comercial Real en Ventas:**
   $$\text{Precio Venta Unitario} = \frac{\text{Net Cisco} + \text{Costo Internación} + \text{Costo Arancel}}{1 - (\text{Margen\%} / 100)}$$
-- **Ajuste de Precio Objetivo (Goal Seek Equitativo):** Solver de 2 fases para fijar precio o descuento exacto. **Arancel Aduanero (6.0%) strictly fixed e intocable 🔒**.
-- **Formato Excel de Alta Fidelidad:** 7 columnas limpias, `Qty` entero nativo (`numFmt = '0'`, sin `$`), precios en `Arial 9` y fila final con etiqueta oficial **`Price Total:`**.
+- **Ajuste Comercial de Precio Objetivo (Goal Seek Equitativo):** Solver matemático bi-etápico para alcanzar precios o descuentos exactos a $\pm \$0.01$. **El Arancel Aduanero (6.0%) está estrictamente blindado 🔒**.
+- **Regla de Lead Time Miami (175 días / 27 semanas):** Anti-degradación de tiempos de entrega y persistencia en metadatos ocultos `sys_metadata` de Excel.
+- **Exportación Oficial:** Plantilla corporativa oficial de 7 columnas con logo metálico de Intcomex, etiqueta totalizadora `Price Total:`, tipografía `Arial 9` y resumen preformateado en HTML para correo de Microsoft Outlook.
 
-### 2. Generador Oficial Cisco DSV (48 Columnas Oficiales)
-- **100% Desacoplado y Modular:** Módulo aislado en `src/modules/dsv/` con su propio parser, motor ExcelJS, tipos y vistas.
-- **Sanitización Total `.trim()`:** Eliminación de espacios en blanco al final de todos los campos extraídos y manuales.
-- **Filtro de Cero:** Descarte de filas con `LIST_PRICE <= 0` conservando los `LINE#` originales sin renumerar.
-- **Lógica Financiera de Servicios (`CON-`):** Col J = valor unitario anual, Col K = Col J $\times$ Años.
-- **Estilos Oficiales ExcelJS:**
-  - Tipografía `Calibri 11` global.
-  - Fila 1 en gris plomo (`#BFBFBF`): cabeceras con datos en rojo (`#FF0000`) y vacías en negro (`#000000`).
-  - Columnas vacías (`F, G, H, N, O, P, W, Z, AK, AN, AR, AU`) reducidas a `width: 5`.
-  - Columnas Bill-To (`AB a AH`) ocultas con `hidden: true`.
-  - Cero triángulos verdes en Excel (IDs numéricos inyectados como Number nativo con `numFmt = '0'`).
-- **Modal y Menú Contextual:** Validación estricta (SO 9 dígitos, PO 6 dígitos, Deal ID 8 dígitos) y override manual de categoría.
+### 2. Generador Oficial Cisco DSV (48 Columnas)
+- **100% Desacoplado:** Módulo independiente en `src/modules/dsv/` para procesar Deal BOMs (`.xls` y `.xlsx`).
+- **Filtro Estricto de Columna O:** Procesa únicamente filas con `LIST_PRICE > 0`, preservando la numeración original de líneas (`LINE#`).
+- **Lógica Financiera Diferenciada (Cols J y K):** Descuento fijo del 42% para Hardware/Suscripciones y anualización calculada para contratos de servicio `CON-`.
+- **Estilos Oficiales ExcelJS:** 48 columnas oficiales, cabeceras en gris plomo (`#BFBFBF`) con texto en rojo/negro, columnas vacías reducidas a ancho 5, columnas Bill-To ocultas e inyección de números nativos sin advertencias verdes.
 
-### 3. Gestor de Base de Datos y Auditoría Fast Track (Módulo 3)
-- **Almacenamiento Persistente en Front-End (IndexedDB):** Base de datos `CiscoFastTrackDB` para almacenar el catálogo oficial con clave primaria por SKU sanitizado.
-- **Carga y Purgado Automático:** Importa archivos Excel Fast Track (`.xlsx` o `.xls`) purgando automáticamente el catálogo anterior para evitar duplicados.
-- **Interruptor Maestro (Kill Switch):** Toggle On/Off en el Navbar con modal de confirmación persuasivo de advertencia de rentabilidad al intentar apagarlo teniendo datos.
-- **Auditoría e Interceptación Automática:** Cruza silenciosamente los SKUs al subir un BOM/CCW. Si detecta mejores descuentos, abre el modal de oportunidad (`FastTrackOpportunityModal.tsx`) para aplicar los precios promocionales en memoria con un solo clic.
+### 3. Gestor y Auditoría de Catálogo Fast Track
+- **Doble Persistencia:** Motor ultrarrápido en IndexedDB (`CiscoFastTrackDB`) + sincronización en la nube mediante Firestore (`cisco_fast_track_catalog`).
+- **Auditoría Silenciosa en Tiempo Real:** Cruce automático de SKUs al importar cotizaciones CCW; despliega el modal interactivo de oportunidad si detecta mayor margen promocional.
+- **Kill Switch de Seguridad:** Interruptor maestro con modal persuasivo de advertencia de rentabilidad.
+
+### 4. AI ConfigurIAtor (BOM Generator & Discrepancy Auditor)
+- **NLP Deductivo con Inteligencia Artificial:** Extracción de requerimientos en lenguaje natural con soporte multi-modelo (Google Gemini 3.6 Flash como primario y OpenRouter como fallback).
+- **Protección Antidegradación:** Preservación de familias de producto avanzadas (ej. Catalyst 9300 24P/48P Advantage) y validación de compatibilidad con plantillas maestras (`goldenTemplates.ts`).
+
+### 5. Gestión de Back Order (BO) y Catálogo de SKUs Manuales
+- **Transición Comercial Directa:** Promoción de cotizaciones a compras formalmente aprobadas al presionar copiar correo o emitir DSV.
+- **Persistencia de SKUs Manuales:** Almacenamiento transaccional de códigos y mapeos de catálogo en la colección `cisco_bo_sku_catalog`.
+
+### 6. Logística de Fulfillment y Seguimiento de Órdenes (`bo_order_tracking`)
+- **Pipeline Kanban de 6 Etapas:** `PO_RECIBIDA`, `ORDENADA_CISCO`, `TRANSITO_MIAMI`, `EN_ADUANA_CHILE`, `EN_BODEGA_INTCOMEX`, `ENTREGADO_CLIENTE`.
+- **Integración con Couriers:** Rastreo directo de guías FedEx, UPS y DHL.
+- **Auditoría Financiera del BO:** Monitoreo en vivo de ventas brutas, utilidades acumuladas y costos de internación.
+
+### 7. Notificador y Recordador de DEALS Escalados
+- **Gestión de Aprobaciones Especiales:** Seguimiento de Deals en revisión por AM Cisco y Velocity Hub (VF) en la colección `deal_reminders`.
+- **Alertas Emergentes Diarias:** Avisos automáticos en horarios estratégicos (12:00 y 17:30) con plantillas de correo preformateadas y soporte de envío offline.
+
+### 8. Módulo de Mejoras, Reporte de Errores y Soporte Técnico con Triaje IA
+- **Ticketing Corporativo:** Colección `app_feedback_tickets` con control de SLAs por prioridad (4h a 48h).
+- **Captura Técnica Automática:** Recopila commit de Git, versión activa, entorno (Web/Desktop) y vista actual para acelerar la resolución.
+- **Asesor de Soluciones IA:** Analiza el ticket, dictamina la factibilidad (`YES` / `CONDITIONAL` / `NO`), diagnostica la causa raíz y formula una propuesta de solución técnica detallada paso a paso sin modificar código fuente. Incluye botón directo para usar el dictamen como respuesta al usuario.
+
+### 9. Historial Analítico y Multi-Versionamiento de Cotizaciones
+- **Versionamiento Inmutable:** Subcolección `estimates/{estimateId}/versions/{versionId}` con versión original `v0_RAW` protegida contra alteraciones.
+- **Comparador Visual de Versiones:** Modal de contraste de márgenes y diferencias línea a línea entre distintas revisiones comerciales.
+
+### 10. Multi-Moneda y Tipo de Cambio Oficial (Banco Central de Chile)
+- **Consulta en Vivo de Indicadores:** Dólar Observado y Unidad de Fomento (UF) actualizados diariamente desde APIs oficiales chilenas.
+- **Spread Comercial Intcomex (+10 CLP):** Incorporación automática de +10 pesos sobre el dólar interbancario para protección de márgenes en cotizaciones en pesos chilenos.
+
+### 11. Ecosistema Multi-Entorno y Auto-Updater de 1-Clic
+- **Despliegue Continuo en Cloudflare Pages:** Cada cambio se compila y publica en el alias oficial de la rama develop.
+- **Actualización en Caliente de la App Desktop:** La aplicación de escritorio detecta nuevas versiones en la CDN y permite actualizarse con 1 solo clic en caliente sin reinstalaciones.
 
 ---
 
-## 🚀 Inicio Rápido y Construcción
+## 🗄️ Arquitectura de Persistencia y Base de Datos (11 Colecciones)
 
-```bash
-# Modo Desarrollo
-npm run dev
+El sistema integra **Google Cloud Firestore** (modo producción) complementado con la arquitectura local **Database Armor** (IndexedDB + Bóvedas de Respaldo + Tombstones de eliminación):
 
-# Compilar Web Standalone (Single-File)
-npm run build
-# Genera dist/index.html (2.1 MB)
-
-# Compilar Desktop Portable (.exe)
-python -m PyInstaller --noconfirm GravityDesktopPortable.spec
-# Genera dist/Cotizador-Cisco-Intcomex-Portable.exe (19.0 MB)
+```text
+1.  estimates                  -> Cabeceras y partidas de cotizaciones CCW
+    └── versions               -> Subcolección de versiones comerciales (v0_RAW..vN)
+2.  dsv_records                -> Historial de órdenes de compra DSV de 48 columnas
+3.  users                      -> Usuarios RBAC con hash SHA-256 (admin, pm, user, viewer)
+4.  shared_sku_rules           -> Overrides comunitarios de clasificación de SKUs
+5.  partner_custom_params      -> Perfiles de márgenes e internación por Partner
+6.  partners_xcl               -> Catálogo de clientes y códigos XCL de Intcomex
+7.  cisco_bo_sku_catalog       -> Catálogo persistente de SKUs manuales de Back Order
+8.  bo_order_tracking          -> Fulfillment de órdenes BO y etapas de entrega
+9.  cisco_fast_track_catalog   -> Catálogo Fast Track sincronizado por bloques (chunks)
+10. deal_reminders             -> Recordatorios y seguimiento de Deals escalados
+11. app_feedback_tickets       -> Tickets de soporte, mejoras y diagnósticos de IA
 ```
 
-### 🛡️ Firma de Código (Code Signing)
+---
 
-Las versiones ejecutables para Windows de este proyecto de código abierto son construidas y firmadas automáticamente mediante integración continua (GitHub Actions):
+## 🚀 Comandos de Construcción y Despliegue
 
-> Free code signing provided by [SignPath.io](https://signpath.io/) on behalf of the [SignPath Foundation](https://signpath.org/).
+```bash
+# Iniciar entorno de desarrollo local
+npm run dev
 
-Los ejecutables oficiales firmados se distribuyen públicamente en la sección de [Releases de GitHub](https://github.com/abs0lu7iontr-design/cisco-cotizador-intcomex/releases).
+# Compilar aplicación y preparar artefactos de despliegue
+npm run prepare:pages
+
+# Desplegar en la nube (Cloudflare Pages develop)
+npm run deploy:preview
+
+# Compilar ejecutable nativo de escritorio para Windows
+npm run build:desktop
+# Genera: dist/Cotizador-Cisco-Intcomex-Portable.exe y dist_exe/GravityDesktop/
+```
 
 ---
 
-## 📖 Documentación y Prompt Maestro de Ingeniería
+## 📄 Licencia y Documentación Maestra
 
-El **Prompt Maestro Definitivo (Master Prompt v3.3)** para replicar o evolucionar este proyecto se encuentra en [`INFORME_TECNICO_RECREACION_COTIZADOR_CISCO.md`](INFORME_TECNICO_RECREACION_COTIZADOR_CISCO.md).
+- **Licencia:** MIT License.
+- **Especificación Técnica Completa:** Para consultar la especificación matemática, algorítmica y el Prompt Maestro para Inteligencia Artificial, ver [`INFORME_TECNICO_RECREACION_COTIZADOR_CISCO.md`](INFORME_TECNICO_RECREACION_COTIZADOR_CISCO.md).
