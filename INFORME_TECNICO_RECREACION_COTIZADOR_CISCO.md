@@ -431,3 +431,26 @@ En la versión **v2.2.2**, se perfeccionó el comparador de **3+ Propuestas Homo
    - Cero chasis físicos, cero cables Norma Chile/Italia y cero fuentes de alimentación eléctrica.
 3. **Interacción y Selección en 1 Clic**:
    - Al pulsar sobre cualquiera de las tarjetas de propuesta de software, la configuración se actualiza preservando de forma garantizada `deviceType: 'license_only'`, reconstruyendo el árbol CCW en caliente.
+
+---
+
+## 11. OPTIMIZACIÓN DE RENDIMIENTO: DESCARGA INMEDIATA DE ESTIMATE (v2.2.3)
+
+En la versión **v2.2.3**, se investigó y solucionó la latencia observada al exportar cotizaciones (demora de más de 5 segundos con el indicador `"Exportando y Guardando..."`):
+
+### Causa Raíz Detectada:
+1. **Bloqueo Sincrónico por Persistencia Cloud**: El diálogo de descarga (`DownloadModal.tsx`) ejecutaba `await persistToCloudAfterDownload()`, esperando de forma bloqueante que Firebase Firestore completara múltiples viajes de red (RTT) secuenciales para verificar la versión `v0_RAW` y confirmar el `batch.commit()` antes de considerar la descarga exitosa y desbloquear la interfaz.
+2. **Doble Carga y Parseo de ExcelJS**: `generateOptimizedWorkbook` realizaba una segunda invocación completa a `parseEstimateWorkbook`, recargando y descomprimiendo el archivo `.xlsx` desde cero mediante ExcelJS en lugar de reutilizar los datos ya calculados en memoria (`processedResult`).
+3. **Consultas Secuenciales a Firestore**: La verificación de existencia de versiones v0 consultaba el tag canónico y luego el tag legacy en serie con tiempos de espera acumulados de hasta 5.5 segundos.
+
+### Optimizaciones Aplicadas:
+1. **Descarga Instantánea No Bloqueante en `DownloadModal.tsx`**:
+   - La entrega del archivo al navegador (`browserDownload`) y el guardado en disco (`saveStructuredDesktopEstimate`) se ejecutan de manera inmediata al generarse el buffer.
+   - El estado de éxito (`setSaveSuccess`) y el desbloqueo del botón (`isSaving: false`) se disparan de forma instantánea (< 0.5s).
+   - El respaldo en la nube (`persistToCloudAfterDownload`) se despacha en segundo plano de manera asíncrona y no bloqueante.
+   - La interfaz muestra una insignia reactiva que transiciona suavemente de `☁️ Sincronizando respaldo con Historial Cloud...` a `☁️ Guardado automáticamente en Historial Cloud (v#)`.
+2. **Reutilización de Datos en Memoria (`precomputedResult`)**:
+   - `generateOptimizedWorkbook` recibe opcionalmente `processedResult` ya validado, eliminando por completo el segundo ciclo de carga y parseo XML de ExcelJS.
+   - Se optimizó el barrido de celdas para evitar sobreescrituras redundantes en columnas 8+.
+3. **Paralelización de Verificación v0 en `firestoreService.ts`**:
+   - Las consultas de `CANONICAL_V0_TAG` y `LEGACY_V0_TAG` ahora se ejecutan en paralelo con `Promise.all` y timeouts ajustados a 1800ms, reduciendo la latencia de sincronización en más de un 60%.

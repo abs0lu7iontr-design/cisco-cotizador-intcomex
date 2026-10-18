@@ -206,7 +206,8 @@ export function DownloadModal({
         params,
         getCleanFilename(),
         customOverrides,
-        promoNetPrices
+        promoNetPrices,
+        processedResult || undefined
       );
       return modifiedBuffer;
     }
@@ -239,9 +240,10 @@ export function DownloadModal({
     URL.revokeObjectURL(url);
   };
 
-  // Automatic Cloud Persistence right after download
+  // Automatic Cloud Persistence right after download (asynchronous, non-blocking)
   const persistToCloudAfterDownload = async (cleanFile: string) => {
     try {
+      setCloudSaveNote('☁️ Sincronizando respaldo con Historial Cloud...');
       const cloudRes = await saveCurrentEstimateToCloud({
         partnerName: partnerName.trim() || defaultPartner || 'Intcomex',
         clientFinalName: clientName.trim() || defaultClient || 'Cliente Final',
@@ -258,9 +260,12 @@ export function DownloadModal({
             ? `🔒 Guardado en Historial Cloud (${vBadge}) con acceso restringido.`
             : `☁️ Guardado automáticamente en Historial Cloud (${vBadge} - visible para el equipo).`
         );
+      } else {
+        setCloudSaveNote('💾 Guardado localmente en historial.');
       }
     } catch (e) {
       console.warn('Auto cloud save warning:', e);
+      setCloudSaveNote('💾 Guardado localmente en historial.');
     }
   };
 
@@ -290,27 +295,31 @@ export function DownloadModal({
           targetBuffer
         );
         if (res?.success) {
-          await persistToCloudAfterDownload(cleanFile);
           setSaveSuccess({
             filepath: res.filePath,
             folder: res.folder,
             message: `Guardado en: gravity_storage › ${cleanPartner} › ${cleanClient} › ${res.month || ''} › ${res.filename || cleanFile}`,
           });
+          setIsSaving(false);
+          // Sincronización cloud en segundo plano sin congelar la descarga ni el diálogo
+          persistToCloudAfterDownload(cleanFile);
         } else {
           setErrorMessage(res?.error || 'Error guardando el archivo.');
+          setIsSaving(false);
         }
       } else {
-        // Entorno Web (index.html): Standard Browser Download to default "Descargas" folder
+        // Entorno Web (index.html): Descarga inmediata en el navegador
         await browserDownload(cleanFile, targetBuffer);
-        await persistToCloudAfterDownload(cleanFile);
         setSaveSuccess({
           message: `Archivo '${cleanFile}' descargado exitosamente en tu carpeta de Descargas.`,
         });
+        setIsSaving(false);
+        // Sincronización cloud en segundo plano sin congelar la descarga ni el diálogo
+        persistToCloudAfterDownload(cleanFile);
       }
     } catch (err: any) {
       console.error('Error exportando estimate:', err);
       setErrorMessage('Error al exportar: ' + (err?.message || 'Error desconocido'));
-    } finally {
       setIsSaving(false);
     }
   };
@@ -325,19 +334,23 @@ export function DownloadModal({
       if (isDesktop) {
         const res = await saveDesktopExcelFile(cleanFile, targetBuffer);
         if (res?.success) {
-          await persistToCloudAfterDownload(cleanFile);
           setSaveSuccess({ filepath: res.filePath, message: `Guardado en: ${res.filePath}` });
+          setIsSaving(false);
+          persistToCloudAfterDownload(cleanFile);
         } else if (!res?.cancelled) {
           setErrorMessage(res?.error || 'Error al guardar.');
+          setIsSaving(false);
+        } else {
+          setIsSaving(false);
         }
       } else {
         await browserDownload(cleanFile, targetBuffer);
-        await persistToCloudAfterDownload(cleanFile);
         setSaveSuccess({ message: `Archivo '${cleanFile}' descargado exitosamente.` });
+        setIsSaving(false);
+        persistToCloudAfterDownload(cleanFile);
       }
     } catch (err: any) {
       setErrorMessage('Error: ' + err?.message);
-    } finally {
       setIsSaving(false);
     }
   };

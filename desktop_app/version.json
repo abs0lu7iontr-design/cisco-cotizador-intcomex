@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.2.2",
-  "git_commit": "7f35c0c",
+  "version": "2.2.3",
+  "git_commit": "5557327",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-18T19:27:16.594Z",
-  "release_notes": "feat: habilitar cotización de licencias Webex, Cisco EA, renovaciones SmartNet y ciberseguridad SaaS en ConfigurIAtor (v2.2.1)",
+  "build_timestamp": "2026-10-18T23:06:58.442Z",
+  "release_notes": "fix(configuriator): v2.2.2 - generar propuestas homologadas exclusivas de software y licencias sin switches fisicos",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

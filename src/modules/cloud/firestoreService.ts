@@ -377,8 +377,14 @@ export async function checkV0ExistenceState(
 
   try {
     const canonicalRef = doc(db, ESTIMATES_COLLECTION, docId, 'versions', CANONICAL_V0_TAG);
-    const canonicalSnap = await withTimeout(getDoc(canonicalRef), 3000);
-    if (canonicalSnap.exists()) {
+    const legacyRef = doc(db, ESTIMATES_COLLECTION, docId, 'versions', LEGACY_V0_TAG);
+
+    const [canonicalSnap, legacySnap] = await Promise.all([
+      withTimeout(getDoc(canonicalRef), 1800).catch(() => null),
+      withTimeout(getDoc(legacyRef), 1800).catch(() => null),
+    ]);
+
+    if (canonicalSnap && canonicalSnap.exists()) {
       const d = canonicalSnap.data() as EstimateVersionDetail;
       return {
         status: 'EXISTS',
@@ -386,9 +392,7 @@ export async function checkV0ExistenceState(
       };
     }
 
-    const legacyRef = doc(db, ESTIMATES_COLLECTION, docId, 'versions', LEGACY_V0_TAG);
-    const legacySnap = await withTimeout(getDoc(legacyRef), 2500);
-    if (legacySnap.exists()) {
+    if (legacySnap && legacySnap.exists()) {
       const d = legacySnap.data() as EstimateVersionDetail;
       return {
         status: 'EXISTS',
@@ -785,7 +789,7 @@ export async function saveEstimateToCloud(
       // If not in local cache, check remote doc briefly to preserve remote accessRequests / allowedUsers
       if (!existingLocal) {
         try {
-          const existingSnap = await withTimeout(getDoc(docRef), 3500);
+          const existingSnap = await withTimeout(getDoc(docRef), 1800);
           if (existingSnap.exists()) {
             const remoteData = existingSnap.data() as Partial<CloudEstimateRecord>;
             if (record.isRestricted === undefined && remoteData.isRestricted !== undefined) {

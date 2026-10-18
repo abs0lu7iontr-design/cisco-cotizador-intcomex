@@ -1207,7 +1207,8 @@ export async function generateOptimizedWorkbook(
   params: QuoteParameters,
   fileName: string,
   overrides?: Record<number, OverrideRuleType>,
-  promoNetPrices?: Record<number, number>
+  promoNetPrices?: Record<number, number>,
+  precomputedResult?: ProcessedEstimateResult
 ): Promise<{ result: ProcessedEstimateResult; modifiedBuffer: ArrayBuffer }> {
   const workbook = new ExcelJS.Workbook();
   const loadPayload = typeof Buffer !== 'undefined' && !(arrayBuffer instanceof Buffer)
@@ -1220,14 +1221,19 @@ export async function generateOptimizedWorkbook(
     throw new Error('El archivo Excel no contiene ninguna hoja de cálculo válida.');
   }
 
-  // 1. Parse Line Items using the unified parser
-  const { result: parsedResult } = await parseEstimateWorkbook(
-    arrayBuffer,
-    params,
-    fileName,
-    overrides,
-    promoNetPrices
-  );
+  // 1. Parse Line Items using the unified parser, o reutilizar precomputedResult si ya está disponible en memoria
+  const parsedResult =
+    precomputedResult && Array.isArray(precomputedResult.items) && precomputedResult.items.length > 0
+      ? precomputedResult
+      : (
+          await parseEstimateWorkbook(
+            arrayBuffer,
+            params,
+            fileName,
+            overrides,
+            promoNetPrices
+          )
+        ).result;
 
   // Fijar la nueva arquitectura compacta ignorando el headerRowIndex original del CCW
   const EXPORT_HEADER_ROW = 13;
@@ -1253,8 +1259,8 @@ export async function generateOptimizedWorkbook(
   const maxScanRow = Math.max(worksheet.rowCount, EXPORT_HEADER_ROW + items.length + 50);
   const maxScanCol = Math.max(worksheet.columnCount, 40);
 
-  // WIPE ALL COLUMNS 8+ across the entire worksheet (rows 1 to maxScanRow) to remove duplicate headers/metadata (CHILE, Deal ID, Pricing Term, etc.)
-  for (let r = 1; r <= maxScanRow; r++) {
+  // WIPE COLUMNS 8+ en cabecera superior (filas 1 a 5) para eliminar metadata duplicada sin iteraciones redundantes
+  for (let r = 1; r <= 5; r++) {
     const row = worksheet.getRow(r);
     for (let c = 8; c <= maxScanCol; c++) {
       const cell = row.getCell(c);
@@ -1272,7 +1278,7 @@ export async function generateOptimizedWorkbook(
     }
   }
 
-  // WIPE TOTAL: Elimina cualquier rastro del CCW original desde la fila 6 hacia abajo
+  // WIPE TOTAL: Elimina cualquier rastro del CCW original desde la fila 6 hacia abajo en una sola pasada
   for (let r = 6; r <= maxScanRow; r++) {
     const row = worksheet.getRow(r);
     row.height = 20;
