@@ -199,6 +199,29 @@ export function resolveTargetSkuForItem(item: ExtractedRequirementItem): {
     };
   }
 
+  if (item.deviceType === 'license_only') {
+    const rawUpper = (rawSku || suggested || '').toUpperCase();
+    let target = suggested || rawSku || 'A-FLEX-3';
+    if (rawUpper.includes('WEBEX') || rawUpper.includes('FLEX')) {
+      target = 'A-FLEX-3';
+    } else if (rawUpper.includes('EA') || rawUpper.includes('ENTERPRISE AGREEMENT')) {
+      target = 'E3-ENT-AGMT';
+    } else if (rawUpper.includes('UMB') || rawUpper.includes('UMBRELLA')) {
+      target = 'UMB-SIG-ESS';
+    } else if (rawUpper.includes('DUO')) {
+      target = 'DUO-MFA';
+    } else if (rawUpper.includes('ANYCONNECT') || rawUpper.includes('SECURE CLIENT') || rawUpper.includes('AC-')) {
+      target = 'AC-PLS-P-3Y-S';
+    } else if (rawUpper.includes('RENOVACION') || rawUpper.includes('CON-SNT') || rawUpper.includes('SMARTNET')) {
+      target = rawUpper.startsWith('CON-SNT') ? rawUpper : 'CON-SNT-C9200L24';
+    }
+    return {
+      targetSku: target,
+      wasReplacedFromEol: false,
+      officialCiscoUrl: 'https://www.cisco.com/site/us/en/products/collaboration/webex/index.html',
+    };
+  }
+
   if (item.deviceType === 'collaboration') {
     return {
       targetSku: 'DP-9851-K9',
@@ -263,6 +286,24 @@ function resolveFallbackSubItems(
   merakiLicenseMode: 'coterm' | 'subscription',
   defaultPowerCordStandard: PowerCordStandard = 'italy_chile'
 ): SubItemConfig[] {
+  if (item.deviceType === 'license_only' || targetSku.startsWith('A-FLEX') || targetSku.startsWith('E3-') || targetSku.startsWith('UMB-') || targetSku.startsWith('DUO-') || targetSku.startsWith('CON-') || targetSku.startsWith('LIC-')) {
+    if (Array.isArray(item.aiSubItems) && item.aiSubItems.length > 0) {
+      return item.aiSubItems
+        .filter((sub) => {
+          const p = (sub.partNumber || '').trim().toUpperCase();
+          return !p.startsWith('CAB-') && !p.startsWith('PWR-') && !p.startsWith('MA-PWR-CORD-');
+        })
+        .map((sub) => ({
+          partNumber: sub.partNumber,
+          qtyMultiplier: Number(sub.qtyMultiplier) > 0 ? Number(sub.qtyMultiplier) : 1,
+          durationMonths: sub.durationMonths || (item.termYears ? item.termYears * 12 : 12),
+          initialTerm: sub.initialTerm || (item.termYears ? item.termYears * 12 : 12),
+          billingModel: sub.billingModel || 'Prepaid Term',
+          description: sub.description,
+        }));
+    }
+    return [];
+  }
   const effectiveMerakiMode = item.merakiLicenseMode || merakiLicenseMode;
   const cordStd = item.powerCordStandard || defaultPowerCordStandard || 'italy_chile';
 

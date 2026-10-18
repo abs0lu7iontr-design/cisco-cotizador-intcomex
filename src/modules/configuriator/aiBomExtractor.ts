@@ -195,7 +195,13 @@ REGLAS OBLIGATORIAS DE COHERENCIA TÉCNICA, DEDUCCIÓN PREVENTA ANTE SOLICITUDES
      * Modelos activos 2026: **"FPR1010-NGFW-K9"**, **"FPR1120-NGFW-K9"**, **"FPR1140-NGFW-K9"**, **"FPR1210T-K9"**, **"FPR3110-NGFW-K9"**. Reemplaza ASA5500 y FPR2100 EOL.
    - **Colaboración: Teléfonos IP Cisco Desk Phone 9800 & Barras de Video Webex Room Bar (deviceType: "collaboration")**:
      * Modelos activos 2026: **"DP-9841-K9"**, **"DP-9851-K9"**, **"DP-9861-K9"**, **"DP-9871-K9"**, **"CS-BAR-T-C-K9"**, **"CS-BARPRO-C-K9"**, **"CS-BRD55P-G2-K9"**. Reemplaza CP-78xx/88xx y CS-KIT EOL.
-   - **Transceivers / Módulos SFP y Fibra Óptica Vigentes 2026**:
+       - **Licenciamiento Software, Suscripciones Cloud SaaS, Cisco EA y Renovaciones (deviceType: "license_only")**:
+      * Cisco Webex Collaboration Flex 3.0: SKU Madre **"A-FLEX-3"** (Prepaid Term, 12 a 60 meses, sub-hijos "A-FLEX-CALL-E-USR", "A-FLEX-MC-E-USR", "A-FLEX-DEV-E-REG", "SVS-FLEX-SUPT-BAS").
+      * Cisco Enterprise Agreement (EA 3.0): SKU Madre **"E3-ENT-AGMT"** (sub-hijos "E3-A-COLLAB", "E3-A-SEC", "E3-A-NET", "SVS-EA-SUPT-BAS", 36 a 60 meses).
+      * Ciberseguridad Cloud SaaS: Cisco Umbrella SIG Essentials (**"UMB-SIG-ESS"**), Cisco Duo MFA (**"DUO-MFA"**), Cisco Secure Client / AnyConnect (**"AC-PLS-P-3Y-S"**), Cisco Secure Endpoint (**"SEC-SUB-EDR"**).
+      * Renovación de Servicios y Licencias: SmartNet Total Care (**"CON-SNT-C9200L24"**, **"CON-SNT-C930048"**, **"CON-ECDN"**), Meraki Renewals (**"LIC-MS130-24-1Y"**, **"LIC-MS130-48-3Y"**, **"LIC-MX68-SEC-3Y"**).
+      * **REGLA CRUCIAL PARA "license_only"**: NUNCA agregar cables de poder ("CAB-ACA", "CAB-TA-IT", etc.), fuentes de poder, ni chasis físicos. Una licencia o suscripción es 100% intangible / software.
+- **Transceivers / Módulos SFP y Fibra Óptica Vigentes 2026**:
      * PROHIBIDO entregar "GLC-SX-MM" (EOL -> usar **"GLC-SX-MMD"**), "GLC-LH-SM" (EOL -> usar **"GLC-LH-SMD"**), "GLC-T" (EOL -> usar **"GLC-TE"**). Para 10G usa **"SFP-10G-SR-S"**, **"SFP-10G-LR-S"** o DAC **"SFP-H10GB-CU1M"**.
 
 4. DETECCIÓN DE SMARTNET, STACKING Y ESQUEMA MERAKI:
@@ -215,7 +221,7 @@ Devuelve ESTRICTAMENTE un JSON válido con esta estructura exacta (sin bloques m
       "isNonExistentSku": false,
       "eolReason": "string opcional",
       "officialCiscoUrl": "https://www.cisco.com/...",
-      "deviceType": "switch",
+      "deviceType": "switch | access_point | router | firewall | industrial_switch | server_ucs | nexus_dc | collaboration | license_only",
       "ports": 24,
       "isPoe": true,
       "poeBudget": "standard",
@@ -790,17 +796,32 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
   const extractedItems: ExtractedRequirementItem[] = [];
   const learnedSkus = getLearnedCiscoSkus();
   const skuRegex =
-    /\b(WS-C[A-Z0-9-]+|(?:C2960X|2960X|C3850|3850|C3650|3650)-[A-Z0-9-]+|C[189]\d{3}[A-Z0-9-]*|CBS[23]50-[A-Z0-9-]+|ISR4[0-9]{3}[A-Z0-9/-]*|MR\d{2,3}[A-Z0-9-]*|CW91[0-9]{2}[A-Z0-9-]*|MS\d{3}-[A-Z0-9-]+|MX\d{2,3}[A-Z0-9-]*|FPR\d{4}[A-Z0-9-]*|ASA55[0-9]{2}-[A-Z0-9-]+|IE-\d{4}-[A-Z0-9-]+|UCSC-C\d{3}-M\d[A-Z0-9-]*|N9K-C[A-Z0-9-]+|CP-[78][80-9]{3}-[A-Z0-9-]+|DP-98\d{2}-K9|CS-(?:KIT|BAR|BRD)[A-Z0-9-]*|GLC-[A-Z0-9-]+|SFP-[A-Z0-9-]+)\b/gi;
+    /\b(WS-C[A-Z0-9-]+|(?:C2960X|2960X|C3850|3850|C3650|3650)-[A-Z0-9-]+|C[189]\d{3}[A-Z0-9-]*|CBS[23]50-[A-Z0-9-]+|ISR4[0-9]{3}[A-Z0-9/-]*|MR\d{2,3}[A-Z0-9-]*|CW91[0-9]{2}[A-Z0-9-]*|MS\d{3}-[A-Z0-9-]+|MX\d{2,3}[A-Z0-9-]*|FPR\d{4}[A-Z0-9-]*|ASA55[0-9]{2}-[A-Z0-9-]+|IE-\d{4}-[A-Z0-9-]+|UCSC-C\d{3}-M\d[A-Z0-9-]*|N9K-C[A-Z0-9-]+|CP-[78][80-9]{3}-[A-Z0-9-]+|DP-98\d{2}-K9|CS-(?:KIT|BAR|BRD)[A-Z0-9-]*|GLC-[A-Z0-9-]+|SFP-[A-Z0-9-]+|A-FLEX[A-Z0-9-]*|A-SPK[A-Z0-9-]*|E3-[A-Z0-9-]+|EA-[A-Z0-9-]+|UMB-[A-Z0-9-]+|DUO-[A-Z0-9-]+|SEC-[A-Z0-9-]+|CON-SNT[A-Z0-9-]*|CON-ECDN[A-Z0-9-]*|LIC-[A-Z0-9-]+|AC-PLS-[A-Z0-9-]+)\b/gi;
 
   const inferDeviceTypeFromSku = (sku: string): ExtractedRequirementItem['deviceType'] => {
     const s = sku.toUpperCase();
     if (s.startsWith('IE-')) return 'industrial_switch';
     if (s.startsWith('UCSC-')) return 'server_ucs';
     if (s.startsWith('N9K-')) return 'nexus_dc';
-    if (s.startsWith('DP-') || s.startsWith('CP-') || s.startsWith('CS-')) return 'collaboration';
+    if (s.startsWith('DP-') || s.startsWith('CP-') || s.startsWith('CS-') || s.startsWith('ATA19')) return 'collaboration';
     if (s.startsWith('MR') || s.startsWith('CW')) return 'access_point';
     if (s.startsWith('C8') || s.startsWith('ISR')) return 'router';
     if (s.startsWith('FPR') || s.startsWith('ASA') || s.startsWith('MX')) return 'firewall';
+    if (
+      s.startsWith('A-FLEX') ||
+      s.startsWith('A-SPK') ||
+      s.startsWith('E3-') ||
+      s.startsWith('EA-') ||
+      s.startsWith('UMB-') ||
+      s.startsWith('DUO-') ||
+      s.startsWith('SEC-') ||
+      s.startsWith('CON-SNT') ||
+      s.startsWith('CON-ECDN') ||
+      s.startsWith('LIC-') ||
+      s.startsWith('AC-')
+    ) {
+      return 'license_only';
+    }
     return 'switch';
   };
 
@@ -869,6 +890,105 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
     const segHas8 = /\b8\b|8\s*(?:puertos|bocas|p\b|poe)/i.test(seg);
     const contextPorts = segHas48 ? 48 : segHas24 ? 24 : segHas8 ? 8 : undefined;
     const segIsPoe = !/\bsin\s+poe\b|\bsolo\s+datos\b|\bdatos\b/i.test(seg);
+
+    const mentionsWebexLicense =
+      /\b(?:licencia(?:s)?\s+(?:de\s+)?webex|webex\s+calling|webex\s+meetings|webex\s+flex|flex\s*3(?:\.0)?|a-flex|licenciamiento\s+webex)\b/i.test(seg) ||
+      (/\bwebex\b/i.test(seg) && /\b(?:licencia(?:s)?|suscripci[oó]n|subscription|1\s*a[ñn]o|3\s*a[ñn]os|5\s*a[ñn]os)\b/i.test(seg));
+    const mentionsEa = /\b(?:enterprise\s+agreement|cisco\s+ea|ea\s*3(?:\.0)?|acuerdo\s+empresarial|e3-ent-agmt)\b/i.test(seg);
+    const mentionsCybersecurity = /\b(?:umbrella|duo(?:\s+mfa)?|secure\s+endpoint|amp\s+for\s+endpoints|secure\s+client|anyconnect|ciberseguridad)\b/i.test(seg);
+    const mentionsRenewal =
+      /\b(?:renovaci[oó]n|renovar|renew(?:al)?)\s+(?:de\s+)?(?:licencia(?:s)?|smartnet|sntc|soporte|meraki)\b/i.test(seg) ||
+      /\b(?:con-snt|sntc)\b/i.test(seg);
+
+    if (mentionsWebexLicense) {
+      const is1Year = /\b(?:1\s*a[ñn]o|1y|12\s*m(?:eses)?)\b/i.test(seg);
+      const is5Years = /\b(?:5\s*a[ñn]os|5y|60\s*m(?:eses)?)\b/i.test(seg);
+      const termY = is1Year ? 1 : is5Years ? 5 : termYears || 1;
+      extractedItems.push({
+        id: `item-${Date.now()}-${idx}-flex`,
+        rawMentionedSku: seg.trim(),
+        suggestedActiveSku: 'A-FLEX-3',
+        isEol2026: false,
+        officialCiscoUrl: 'https://www.cisco.com/site/us/en/products/collaboration/webex/index.html',
+        deviceType: 'license_only',
+        licenseTier,
+        termYears: termY,
+        quantity,
+        isPoe: false,
+        unitListPriceUsd: 288,
+        notes: `Suscripción Cloud Webex Collaboration Flex Plan 3.0 (${termY} año${termY > 1 ? 's' : ''}, Prepaid Term) con Webex Calling, Meetings y Basic Support. 100% Software / Cero cables de poder.`,
+      });
+      return;
+    }
+
+    if (mentionsEa) {
+      const termY = /\b(?:5\s*a[ñn]os|5y|60\s*m(?:eses)?)\b/i.test(seg) ? 5 : 3;
+      extractedItems.push({
+        id: `item-${Date.now()}-${idx}-ea`,
+        rawMentionedSku: seg.trim(),
+        suggestedActiveSku: 'E3-ENT-AGMT',
+        isEol2026: false,
+        officialCiscoUrl: 'https://www.cisco.com/c/en/us/buy/enterprise-agreement.html',
+        deviceType: 'license_only',
+        licenseTier: 'Advantage',
+        termYears: termY,
+        quantity,
+        isPoe: false,
+        unitListPriceUsd: 15000,
+        notes: `Cisco Enterprise Agreement 3.0 (EA 3.0) Multi-Suite (${termY} años) con Suites de Colaboración, Seguridad y Redes.`,
+      });
+      return;
+    }
+
+    if (mentionsCybersecurity) {
+      let activeSku = 'UMB-SIG-ESS';
+      let desc = 'Cisco Umbrella SIG Essentials (Protección Cloud DNS, SWG, DLP)';
+      let refList = 45;
+      if (/\bduo\b/i.test(seg)) {
+        activeSku = 'DUO-MFA';
+        desc = 'Cisco Duo Multi-Factor Authentication (MFA) & Zero Trust Access';
+        refList = 36;
+      } else if (/\banyconnect|secure\s*client\b/i.test(seg)) {
+        activeSku = 'AC-PLS-P-3Y-S';
+        desc = 'Cisco Secure Client (AnyConnect) Plus Subscription (3 Años)';
+        refList = 48;
+      }
+      extractedItems.push({
+        id: `item-${Date.now()}-${idx}-sec`,
+        rawMentionedSku: seg.trim(),
+        suggestedActiveSku: activeSku,
+        isEol2026: false,
+        officialCiscoUrl: 'https://www.cisco.com/site/us/en/products/security/index.html',
+        deviceType: 'license_only',
+        licenseTier,
+        termYears: termYears || 3,
+        quantity,
+        isPoe: false,
+        unitListPriceUsd: refList,
+        notes: `${desc} - 100% Cloud SaaS / Cero cables de poder.`,
+      });
+      return;
+    }
+
+    if (mentionsRenewal) {
+      let activeSku = 'CON-SNT-C9200L24';
+      if (/9300|c9300/i.test(seg)) activeSku = 'CON-SNT-C930048';
+      else if (/meraki|ms130|mx/i.test(seg)) activeSku = 'LIC-MS130-24-1Y';
+      extractedItems.push({
+        id: `item-${Date.now()}-${idx}-ren`,
+        rawMentionedSku: seg.trim(),
+        suggestedActiveSku: activeSku,
+        isEol2026: false,
+        officialCiscoUrl: 'https://www.cisco.com/c/en/us/services/technical/smart-net-total-care.html',
+        deviceType: 'license_only',
+        licenseTier,
+        termYears: termYears || 1,
+        quantity,
+        isPoe: false,
+        notes: `Renovación de Soporte y Licencias Cisco SmartNet / Meraki (${activeSku}).`,
+      });
+      return;
+    }
 
     const skuMatches = Array.from(seg.matchAll(skuRegex));
     if (skuMatches.length > 0) {
@@ -955,10 +1075,12 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
       return;
     }
 
+
+
     const mentionsIndustrial = /\bindustrial(?:es)?\b|\bdin-?rail\b|\brie?l\s+din\b|\bminera\b|\bsubestaci[oó]n\b|\bie-?3[0134]00\b/i.test(seg);
     const mentionsServer = /\bservidor(?:es)?\b|\bserver\b|\bucs\b|\bm7\b|\bc220\b|\bc240\b/i.test(seg);
     const mentionsNexus = /\bnexus\b|\bn9k\b|\bdata\s*center\s+switch\b|\btor\s+switch\b/i.test(seg);
-    const mentionsCollab = /\btel[eé]fono(?:s)?\b|\bip\s*phone\b|\bvideoconferencia\b|\broom\s*bar\b|\bwebex\b|\bcolaboraci[oó]n\b/i.test(seg);
+    const mentionsCollab = /\btel[eé]fono(?:s)?\b|\bip\s*phone\b|\bvideoconferencia\b|\broom\s*bar\b|\bcs-bar\b|\bdp-98\b/i.test(seg);
     const capacityMatch = seg.match(/\b(\d{1,3})\s*(?:usuarios?|personas?|puestos?|empleados?)\b/i);
     const mentionsCapacity = Boolean(capacityMatch);
     const mentionsSwitch = /\bswitch(?:es)?\b|\bbocas\b|\bpuertos\b|\bcatalyst\b|\bmeraki\s+ms\b/i.test(seg);
@@ -1235,7 +1357,7 @@ export function normalizeParentChassisSku(
 function isLooksLikeRealCiscoSku(str: string): boolean {
   const s = (str || '').trim().toUpperCase();
   if (!s || s.includes(' ')) return false;
-  return /^(?:WS-C|C9[23456]00|C1[0123]00|C8[235]00|ISR\d|ASR\d|FPR\d|ASA\d|MR\d|MS\d|MX\d|CW\d|CBS\d|IE-\d|UCSC-|N9K-|DP-98|CP-[78]|CS-|SFP-|GLC-|PWR-|CAB-)/i.test(s);
+  return /^(?:WS-C|C9[23456]00|C1[0123]00|C8[235]00|ISR\d|ASR\d|FPR\d|ASA\d|MR\d|MS\d|MX\d|CW\d|CBS\d|IE-\d|UCSC-|N9K-|DP-98|CP-[78]|CS-|SFP-|GLC-|PWR-|CAB-|A-FLEX|A-SPK|E3-|EA-|UMB-|DUO-|SEC-|CON-SNT|CON-ECDN|LIC-|AC-)/i.test(s);
 }
 
 function extractClientPricingFromText(text: string): {
@@ -1300,9 +1422,9 @@ export function postProcessExtractedResult(
     const tierSuffix = tier === 'Advantage' ? 'A' : 'E';
     item.licenseTier = tier;
 
-    // Limpiar rawMentionedSku si el LLM incluyó texto descriptivo junto al código (ej: "C9200-24P MODULAR CON UPLINKS 10G")
+    // Limpiar rawMentionedSku si el LLM incluyó texto descriptivo junto al código
     let rawSku = (item.rawMentionedSku || '').trim().toUpperCase();
-    if (rawSku.includes(' ')) {
+    if (item.deviceType !== 'license_only' && rawSku.includes(' ')) {
       const tokenMatch = rawSku.match(
         /\b(WS-C[A-Z0-9-]+|C[189]\d{3}L?-[A-Z0-9-]+|C[189]\d{3}L?|MS\d{3}-[A-Z0-9-]+|MR\d{2,3}[A-Z0-9-]*|MX\d{2,3}[A-Z0-9-]*|FPR\d{4}[A-Z0-9-]*|IE-\d{4}-[A-Z0-9-]+|UCSC-C\d{3}-[A-Z0-9-]+|N9K-C[A-Z0-9-]+)\b/i
       );
@@ -1311,10 +1433,12 @@ export function postProcessExtractedResult(
       }
     }
 
-    if (!rawSku && rawInputFakeSkus[idx]) {
-      rawSku = rawInputFakeSkus[idx];
-    } else if (!rawSku && rawInputFakeSkus.length === 1 && idx === 0) {
-      rawSku = rawInputFakeSkus[0];
+    if (item.deviceType !== 'license_only') {
+      if (!rawSku && rawInputFakeSkus[idx]) {
+        rawSku = rawInputFakeSkus[idx];
+      } else if (!rawSku && rawInputFakeSkus.length === 1 && idx === 0) {
+        rawSku = rawInputFakeSkus[0];
+      }
     }
 
     // Extraer puertos y características de red desde el contexto si no vinieron explícitos en el ítem
@@ -1378,7 +1502,11 @@ export function postProcessExtractedResult(
     );
 
     let suggested = '';
-    if (isAiSuggestedValidOfficial && item.suggestedActiveSku) {
+    if (item.deviceType === 'license_only' && item.suggestedActiveSku) {
+      suggested = item.suggestedActiveSku;
+      isNonExistentSku = false;
+      wasCorrectedFromClientTypo = true;
+    } else if (isAiSuggestedValidOfficial && item.suggestedActiveSku) {
       // Prioridad a la IA: Si la IA ya dedujo un SKU oficial válido, vigente y no EOL, respetarlo
       suggested = normalizeParentChassisSku(item.suggestedActiveSku, tier);
     } else if (rawCheck?.wasCorrectedFromClientTypo) {
@@ -1435,7 +1563,7 @@ export function postProcessExtractedResult(
         ? rawCheck?.reason || rawSanitized.correctionReason
         : undefined);
 
-    if (isNonExistentSku) {
+    if (isNonExistentSku && item.deviceType !== 'license_only') {
       const badSku =
         (rawCheck?.isNonExistentSku ? rawSku : undefined) ||
         (suggestedCheck?.isNonExistentSku ? item.suggestedActiveSku?.toUpperCase() : undefined) ||
@@ -1462,7 +1590,18 @@ export function postProcessExtractedResult(
           suggested.startsWith('FPR') ||
           suggested.startsWith('MX') ||
           suggested.startsWith('DP-98') ||
-          suggested.startsWith('CS-BAR');
+          suggested.startsWith('CS-BAR') ||
+          suggested.startsWith('A-FLEX') ||
+          suggested.startsWith('A-SPK') ||
+          suggested.startsWith('E3-') ||
+          suggested.startsWith('EA-') ||
+          suggested.startsWith('UMB-') ||
+          suggested.startsWith('DUO-') ||
+          suggested.startsWith('SEC-') ||
+          suggested.startsWith('CON-SNT') ||
+          suggested.startsWith('CON-ECDN') ||
+          suggested.startsWith('LIC-') ||
+          suggested.startsWith('AC-');
         if (!isValidAlternative || suggested === rawSku || suggested === `${rawSku}-HW`) {
           suggested = normalizeParentChassisSku(eolLookup.replacementSku, tier);
         }
@@ -1496,9 +1635,13 @@ export function postProcessExtractedResult(
                   ? 'ucs_server'
                   : targetToLearn.startsWith('N9K-')
                     ? 'nexus_dc'
-                    : targetToLearn.startsWith('DP-98') || targetToLearn.startsWith('CS-')
+                    : targetToLearn.startsWith('DP-98') || targetToLearn.startsWith('CS-') || targetToLearn.startsWith('A-FLEX') || targetToLearn.startsWith('A-SPK')
                       ? 'collaboration'
-                      : targetToLearn.startsWith('MR')
+                      : targetToLearn.startsWith('E3-') || targetToLearn.startsWith('EA-')
+                        ? 'cisco_ea'
+                        : targetToLearn.startsWith('CON-SNT') || targetToLearn.startsWith('CON-ECDN') || targetToLearn.startsWith('LIC-')
+                          ? 'service_renewal'
+                          : targetToLearn.startsWith('MR')
                         ? 'meraki_mr'
                         : targetToLearn.startsWith('MS130')
                           ? 'meraki_ms130'

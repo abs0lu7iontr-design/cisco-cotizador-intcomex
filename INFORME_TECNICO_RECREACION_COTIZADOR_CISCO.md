@@ -376,3 +376,37 @@ Cada modificación técnica en la aplicación debe cerrar ejecutando el pipeline
 2. `npx wrangler pages deploy dist-pages --project-name=cisco-automated --branch develop` (Despliega en Cloudflare Pages).
 3. `git add -A; git commit -m "..."; git push origin develop` (Sube cambios a GitHub).
 4. Verificar que `git status` reporte `nothing to commit, working tree clean`.
+
+---
+
+## 9. MÓDULO CONFIGURIATOR 2026: LICENCIAMIENTO SOFTWARE, SAAS, CISCO EA, RENOVACIONES Y TELEFONÍA IP (v2.2.1)
+
+En la versión **v2.2.1**, el motor de IA preventiva y extracción determinista **ConfigurIAtor** fue ampliado para cotizar con cero alucinaciones soluciones completas de software y servicios, superando la limitación histórica de solo dimensionar chasis físicos:
+
+### Capacidades Agregadas:
+1. **Cisco Webex Collaboration Flex Plan 3.0 (`A-FLEX-3`)**:
+   - Detección de intenciones como `"licencia webex 1 año"`, `"webex calling"`, `"flex 3.0"`.
+   - Ensamblado oficial CCW con líneas hijo: `A-FLEX-CALL-E-USR` (Webex Calling), `A-FLEX-MTG-ENT` (Meetings), `A-FLEX-DEV-REG` y `SVS-FLEX-SUPT-BAS`.
+   - Plazo configurable (12 a 60 meses, Prepaid Term).
+
+2. **Cisco Enterprise Agreement 3.0 (`E3-ENT-AGMT`)**:
+   - Detección de intenciones corporativas como `"cisco ea"`, `"enterprise agreement"`.
+   - Estructuración multi-suite en CCW: `E3-A-COLLAB`, `E3-A-SEC`, `E3-A-NET` y `SVS-EA-SUPT-BAS`.
+
+3. **Ciberseguridad Cloud SaaS**:
+   - **Cisco Umbrella SIG Essentials (`UMB-SIG-ESS`)**: Con hijos `UMB-SIG-SUB` y `UMB-SUPT-BAS`.
+   - **Cisco Duo MFA (`DUO-MFA`)**: Con hijos `DUO-MFA-SUB` y `DUO-SUPT-BAS`.
+   - **Cisco Secure Client / AnyConnect (`AC-PLS-P-3Y-S`)**: Suscripción de movilidad y VPN segura.
+
+4. **Renovaciones de Servicios SmartNet y Meraki**:
+   - Renovaciones SmartNet Total Care: `CON-SNT-C9200L24`, `CON-SNT-C930048`, `CON-ECDN`.
+   - Renovaciones Meraki Dashboard: `LIC-MS130-24-1Y`, `LIC-MS130-48-3Y`, `LIC-MX68-SEC-3Y`.
+
+5. **Colaboración y Telefonía IP**:
+   - Cisco Desk Phone serie 9800: `DP-9851-K9`, `DP-9841-K9` (con licencia Webex Calling y cubo de poder PoE opcional).
+   - Barras de Videoconferencia Webex Room Bar: `CS-BAR-T-C-K9`, `CS-BARPRO-C-K9`.
+
+6. **Integridad Técnica (Regla de Cero Cables para Licencias)**:
+   - Para cualquier ítem clasificado como `deviceType: 'license_only'`, el sistema omite de manera estricta fuentes de poder (`PWR-C5`) y cables de alimentación eléctrica (`CAB-ACA`, `CAB-TA-IT`).
+   - La interfaz visual presenta la insignia destacada: `SUSCRIPCIÓN #N (Licencia Software CCW)`.
+   - El auditor de discrepancias omite validaciones de hardware (puertos, PoE, uplinks) y se enfoca en verificar la duración del contrato y cumplimiento del SLA de software.

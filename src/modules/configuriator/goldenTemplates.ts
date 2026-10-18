@@ -44,7 +44,10 @@ export interface CiscoGoldenTemplate {
     | 'security_firewall'
     | 'routing_sdwan'
     | 'servers_ucs'
-    | 'industrial_iot';
+    | 'industrial_iot'
+    | 'collaboration_webex'
+    | 'cybersecurity_saas'
+    | 'enterprise_agreement';
   description: string;
   verifiedSource: GoldenVerifiedSource;
   verifiedDate: string; // ej. "2026-Q1"
@@ -675,6 +678,318 @@ export const CISCO_GOLDEN_TEMPLATES: Record<string, CiscoGoldenTemplate> = {
       ];
 
       const snt = resolveSmartNetSubItem('UCSC-C220-M7S', opts);
+      if (snt) items.push(snt);
+
+      return items;
+    },
+  },
+
+  // --------------------------------------------------------------------------
+  // 10. COLABORACIÓN CLOUD: Cisco Webex Collaboration Flex Plan 3.0 (A-FLEX-3)
+  // --------------------------------------------------------------------------
+  'A-FLEX-3': {
+    templateId: 'webex-a-flex-3',
+    name: 'Cisco Collaboration Flex Plan 3.0 (Webex Calling & Meetings) Golden Template',
+    parentSku: 'A-FLEX-3',
+    family: 'webex_software',
+    category: 'collaboration_webex',
+    description:
+      'Suscripción oficial cloud para Webex Calling, Webex Meetings y registro de endpoints en la nube. Estructura CCW Madre-Hijo SaaS (sin hardware físico).',
+    verifiedSource: 'Cisco CCW',
+    verifiedDate: '2026-Q1',
+    ccwVerified: true,
+    officialDocUrl:
+      'https://www.cisco.com/c/en/us/products/unified-communications/collaboration-flex-plan/index.html',
+    aliases: [
+      'A-FLEX',
+      'WEBEX',
+      'WEBEX-CALLING',
+      'WEBEX-MEETINGS',
+      'WEBEX-SUITE',
+      'LICENCIA-WEBEX',
+      'WEBEX-FLEX',
+      'A-FLEX-CALL',
+      'A-FLEX-3-CALL',
+    ],
+    notes:
+      'Suscripción de software 100% en la nube (cero cables de poder ni hardware). Facturación estándar Prepaid Term por 12, 36 o 60 meses.',
+    buildSubItems: (opts) => {
+      const termYears = opts.termYears && opts.termYears > 0 ? opts.termYears : 1;
+      const months = termYears * 12;
+
+      return [
+        {
+          partNumber: 'A-FLEX-CALL-E-USR',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 17.0 * months,
+          description: `Webex Calling Enterprise Named User Subscription (${months}M Term)`,
+          category: 'dna_license',
+        },
+        {
+          partNumber: 'A-FLEX-MTG-ENT',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 15.0 * months,
+          description: `Webex Meetings Enterprise Suite Named User (${months}M Term)`,
+          category: 'dna_license',
+        },
+        {
+          partNumber: 'A-FLEX-DEV-REG',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 0,
+          description: `Webex Cloud Device Registration for Desk Phones & Video Bars (${months}M Term)`,
+          category: 'dna_license',
+        },
+        {
+          partNumber: 'SVS-FLEX-SUPT-BAS',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 0,
+          description: 'Basic 24x7 Cloud Support for Cisco Collaboration Flex Plan',
+          category: 'support',
+        },
+      ];
+    },
+  },
+
+  // --------------------------------------------------------------------------
+  // 11. CISCO ENTERPRISE AGREEMENT 3.0 (E3-ENT-AGMT)
+  // --------------------------------------------------------------------------
+  'E3-ENT-AGMT': {
+    templateId: 'cisco-ea-3-0',
+    name: 'Cisco Enterprise Agreement (EA 3.0) Multi-Suite Golden Template',
+    parentSku: 'E3-ENT-AGMT',
+    family: 'cisco_ea',
+    category: 'enterprise_agreement',
+    description:
+      'Contrato marco corporativo Cisco Enterprise Agreement 3.0 que consolida licenciamiento de Colaboración (Webex), Seguridad (Umbrella/Duo) y Redes (DNA Advantage).',
+    verifiedSource: 'Cisco CCW',
+    verifiedDate: '2026-Q1',
+    ccwVerified: true,
+    officialDocUrl: 'https://www.cisco.com/c/en/us/buy/enterprise-agreement.html',
+    aliases: [
+      'EA',
+      'CISCO-EA',
+      'EA-3.0',
+      'ENTERPRISE-AGREEMENT',
+      'EA-ENT-AGMT',
+      'E3-A-COLLAB',
+      'E3-A-SEC',
+      'E3-A-NET',
+    ],
+    notes:
+      'Estructura Enterprise Agreement con suites de Colaboración, Ciberseguridad y Networking con compromisos a 36 o 60 meses.',
+    buildSubItems: (opts) => {
+      const termYears = opts.termYears && opts.termYears >= 3 ? opts.termYears : 3;
+      const months = termYears * 12;
+
+      return [
+        {
+          partNumber: 'E3-A-COLLAB',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 25.0 * months,
+          description: `Cisco EA 3.0 Collaboration Suite (Webex Suite + Calling + Meetings, ${months}M)`,
+          category: 'dna_license',
+        },
+        {
+          partNumber: 'E3-A-SEC',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 18.0 * months,
+          description: `Cisco EA 3.0 Security Suite (Umbrella SIG + Duo Access + Secure Endpoint, ${months}M)`,
+          category: 'dna_license',
+        },
+        {
+          partNumber: 'SVS-EA-SUPT-BAS',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 0,
+          description: 'Cisco Enterprise Agreement Global Support Coverage',
+          category: 'support',
+        },
+      ];
+    },
+  },
+
+  // --------------------------------------------------------------------------
+  // 12. CIBERSEGURIDAD CLOUD: Cisco Umbrella SIG Essentials (UMB-SIG-ESS)
+  // --------------------------------------------------------------------------
+  'UMB-SIG-ESS': {
+    templateId: 'cisco-umbrella-sig-ess',
+    name: 'Cisco Umbrella SIG Essentials Cloud Security Golden Template',
+    parentSku: 'UMB-SIG-ESS',
+    family: 'umbrella_security',
+    category: 'cybersecurity_saas',
+    description:
+      'Cisco Umbrella Secure Internet Gateway (SIG) Essentials: protección DNS perimetral, firewall cloud y aislamiento de amenazas web para usuarios remotos y oficinas.',
+    verifiedSource: 'Cisco CCW',
+    verifiedDate: '2026-Q1',
+    ccwVerified: true,
+    officialDocUrl: 'https://umbrella.cisco.com/',
+    aliases: [
+      'UMBRELLA',
+      'CISCO-UMBRELLA',
+      'UMB-SIG',
+      'UMB-DNS',
+      'UMB-DNS-ADV',
+      'UMB-SIG-SUB',
+    ],
+    notes:
+      'Suscripción SaaS en la nube licenciada por cantidad de usuarios. Facturación Prepaid Term anual.',
+    buildSubItems: (opts) => {
+      const termYears = opts.termYears && opts.termYears > 0 ? opts.termYears : 1;
+      const months = termYears * 12;
+
+      return [
+        {
+          partNumber: 'UMB-SIG-SUB',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 45.0 * termYears,
+          description: `Cisco Umbrella SIG Essentials User Subscription (${months}M Term)`,
+          category: 'dna_license',
+        },
+        {
+          partNumber: 'UMB-SUPT-BAS',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 0,
+          description: 'Basic 24x7 Cloud Support for Cisco Umbrella',
+          category: 'support',
+        },
+      ];
+    },
+  },
+
+  // --------------------------------------------------------------------------
+  // 13. CIBERSEGURIDAD ACCESS: Cisco Duo MFA (DUO-MFA)
+  // --------------------------------------------------------------------------
+  'DUO-MFA': {
+    templateId: 'cisco-duo-mfa',
+    name: 'Cisco Duo Multi-Factor Authentication (MFA) Golden Template',
+    parentSku: 'DUO-MFA',
+    family: 'duo_security',
+    category: 'cybersecurity_saas',
+    description:
+      'Cisco Duo MFA: autenticación multifactor segura en dos pasos, validación de dispositivos móviles y acceso Zero Trust a aplicaciones corporativas.',
+    verifiedSource: 'Cisco CCW',
+    verifiedDate: '2026-Q1',
+    ccwVerified: true,
+    officialDocUrl: 'https://duo.com/',
+    aliases: [
+      'DUO',
+      'DUO-SECURITY',
+      'DUO-ACCESS',
+      'DUO-BEYOND',
+      'CISCO-DUO',
+    ],
+    notes:
+      'Suscripción de ciberseguridad SaaS por usuario. Facturación Prepaid Term 1 a 3 años.',
+    buildSubItems: (opts) => {
+      const termYears = opts.termYears && opts.termYears > 0 ? opts.termYears : 1;
+      const months = termYears * 12;
+
+      return [
+        {
+          partNumber: 'DUO-MFA-SUB',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 36.0 * termYears,
+          description: `Cisco Duo Multi-Factor Authentication User Subscription (${months}M Term)`,
+          category: 'dna_license',
+        },
+        {
+          partNumber: 'DUO-SUPT-BAS',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 0,
+          description: 'Cisco Duo Basic 24x7 Support Coverage',
+          category: 'support',
+        },
+      ];
+    },
+  },
+
+  // --------------------------------------------------------------------------
+  // 14. COLABORACIÓN TELEFONÍA: Cisco Desk Phone 9851 con Webex Calling (DP-9851-K9)
+  // --------------------------------------------------------------------------
+  'DP-9851-K9': {
+    templateId: 'cisco-dp-9851-k9',
+    name: 'Cisco Desk Phone 9851 IP Phone & Webex Calling Golden Template',
+    parentSku: 'DP-9851-K9',
+    family: 'cisco_phones',
+    category: 'collaboration_webex',
+    description:
+      'Teléfono IP ejecutivo Cisco Desk Phone 9851 con pantalla a color HD, audio espacial, PoE Class 3 y suscripción de llamada Webex Calling.',
+    verifiedSource: 'Cisco CCW',
+    verifiedDate: '2026-Q1',
+    ccwVerified: true,
+    officialDocUrl:
+      'https://www.cisco.com/c/en/us/products/collaboration-endpoints/desk-phone-9800-series/index.html',
+    aliases: [
+      'DP-9851',
+      'DP9851',
+      'DP-9841',
+      'CP-8841',
+      'CP-8851',
+      'CP-7841',
+      'CISCO-PHONE',
+      'IP-PHONE',
+      'TELEFONO-CISCO',
+    ],
+    notes:
+      'Dispositivo PoE 802.3af (Clase 3, 7.4W). Incluye suscripción de usuario Webex Calling A-FLEX-CALL-E-USR y soporte de SmartNet opcional.',
+    buildSubItems: (opts) => {
+      const termYears = opts.termYears && opts.termYears > 0 ? opts.termYears : 3;
+      const months = termYears * 12;
+
+      const items: SubItemConfig[] = [
+        {
+          partNumber: 'A-FLEX-CALL-E-USR',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 17.0 * months,
+          description: `Webex Calling Enterprise Named User Subscription (${months}M Term)`,
+          category: 'dna_license',
+        },
+        {
+          partNumber: 'CP-PWR-CUBE-4',
+          qtyMultiplier: 1,
+          isOptional: true,
+          unitListPriceUsd: 35.0,
+          description: 'Cisco Power Cube 4 (fuente opcional en caso de no contar con switch PoE)',
+          category: 'power_supply',
+        },
+      ];
+
+      const snt = resolveSmartNetSubItem('DP-9851-K9', opts);
       if (snt) items.push(snt);
 
       return items;

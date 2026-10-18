@@ -84,6 +84,62 @@ export function auditCustomerIntentDiscrepancies(
       .join(' ')
       .toLowerCase();
 
+    const isPureLicense =
+      item.deviceType === 'license_only' ||
+      activeSku.startsWith('A-FLEX') ||
+      activeSku.startsWith('E3-') ||
+      activeSku.startsWith('EA-') ||
+      activeSku.startsWith('UMB-') ||
+      activeSku.startsWith('DUO-') ||
+      activeSku.startsWith('CON-') ||
+      activeSku.startsWith('LIC-') ||
+      activeSku.startsWith('AC-');
+
+    if (isPureLicense) {
+      verifiedCompliances.push(
+        `Suscripción / Licencia Software CCW: Solución 100% digital validada (${activeSku}) sin requerimientos de hardware físico.`
+      );
+      // AUDITORÍA DE PLAZO DE LICENCIA (1, 3, 5 AÑOS)
+      const wants5Y = /\b5\s*a[ñn]os\b|\b5y\b|\b60\s*meses\b/i.test(itemContext);
+      const wants1Y = /\b1\s*a[ñn]o\b|\b1y\b|\b12\s*meses\b/i.test(itemContext);
+      const currentYears = item.termYears || 3;
+
+      if (wants5Y && currentYears !== 5) {
+        discrepancies.push({
+          id: `license-term-5y-${idx}`,
+          itemIndex: idx,
+          severity: 'info',
+          category: 'license_term',
+          title: 'Discrepancia en Plazo de Suscripción',
+          customerStated: 'Cliente solicitó licencia a 5 años (60 meses)',
+          configuredInBom: `Plazo actual configurado: ${currentYears} años (${currentYears * 12} meses)`,
+          explanation: 'El cliente pidió 5 años de suscripción, pero el sistema asignó otro plazo.',
+          recommendedActionLabel: 'Ajustar Plazo a 5 Años',
+          applyFixPatch: {
+            termYears: 5,
+          },
+        });
+      } else if (wants1Y && currentYears !== 1) {
+        discrepancies.push({
+          id: `license-term-1y-${idx}`,
+          itemIndex: idx,
+          severity: 'info',
+          category: 'license_term',
+          title: 'Discrepancia en Plazo de Suscripción',
+          customerStated: 'Cliente solicitó licencia a 1 año (12 meses)',
+          configuredInBom: `Plazo actual configurado: ${currentYears} años`,
+          explanation: 'El cliente pidió 1 año de suscripción.',
+          recommendedActionLabel: 'Ajustar Plazo a 1 Año',
+          applyFixPatch: {
+            termYears: 1,
+          },
+        });
+      } else if ((wants5Y && currentYears === 5) || (wants1Y && currentYears === 1)) {
+        verifiedCompliances.push(`Plazo de Licencia: ${currentYears} año(s) conforme a lo solicitado.`);
+      }
+      continue;
+    }
+
     // 1. AUDITORÍA DE PUERTOS (24 vs 48 vs 8)
     const wants48 = /\b48\s*(?:puertos|bocas|ports|p|port)\b/i.test(itemContext) || /\b48p\b/i.test(itemContext);
     const wants24 = /\b24\s*(?:puertos|bocas|ports|p|port)\b/i.test(itemContext) || /\b24p\b/i.test(itemContext);

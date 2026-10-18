@@ -1203,15 +1203,25 @@ const OFFICIAL_CISCO_SKU_PATTERNS: RegExp[] = [
   /^FPR(?:1010|1120|1140|1150|2110|2120|2130|2140|3105|3110|3120|3130|3140|4110|4115|4125|4145)(?:-NGFW-K9|-ASA-K9)?$/i,
   /^FPR(?:1210|1220)T-K9$/i,
   /^ASA55(?:06|08|16|25|45|55)-[A-Z0-9-]+$/i,
-  // Colaboración Teléfonos IP & Video Salas
+  // Colaboración Teléfonos IP, Adaptadores & Video Salas
   /^DP-98(?:41|51|61|71)-K9$/i,
-  /^CP-(?:7811|7821|7841|7861|8811|8841|8845|8851|8861|8865)-[A-Z0-9-]+$/i,
-  /^CS-(?:BAR-T-C-K9|BARPRO-C-K9|BRD55P-G2-K9|BRD75P-G2-K9|DESKPRO-K9|KIT-K9|KITMINI-K9|KITPLUS-K9)$/i,
+  /^CP-(?:7811|7821|7832|7841|7861|8811|8832|8841|8845|8851|8861|8865)-[A-Z0-9-]+$/i,
+  /^ATA19[12]-K9$/i,
+  /^CS-(?:BAR-T-C-K9|BARPRO-C-K9|BRD55P-G2-K9|BRD75P-G2-K9|DESKPRO-K9|KIT-K9|KITMINI-K9|KITPLUS-K9|ROOM-KIT-K9|BAR-K9)$/i,
+  // Colaboración Cloud SaaS (Webex Calling, Meetings, Flex Plan 3.0)
+  /^(?:A-FLEX|A-FLEX-3|A-FLEX-C-EA|A-SPK-[A-Z0-9-]+)(?::[A-Z0-9-]+)?$/i,
+  /^A-FLEX-(?:CALL|MTG|DEV|FILE|SVS|MSG|SUITE|EA)[A-Z0-9-]*$/i,
+  /^L-WBX-[A-Z0-9-]+$/i,
+  // Cisco Enterprise Agreement 3.0 (EA)
+  /^(?:EA-ENT-AGMT|E3-ENT-AGMT|E3-A-(?:COLLAB|SEC|NET|OBS)|EA-[A-Z0-9-]+)$/i,
+  // Ciberseguridad & SASE (Umbrella, Duo, Secure Endpoint, Secure Client AnyConnect, ISE)
+  /^(?:UMB-[A-Z0-9-]+|DUO-[A-Z0-9-]+|SEC-[A-Z0-9-]+|CMD-[A-Z0-9-]+|AMP-[A-Z0-9-]+|AC-[A-Z0-9-]+|L-AC-[A-Z0-9-=]+|ISE-[A-Z0-9-]+|L-ISE-[A-Z0-9-]+)$/i,
   // Transceivers / Fuentes / Cables / Licencias oficiales
   /^(?:SFP-10G-SR-S|SFP-10G-LR-S|SFP-10G-SR|SFP-10G-LR|SFP-H10GB-CU[135]M|GLC-SX-MMD|GLC-LH-SMD|GLC-TE|GLC-SX-MM|GLC-LH-SM|GLC-T|MA-SFP-10GB-SR|MA-SFP-1GB-SX)$/i,
   /^(?:CAB-ACA|CAB-ACE|CAB-TA-IT|CAB-TA-EU|CAB-TA-NA|CAB-TA-AR|CAB-C13-IT|CAB-C13-CE|CAB-C13-CBN|CAB-C13-C14-2M|CAB-C15-CBN|CAB-AC|CAB-ACR|MA-PWR-CORD-IT|MA-PWR-CORD-EU|MA-PWR-CORD-US|MA-PWR-CORD-AR)$/i,
-  /^(?:PWR-C[156]-[A-Z0-9/-]+|PWR-IE[A-Z0-9=-]+|SD-IE-[A-Z0-9=-]+|C9[23]00L?-STACK-KIT|STACK-T[14]-[A-Z0-9]+|C9[23]00-NM-[A-Z0-9]+)$/i,
-  /^(?:C9[23]00L?-DNA-[EA]-(?:24|48)-[1357]Y|C9[23]00L?-NW-[EA]-(?:24|48)|LIC-[A-Z0-9-]+|L-FPR[A-Z0-9-]+|DNA-[A-Z0-9-]+|CON-SNT[A-Z0-9-]*)$/i,
+  /^(?:PWR-C[156]-[A-Z0-9/-]+|PWR-IE[A-Z0-9=-]+|SD-IE-[A-Z0-9=-]+|C9[23]00L?-STACK-KIT|STACK-T[14]-[A-Z0-9]+|C9[23]00-NM-[A-Z0-9]+|CP-PWR-CUBE-[34])$/i,
+  // Renovaciones de Servicios y Licencias Autónomas (SmartNet SNTC, Meraki LIC, Cisco DNA)
+  /^(?:C9[23]00L?-DNA-[EA]-(?:24|48)-[1357]Y|C9[23]00L?-NW-[EA]-(?:24|48)|LIC-[A-Z0-9-]+|L-FPR[A-Z0-9-]+|DNA-[A-Z0-9-]+|CON-SNT[A-Z0-9-]*|CON-SNTP[A-Z0-9-]*|CON-ECDN[A-Z0-9-]*|CON-SSSNT[A-Z0-9-]*|SVS-[A-Z0-9-]+)$/i,
 ];
 
 /**
@@ -1227,6 +1237,111 @@ const CLIENT_TYPO_COHERENT_MAP: Record<
     alternatives?: EolAlternative[];
   }
 > = {
+  // Solicitudes directas de Licencias Webex y Colaboración Cloud
+  'LICENCIA WEBEX': {
+    targetSku: 'A-FLEX-3',
+    reason: 'Suscripción oficial cloud Cisco Collaboration Flex Plan 3.0 (Webex Calling & Meetings).',
+  },
+  'LICENCIA WEBEX 1 AÑO': {
+    targetSku: 'A-FLEX-3',
+    reason: 'Suscripción oficial cloud Cisco Collaboration Flex Plan 3.0 (Webex Calling & Meetings) 1 Año.',
+  },
+  'LICENCIA WEBEX 1 ANO': {
+    targetSku: 'A-FLEX-3',
+    reason: 'Suscripción oficial cloud Cisco Collaboration Flex Plan 3.0 (Webex Calling & Meetings) 1 Año.',
+  },
+  'WEBEX': {
+    targetSku: 'A-FLEX-3',
+    reason: 'Plan oficial Cisco Collaboration Flex Plan 3.0.',
+  },
+  'WEBEX CALLING': {
+    targetSku: 'A-FLEX-3',
+    reason: 'Plan oficial de telefonía en la nube Cisco Webex Calling (A-FLEX-3).',
+  },
+  'WEBEX MEETINGS': {
+    targetSku: 'A-FLEX-3',
+    reason: 'Plan oficial de videoconferencia Cisco Webex Meetings (A-FLEX-3).',
+  },
+  'WEBEX SUITE': {
+    targetSku: 'A-FLEX-3',
+    reason: 'Plan integral Webex Suite (Calling + Meetings + Messaging).',
+  },
+  // Enterprise Agreement (EA 3.0)
+  'CISCO EA': {
+    targetSku: 'E3-ENT-AGMT',
+    reason: 'Contrato corporativo Cisco Enterprise Agreement (EA 3.0).',
+  },
+  'ENTERPRISE AGREEMENT': {
+    targetSku: 'E3-ENT-AGMT',
+    reason: 'Contrato corporativo Cisco Enterprise Agreement (EA 3.0).',
+  },
+  'EA COLLABORATION': {
+    targetSku: 'E3-A-COLLAB',
+    reason: 'Suite de Colaboración Cisco Enterprise Agreement (E3-A-COLLAB).',
+  },
+  'EA SECURITY': {
+    targetSku: 'E3-A-SEC',
+    reason: 'Suite de Seguridad Cisco Enterprise Agreement (E3-A-SEC).',
+  },
+  'EA NETWORKING': {
+    targetSku: 'E3-A-NET',
+    reason: 'Suite de Redes Cisco Enterprise Agreement (E3-A-NET).',
+  },
+  // Renovaciones de Servicios y Licencias
+  'RENOVACION SMARTNET': {
+    targetSku: 'CON-SNT',
+    reason: 'Renovación oficial de contrato de servicio y soporte técnico Cisco SmartNet (SNTC).',
+  },
+  'RENOVACION DE LICENCIA': {
+    targetSku: 'CON-SNT',
+    reason: 'Renovación de soporte y suscripción de software Cisco.',
+  },
+  'RENOVACION LICENCIA': {
+    targetSku: 'CON-SNT',
+    reason: 'Renovación de soporte y suscripción de software Cisco.',
+  },
+  'RENOVACION MERAKI': {
+    targetSku: 'LIC-MS130-24-3Y',
+    reason: 'Renovación de licencias cloud Meraki (Co-Term / Subscription).',
+  },
+  // Ciberseguridad SaaS
+  'UMBRELLA': {
+    targetSku: 'UMB-SIG-ESS',
+    reason: 'Cisco Umbrella Secure Internet Gateway (SIG) Essentials.',
+  },
+  'DUO': {
+    targetSku: 'DUO-MFA',
+    reason: 'Cisco Duo Multi-Factor Authentication (MFA).',
+  },
+  'ANYCONNECT': {
+    targetSku: 'AC-PLS-P-3Y-S',
+    reason: 'Cisco Secure Client / AnyConnect Plus Subscription.',
+  },
+  'SECURE CLIENT': {
+    targetSku: 'AC-PLS-P-3Y-S',
+    reason: 'Cisco Secure Client / AnyConnect Plus Subscription.',
+  },
+  // Teléfonos IP sin sufijo -K9
+  'CP-8841': {
+    targetSku: 'CP-8841-K9',
+    reason: 'Teléfono IP Cisco 8841 normalizado a modelo oficial CP-8841-K9.',
+  },
+  'CP-8851': {
+    targetSku: 'CP-8851-K9',
+    reason: 'Teléfono IP Ejecutivo Cisco 8851 normalizado a CP-8851-K9.',
+  },
+  'CP-7841': {
+    targetSku: 'CP-7841-K9',
+    reason: 'Teléfono IP Cisco 7841 normalizado a CP-7841-K9.',
+  },
+  'DP-9841': {
+    targetSku: 'DP-9841-K9',
+    reason: 'Teléfono IP Cisco Desk Phone 9841 normalizado a DP-9841-K9.',
+  },
+  'DP-9851': {
+    targetSku: 'DP-9851-K9',
+    reason: 'Teléfono IP Ejecutivo Cisco Desk Phone 9851 normalizado a DP-9851-K9.',
+  },
   // Nomenclatura cruzada C9200 (modular) escrito con uplinks fijos -4G / -4X de C9200L
   'C9200-24P-4G-E': {
     targetSku: 'C9200L-24P-4G-E',
@@ -1531,6 +1646,174 @@ export function validateOfficialCiscoSku(
   const portNum = is48 ? '48' : '24';
   const poeCode = isNoPoe ? 'T' : isFullPoe && is48 ? 'FP' : 'P';
 
+  // Caso 0: Solicitudes de Software, Licenciamiento Cloud, Webex, EA, Seguridad y Renovaciones
+  if (
+    clean.includes('WEBEX') ||
+    clean.includes('FLEX') ||
+    clean.includes('CALLING') ||
+    clean.includes('MEETING') ||
+    clean.includes('SPARK')
+  ) {
+    const isEa = clean.includes('EA') || clean.includes('ENTERPRISE');
+    const recSku = isEa ? 'A-FLEX-C-EA' : 'A-FLEX-3';
+    return {
+      isValidOfficialSku: true,
+      isNonExistentSku: false,
+      isKnownEolSku: false,
+      wasCorrectedFromClientTypo: true,
+      cleanSku: recSku,
+      recommendedValidSku: recSku,
+      reason: `Suscripción cloud oficial ${recSku === 'A-FLEX-3' ? 'Cisco Collaboration Flex Plan 3.0' : 'Cisco Enterprise Agreement Collaboration'} en CCW.`,
+      alternatives: [
+        {
+          recommendedSku: 'A-FLEX-3',
+          title: 'Cisco Collaboration Flex Plan 3.0 (A-FLEX-3)',
+          description: 'Suscripción cloud oficial para Webex Calling, Webex Meetings y Webex Suite.',
+          type: 'direct_equivalent',
+        },
+        {
+          recommendedSku: 'A-FLEX-C-EA',
+          title: 'Cisco EA Collaboration (A-FLEX-C-EA)',
+          description: 'Opción Enterprise Agreement para licenciamiento masivo corporativo.',
+          type: 'cost_effective',
+        },
+      ],
+    };
+  }
+
+  if (
+    clean.includes('ENTERPRISE AGREEMENT') ||
+    clean.includes('ACUERDO EMPRESARIAL') ||
+    /\bEA\b|\bE3\b/i.test(clean)
+  ) {
+    const isSec = clean.includes('SEC') || clean.includes('SEGURIDAD');
+    const isNet = clean.includes('NET') || clean.includes('RED');
+    const recSku = isSec ? 'E3-A-SEC' : isNet ? 'E3-A-NET' : 'E3-A-COLLAB';
+    return {
+      isValidOfficialSku: true,
+      isNonExistentSku: false,
+      isKnownEolSku: false,
+      wasCorrectedFromClientTypo: true,
+      cleanSku: recSku,
+      recommendedValidSku: recSku,
+      reason: `Contrato oficial Cisco Enterprise Agreement (EA 3.0) en CCW.`,
+      alternatives: [
+        {
+          recommendedSku: 'E3-ENT-AGMT',
+          title: 'Cisco Enterprise Agreement (E3-ENT-AGMT)',
+          description: 'Contrato marco Enterprise Agreement 3.0 multi-suite.',
+          type: 'direct_equivalent',
+        },
+      ],
+    };
+  }
+
+  if (clean.includes('UMBRELLA')) {
+    return {
+      isValidOfficialSku: true,
+      isNonExistentSku: false,
+      isKnownEolSku: false,
+      wasCorrectedFromClientTypo: true,
+      cleanSku: 'UMB-SIG-ESS',
+      recommendedValidSku: 'UMB-SIG-ESS',
+      reason: 'Suscripción cloud oficial Cisco Umbrella SIG Essentials.',
+      alternatives: [
+        {
+          recommendedSku: 'UMB-SIG-ESS',
+          title: 'Cisco Umbrella SIG Essentials',
+          description: 'Protección DNS, Secure Web Gateway y Cloud Firewall.',
+          type: 'direct_equivalent',
+        },
+        {
+          recommendedSku: 'UMB-DNS-ADV',
+          title: 'Cisco Umbrella DNS Advantage',
+          description: 'Seguridad perimetral a nivel DNS y bloqueo de dominios maliciosos.',
+          type: 'cost_effective',
+        },
+      ],
+    };
+  }
+
+  if (clean.includes('DUO')) {
+    return {
+      isValidOfficialSku: true,
+      isNonExistentSku: false,
+      isKnownEolSku: false,
+      wasCorrectedFromClientTypo: true,
+      cleanSku: 'DUO-MFA',
+      recommendedValidSku: 'DUO-MFA',
+      reason: 'Suscripción oficial Cisco Duo Multi-Factor Authentication (MFA).',
+      alternatives: [
+        {
+          recommendedSku: 'DUO-MFA',
+          title: 'Cisco Duo MFA',
+          description: 'Autenticación multifactor segura y Zero Trust.',
+          type: 'direct_equivalent',
+        },
+        {
+          recommendedSku: 'DUO-ACCESS',
+          title: 'Cisco Duo Access',
+          description: 'MFA con políticas contextuales y visibilidad de dispositivos.',
+          type: 'catalyst_alternative',
+        },
+      ],
+    };
+  }
+
+  if (clean.includes('ANYCONNECT') || clean.includes('SECURE CLIENT')) {
+    return {
+      isValidOfficialSku: true,
+      isNonExistentSku: false,
+      isKnownEolSku: false,
+      wasCorrectedFromClientTypo: true,
+      cleanSku: 'AC-PLS-P-3Y-S',
+      recommendedValidSku: 'AC-PLS-P-3Y-S',
+      reason: 'Suscripción oficial Cisco Secure Client (AnyConnect Plus).',
+      alternatives: [],
+    };
+  }
+
+  if (clean.includes('RENOVACION') || clean.includes('RENEWAL') || clean.includes('SMARTNET') || clean.includes('SNTC')) {
+    let recSku = 'CON-SNT-C9200L24';
+    if (clean.includes('9300') || clean.includes('C9300')) {
+      recSku = 'CON-SNT-C930048';
+    } else if (clean.includes('MERAKI') || clean.includes('MS130')) {
+      recSku = 'LIC-MS130-24-1Y';
+    }
+    return {
+      isValidOfficialSku: true,
+      isNonExistentSku: false,
+      isKnownEolSku: false,
+      wasCorrectedFromClientTypo: true,
+      cleanSku: recSku,
+      recommendedValidSku: recSku,
+      reason: `Línea oficial de renovación de servicio y soporte Cisco SmartNet / Licenciamiento (${recSku}).`,
+      alternatives: [],
+    };
+  }
+
+  if (clean.startsWith('CP-') || clean.startsWith('DP-') || clean.includes('TELEFONO') || clean.includes('PHONE')) {
+    const isExecutive = clean.includes('8851') || clean.includes('9851') || clean.includes('EJECUTIVO');
+    const recPhone = isExecutive ? 'DP-9851-K9' : 'DP-9841-K9';
+    return {
+      isValidOfficialSku: true,
+      isNonExistentSku: false,
+      isKnownEolSku: false,
+      wasCorrectedFromClientTypo: true,
+      cleanSku: recPhone,
+      recommendedValidSku: recPhone,
+      reason: `Teléfono IP oficial Cisco Desk Phone vigente 2026 (${recPhone}).`,
+      alternatives: [
+        {
+          recommendedSku: recPhone,
+          title: `Cisco ${recPhone} (Vigente 2026)`,
+          description: 'Teléfono IP empresarial con audio de alta definición y PoE.',
+          type: 'direct_equivalent',
+        },
+      ],
+    };
+  }
+
   // Caso A: Error de tipeo, SKU incompleto o nombre de familia en serie Catalyst 9xxx (ej. "C9300", "C9500", "C9200-24P")
   if (/^C?9\d{2,3}/i.test(clean)) {
     const is9300Family = /^C?93/i.test(clean);
@@ -1775,10 +2058,12 @@ export function sanitizeAndValidateCcwSku(rawSku: string): {
   // 0. Revisar si coincide con un error frecuente o SKU incompleto del cliente en CLIENT_TYPO_COHERENT_MAP
   const typoMatch = CLIENT_TYPO_COHERENT_MAP[clean];
   if (typoMatch) {
+    const isEol = Boolean(typoMatch.inferredEolSku);
     return {
       sanitizedSku: typoMatch.targetSku,
-      inferredLegacyEolSku: typoMatch.inferredEolSku || clean,
-      isNonExistentSku: !typoMatch.inferredEolSku,
+      inferredLegacyEolSku: typoMatch.inferredEolSku,
+      isNonExistentSku: false,
+      wasCorrectedFromClientTypo: true,
       correctionReason: typoMatch.reason,
     };
   }
@@ -2848,6 +3133,193 @@ function buildCollaborationRule(
 }
 
 /**
+ * Regla de ensamble para Licenciamiento y Colaboración Cloud Cisco Webex (A-FLEX-3)
+ */
+function buildWebexSoftwareRule(parentSku: string, description: string): ChassisConfigRule {
+  return {
+    parentSku: 'A-FLEX-3',
+    family: 'webex_software',
+    description: description || 'Cisco Collaboration Flex Plan 3.0 (Webex Calling & Meetings)',
+    officialUrl: 'https://www.cisco.com/c/en/us/products/unified-communications/collaboration-flex-plan/index.html',
+    isGoldenTemplate: true,
+    goldenTemplateName: 'Cisco Collaboration Flex Plan 3.0 (Webex Calling & Meetings) Golden Template',
+    goldenTemplateSource: 'Cisco CCW',
+    defaultSubItems: (opts) => {
+      const termYears = opts.termYears && opts.termYears > 0 ? opts.termYears : 1;
+      const months = termYears * 12;
+      return [
+        {
+          partNumber: 'A-FLEX-CALL-E-USR',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 17.0 * months,
+          description: `Webex Calling Enterprise Named User Subscription (${months}M Term)`,
+          category: 'dna_license',
+        },
+        {
+          partNumber: 'A-FLEX-MTG-ENT',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 15.0 * months,
+          description: `Webex Meetings Enterprise Suite Named User (${months}M Term)`,
+          category: 'dna_license',
+        },
+        {
+          partNumber: 'A-FLEX-DEV-REG',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 0,
+          description: `Webex Cloud Device Registration for Desk Phones & Video Bars (${months}M Term)`,
+          category: 'dna_license',
+        },
+        {
+          partNumber: 'SVS-FLEX-SUPT-BAS',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 0,
+          description: 'Basic 24x7 Cloud Support for Cisco Collaboration Flex Plan',
+          category: 'support',
+        },
+      ];
+    },
+  };
+}
+
+/**
+ * Regla de ensamble para Cisco Enterprise Agreement 3.0 (E3-ENT-AGMT)
+ */
+function buildEnterpriseAgreementRule(parentSku: string, description: string): ChassisConfigRule {
+  return {
+    parentSku: parentSku || 'E3-ENT-AGMT',
+    family: 'cisco_ea',
+    description: description || 'Cisco Enterprise Agreement (EA 3.0) Multi-Suite',
+    officialUrl: 'https://www.cisco.com/c/en/us/buy/enterprise-agreement.html',
+    isGoldenTemplate: true,
+    goldenTemplateName: 'Cisco Enterprise Agreement (EA 3.0) Multi-Suite Golden Template',
+    goldenTemplateSource: 'Cisco CCW',
+    defaultSubItems: (opts) => {
+      const termYears = opts.termYears && opts.termYears >= 3 ? opts.termYears : 3;
+      const months = termYears * 12;
+      return [
+        {
+          partNumber: 'E3-A-COLLAB',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 25.0 * months,
+          description: `Cisco EA 3.0 Collaboration Suite (Webex Suite + Calling + Meetings, ${months}M)`,
+          category: 'dna_license',
+        },
+        {
+          partNumber: 'E3-A-SEC',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 18.0 * months,
+          description: `Cisco EA 3.0 Security Suite (Umbrella SIG + Duo Access + Secure Endpoint, ${months}M)`,
+          category: 'dna_license',
+        },
+        {
+          partNumber: 'SVS-EA-SUPT-BAS',
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 0,
+          description: 'Cisco Enterprise Agreement Global Support Coverage',
+          category: 'support',
+        },
+      ];
+    },
+  };
+}
+
+/**
+ * Regla de ensamble para Ciberseguridad Cloud SaaS (Umbrella, Duo, Secure Client)
+ */
+function buildCybersecurityRule(parentSku: string, description: string): ChassisConfigRule {
+  const isDuo = parentSku.startsWith('DUO-');
+  const isAnyConnect = parentSku.startsWith('AC-');
+  const family = isDuo ? 'duo_security' : 'umbrella_security';
+  return {
+    parentSku,
+    family,
+    description: description || `Cisco Cybersecurity Cloud Subscription (${parentSku})`,
+    officialUrl: isDuo ? 'https://duo.com/' : 'https://umbrella.cisco.com/',
+    isGoldenTemplate: true,
+    goldenTemplateName: `Cisco ${isDuo ? 'Duo MFA' : isAnyConnect ? 'Secure Client' : 'Umbrella SIG'} Cloud Security Golden Template`,
+    goldenTemplateSource: 'Cisco CCW',
+    defaultSubItems: (opts) => {
+      const termYears = opts.termYears && opts.termYears > 0 ? opts.termYears : 1;
+      const months = termYears * 12;
+      const subSku = isDuo ? 'DUO-MFA-SUB' : isAnyConnect ? 'AC-PLS-SUB' : 'UMB-SIG-SUB';
+      const suptSku = isDuo ? 'DUO-SUPT-BAS' : isAnyConnect ? 'AC-SUPT-BAS' : 'UMB-SUPT-BAS';
+      const unitPrice = isDuo ? 36.0 * termYears : isAnyConnect ? 20.0 * termYears : 45.0 * termYears;
+      return [
+        {
+          partNumber: subSku,
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: unitPrice,
+          description: `${parentSku} User Subscription (${months}M Term)`,
+          category: 'dna_license',
+        },
+        {
+          partNumber: suptSku,
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: 0,
+          description: `Basic Support Coverage for ${parentSku}`,
+          category: 'support',
+        },
+      ];
+    },
+  };
+}
+
+/**
+ * Regla de ensamble para Renovaciones de Contratos y Licencias (SmartNet CON-SNT, etc.)
+ */
+function buildServiceRenewalRule(parentSku: string, description: string): ChassisConfigRule {
+  return {
+    parentSku,
+    family: 'service_renewal',
+    description: description || `Renovación de Soporte y Servicios Cisco (${parentSku})`,
+    officialUrl: 'https://www.cisco.com/c/en/us/services/technical/smart-net-total-care.html',
+    defaultSubItems: (opts) => {
+      const termYears = opts.termYears && opts.termYears > 0 ? opts.termYears : 1;
+      const months = termYears * 12;
+      return [
+        {
+          partNumber: parentSku,
+          qtyMultiplier: 1,
+          durationMonths: months,
+          initialTerm: months,
+          billingModel: 'Prepaid Term',
+          unitListPriceUsd: estimateReferencePriceUsd(parentSku, false),
+          description: `Servicio de Soporte y Renovación (${months} Meses)`,
+          category: 'support',
+        },
+      ];
+    },
+  };
+}
+
+/**
  * Resuelve el SKU oficial de licencia Meraki MS130 en Cisco CCW según documentation.meraki.com:
  * - Modelos compactos (8, 8P, 8X, 12X, R): LIC-MS130-CMPT-{years}Y (o CMPTA para Advanced)
  * - Modelos 24 puertas (24, 24P, 24X):     LIC-MS130-24-{years}Y   (o 24A para Advanced)
@@ -3210,7 +3682,39 @@ export function resolveChassisRule(sku: string): ChassisConfigRule | null {
     };
   }
 
-  // 13. Detección en base auto-aprendida
+  // 13. Detección dinámica Colaboración Cloud / Licencias Webex (A-FLEX-3 / A-FLEX / A-SPK)
+  if (cleanSku.startsWith('A-FLEX') || cleanSku.startsWith('A-SPK') || cleanSku === 'WEBEX') {
+    return buildWebexSoftwareRule(cleanSku, `Cisco Collaboration Flex Plan 3.0 (${cleanSku})`);
+  }
+
+  // 14. Detección dinámica Cisco Enterprise Agreement (EA 3.0)
+  if (cleanSku.startsWith('E3-') || cleanSku.startsWith('EA-') || cleanSku === 'CISCO-EA') {
+    return buildEnterpriseAgreementRule(cleanSku, `Cisco Enterprise Agreement (${cleanSku})`);
+  }
+
+  // 15. Detección dinámica Ciberseguridad Cloud SaaS (Umbrella, Duo, Secure Client, AMP)
+  if (
+    cleanSku.startsWith('UMB-') ||
+    cleanSku.startsWith('DUO-') ||
+    cleanSku.startsWith('AC-PLS') ||
+    cleanSku.startsWith('SEC-') ||
+    cleanSku.startsWith('CMD-')
+  ) {
+    return buildCybersecurityRule(cleanSku, `Cisco Cybersecurity Cloud Subscription (${cleanSku})`);
+  }
+
+  // 16. Detección dinámica Renovaciones de Soporte SmartNet y Licencias Meraki
+  if (
+    cleanSku.startsWith('CON-SNT') ||
+    cleanSku.startsWith('CON-SNTP') ||
+    cleanSku.startsWith('CON-ECDN') ||
+    cleanSku.startsWith('CON-SSSNT') ||
+    (cleanSku.startsWith('LIC-') && !cleanSku.startsWith('LIC-MS130'))
+  ) {
+    return buildServiceRenewalRule(cleanSku, `Renovación de Licencia y Soporte (${cleanSku})`);
+  }
+
+  // 17. Detección en base auto-aprendida
   const learned = getLearnedCiscoSkus()[cleanSku];
   if (learned && learned.defaultSubSkus && learned.defaultSubSkus.length > 0) {
     return {
@@ -3437,8 +3941,38 @@ export function estimateReferencePriceUsd(partNumber: string, isParent: boolean)
     'C1A1TN9300XF-3Y': 5850,
     'NXA-PAC-650W-PE': 0,
     'NXA-FAN-35CFM-PE': 0,
-    'A-FLEX-3': 162,
+    // Colaboración Cloud & Webex
+    'A-FLEX-3': 204,
+    'A-FLEX-CALL-E-USR': 204,
+    'A-FLEX-MTG-ENT': 180,
+    'A-FLEX-DEV-REG': 0,
+    'SVS-FLEX-SUPT-BAS': 0,
     'L-WBX-DEV-ROOM': 720,
+    // Enterprise Agreement (EA 3.0)
+    'E3-ENT-AGMT': 0,
+    'E3-A-COLLAB': 300,
+    'E3-A-SEC': 216,
+    'E3-A-NET': 350,
+    'SVS-EA-SUPT-BAS': 0,
+    // Ciberseguridad Cloud SaaS
+    'UMB-SIG-ESS': 45,
+    'UMB-SIG-SUB': 45,
+    'UMB-DNS-ADV': 28,
+    'UMB-SUPT-BAS': 0,
+    'DUO-MFA': 36,
+    'DUO-MFA-SUB': 36,
+    'DUO-ACCESS': 72,
+    'DUO-SUPT-BAS': 0,
+    'AC-PLS-P-3Y-S': 60,
+    // Teléfonos IP Cisco Serie 8800 / 7800 y ATA
+    'CP-8841-K9': 345,
+    'CP-8851-K9': 395,
+    'CP-8861-K9': 495,
+    'CP-7841-K9': 245,
+    'CP-7821-K9': 195,
+    'ATA191-K9': 165,
+    'CP-PWR-CUBE-4': 35,
+    'CON-SNT': 180,
   };
 
   if (refPrices[clean] !== undefined) return refPrices[clean];

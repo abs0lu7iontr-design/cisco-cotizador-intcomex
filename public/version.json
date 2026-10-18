@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.2.0",
-  "git_commit": "3598047",
+  "version": "2.2.1",
+  "git_commit": "17fb519",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-18T16:28:06.861Z",
-  "release_notes": "fix(versioning): replace all hardcoded v2.1 with dynamic appVersion across Navbar, Dashboard, index.html and modals",
+  "build_timestamp": "2026-10-18T18:46:37.551Z",
+  "release_notes": "chore(build): sync version.json metadata with commit 3598047",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

@@ -589,7 +589,16 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
       eolReason: sanitized.correctionReason || eolEntry?.eolNote,
       officialCiscoUrl: eolEntry?.officialCiscoDocUrl,
       deviceType:
-        resolvedSku.startsWith('IE-')
+        resolvedSku.startsWith('A-FLEX') ||
+        resolvedSku.startsWith('E3-') ||
+        resolvedSku.startsWith('EA-') ||
+        resolvedSku.startsWith('UMB-') ||
+        resolvedSku.startsWith('DUO-') ||
+        resolvedSku.startsWith('CON-') ||
+        resolvedSku.startsWith('LIC-') ||
+        resolvedSku.startsWith('AC-')
+          ? 'license_only'
+          : resolvedSku.startsWith('IE-')
           ? 'industrial_switch'
           : resolvedSku.startsWith('UCSC-')
             ? 'server_ucs'
@@ -2077,8 +2086,20 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                     item.deviceType === 'firewall' ||
                     item.deviceType === 'server_ucs';
 
+                  const isLicenseItem =
+                    item.deviceType === 'license_only' ||
+                    activeSku.startsWith('A-FLEX') ||
+                    activeSku.startsWith('E3-') ||
+                    activeSku.startsWith('EA-') ||
+                    activeSku.startsWith('UMB-') ||
+                    activeSku.startsWith('DUO-') ||
+                    activeSku.startsWith('CON-') ||
+                    activeSku.startsWith('LIC-') ||
+                    activeSku.startsWith('AC-');
+
                   // Detectar si el equipo lleva cable de poder AC seleccionable (CAB-IT / PDU / Schuko / NEMA / IRAM)
                   const usesPowerCord =
+                    !isLicenseItem &&
                     !activeSku.startsWith('MR') &&
                     !activeSku.startsWith('CW91') &&
                     !activeSku.startsWith('DP-98');
@@ -2095,8 +2116,16 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="space-y-1">
                           <div className="flex items-center flex-wrap gap-2">
-                            <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700/50 text-[10px] font-black uppercase">
-                              MADRE #{idx + 1} ({parentRow?.resolvedChildModel ? 'Contenedor CCW' : 'Chasis'})
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${
+                                isLicenseItem
+                                  ? 'bg-cyan-950 text-cyan-300 border-cyan-700/50'
+                                  : 'bg-emerald-950 text-emerald-300 border-emerald-700/50'
+                              }`}
+                            >
+                              {isLicenseItem
+                                ? `SUSCRIPCIÓN #${idx + 1} (Licencia Software CCW)`
+                                : `MADRE #${idx + 1} (${parentRow?.resolvedChildModel ? 'Contenedor CCW' : 'Chasis'})`}
                             </span>
                             <span className="font-mono text-sm font-black text-white">
                               {activeSku}

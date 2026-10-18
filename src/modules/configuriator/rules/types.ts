@@ -60,7 +60,9 @@ export type CiscoProductFamily =
   | 'appdynamics'
   | 'catalyst_center'
   | 'nexus_dashboard'
-  | 'meraki_dashboard'
+  // 9. Enterprise Agreement y Renovaciones
+  | 'cisco_ea'
+  | 'service_renewal'
   // Misceláneos
   | 'accessory'
   | 'generic';
