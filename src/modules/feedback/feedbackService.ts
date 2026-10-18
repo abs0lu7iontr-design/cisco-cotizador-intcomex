@@ -16,6 +16,7 @@ import {
 import { getFirestoreInstance } from '../cloud/firebaseConfig';
 import { sanitizeForFirestore } from '../cloud/firestoreService';
 import { UserSession } from '../../core/types';
+import { APP_VERSION } from '../../core/appVersion';
 import {
   FeedbackTicket,
   CreateTicketInput,
@@ -125,7 +126,7 @@ export function captureTechnicalContext(
 
   // Try to inspect global build information if stored
   let gitCommit = 'develop';
-  let appVersion = '2.1.0';
+  let appVersion = APP_VERSION;
   try {
     const rawVersion = localStorage.getItem('cisco_latest_version_cache');
     if (rawVersion) {

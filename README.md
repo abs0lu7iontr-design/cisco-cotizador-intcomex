@@ -1,4 +1,4 @@
-# Cisco Automated v4.0 (Enterprise Suite v2.1.0)
+# Cisco Automated v4.0 (Enterprise Suite v2.2.0)
 ### Intcomex Chile | Aplicación Híbrida Web Standalone, Cloud CDN & Desktop Portable con IA
 
 [![React 19](https://img.shields.io/badge/React-19.0.1-61DAFB?logo=react&logoColor=black)](https://react.dev/)
@@ -26,7 +26,8 @@ El proyecto mantiene un registro semántico y auditable de cada versión y compi
 
 | Versión | Commit | Fecha | Hitos y Novedades Principales | Canal |
 |---|---|---|---|---|
-| **v2.1.0** | `7b4d35e` | Octubre 2026 | **Módulo de Mejoras y Soporte Técnico** con triaje y diagnóstico de IA (Gemini 3.6 Flash / OpenRouter), SLA dinámico y Firestore Colección 11. Transición automática a Back Order (BO), catálogo permanente de SKUs manuales en Firestore (`cisco_bo_sku_catalog`), pipeline logístico Kanban (`bo_order_tracking`) con FedEx/UPS/DHL, recordador de Deals escalados (`deal_reminders`), auto-updater de 1-clic para Desktop con Cloudflare CDN, y despliegue de reglas Cloud Firestore. | **develop (Producción Oficial)** |
+| **v2.2.0** | `260bdfa` | Octubre 2026 | **Sincronización Dinámica de Versiones:** Centralización de versión en `src/core/appVersion.ts`, scripts de SemVer (`scripts/version_manager.js`) para actualizaciones chicas y grandes, **Módulo de Mejoras y Soporte Técnico** con triaje y diagnóstico de IA (Gemini 3.6 Flash / OpenRouter), SLA dinámico y Firestore Colección 11. Transición automática a Back Order (BO), catálogo permanente de SKUs manuales en Firestore (`cisco_bo_sku_catalog`), pipeline logístico Kanban (`bo_order_tracking`) con FedEx/UPS/DHL, recordador de Deals escalados (`deal_reminders`), auto-updater de 1-clic para Desktop con Cloudflare CDN, y despliegue de reglas Cloud Firestore. | **develop (Producción Oficial)** |
+| **v2.1.0** | `7b4d35e` | Octubre 2026 | Integración inicial del módulo de Mejoras y Soporte Técnico, botón de acceso en Navbar y despliegue de reglas Firestore. | develop |
 | **v2.0.8** | `2fa53d0` | Octubre 2026 | Motor de actualización en caliente de 1-clic para la App Desktop Windows mediante lectura de `version.json` en Cloudflare Pages CDN. | develop |
 | **v2.0.7** | `c58d432` | Octubre 2026 | Multi-Versionamiento de Cotizaciones CCW (`estimates/{id}/versions/{vId}`) con versión base `v0_RAW` inmutable y modal comparador de versiones. | develop |
 | **v2.0.6** | `2667366` | Octubre 2026 | Arquitectura Database Armor con bóveda redundante multi-capa (LocalStorage Vault + IndexedDB `CiscoAppCollectionsDB` + Tombstones `deleted_ids`). | develop |

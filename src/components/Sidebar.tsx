@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { NavViewId } from '../core/store';
+import { getFormattedAppVersion } from '../core/appVersion';
 
 interface SidebarProps {
   currentView: NavViewId;
@@ -211,7 +212,7 @@ export function Sidebar({
               Cisco Automated
             </h2>
             <span className="text-[10px] font-extrabold text-indigo-400 tracking-wider uppercase mt-1 block">
-              v2.1 &bull; Intcomex
+              {getFormattedAppVersion()} &bull; Intcomex
             </span>
           </div>
         </div>

@@ -53,6 +53,7 @@ import { useSessionInactivity, SessionInactivityModal } from './modules/security
 import { SharedSkuManagerModal, SkuOverrideAuthorizationModal } from './modules/skuOverrides';
 import { EstimateDiffModal } from './modules/estimate';
 import { FeedbackView, CreateTicketModal, getFeedbackTickets } from './modules/feedback';
+import { getFormattedAppVersion } from './core/appVersion';
 
 import {
   FileSpreadsheet,
@@ -929,7 +930,7 @@ function AppContent() {
                   </div>
                   <div>
                     <h2 className="text-xl font-black text-white">
-                      Cotizador Cisco CCW &bull; Cisco Automated v2.1
+                      Cotizador Cisco CCW &bull; Cisco Automated {getFormattedAppVersion()}
                     </h2>
                     <p className="text-xs text-slate-400 max-w-md mx-auto mt-2">
                       Sube una cotización oficial de Cisco CCW en formato Excel (.xlsx) para comenzar a cotizar automáticamente.

@@ -28,6 +28,7 @@ import {
 } from '../cloud';
 import { OverrideRuleType, UserSession } from '../../core/types';
 import { SkuOverrideAuthorizationModal, normalizeRule } from './SkuOverrideAuthorizationModal';
+import { APP_DISPLAY_NAME, getFormattedAppVersion } from '../../core/appVersion';
 
 interface SharedSkuManagerModalProps {
   isOpen: boolean;
@@ -161,7 +162,7 @@ export function SharedSkuManagerModal({
   // Handle Export Local JSON
   const handleExportJson = () => {
     const payload = {
-      app: 'Cisco Automated v2.1',
+      app: `${APP_DISPLAY_NAME} ${getFormattedAppVersion()}`,
       type: 'sku_overrides_package',
       author: {
         username: currentUser?.username || 'usuario',

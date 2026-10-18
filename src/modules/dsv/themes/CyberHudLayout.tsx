@@ -4,6 +4,7 @@
 
 import React from 'react';
 import { ReconciliationItem, resolveCategoryBadge } from '../types';
+import { getFormattedAppVersion } from '../../../core/appVersion';
 
 interface LayoutProps {
   items: ReconciliationItem[];
@@ -49,7 +50,7 @@ export const CyberHudLayout: React.FC<LayoutProps> = ({
           <div>
             <div className="flex flex-wrap items-center gap-2.5">
               <h2 id="modal-title" className="text-base sm:text-lg md:text-xl font-mono font-extrabold tracking-wider text-white flex items-center gap-2">
-                CONCILIACIÓN FINANCIERA <span className="text-cyan-400">//</span> CISCO CCW v2.1
+                CONCILIACIÓN FINANCIERA <span className="text-cyan-400">//</span> CISCO CCW {getFormattedAppVersion()}
               </h2>
               <span className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold uppercase tracking-wider bg-rose-950/50 text-[#ff3366] border border-[#ff3366]/40 shadow-[0_0_15px_rgba(255,51,102,0.3)]">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#ff3366] animate-ping" />
@@ -94,7 +95,7 @@ export const CyberHudLayout: React.FC<LayoutProps> = ({
             <div className="mt-2.5 pt-2 border-t border-cyan-950 flex items-center justify-between text-[11px] font-mono text-slate-400">
               <span className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                Algoritmo estándar v2.1
+                Algoritmo estándar {getFormattedAppVersion()}
               </span>
               <span className="text-[10px] text-cyan-500/60 font-mono">CCW_CALC</span>
             </div>

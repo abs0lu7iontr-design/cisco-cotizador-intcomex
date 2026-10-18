@@ -1,5 +1,5 @@
 # HISTORIAL DE VERSIONES Y NOTAS DE RELEASE (RELEASE NOTES)
-## Cisco Automated v2.1.0 (Arquitectura Enterprise Suite v4.0)
+## Cisco Automated v2.2.0 (Arquitectura Enterprise Suite v4.0)
 ### Intcomex Chile
 
 ---
@@ -8,7 +8,8 @@
 
 | Versión | Commit Principal | Fecha / Periodo | Hitos y Cambios Arquitectónicos Principales | Estado |
 |---|---|---|---|---|
-| **v2.1.0 (Enterprise)** | `7b4d35e` / `511c934` | Octubre 2026 | **Módulo de Mejoras & Soporte** con triaje y diagnóstico de IA (Gemini 3.6 Flash / OpenRouter), SLA dinámico y Firestore Col 11. Transición automática a Back Order (BO), catálogo de SKUs manuales en Firestore (`cisco_bo_sku_catalog`), pipeline logístico Kanban (`bo_order_tracking`) con FedEx/UPS/DHL, recordador de Deals escalados (`deal_reminders`), auto-updater de 1-clic para Desktop con Cloudflare CDN, y despliegue de reglas Cloud Firestore. | **VIGENTE / PRODUCCIÓN** |
+| **v2.2.0 (Enterprise)** | `260bdfa` | Octubre 2026 | **Sincronización Dinámica de Versiones:** Centralización de versión en `src/core/appVersion.ts`, scripts automáticos de SemVer (`scripts/version_manager.js`) para actualizaciones chicas (`patch`) y grandes (`minor`/`major`), y eliminación de versiones estáticas en todo el código. **Módulo de Mejoras & Soporte** con triaje y diagnóstico de IA (Gemini 3.6 Flash / OpenRouter), SLA dinámico y Firestore Col 11. Transición automática a Back Order (BO), catálogo de SKUs manuales en Firestore (`cisco_bo_sku_catalog`), pipeline logístico Kanban (`bo_order_tracking`) con FedEx/UPS/DHL, recordador de Deals escalados (`deal_reminders`), auto-updater de 1-clic para Desktop con Cloudflare CDN, y despliegue de reglas Cloud Firestore. | **VIGENTE / PRODUCCIÓN** |
+| **v2.1.0** | `7b4d35e` / `511c934` | Octubre 2026 | Integración inicial del módulo de Mejoras y Soporte Técnico, botón de acceso en Navbar y despliegue de reglas Firestore. | Predecesora Estable |
 | **v2.0.8** | `2fa53d0` | Octubre 2026 | Implementación del motor de auto-actualización en caliente de 1-clic para la App de Escritorio Windows conectado a `version.json` en Cloudflare CDN. | Estable |
 | **v2.0.7** | `c58d432` | Octubre 2026 | Sistema de Multi-Versionamiento de Cotizaciones CCW (`estimates/{id}/versions/{vId}`) con `v0_RAW` inmutable y modal comparador de versiones. | Estable |
 | **v2.0.6** | `2667366` | Octubre 2026 | Arquitectura Database Armor con bóveda redundante multi-capa (LocalStorage Vault + IndexedDB `CiscoAppCollectionsDB` + Tombstones `deleted_ids`). | Estable |
@@ -21,7 +22,17 @@
 
 ---
 
-## [v2.1.0] - Octubre 2026 (Enterprise Release Actual)
+## [v2.2.0] - Octubre 2026 (Enterprise Release Actual)
+
+### 🔄 Sincronización Dinámica de Versiones y SemVer Automático
+- **Única Fuente de Verdad (`src/core/appVersion.ts`):** Eliminación de versiones hardcodeadas estáticas en el frontend, bridge de escritorio y servicios en la nube. Todas las vistas (`SettingsView`, `Sidebar`, `App`, `feedbackService`, `databaseBackupManager`, `desktopBridge`) leen de forma dinámica `APP_VERSION` y `getFormattedAppVersion()`.
+- **Motor Inteligente de Versiones (`scripts/version_manager.js`):** Analiza los mensajes de commits y la envergadura del cambio para determinar si es una actualización chica (`patch`, ej: `2.2.1`) o grande (`minor`, ej: `2.3.0` o `major` `3.0.0`).
+- **Nuevos Scripts en `package.json`:** `npm run version:bump:patch`, `npm run version:bump:minor`, `npm run version:bump:major`, `npm run version:sync`.
+- **Sincronización Transversal en Build:** En cada compilación `prepare:pages`, se regeneran automáticamente `version.json` en todas las carpetas (`public/`, `dist/`, `desktop_app/`, `dist_exe/`) y el runtime desktop `desktop_window.py`.
+
+---
+
+## [v2.1.0] - Octubre 2026 (Lanzamiento Predecesor)
 
 ### 🚀 Módulo Destacado: Mejoras, Reporte de Errores y Soporte Técnico con Triaje IA
 - **Bandeja Centralizada de Tickets (`app_feedback_tickets` en Firestore):**

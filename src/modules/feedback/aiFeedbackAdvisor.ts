@@ -5,6 +5,7 @@
 
 import { FeedbackTicket } from './types';
 import { loadAiSettings } from '../configuriator/aiProviderManager';
+import { APP_DISPLAY_NAME, getFormattedAppVersion } from '../../core/appVersion';
 
 export interface AiTicketDiagnosis {
   isFeasible: 'YES' | 'CONDITIONAL' | 'NO';
@@ -19,12 +20,13 @@ export interface AiTicketDiagnosis {
   analyzedByModel: string;
 }
 
-const SYSTEM_INSTRUCTION_AI_ADVISOR = `
-Eres el Asistente Técnico y Arquitecto de Software Experto de Cisco Automated v2.1 (Intcomex Chile).
+function getSystemInstructionAiAdvisor(): string {
+  return `
+Eres el Asistente Técnico y Arquitecto de Software Experto de ${APP_DISPLAY_NAME} ${getFormattedAppVersion()} (Intcomex Chile).
 Tu función es actuar como analista de triaje técnico para reportes de usuarios (bugs, mejoras, consultas y nuevas funciones).
 
 DIRECTIVA CRÍTICA:
-1. Evalúa si lo que pide el usuario es POSIBLE y VIABLE en la plataforma (Frontend React 18 + Vite + Tailwind + Firebase Firestore + ExcelJS + Python pywebview Desktop).
+1. Evalúa si lo que pide el usuario es POSIBLE y VIABLE en la plataforma (Frontend React 19 + Vite + Tailwind + Firebase Firestore + ExcelJS + Python pywebview Desktop).
 2. Explica la CAUSA RAÍZ o contexto técnico de la solicitud.
 3. Propón la SOLUCIÓN TÉCNICA detallada que darías (archivos a intervenir, lógica de cálculo, componentes UI).
 4. NO IMPLEMENTES NI MODIFIQUES EL CÓDIGO. Solo explica qué solución darías y evalúa su viabilidad.
@@ -42,6 +44,7 @@ RESPONDE EXCLUSIVAMENTE EN FORMATO JSON VÁLIDO CON ESTA ESTRUCTURA:
   "recommendedResponseToUser": "Mensaje cordial y técnico listo para enviar al usuario"
 }
 `;
+}
 
 /**
  * Intelligent deterministic analyzer used as instant backup or when no external LLM is reachable.
@@ -123,7 +126,7 @@ export async function analyzeTicketWithAi(ticket: FeedbackTicket): Promise<AiTic
   }
 
   try {
-    const prompt = `Analiza el siguiente reporte o solicitud de usuario en Cisco Automated v2.1:
+    const prompt = `Analiza el siguiente reporte o solicitud de usuario en ${APP_DISPLAY_NAME} ${getFormattedAppVersion()}:
 ---------------------------------------------------------------
 Ticket ID: ${ticket.id}
 Título: ${ticket.title}
@@ -147,7 +150,7 @@ Evalúa si es posible realizar lo solicitado, diagnostica la causa raíz y detal
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           systemInstruction: {
-            parts: [{ text: SYSTEM_INSTRUCTION_AI_ADVISOR }],
+            parts: [{ text: getSystemInstructionAiAdvisor() }],
           },
           contents: [
             {

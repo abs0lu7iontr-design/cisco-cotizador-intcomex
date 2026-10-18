@@ -31,6 +31,7 @@ import {
 } from '../modules/configuriator';
 import { CiscoApiStatusModal, getCiscoConfig } from '../modules/ciscoApi';
 import { checkDesktopUpdate, applyDesktopUpdate, DesktopUpdateResult, isDesktopApp } from '../core/desktopBridge';
+import { APP_VERSION } from '../core/appVersion';
 
 interface SettingsViewProps {
   onOpenThemes?: () => void;
@@ -111,18 +112,18 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
         setUpdateInfo({
           success: true,
           has_update: false,
-          current_version: '2.1.0',
-          latest_version: '2.1.0',
+          current_version: APP_VERSION,
+          latest_version: APP_VERSION,
           release_url: 'https://develop.cisco-automated.pages.dev',
-          release_notes: 'La aplicación está en su versión más reciente (v2.1.0).',
+          release_notes: `La aplicación está en su versión más reciente (v${APP_VERSION}).`,
         });
       }
     } catch {
       setUpdateInfo({
         success: true,
         has_update: false,
-        current_version: '2.1.0',
-        latest_version: '2.1.0',
+        current_version: APP_VERSION,
+        latest_version: APP_VERSION,
         release_url: 'https://develop.cisco-automated.pages.dev',
         release_notes: 'Versión actual al día.',
       });
@@ -552,11 +553,11 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
           </div>
           <div className="py-2.5 flex justify-between">
             <span className="text-slate-500">Versión</span>
-            <span className="font-bold text-emerald-400 font-mono">v2.1.0 (Cloud & Desktop Ready)</span>
+            <span className="font-bold text-emerald-400 font-mono">v{APP_VERSION} (Cloud & Desktop Ready)</span>
           </div>
           <div className="py-2.5 flex justify-between">
             <span className="text-slate-500">Motor de Procesamiento</span>
-            <span className="font-bold text-indigo-400 font-mono">ExcelJS CCW Engine v2.1</span>
+            <span className="font-bold text-indigo-400 font-mono">ExcelJS CCW Engine v{APP_VERSION.split('.').slice(0, 2).join('.')}</span>
           </div>
           <div className="py-2.5 flex justify-between">
             <span className="text-slate-500">Cifrado de Accesos</span>

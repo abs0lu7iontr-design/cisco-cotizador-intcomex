@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
+import { syncVersionAcrossCodebase, analyzeVersionBump } from './version_manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,7 +19,18 @@ function getGitValue(cmd, fallback = '') {
 }
 
 const pkgPath = path.join(rootDir, 'package.json');
-const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+let pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+
+// Comprobar si se solicitó un bump automático o manual
+const bumpReq = process.env.BUMP_VERSION; // 'patch' | 'minor' | 'major' | 'auto'
+if (bumpReq) {
+  const nextVer = analyzeVersionBump(pkg.version, bumpReq === 'auto' ? null : bumpReq);
+  syncVersionAcrossCodebase(nextVer);
+  pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+} else {
+  // Asegurar que src/core/appVersion.ts esté sincronizado con package.json
+  syncVersionAcrossCodebase(pkg.version);
+}
 
 const gitCommit = getGitValue('git rev-parse --short HEAD', 'dev-local');
 const gitBranch = getGitValue('git rev-parse --abbrev-ref HEAD', 'develop');
@@ -27,7 +39,7 @@ const buildTimestamp = new Date().toISOString();
 
 const buildInfo = {
   name: pkg.name || 'cisco-automated',
-  version: pkg.version || '2.1.0',
+  version: pkg.version || '2.2.0',
   git_commit: gitCommit,
   git_branch: gitBranch,
   build_timestamp: buildTimestamp,

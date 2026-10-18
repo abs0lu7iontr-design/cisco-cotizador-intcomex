@@ -1,7 +1,9 @@
 // ============================================================================
-// CISCO AUTOMATED v2.1 - DESKTOP PYWEBVIEW BRIDGE SERVICE
+// CISCO AUTOMATED - DESKTOP PYWEBVIEW BRIDGE SERVICE
 // Capa unificada y tipada para comunicarse con el entorno de escritorio Python/PyWebView
 // ============================================================================
+
+import { APP_VERSION } from './appVersion';
 
 export interface DesktopFileOpenResult {
   success: boolean;
@@ -255,8 +257,8 @@ export async function checkDesktopUpdate(): Promise<DesktopUpdateResult | null> 
         return {
           success: true,
           has_update: false,
-          current_version: data.version || '2.1.0',
-          latest_version: data.version || '2.1.0',
+          current_version: data.version || APP_VERSION,
+          latest_version: data.version || APP_VERSION,
           current_commit: data.git_commit,
           latest_commit: data.git_commit,
           current_timestamp: data.build_timestamp,

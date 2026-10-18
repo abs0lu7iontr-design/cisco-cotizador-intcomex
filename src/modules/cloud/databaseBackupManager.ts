@@ -21,6 +21,7 @@ import { LOCAL_STORAGE_PARTNERS_KEY, LOCAL_STORAGE_PARTNERS_VAULT_KEY } from '..
 import { getFirestoreInstance } from './firebaseConfig';
 import { doc, setDoc } from 'firebase/firestore';
 import { downloadBlobSafe } from '../../utils/downloadHelper';
+import { APP_VERSION } from '../../core/appVersion';
 
 export type BackupCollectionName =
   | 'estimates'
@@ -333,7 +334,7 @@ export function exportAllDatabasesSnapshot(user: string = 'mskill'): CiscoDataba
   const fastTrackMetadata = getFastTrackMetadataSnapshot();
 
   return {
-    version: '2.1.0',
+    version: APP_VERSION,
     timestamp: new Date().toISOString(),
     generatedBy: user,
     fastTrackScope: 'metadata_only',

@@ -1,7 +1,7 @@
 {
   "name": "cisco-automated",
   "private": true,
-  "version": "2.1.0",
+  "version": "2.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
@@ -18,6 +18,10 @@
     "lint": "tsc --noEmit",
     "test": "tsx --no-warnings tests/improvements.test.ts && tsx --no-warnings tests/domainRules.test.ts && tsx --no-warnings tests/estimateHierarchy.test.ts && tsx --no-warnings tests/goldenTemplates.test.ts && tsx --no-warnings tests/phase3Architecture.test.ts && tsx --no-warnings tests/prepaidTerm.test.ts && tsx --no-warnings tests/qaAuditRepairs.test.ts && tsx --no-warnings tests/quickWins.test.ts && tsx --no-warnings tests/estimateVersioning.test.ts && tsx --no-warnings tests/emailClipboardHelper.test.ts && tsx --no-warnings tests/boTracking.test.ts && tsx --no-warnings tests/fastTrackPersistence.test.ts && tsx --no-warnings tests/sntAndHistoryDownload.test.ts && tsx --no-warnings tests/dealReminder.test.ts && tsx --no-warnings tests/databaseArmorAudit.test.ts && tsx --no-warnings tests/configuriatorNlpMinimal.test.ts && tsx --no-warnings tests/c1HardwareClassification.test.ts && tsx --no-warnings tests/qaFindingsAudit.test.ts && tsx --no-warnings tests/twentyTwoImprovementsQa.test.ts && tsx --no-warnings tests/fifteenPersistenceImprovementsQa.test.ts && tsx --no-warnings tests/leadTimePreservationQa.test.ts",
     "doctor": "npx react-doctor@latest",
+    "version:bump:patch": "node scripts/version_manager.js --patch",
+    "version:bump:minor": "node scripts/version_manager.js --minor",
+    "version:bump:major": "node scripts/version_manager.js --major",
+    "version:sync": "node scripts/version_manager.js --sync",
     "prepare:pages": "node scripts/prepare_deploy.js",
     "deploy:preview": "npm run prepare:pages && npx wrangler pages deploy dist-pages --project-name=cisco-automated --branch develop",
     "deploy:prod": "npm run prepare:pages && npx wrangler pages deploy dist-pages --project-name=cisco-automated --branch main",
