@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.2.4",
-  "git_commit": "81f5354",
+  "version": "2.2.5",
+  "git_commit": "4e54098",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-19T00:03:38.136Z",
-  "release_notes": "feat(ui): minimalizar barra de navegacion y unificar reglas, partners y soporte en barra lateral (v2.2.4)",
+  "build_timestamp": "2026-10-19T19:24:02.518Z",
+  "release_notes": "chore: sync version.json with commit 81f5354",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"
