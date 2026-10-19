@@ -17,9 +17,15 @@ const LOCAL_STORAGE_PARTNERS_KEY = 'cisco_partners_xcl_cache_v1';
 
 export interface DsvPartnerUploaderProps {
   onUploadSuccess?: (count: number) => void;
+  label?: string;
+  className?: string;
 }
 
-export const DsvPartnerUploader: React.FC<DsvPartnerUploaderProps> = ({ onUploadSuccess }) => {
+export const DsvPartnerUploader: React.FC<DsvPartnerUploaderProps> = ({
+  onUploadSuccess,
+  label,
+  className,
+}) => {
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
@@ -146,11 +152,14 @@ export const DsvPartnerUploader: React.FC<DsvPartnerUploaderProps> = ({ onUpload
         type="button"
         disabled={loading}
         onClick={() => fileInputRef.current?.click()}
-        className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs font-semibold text-slate-300 hover:border-cyan-500 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+        className={
+          className ||
+          'px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs font-semibold text-slate-300 hover:border-cyan-500 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50'
+        }
         title="Actualizar o sembrar base global de Partners (initial_partners.json)"
       >
         <span>⚙️</span>
-        <span className="hidden sm:inline">{loading ? 'Sincronizando...' : 'Base Partners'}</span>
+        <span>{loading ? 'Sincronizando...' : (label || 'Base Partners')}</span>
       </button>
 
       {feedback && (

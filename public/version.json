@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.2.3",
-  "git_commit": "5557327",
+  "version": "2.2.4",
+  "git_commit": "5f50fc6",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-18T23:06:58.442Z",
-  "release_notes": "fix(configuriator): v2.2.2 - generar propuestas homologadas exclusivas de software y licencias sin switches fisicos",
+  "build_timestamp": "2026-10-19T00:01:09.035Z",
+  "release_notes": "fix(estimate): v2.2.3 - acelerar descarga del estimate haciendola instantanea y desacoplar persistencia cloud",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

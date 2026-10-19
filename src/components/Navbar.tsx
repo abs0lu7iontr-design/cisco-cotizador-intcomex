@@ -6,7 +6,6 @@ import React from 'react';
 import {
   FileSpreadsheet,
   ShieldCheck,
-  HelpCircle,
   Download,
   UploadCloud,
   RefreshCw,
@@ -16,22 +15,16 @@ import {
   PanelLeftOpen,
   Sliders,
   FileCheck,
-  Zap,
-  Palette,
-  Share2,
   Pickaxe,
   Mail,
   Check,
-  MessageSquare,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI, INTCOMEX_LOGO_DATA_URI } from '../core/brandingLogos';
-import { useAppTheme } from '../context/ThemeContext';
-import { DsvPartnerUploader } from '../modules/dsv/components/DsvPartnerUploader';
 import { getFormattedAppVersion } from '../core/appVersion';
 
 interface NavbarProps {
   onUploadClick: () => void;
-  onShowRulesClick: () => void;
+  onShowRulesClick?: () => void;
   onSharedSkuClick?: () => void;
   onDownloadClick: () => void;
   onSaveCloudClick?: () => void;
@@ -57,18 +50,18 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({
   onUploadClick,
-  onShowRulesClick,
-  onSharedSkuClick,
+  onShowRulesClick: _onShowRulesClick,
+  onSharedSkuClick: _onSharedSkuClick,
   onDownloadClick,
   onSaveCloudClick,
   isSavingCloud = false,
   onDsvClick,
   onBoClick,
-  onFastTrackClick,
+  onFastTrackClick: _onFastTrackClick,
   onMiningAuditClick,
   miningAuditReport,
-  onThemeClick,
-  onFeedbackClick,
+  onThemeClick: _onThemeClick,
+  onFeedbackClick: _onFeedbackClick,
   onClearClick,
   onCopyEmailClick,
   isCopiedEmail = false,
@@ -80,7 +73,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   hasData,
   fileName,
 }) => {
-  const { theme, toggleTheme } = useAppTheme();
   return (
     <header id="app-navbar" className="bg-slate-900/95 text-slate-100 border-b border-slate-800 shadow-md sticky top-0 z-30">
       <div className="max-w-[1700px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
@@ -149,57 +141,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           )}
 
-          <button
-            id="btn-show-rules"
-            onClick={onShowRulesClick}
-            className="inline-flex items-center space-x-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-2 rounded-xl transition-colors cursor-pointer"
-            title={`Ver Documentación Técnica ${getFormattedAppVersion()}`}
-          >
-            <HelpCircle className="w-4 h-4 text-indigo-400" />
-            <span className="hidden sm:inline">Reglas</span>
-          </button>
-
-          {/* Global Partner Database Loader */}
-          <DsvPartnerUploader />
-
-          {/* Theme Mode Toggle (Cyber HUD vs Enterprise) */}
-          <button
-            id="btn-hud-theme-toggle"
-            onClick={toggleTheme}
-            className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-300 hover:border-cyan-500 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-            title="Alternar diseño visual entre Cyber HUD y Enterprise Clean"
-          >
-            <span>🎨</span>
-            <span>Temas ({theme === 'cyber' ? 'Cyber HUD' : 'Enterprise'})</span>
-          </button>
-
-          {/* Theme Selector Button */}
-          {onThemeClick && (
-            <button
-              id="btn-theme-selector"
-              onClick={onThemeClick}
-              className="inline-flex items-center space-x-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-2 rounded-xl transition-colors cursor-pointer"
-              title="Cambiar paleta de colores visuales"
-            >
-              <Palette className="w-4 h-4 text-pink-400" />
-              <span className="hidden sm:inline">Paleta</span>
-            </button>
-          )}
-
-          {/* Fast Track Admin Button */}
-          {onFastTrackClick && (
-            <button
-              id="btn-fast-track-admin"
-              onClick={onFastTrackClick}
-              className="inline-flex items-center space-x-1.5 text-xs font-bold bg-amber-950/50 hover:bg-amber-950/80 text-amber-300 border border-amber-700/50 px-3 py-2 rounded-xl transition-colors cursor-pointer shadow-md shadow-amber-950/20"
-              title="Administrar Base de Datos y Auditoría Fast Track"
-            >
-              <Zap className="w-4 h-4 text-amber-400" />
-              <span className="hidden sm:inline">Fast Track</span>
-            </button>
-          )}
-
-          {/* Mining Audit Badge / Button */}
+          {/* Mining Audit Badge / Button (Contextual to current quote) */}
           {hasData && miningAuditReport && miningAuditReport.overallStatus !== 'NO_RULES' && onMiningAuditClick && (
             <button
               id="btn-mining-audit"
@@ -218,32 +160,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               {miningAuditReport.sntOpportunityCount > 0 && (
                 <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
               )}
-            </button>
-          )}
-
-          {/* Shared SKU Rules Button */}
-          {onSharedSkuClick && (
-            <button
-              id="btn-shared-sku-rules"
-              onClick={onSharedSkuClick}
-              className="inline-flex items-center space-x-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-2 rounded-xl transition-colors cursor-pointer"
-              title="Administrar y sincronizar reglas de reclasificación de SKU (Nube & Local)"
-            >
-              <Share2 className="w-4 h-4 text-cyan-400" />
-              <span className="hidden sm:inline">Reglas SKU</span>
-            </button>
-          )}
-
-          {/* Mejoras & Soporte Button */}
-          {onFeedbackClick && (
-            <button
-              id="btn-navbar-feedback"
-              onClick={onFeedbackClick}
-              className="inline-flex items-center space-x-1.5 text-xs font-semibold bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-700/50 hover:text-white px-3 py-2 rounded-xl transition-colors cursor-pointer shadow-sm shadow-indigo-950/30"
-              title="Abrir mesa de Mejoras, Reportes & Soporte"
-            >
-              <MessageSquare className="w-4 h-4 text-indigo-400" />
-              <span className="hidden md:inline">Mejoras & Soporte</span>
             </button>
           )}
 

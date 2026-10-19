@@ -20,6 +20,11 @@ import {
   Menu,
   Truck,
   MessageSquare,
+  BookOpen,
+  Share2,
+  Zap,
+  Building2,
+  ChevronDown,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { NavViewId } from '../core/store';
@@ -34,6 +39,9 @@ interface SidebarProps {
   onToggleOpen?: () => void;
   activeBoCount?: number;
   unreadFeedbackCount?: number;
+  onOpenRules?: () => void;
+  onOpenSharedSku?: () => void;
+  onOpenFastTrack?: () => void;
 }
 
 export function Sidebar({
@@ -45,7 +53,11 @@ export function Sidebar({
   onToggleOpen,
   activeBoCount,
   unreadFeedbackCount,
+  onOpenRules,
+  onOpenSharedSku,
+  onOpenFastTrack,
 }: SidebarProps) {
+  const [isSystemSubmenuOpen, setIsSystemSubmenuOpen] = React.useState(true);
   const isAdmin = currentUser.role === 'admin';
 
   const navItems = [
@@ -118,7 +130,7 @@ export function Sidebar({
       : []),
     {
       id: 'settings' as NavViewId,
-      label: 'Configuración',
+      label: 'Sistema & Configuración',
       icon: Settings,
       section: 'system',
     },
@@ -330,31 +342,94 @@ export function Sidebar({
         )}
 
         <div className="text-[9px] font-bold uppercase tracking-widest text-slate-500 px-3 pt-4 pb-1">
-          Sistema
+          Sistema & Configuración
         </div>
-        {navItems
-          .filter((item) => item.section === 'system')
-          .map((item) => {
-            const Icon = item.icon;
-            const isActive = currentView === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => onSelectView(item.id)}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                  isActive
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+        <div className="space-y-1">
+          <div
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              currentView === 'settings'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+            }`}
+          >
+            <div
+              className="flex items-center space-x-3 truncate flex-1"
+              onClick={() => onSelectView('settings')}
+            >
+              <Settings
+                className={`w-4 h-4 shrink-0 ${
+                  currentView === 'settings' ? 'text-white' : 'text-slate-400'
                 }`}
+              />
+              <span className="truncate">Configuración del Sistema</span>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsSystemSubmenuOpen((prev) => !prev);
+              }}
+              className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-colors ml-1"
+              title={isSystemSubmenuOpen ? 'Ocultar accesos directos' : 'Mostrar accesos directos'}
+            >
+              <ChevronDown
+                className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                  isSystemSubmenuOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+          </div>
+
+          {isSystemSubmenuOpen && (
+            <div className="pl-3.5 pr-1 py-1 space-y-0.5 border-l-2 border-slate-800 ml-4 animate-fade-in">
+              {onOpenRules && (
+                <button
+                  type="button"
+                  onClick={onOpenRules}
+                  className="w-full flex items-center space-x-2.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-slate-400 hover:text-indigo-300 hover:bg-slate-900/80 transition-colors text-left cursor-pointer"
+                  title="Documentación de Reglas de Negocio CCW"
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <span className="truncate">Reglas CCW</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => onSelectView('settings')}
+                className="w-full flex items-center space-x-2.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-slate-400 hover:text-emerald-300 hover:bg-slate-900/80 transition-colors text-left cursor-pointer"
+                title="Base de Partners Intcomex XCL"
               >
-                <div className="flex items-center space-x-3 truncate">
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                  <span className="truncate">{item.label}</span>
-                </div>
-                {isActive && <ChevronRight className="w-3.5 h-3.5 shrink-0 opacity-80" />}
+                <Building2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span className="truncate">Base Partners</span>
               </button>
-            );
-          })}
+
+              {onOpenSharedSku && (
+                <button
+                  type="button"
+                  onClick={onOpenSharedSku}
+                  className="w-full flex items-center space-x-2.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-slate-400 hover:text-cyan-300 hover:bg-slate-900/80 transition-colors text-left cursor-pointer"
+                  title="Administrador de Reglas de Reclasificación SKU"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span className="truncate">Reglas SKU</span>
+                </button>
+              )}
+
+              {onOpenFastTrack && (
+                <button
+                  type="button"
+                  onClick={onOpenFastTrack}
+                  className="w-full flex items-center space-x-2.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-slate-400 hover:text-amber-300 hover:bg-slate-900/80 transition-colors text-left cursor-pointer"
+                  title="Catálogo de Descuentos Fast Track Cisco"
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="truncate">Fast Track</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </nav>
 
       {/* Logout Footer */}

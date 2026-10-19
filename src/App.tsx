@@ -65,7 +65,6 @@ import {
   RefreshCw,
   GitCompare,
   Zap,
-  MessageSquarePlus,
 } from 'lucide-react';
 
 function AppContent() {
@@ -566,6 +565,9 @@ function AppContent() {
         onToggleOpen={() => setIsNavSidebarOpen((prev) => !prev)}
         activeBoCount={activeBoCount}
         unreadFeedbackCount={unreadFeedbackCount}
+        onOpenRules={() => setIsRulesModalOpen(true)}
+        onOpenSharedSku={() => setIsSharedSkuManagerOpen(true)}
+        onOpenFastTrack={() => setIsFastTrackAdminModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -573,8 +575,6 @@ function AppContent() {
         {/* Navbar */}
         <Navbar
           onUploadClick={handleUploadClick}
-          onShowRulesClick={() => setIsRulesModalOpen(true)}
-          onSharedSkuClick={() => setIsSharedSkuManagerOpen(true)}
           onDownloadClick={() => setIsDownloadModalOpen(true)}
           onSaveCloudClick={handleSaveCloud}
           isSavingCloud={isSavingCloud}
@@ -582,11 +582,8 @@ function AppContent() {
           isCopiedEmail={isCopiedEmail}
           onDsvClick={handleDsvClick}
           onBoClick={() => setIsBoModalOpen(true)}
-          onFastTrackClick={() => setIsFastTrackAdminModalOpen(true)}
           onMiningAuditClick={() => setIsMiningAuditModalOpen(true)}
           miningAuditReport={miningAuditData}
-          onThemeClick={() => setIsThemeModalOpen(true)}
-          onFeedbackClick={() => setCurrentView('feedback')}
           onClearClick={clearEstimate}
           onToggleSidebar={() => setIsNavSidebarOpen((prev) => !prev)}
           isSidebarOpen={isNavSidebarOpen}
@@ -608,21 +605,6 @@ function AppContent() {
           >
             <span>{cloudToast.message}</span>
           </div>
-        )}
-
-        {/* Floating Quick Action: Reportar Mejora / Error (accessible from any view) */}
-        {currentView !== 'feedback' && (
-          <button
-            onClick={() => setIsCreateFeedbackModalOpen(true)}
-            className="fixed bottom-6 right-6 z-40 px-3.5 py-2.5 rounded-2xl bg-slate-900/90 hover:bg-indigo-600 text-slate-300 hover:text-white border border-slate-700/80 hover:border-indigo-500 shadow-2xl backdrop-blur-md text-xs font-bold transition-all duration-300 flex items-center space-x-2 group cursor-pointer hover:shadow-indigo-600/30"
-            title="Reportar problema o sugerir mejora desde cualquier pantalla"
-          >
-            <MessageSquarePlus className="w-4 h-4 text-indigo-400 group-hover:text-white transition-colors" />
-            <span className="hidden sm:inline">Mejoras / Soporte</span>
-            {unreadFeedbackCount > 0 && (
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            )}
-          </button>
         )}
 
         {/* Scrollable View Container */}
@@ -744,7 +726,12 @@ function AppContent() {
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <SettingsView onOpenThemes={() => setIsThemeModalOpen(true)} />
+              <SettingsView
+                onOpenThemes={() => setIsThemeModalOpen(true)}
+                onOpenRules={() => setIsRulesModalOpen(true)}
+                onOpenSharedSku={() => setIsSharedSkuManagerOpen(true)}
+                onOpenFastTrack={() => setIsFastTrackAdminModalOpen(true)}
+              />
             </ErrorBoundary>
           )}
 

@@ -18,8 +18,14 @@ import {
   ArrowRight,
   Calendar,
   Clock,
+  BookOpen,
+  Building2,
+  Share2,
+  Zap,
 } from 'lucide-react';
 import { APP_THEMES, getSavedThemeId } from '../core/themeEngine';
+import { useAppTheme } from '../context/ThemeContext';
+import { DsvPartnerUploader } from '../modules/dsv/components/DsvPartnerUploader';
 import {
   AiConfigSettings,
   AiProviderId,
@@ -31,13 +37,22 @@ import {
 } from '../modules/configuriator';
 import { CiscoApiStatusModal, getCiscoConfig } from '../modules/ciscoApi';
 import { checkDesktopUpdate, applyDesktopUpdate, DesktopUpdateResult, isDesktopApp } from '../core/desktopBridge';
-import { APP_VERSION } from '../core/appVersion';
+import { APP_VERSION, getFormattedAppVersion } from '../core/appVersion';
 
 interface SettingsViewProps {
   onOpenThemes?: () => void;
+  onOpenRules?: () => void;
+  onOpenSharedSku?: () => void;
+  onOpenFastTrack?: () => void;
 }
 
-export function SettingsView({ onOpenThemes }: SettingsViewProps) {
+export function SettingsView({
+  onOpenThemes,
+  onOpenRules,
+  onOpenSharedSku,
+  onOpenFastTrack,
+}: SettingsViewProps) {
+  const { theme, toggleTheme } = useAppTheme();
   const [supabaseUrl, setSupabaseUrl] = useState('');
   const [supabaseKey, setSupabaseKey] = useState('');
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -233,19 +248,146 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
       <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl">
         <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2.5">
           <Settings className="w-6 h-6 text-indigo-400" />
-          <span>Configuración del Sistema &bull; Cisco Automated v3.3</span>
+          <span>Configuración del Sistema &bull; Cisco Automated {getFormattedAppVersion()}</span>
         </h1>
         <p className="text-xs text-slate-400 mt-1">
-          Personalización visual, parámetros de almacenamiento, bases de datos y detalles de versión.
+          Reglas del negocio, base de datos de partners, reclasificación SKU, promociones Fast Track y personalización.
         </p>
+      </div>
+
+      {/* Centro de Reglas, Catálogos & Bases del Negocio */}
+      <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center space-x-2.5 text-indigo-400 font-bold text-xs uppercase tracking-wider">
+            <BookOpen className="w-4 h-4" />
+            <span>Centro de Reglas, Catálogos & Bases del Negocio</span>
+          </div>
+          <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-700/40">
+            Reglas CCW &bull; Partners XCL &bull; Reglas SKU &bull; Fast Track
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-400">
+          Administración centralizada de normativas comerciales Cisco CCW, base de partners Intcomex, reclasificación de SKUs y catálogo promocional Fast Track.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+          {/* Card 1: Reglas de Negocio CCW */}
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between space-y-3">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center space-x-2 text-white font-bold text-xs">
+                  <BookOpen className="w-4 h-4 text-indigo-400" />
+                  <span>Reglas y Metodología CCW</span>
+                </div>
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/50">
+                  OFICIAL
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Fórmulas de margen comercial, clasificación de intangibles, arancel 7%, costos de importación y reglas de licenciamiento Meraki / SaaS.
+              </p>
+            </div>
+            {onOpenRules && (
+              <button
+                type="button"
+                onClick={onOpenRules}
+                className="w-full flex items-center justify-center space-x-2 px-3.5 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-500/30 text-xs font-bold transition-all cursor-pointer"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Ver Documentación de Reglas</span>
+              </button>
+            )}
+          </div>
+
+          {/* Card 2: Base de Datos Partners XCL */}
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between space-y-3">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center space-x-2 text-white font-bold text-xs">
+                  <Building2 className="w-4 h-4 text-emerald-400" />
+                  <span>Base de Datos Partners XCL</span>
+                </div>
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800/50">
+                  DSV INTCOMEX
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Catálogo maestro de Partners y códigos de canal XCL para homologación automática en el Generador DSV y cotizaciones CCW.
+              </p>
+            </div>
+            <div>
+              <DsvPartnerUploader
+                label="Cargar / Sincronizar Base Partners (JSON)"
+                className="w-full flex items-center justify-center space-x-2 px-3.5 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all cursor-pointer"
+              />
+            </div>
+          </div>
+
+          {/* Card 3: Reglas de Reclasificación SKU */}
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between space-y-3">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center space-x-2 text-white font-bold text-xs">
+                  <Share2 className="w-4 h-4 text-cyan-400" />
+                  <span>Reglas SKU Reclasificación</span>
+                </div>
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800/50">
+                  NUBE & LOCAL
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Gestión centralizada de reglas de reclasificación de SKUs (Hardware a Software, Licencias Cloud, Exclusiones de Arancel).
+              </p>
+            </div>
+            {onOpenSharedSku && (
+              <button
+                type="button"
+                onClick={onOpenSharedSku}
+                className="w-full flex items-center justify-center space-x-2 px-3.5 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600/40 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition-all cursor-pointer"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Administrar Reglas SKU</span>
+              </button>
+            )}
+          </div>
+
+          {/* Card 4: Catálogo y Promociones Fast Track */}
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between space-y-3">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center space-x-2 text-white font-bold text-xs">
+                  <Zap className="w-4 h-4 text-amber-400" />
+                  <span>Catálogo y Auditoría Fast Track</span>
+                </div>
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/50">
+                  PROMOS CISCO
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Catálogo de descuentos promocionales Fast Track autorizados por Cisco con verificación de ahorros y auditoría de deals.
+              </p>
+            </div>
+            {onOpenFastTrack && (
+              <button
+                type="button"
+                onClick={onOpenFastTrack}
+                className="w-full flex items-center justify-center space-x-2 px-3.5 py-2 rounded-xl bg-amber-600/20 hover:bg-amber-600/40 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all cursor-pointer"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Administrar Fast Track</span>
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Theme Settings Card */}
       <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center space-x-2.5 text-pink-400 font-bold text-xs uppercase tracking-wider">
             <Palette className="w-4 h-4" />
-            <span>Aspecto Visual & Temas ({APP_THEMES.length} Disponibles)</span>
+            <span>Aspecto Visual, Modo HUD & Temas ({APP_THEMES.length} Disponibles)</span>
           </div>
           {onOpenThemes && (
             <button
@@ -253,11 +395,32 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
               className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition-all cursor-pointer"
             >
               <Palette className="w-3.5 h-3.5" />
-              <span>Explorar Temas</span>
+              <span>Explorar Paletas</span>
             </button>
           )}
         </div>
 
+        {/* HUD Mode Switcher */}
+        <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex-wrap gap-3">
+          <div>
+            <span className="text-xs font-bold text-white block">Estilo de Interfaz</span>
+            <span className="text-[11px] text-slate-400 block">
+              Alternar entre la estética Cyber HUD (acento neón futurista) y Enterprise Clean (clásico corporativo).
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-slate-200 hover:border-cyan-500 hover:text-white transition-all flex items-center gap-2 cursor-pointer shadow-sm"
+            title="Alternar diseño visual"
+          >
+            <span>🎨</span>
+            <span>{theme === 'cyber' ? 'Modo Cyber HUD' : 'Modo Enterprise'}</span>
+            <span className="text-[10px] text-cyan-400 font-mono">(Alternar)</span>
+          </button>
+        </div>
+
+        {/* Active Theme Preview */}
         <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-1 p-1 bg-slate-900 rounded-lg border border-slate-800">
@@ -281,7 +444,7 @@ export function SettingsView({ onOpenThemes }: SettingsViewProps) {
           </div>
 
           <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/40">
-            Activo
+            Paleta Activa
           </span>
         </div>
       </div>
