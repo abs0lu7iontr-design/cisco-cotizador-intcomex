@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
   "version": "2.2.5",
-  "git_commit": "4e54098",
+  "git_commit": "e4a460b",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-19T19:24:02.518Z",
-  "release_notes": "chore: sync version.json with commit 81f5354",
+  "build_timestamp": "2026-10-19T19:26:09.651Z",
+  "release_notes": "feat(ui): mover botones subir, dsv y descargar a la izquierda y retirar logo intcomex (v2.2.5)",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"
