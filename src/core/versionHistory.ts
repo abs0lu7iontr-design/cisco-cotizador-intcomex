@@ -15,11 +15,26 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.3.0',
+    date: '2026-10-22',
+    commit: 'feat-mobile',
+    title: 'Versión Móvil PWA & Modo Pocket Táctil para Smartphones',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Barra de navegación inferior fija (MobileBottomNav) para cotizar, consultar BO y acceder a la IA desde el celular.',
+      'Vista táctil de tarjetas en el cotizador (MobileEstimateCardList) con drawer inferior de detalle y reclasificación de reglas.',
+      'Soporte completo de Progressive Web App (PWA) con manifest.json, iconos oficiales y safe-area para iOS/Android.',
+      'Compartir cotizaciones en 1 clic directamente por WhatsApp o correo móvil con formato ejecutivo (Web Share API).',
+      'Cero impacto en escritorio: las pantallas >= 768px y la App Desktop .exe mantienen intacta la experiencia corporativa.',
+    ],
+  },
+  {
     version: '2.2.5',
     date: '2026-10-22',
     commit: '5d6b8f5',
     title: 'Alineación Ergonómica, Changelog Oficial & Documentación Completa',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Reubicación de botones Subir Excel, Generar DSV y Descargar hacia el extremo izquierdo.',

@@ -1,5 +1,5 @@
 # HISTORIAL DE VERSIONES Y NOTAS DE RELEASE (RELEASE NOTES)
-## Cisco Automated v2.2.5 (Arquitectura Enterprise Suite)
+## Cisco Automated v2.3.0 (Arquitectura Enterprise Suite)
 ### Intcomex Chile
 
 ---
@@ -8,7 +8,8 @@
 
 | Versión | Commit Principal | Fecha / Periodo | Hitos y Cambios Arquitectónicos Principales | Estado |
 |---|---|---|---|---|
-| **v2.2.5 (Enterprise)** | `5d6b8f5` / `e4a460b` | Octubre 2026 | **Alineación Ergonómica & Documentación Completa:** Reubicación de botones de acción rápida a la izquierda, retiro de logos redundantes, estandarización de `CHANGELOG.md` (Keep a Changelog) y actualización de `README.md` en GitHub con los 11 módulos y 11 colecciones Firestore. | **VIGENTE / PRODUCCIÓN** |
+| **v2.3.0 (Enterprise)** | Pendiente | Octubre 2026 | **Versión Móvil PWA & Modo Pocket:** Barra inferior fija de navegación, tarjetas táctiles en el cotizador con drawer de desglose, compartir en 1 clic por WhatsApp/correo móvil con Web Share API, manifest PWA con soporte de pantalla completa en Android/iOS y aislamiento total de la experiencia de escritorio. | **VIGENTE / PRODUCCIÓN** |
+| **v2.2.5** | `5d6b8f5` / `e4a460b` | Octubre 2026 | **Alineación Ergonómica & Documentación Completa:** Reubicación de botones de acción rápida a la izquierda, retiro de logos redundantes, estandarización de `CHANGELOG.md` (Keep a Changelog) y actualización de `README.md` en GitHub con los 11 módulos y 11 colecciones Firestore. | Estable |
 | **v2.2.4** | `81f5354` | Octubre 2026 | **Minimalismo en Barra de Navegación & Submenú de Configuración:** Consolidación de reglas CCW, Partners XCL, reglas de SKU, catálogo Fast Track y soporte IA dentro del submenú "Configuración del Sistema" en la barra lateral. | Estable |
 | **v2.2.3** | `5f50fc6` | Octubre 2026 | **Descarga Instantánea de Cotizaciones:** Aceleración de la generación y descarga Excel (<500ms) mediante desacoplamiento asíncrono de persistencia local y sincronización cloud. | Estable |
 | **v2.2.2** | `5557327` | Octubre 2026 | **Homologación Estricta de Licencias:** Supresión determinista de hardware residual (switches Catalyst/Meraki) cuando la solicitud del usuario en ConfigurIAtor es puramente de software o suscripciones. | Estable |
@@ -27,7 +28,19 @@
 
 ---
 
-## [v2.2.5] - Octubre 2026 (Enterprise Release Actual)
+## [v2.3.0] - Octubre 2026 (Enterprise Release Actual)
+
+### 📱 Experiencia Móvil PWA & Modo Pocket Ejecutivo
+- **Barra de Navegación Inferior Móvil (`MobileBottomNav`):** Barra fija al estilo de las aplicaciones nativas con accesos directos ergonómicos a *Cotizar*, *ConfigurIAtor*, *Tracking BO*, *Métricas* y *Menú*.
+- **Cajón de Menú Rápido Deslizable (`MobileMenuDrawer`):** Drawer táctil que permite subir archivos Excel, generar órdenes DSV, consultar Fast Track, revisar reglas CCW y gestionar tickets de soporte con triaje IA.
+- **Cotizador Táctil por Tarjetas (`MobileEstimateCardList`):** Sustitución responsiva de la tabla ancha de 12 columnas por tarjetas interactivas adaptadas al tamaño de mano, con badges de tipo de producto y drawer inferior para inspeccionar costos y reclasificar reglas comerciales.
+- **Compartir en 1 Clic (Web Share API):** Integración nativa con WhatsApp, Telegram y correo del teléfono para enviar resúmenes de cotizaciones al instante.
+- **PWA Instalable:** `manifest.json`, iconos corporativos de alta resolución y meta tags móviles para anclar la app a la pantalla de inicio en Android y iOS sin necesidad de tiendas de aplicaciones.
+- **Aislamiento Total de Escritorio:** Monitores de escritorio y la aplicación Desktop `.exe` permanecen 100% inalteradas.
+
+---
+
+## [v2.2.5] - Octubre 2026
 
 ### 🎨 Alineación Ergonómica y Documentación Completa
 - **Reubicación de Acciones Rápidas:** Los botones *Subir Excel*, *Generar DSV* y *Descargar Excel* fueron trasladados al extremo superior izquierdo, eliminando el desplazamiento innecesario del ratón hacia la derecha.

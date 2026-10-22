@@ -54,6 +54,7 @@ import { SharedSkuManagerModal, SkuOverrideAuthorizationModal } from './modules/
 import { EstimateDiffModal } from './modules/estimate';
 import { FeedbackView, CreateTicketModal, getFeedbackTickets } from './modules/feedback';
 import { getFormattedAppVersion } from './core/appVersion';
+import { MobileBottomNav, MobileStickyBar } from './components/mobile';
 
 import {
   FileSpreadsheet,
@@ -146,6 +147,15 @@ function AppContent() {
   // Collapsible Sidebar States
   const [isNavSidebarOpen, setIsNavSidebarOpen] = useState(true);
   const [isParamSidebarOpen, setIsParamSidebarOpen] = useState(true);
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+
+  const handleToggleNavSidebar = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setIsMobileDrawerOpen((prev) => !prev);
+    } else {
+      setIsNavSidebarOpen((prev) => !prev);
+    }
+  };
 
   // Cloud & Save States
   const [isSavingCloud, setIsSavingCloud] = useState(false);
@@ -555,7 +565,8 @@ function AppContent() {
         );
       })()}
 
-      {/* Collapsible Navigation Sidebar */}
+      {/* Collapsible Navigation Sidebar (Hidden on mobile < md, full on desktop >= md) */}
+      <div className="hidden md:flex shrink-0">
       <Sidebar
         currentView={currentView}
         onSelectView={(v) => setCurrentView(v)}
@@ -569,6 +580,8 @@ function AppContent() {
         onOpenSharedSku={() => setIsSharedSkuManagerOpen(true)}
         onOpenFastTrack={() => setIsFastTrackAdminModalOpen(true)}
       />
+
+      </div>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -585,7 +598,7 @@ function AppContent() {
           onMiningAuditClick={() => setIsMiningAuditModalOpen(true)}
           miningAuditReport={miningAuditData}
           onClearClick={clearEstimate}
-          onToggleSidebar={() => setIsNavSidebarOpen((prev) => !prev)}
+          onToggleSidebar={handleToggleNavSidebar}
           isSidebarOpen={isNavSidebarOpen}
           onToggleParamSidebar={() => setIsParamSidebarOpen((prev) => !prev)}
           isParamSidebarOpen={isParamSidebarOpen}
@@ -608,7 +621,7 @@ function AppContent() {
         )}
 
         {/* Scrollable View Container */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-6 pb-24 md:pb-6 custom-scrollbar">
           {/* Global Error Banner */}
           {errorMessage && (
             <div className="mb-5 p-4 rounded-2xl bg-rose-950/80 border border-rose-600/50 text-rose-200 text-xs flex items-center space-x-3 shadow-lg">
@@ -750,6 +763,19 @@ function AppContent() {
                 </div>
               ) : processedResult ? (
                 <div className="space-y-6">
+                  {/* Mobile Quick Action Sticky Bar */}
+                  <MobileStickyBar
+                    clientName={detectedPartner || processedResult.headerInfo?.customerName || processedResult.headerInfo?.companyName}
+                    dealId={processedResult.headerInfo?.dealId}
+                    totalUsd={processedResult.calculatedProductTotal}
+                    marginPct={params.margenPct}
+                    itemsCount={processedResult.items.length}
+                    fileName={currentFileName}
+                    onDownloadClick={() => setIsDownloadModalOpen(true)}
+                    onDsvClick={handleDsvClick}
+                    formatCurrency={(val) => `$ ${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  />
+
                   {/* Summary Metric Cards */}
                   <SummaryCards
                     data={processedResult}
@@ -939,6 +965,23 @@ function AppContent() {
           )}
         </main>
       </div>
+      {/* Mobile Bottom Navigation Bar (Hidden on md and desktop, fixed on mobile) */}
+      <MobileBottomNav
+        currentView={currentView}
+        onSelectView={(v) => setCurrentView(v)}
+        currentUser={currentUser}
+        onLogout={logout}
+        activeBoCount={activeBoCount}
+        unreadFeedbackCount={unreadFeedbackCount}
+        hasActiveEstimate={Boolean(processedResult)}
+        onUploadClick={handleUploadClick}
+        onDsvClick={handleDsvClick}
+        onOpenRules={() => setIsRulesModalOpen(true)}
+        onOpenSharedSku={() => setIsSharedSkuManagerOpen(true)}
+        onOpenFastTrack={() => setIsFastTrackAdminModalOpen(true)}
+        isDrawerOpen={isMobileDrawerOpen}
+        onToggleDrawer={setIsMobileDrawerOpen}
+      />
     </div>
   );
 }

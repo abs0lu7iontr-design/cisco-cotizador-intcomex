@@ -6,6 +6,19 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.3.0] - 2026-10-22
+### 📱 Agregado (Versión Móvil PWA & Modo Pocket)
+- **Barra Inferior de Navegación Móvil (`MobileBottomNav`):** Barra fija en la parte inferior para pantallas `< 768px`, optimizada ergonómicamente para pulgares con accesos a *Cotizar*, *ConfigurIAtor*, *Tracking BO*, *Métricas* y *Menú*.
+- **Cajón de Menú Móvil Deslizable (`MobileMenuDrawer`):** Drawer táctil tipo bottom sheet para acceso rápido a subida de archivos, generación DSV, Fast Track, reglas CCW, soporte IA y configuración del sistema.
+- **Vista Táctil de Tarjetas para Cotizaciones (`MobileEstimateCardList`):** Sustitución automática de la tabla ancha de 12 columnas por tarjetas táctiles condensadas en smartphones, con desglose de cantidades, PV unitario, PV extendido y badges de reglas.
+- **Drawer Táctil de Detalle de Ítems:** Modal deslizable para inspeccionar costos detallados (Net Cisco, Internación, Arancel, Costo Total) y reasignar reglas comerciales (`Hardware` / `Licencia` / `Arancel`) en un solo toque.
+- **Barra Rápida de Acciones Móviles (`MobileStickyBar`):** Cabecera sticky en el cotizador con totales en USD/CLP, margen estimado y botones rápidos de acción.
+- **Compartir Cotizaciones en 1 Clic (`mobileShareHelper`):** Integración con la Web Share API nativa para compartir el resumen comercial directamente a **WhatsApp**, **Telegram** o correo del teléfono.
+- **Soporte PWA (Progressive Web App):** Creación de `manifest.json`, iconos vectoriales (`icon-192.svg`, `icon-512.svg`) y meta tags con `viewport-fit=cover` para instalación en pantalla de inicio de Android y iOS.
+- **Aislamiento de Escritorio:** Protección total de la versión de escritorio ($\ge 768\text{ px}$) y la App Desktop `.exe`, las cuales conservan intacta la experiencia corporativa original.
+
+---
+
 ## [v2.2.5] - 2026-10-22
 ### 🌟 Agregado
 - **Documentación Completa en GitHub (`README.md`):** Actualización integral de la portada del repositorio con los 11 módulos del ecosistema, arquitectura híbrida (Web Standalone + Desktop Portable), persistencia en las 11 colecciones de Google Cloud Firestore y guía de despliegue.

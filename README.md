@@ -1,7 +1,7 @@
-# Cisco Automated v2.2.5 (Enterprise Suite)
+# Cisco Automated v2.3.0 (Enterprise Suite)
 ### Intcomex Chile | Plataforma Corporativa Híbrida Web Standalone, Cloud CDN & Desktop Portable con IA
 
-[![Version](https://img.shields.io/badge/Versi%C3%B3n-2.2.5%20Enterprise-blue.svg)](https://develop.cisco-automated.pages.dev)
+[![Version](https://img.shields.io/badge/Versi%C3%B3n-2.3.0%20Enterprise-blue.svg)](https://develop.cisco-automated.pages.dev)
 [![Changelog](https://img.shields.io/badge/Changelog-Keep%20a%20Changelog-orange.svg)](CHANGELOG.md)
 [![React 19](https://img.shields.io/badge/React-19.0.1-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.2-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -18,7 +18,7 @@
 
 ## 🌟 Descripción General
 
-**Cisco Automated v2.2.5** es la suite integral de software corporativo de alta disponibilidad diseñada y construida para **Intcomex Chile**, el distribuidor mayorista oficial de tecnología líder en la región. 
+**Cisco Automated v2.3.0** es la suite integral de software corporativo de alta disponibilidad diseñada y construida para **Intcomex Chile**, el distribuidor mayorista oficial de tecnología líder en la región. 
 
 La plataforma automatiza de extremo a extremo todo el ciclo de ingeniería de preventa, cotizaciones oficiales de Cisco Commerce Workspace (CCW), optimización de margen sobre ventas, homologación de órdenes DSV, verificación de promociones Fast Track, diseño de arquitecturas con Inteligencia Artificial, logística de importación y Back Order (BO), y mesa de ayuda técnica con triaje predictivo.
 
@@ -194,7 +194,8 @@ flowchart LR
 
 | Versión | Commit | Fecha | Hitos y Cambios Arquitectónicos Principales | Estado |
 |---|---|---|---|---|
-| **v2.2.5** | `e4a460b` | Octubre 2026 | **Alineación Ergonómica y Eliminación de Badge Derecho:** Reubicación de los botones principales de flujo de trabajo (`Subir Excel`, `Generar DSV` y `Descargar Excel`) hacia la izquierda de la barra superior junto a la marca corporativa. Supresión definitiva del badge metálico `INTCOMEX Cisco Partner` del extremo derecho para una estética ultra-minimalista. | **VIGENTE / PRODUCCIÓN** |
+| **v2.3.0** | Pendiente | Octubre 2026 | **Versión Móvil PWA & Modo Pocket:** Barra inferior fija de navegación, tarjetas táctiles en el cotizador con drawer de desglose y reclasificación, compartir en 1 clic por WhatsApp con Web Share API, manifest PWA para pantalla completa en Android/iOS y preservación total de la experiencia de escritorio. | **VIGENTE / PRODUCCIÓN** |
+| **v2.2.5** | `e4a460b` | Octubre 2026 | **Alineación Ergonómica y Eliminación de Badge Derecho:** Reubicación de los botones principales de flujo de trabajo (`Subir Excel`, `Generar DSV` y `Descargar Excel`) hacia la izquierda de la barra superior junto a la marca corporativa. Supresión definitiva del badge metálico `INTCOMEX Cisco Partner` del extremo derecho para una estética ultra-minimalista. | Estable |
 | **v2.2.4** | `81f5354` | Octubre 2026 | **Reorganización Minimalista de UI & Consolidación en Barra Lateral:** Eliminación de redundancia en "Mejoras & Soporte" (dejándolo única y exclusivamente en la barra lateral izquierda; supresión del botón flotante inferior y del navbar). Consolidación de "Reglas CCW", "Base Partners XCL", "Reglas SKU" y "Fast Track" en un solo lugar bajo **Sistema & Configuración** en la barra lateral con acordeón de accesos directos y panel ejecutivo en `SettingsView`. | Estable |
 | **v2.2.3** | `5f50fc6` | Octubre 2026 | **Descarga Instantánea de Estimates (< 0.5s):** Eliminación de latencia desacoplando la persistencia en la nube a una tarea asíncrona en segundo plano y reutilizando el buffer de ExcelJS precomputado en memoria sin doble re-descompresión. Paralelización de verificaciones Firestore `v0_RAW`. | Estable |
 | **v2.2.2** | `f6bc548` | Octubre 2026 | **Soporte de Licenciamiento Puro en ConfigurIAtor:** Soporte para cotizaciones 100% cloud/software/SaaS (Webex, Cisco Secure, Meraki Lic, EA 3.0, SmartNet independiente) con guardias heurísticas en el prompt de IA para evitar inyección de hardware no solicitado. | Estable |

@@ -25,6 +25,8 @@ import {
   Save,
 } from 'lucide-react';
 
+import { MobileEstimateCardList } from './mobile/MobileEstimateCardList';
+
 export type InteractiveTableFilterType = 'all' | 'intangible' | 'tangible' | 'arancel';
 
 export interface InteractiveTableCategoryCounts {
@@ -602,6 +604,16 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
         </span>
       </div>
 
+      {/* Mobile Touch Cards View (Only rendered on screens < md) */}
+      <div className="block md:hidden p-3">
+        <MobileEstimateCardList
+          items={filteredItems}
+          formatCurrency={formatCurrency}
+          onCycleRule={onToggleRowRule}
+          onSetRule={onSetRowRule}
+        />
+      </div>
+
       {/* Table Data (con soporte de virtualización automática para cotizaciones grandes) */}
       <div
         ref={scrollContainerRef}
@@ -611,7 +623,7 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
             ? { maxHeight: `${VIRTUAL_VIEWPORT_MAX_HEIGHT_PX}px`, overflowY: 'auto' }
             : undefined
         }
-        className="overflow-x-auto"
+        className="hidden md:block overflow-x-auto"
       >
         <table className="w-full text-left border-collapse text-xs">
           <thead className={virtualWindow.isVirtualized ? 'sticky top-0 z-10' : undefined}>
