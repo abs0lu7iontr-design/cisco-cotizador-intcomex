@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
   "version": "2.3.0",
-  "git_commit": "3425948",
+  "git_commit": "95415ce",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-22T11:47:02.672Z",
-  "release_notes": "chore: sync version.json with commit e05f84d metadata",
+  "build_timestamp": "2026-10-22T11:49:10.198Z",
+  "release_notes": "feat(mobile): implementar soporte movil PWA y modo pocket tactil (v2.3.0)",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"
