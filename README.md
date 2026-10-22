@@ -2,6 +2,7 @@
 ### Intcomex Chile | Plataforma Corporativa Híbrida Web Standalone, Cloud CDN & Desktop Portable con IA
 
 [![Version](https://img.shields.io/badge/Versi%C3%B3n-2.2.5%20Enterprise-blue.svg)](https://develop.cisco-automated.pages.dev)
+[![Changelog](https://img.shields.io/badge/Changelog-Keep%20a%20Changelog-orange.svg)](CHANGELOG.md)
 [![React 19](https://img.shields.io/badge/React-19.0.1-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.2-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-6.4.3-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
@@ -253,4 +254,5 @@ Las versiones ejecutables de escritorio para Windows de este proyecto son constr
 
 * **Licencia:** Publicado bajo la licencia de código abierto [MIT License](LICENSE).
 * **Informe Técnico Completo y Master Prompt de Recreación:** Ver [`INFORME_TECNICO_RECREACION_COTIZADOR_CISCO.md`](INFORME_TECNICO_RECREACION_COTIZADOR_CISCO.md).
-* **Historial Detallado de Cambios:** Ver [`RELEASE_NOTES.md`](RELEASE_NOTES.md).
+* **Registro Formal de Cambios (Changelog):** Ver [`CHANGELOG.md`](CHANGELOG.md).
+* **Historial Detallado de Releases:** Ver [`RELEASE_NOTES.md`](RELEASE_NOTES.md).

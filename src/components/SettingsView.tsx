@@ -22,6 +22,10 @@ import {
   Building2,
   Share2,
   Zap,
+  History,
+  Tag,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { APP_THEMES, getSavedThemeId } from '../core/themeEngine';
 import { useAppTheme } from '../context/ThemeContext';
@@ -38,6 +42,7 @@ import {
 import { CiscoApiStatusModal, getCiscoConfig } from '../modules/ciscoApi';
 import { checkDesktopUpdate, applyDesktopUpdate, DesktopUpdateResult, isDesktopApp } from '../core/desktopBridge';
 import { APP_VERSION, getFormattedAppVersion } from '../core/appVersion';
+import { VERSION_HISTORY } from '../core/versionHistory';
 
 interface SettingsViewProps {
   onOpenThemes?: () => void;
@@ -76,6 +81,7 @@ export function SettingsView({
   const [isCheckingUpdate, setIsCheckingUpdate] = useState<boolean>(false);
   const [isApplyingUpdate, setIsApplyingUpdate] = useState<boolean>(false);
   const [updateInstallResult, setUpdateInstallResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showAllVersions, setShowAllVersions] = useState<boolean>(false);
 
   const formatTimestamp = (ts?: string) => {
     if (!ts) return null;
@@ -912,6 +918,112 @@ export function SettingsView({
             )}
           </div>
         )}
+      </div>
+
+      {/* Historial de Versiones & Modificaciones (Changelog) */}
+      <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center space-x-2.5 text-slate-300 font-bold text-xs uppercase tracking-wider">
+            <History className="w-4 h-4 text-cyan-400" />
+            <span>Control de Versiones & Historial de Modificaciones</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href="https://github.com/abs0lu7iontr-design/cisco-cotizador-intcomex/blob/develop/CHANGELOG.md"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[10px] font-mono px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <span>CHANGELOG.md</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+            <a
+              href="https://github.com/abs0lu7iontr-design/cisco-cotizador-intcomex/blob/develop/RELEASE_NOTES.md"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[10px] font-mono px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <span>Release Notes</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+            <a
+              href="https://github.com/abs0lu7iontr-design/cisco-cotizador-intcomex/tags"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[10px] font-mono px-2.5 py-1 rounded-lg bg-indigo-950/60 hover:bg-indigo-900/80 text-amber-300 border border-indigo-700/40 flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <Tag className="w-3 h-3" />
+              <span>Tags en GitHub</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-400 leading-relaxed">
+          Historial oficial y auditoría de cada actualización desplegada. Cada cambio se rige bajo el estándar SemVer (Semantic Versioning) y la convención Keep a Changelog registrada en el repositorio.
+        </p>
+
+        <div className="space-y-3 pt-1">
+          {(showAllVersions ? VERSION_HISTORY : VERSION_HISTORY.slice(0, 4)).map((item) => (
+            <div
+              key={item.version}
+              className={`p-3.5 rounded-xl border text-xs transition-all ${
+                item.status === 'CURRENT'
+                  ? 'bg-slate-950/90 border-cyan-500/40 shadow-sm shadow-cyan-950/40'
+                  : 'bg-slate-950/50 border-slate-800/80 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-2 py-0.5 rounded font-mono font-bold text-xs ${
+                      item.status === 'CURRENT'
+                        ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                        : 'bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    v{item.version}
+                  </span>
+                  <span className="font-semibold text-white text-xs">{item.title}</span>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400">
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3 h-3 text-slate-500" />
+                    {item.date}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700 text-slate-400">
+                    {item.commit}
+                  </span>
+                </div>
+              </div>
+              <ul className="space-y-1 mt-2 text-[11px] text-slate-300 pl-4 list-disc marker:text-cyan-400">
+                {item.highlights.map((h, idx) => (
+                  <li key={idx} className="leading-relaxed">{h}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex justify-center pt-2">
+          <button
+            type="button"
+            onClick={() => setShowAllVersions(!showAllVersions)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800/70 hover:bg-slate-800 text-slate-300 text-xs font-semibold border border-slate-700/60 transition-colors cursor-pointer"
+          >
+            {showAllVersions ? (
+              <>
+                <ChevronUp className="w-3.5 h-3.5" />
+                <span>Mostrar solo versiones recientes</span>
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-3.5 h-3.5" />
+                <span>Ver historial completo ({VERSION_HISTORY.length} versiones)</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
