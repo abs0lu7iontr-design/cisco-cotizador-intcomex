@@ -469,22 +469,34 @@ export const ExcelSheetPreview: React.FC<ExcelSheetPreviewProps> = ({
           </table>
         </div>
 
-        {/* Footer Single 14-Day Notice & Lead Time Disclaimer */}
-        <div className="pt-4 border-t border-slate-800 flex flex-col gap-1.5 text-xs text-slate-400">
+        {/* Footer 14-Day Notice, Lead Time & Technical Validation Disclaimer */}
+        <div className="pt-4 border-t border-slate-800 flex flex-col gap-2 text-xs text-slate-400">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center space-x-2 text-slate-200">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+            <div className="flex items-center space-x-2 text-slate-300 text-[11px]">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
               <span>
-                <strong>Validez de la Oferta:</strong> Esta cotización tiene una validez de <strong className="text-rose-500">14 días</strong> corridos a contar de su fecha de emisión.
+                <strong className="text-slate-200">Validez de la Oferta:</strong>{' '}
+                <span className="italic text-slate-400">Esta cotización tiene una validez de </span>
+                <strong className="text-rose-400 font-semibold not-italic">14 días corridos</strong>{' '}
+                <span className="italic text-slate-400">a contar de su fecha de emisión.</span>
               </span>
             </div>
-            <span className="font-mono text-[11px] text-slate-500">{APP_DISPLAY_NAME} {getFormattedAppVersion()}</span>
+            <span className="font-mono text-[10.5px] text-slate-500">{APP_DISPLAY_NAME} {getFormattedAppVersion()}</span>
           </div>
 
-          {/* Nueva nota de lead time */}
-          <div className="flex items-center space-x-2 text-slate-400 pl-4 border-l-2 border-indigo-500/40 text-[11px]">
+          {/* Nota de lead time */}
+          <div className="flex items-center space-x-2 text-slate-400 pl-3.5 border-l-2 border-indigo-500/40 text-[11px]">
             <span>
-              <strong className="text-slate-300">Plazo de entrega:</strong> El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden.
+              <strong className="text-slate-300">Plazo de entrega:</strong>{' '}
+              <span className="italic text-slate-400">El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden.</span>
+            </span>
+          </div>
+
+          {/* Cláusula formal de Validación Técnica y Responsabilidad */}
+          <div className="flex items-start space-x-2 text-slate-400 pl-3.5 border-l-2 border-amber-500/40 text-[10.5px] leading-relaxed">
+            <span>
+              <strong className="text-slate-300 font-semibold">Validación Técnica y Responsabilidad:</strong>{' '}
+              <span className="italic text-slate-400/90">La presente cotización constituye una propuesta referencial de preventa basada en los requerimientos informados. Es responsabilidad exclusiva del Partner revisar y validar técnicamente la compatibilidad, completitud y exactitud de todos los números de parte (BOM) y licenciamiento antes de formalizar la orden de compra. Intcomex no asumirá costos ni mermas derivados de omisiones o inconsistencias en compras de productos a pedido no validadas previamente por el Partner.</span>
             </span>
           </div>
         </div>

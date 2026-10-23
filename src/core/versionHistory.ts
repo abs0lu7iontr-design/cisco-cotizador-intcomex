@@ -15,11 +15,25 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.4.2',
+    date: '2026-10-23',
+    commit: 'feat-tech-disclaimer',
+    title: 'Cláusula Formal de Validación Técnica y Armonización de Notas al Pie',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Inyección obligatoria de la cláusula formal de Validación Técnica y Responsabilidad de preventa para Partners.',
+      'Armonización estética de las 3 cláusulas al pie (Validez de Oferta, Plazo de Entrega y Validación Técnica) con tipografía Arial 7.5pt, cursiva y colores Slate corporativos.',
+      'Soporte de ajuste automático de texto (wrapText) y altura ampliada para lectura clara en Microsoft Excel sin recortes.',
+      'Reflejo idéntico 1:1 en la previsualización web (ExcelSheetPreview) y protección anti-contaminación de ítems en re-import.',
+    ],
+  },
+  {
     version: '2.4.1',
     date: '2026-10-23',
     commit: 'fix-audit-load',
     title: 'Restauración Inmediata de Parámetros Previos e Integridad de Arancel',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Eliminación de saltos en cálculos al cargar cotizaciones previamente editadas: valores se despliegan de inmediato con la tasa exacta guardada (ej. 23% internación, 6% arancel, 6% margen).',

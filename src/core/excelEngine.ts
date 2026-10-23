@@ -336,6 +336,12 @@ export function isFooterOrNoteRow(lineStr: string, partStr: string, descStr: str
     'plazo de entrega:',
     'tiempo final de despacho',
     'mayor tiempo de espera',
+    'validación técnica y responsabilidad',
+    'validacion tecnica y responsabilidad',
+    'propuesta referencial de preventa',
+    'es responsabilidad exclusiva del partner',
+    'no asumirá costos ni mermas',
+    'no asumira costos ni mermas',
     'valid through',
     'fob point',
     'terminos y condiciones',
@@ -1754,23 +1760,28 @@ export async function generateOptimizedWorkbook(
     { width: 18 }, // Extended Net Price
   ];
 
-  // 1. Fila de Validez de Oferta (Fila totalRowIndex + 2)
+  // 1. Fila de Validez de Oferta (Fila validityRow)
   const validityRow = totalRowIndex + 2;
+  worksheet.getRow(validityRow).height = 16;
   safeUnmerge(worksheet, `A${validityRow}:G${validityRow}`);
   const validityCell = worksheet.getCell(`A${validityRow}`);
   validityCell.value = {
     richText: [
       {
-        text: 'Validez de la Oferta: Esta cotización tiene una validez de ',
-        font: { name: 'Arial', size: 8, color: { argb: 'FF333333' } },
+        text: 'Validez de la Oferta: ',
+        font: { name: 'Arial', size: 7.5, bold: true, color: { argb: 'FF334155' } },
       },
       {
-        text: '14 días',
-        font: { name: 'Arial', size: 8, bold: true, color: { argb: 'FFCC0000' } },
+        text: 'Esta cotización tiene una validez de ',
+        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
       },
       {
-        text: ' corridos a contar de su fecha de emisión.',
-        font: { name: 'Arial', size: 8, color: { argb: 'FF333333' } },
+        text: '14 días corridos',
+        font: { name: 'Arial', size: 7.5, bold: true, italic: true, color: { argb: 'FFB91C1C' } },
+      },
+      {
+        text: ' a contar de su fecha de emisión.',
+        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
       },
     ],
   };
@@ -1781,17 +1792,18 @@ export async function generateOptimizedWorkbook(
 
   // 2. Fila de Plazo de Entrega Máximo (Fila validityRow + 1)
   const leadTimeNoticeRow = validityRow + 1;
+  worksheet.getRow(leadTimeNoticeRow).height = 16;
   safeUnmerge(worksheet, `A${leadTimeNoticeRow}:G${leadTimeNoticeRow}`);
   const leadTimeCell = worksheet.getCell(`A${leadTimeNoticeRow}`);
   leadTimeCell.value = {
     richText: [
       {
         text: 'Plazo de entrega: ',
-        font: { name: 'Arial', size: 8, bold: true, color: { argb: 'FF333333' } },
+        font: { name: 'Arial', size: 7.5, bold: true, color: { argb: 'FF334155' } },
       },
       {
         text: 'El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden.',
-        font: { name: 'Arial', size: 8, italic: true, color: { argb: 'FF555555' } },
+        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
       },
     ],
   };
@@ -1799,6 +1811,28 @@ export async function generateOptimizedWorkbook(
   leadTimeCell.border = undefined;
   leadTimeCell.fill = undefined;
   worksheet.mergeCells(`A${leadTimeNoticeRow}:G${leadTimeNoticeRow}`);
+
+  // 3. Fila de Validación Técnica y Responsabilidad (Fila validityRow + 2)
+  const technicalValidationRow = validityRow + 2;
+  worksheet.getRow(technicalValidationRow).height = 30;
+  safeUnmerge(worksheet, `A${technicalValidationRow}:G${technicalValidationRow}`);
+  const technicalCell = worksheet.getCell(`A${technicalValidationRow}`);
+  technicalCell.value = {
+    richText: [
+      {
+        text: 'Validación Técnica y Responsabilidad: ',
+        font: { name: 'Arial', size: 7.5, bold: true, color: { argb: 'FF334155' } },
+      },
+      {
+        text: 'La presente cotización constituye una propuesta referencial de preventa basada en los requerimientos informados. Es responsabilidad exclusiva del Partner revisar y validar técnicamente la compatibilidad, completitud y exactitud de todos los números de parte (BOM) y licenciamiento antes de formalizar la orden de compra. Intcomex no asumirá costos ni mermas derivados de omisiones o inconsistencias en compras de productos a pedido no validadas previamente por el Partner.',
+        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
+      },
+    ],
+  };
+  technicalCell.alignment = { vertical: 'top', horizontal: 'left', wrapText: true };
+  technicalCell.border = undefined;
+  technicalCell.fill = undefined;
+  worksheet.mergeCells(`A${technicalValidationRow}:G${technicalValidationRow}`);
 
   // Inyección de Snapshot espejo en hoja ultra-oculta (sys_metadata)
   let metaSheet = workbook.getWorksheet('sys_metadata');
@@ -2375,10 +2409,77 @@ export async function synthesizeOfficialEstimateWorkbook(
     }
   }
 
-  // 7. Validity footer
+  // 7. Ordered Footers (Validity, Lead Time & Technical Validation)
   const validityRow = totalRowIndex + 2;
-  worksheet.getCell(`A${validityRow}`).value = 'Oferta válida por 30 días calendario a contar de la fecha de emisión.';
-  worksheet.getCell(`A${validityRow}`).font = { name: 'Arial', size: 8.5, italic: true, color: { argb: 'FF475569' } };
+  worksheet.getRow(validityRow).height = 16;
+  safeUnmerge(worksheet, `A${validityRow}:G${validityRow}`);
+  const validityCell = worksheet.getCell(`A${validityRow}`);
+  validityCell.value = {
+    richText: [
+      {
+        text: 'Validez de la Oferta: ',
+        font: { name: 'Arial', size: 7.5, bold: true, color: { argb: 'FF334155' } },
+      },
+      {
+        text: 'Esta cotización tiene una validez de ',
+        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
+      },
+      {
+        text: '14 días corridos',
+        font: { name: 'Arial', size: 7.5, bold: true, italic: true, color: { argb: 'FFB91C1C' } },
+      },
+      {
+        text: ' a contar de su fecha de emisión.',
+        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
+      },
+    ],
+  };
+  validityCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
+  validityCell.border = undefined;
+  validityCell.fill = undefined;
+  worksheet.mergeCells(`A${validityRow}:G${validityRow}`);
+
+  const leadTimeNoticeRow = validityRow + 1;
+  worksheet.getRow(leadTimeNoticeRow).height = 16;
+  safeUnmerge(worksheet, `A${leadTimeNoticeRow}:G${leadTimeNoticeRow}`);
+  const leadTimeCell = worksheet.getCell(`A${leadTimeNoticeRow}`);
+  leadTimeCell.value = {
+    richText: [
+      {
+        text: 'Plazo de entrega: ',
+        font: { name: 'Arial', size: 7.5, bold: true, color: { argb: 'FF334155' } },
+      },
+      {
+        text: 'El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden.',
+        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
+      },
+    ],
+  };
+  leadTimeCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
+  leadTimeCell.border = undefined;
+  leadTimeCell.fill = undefined;
+  worksheet.mergeCells(`A${leadTimeNoticeRow}:G${leadTimeNoticeRow}`);
+
+  const technicalValidationRow = validityRow + 2;
+  worksheet.getRow(technicalValidationRow).height = 30;
+  safeUnmerge(worksheet, `A${technicalValidationRow}:G${technicalValidationRow}`);
+  const technicalCell = worksheet.getCell(`A${technicalValidationRow}`);
+  technicalCell.value = {
+    richText: [
+      {
+        text: 'Validación Técnica y Responsabilidad: ',
+        font: { name: 'Arial', size: 7.5, bold: true, color: { argb: 'FF334155' } },
+      },
+      {
+        text: 'La presente cotización constituye una propuesta referencial de preventa basada en los requerimientos informados. Es responsabilidad exclusiva del Partner revisar y validar técnicamente la compatibilidad, completitud y exactitud de todos los números de parte (BOM) y licenciamiento antes de formalizar la orden de compra. Intcomex no asumirá costos ni mermas derivados de omisiones o inconsistencias en compras de productos a pedido no validadas previamente por el Partner.',
+        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
+      },
+    ],
+  };
+  technicalCell.alignment = { vertical: 'top', horizontal: 'left', wrapText: true };
+  technicalCell.border = undefined;
+  technicalCell.fill = undefined;
+  worksheet.mergeCells(`A${technicalValidationRow}:G${technicalValidationRow}`);
   // 8. Inyección de Snapshot espejo en hoja ultra-oculta (sys_metadata)
   let metaSheet = workbook.getWorksheet('sys_metadata');
   if (!metaSheet) {

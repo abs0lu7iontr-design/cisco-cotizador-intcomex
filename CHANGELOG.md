@@ -6,6 +6,15 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.4.2] - 2026-10-23
+### 🌟 Agregado (Cláusula de Validación Técnica y Armonización Legal)
+- **Cláusula Formal de Validación Técnica y Responsabilidad:** Incorporación obligatoria de la nota legal y técnica al pie de página de la cotización comercial Excel (debajo del Plazo de entrega): *"Validación Técnica y Responsabilidad: La presente cotización constituye una propuesta referencial de preventa basada en los requerimientos informados. Es responsabilidad exclusiva del Partner revisar y validar técnicamente la compatibilidad, completitud y exactitud de todos los números de parte (BOM) y licenciamiento antes de formalizar la orden de compra. Intcomex no asumirá costos ni mermas derivados de omisiones o inconsistencias en compras de productos a pedido no validadas previamente por el Partner."*
+- **Armonización Estética de Notas al Pie (3 Cláusulas):** Estandarización de las 3 notas inferiores (*Validez de la Oferta*, *Plazo de Entrega* y *Validación Técnica y Responsabilidad*) con tipografía Arial 7.5pt, cursiva atenuada en color Slate (`#64748B`), encabezados en negrita (`#334155`) y destacado sutil de los 14 días corridos.
+- **Formato Excel Profesional:** Celda fusionada de ancho completo (columnas A a G), altura de fila ajustada a 30pt y activación de `wrapText: true` para que todo el párrafo sea legible en cualquier versión de Excel sin cortes.
+- **Previsualización Web Idéntica (`ExcelSheetPreview`):** Reflejo visual 1:1 de las tres cláusulas en la vista previa del navegador y protección anti-contaminación en el parser CCW (`isFooterOrNoteRow`) para re-importaciones de archivos exportados.
+
+---
+
 ## [v2.4.1] - 2026-10-23
 ### 🐛 Reparado (Bug Fixes & Estabilidad)
 - **Restauración Inmediata de Parámetros Previos en Carga de Archivos:** Se solucionó la discrepancia donde una cotización con parámetros personalizados (ej. 23% Internación, 6% Margen, 6% Arancel) cargaba inicialmente con los valores por defecto (7% / 5%) y solo se corregía al mover un slider. Ahora el motor aplica inmediatamente los parámetros guardados en `sys_metadata` desde el primer milisegundo.

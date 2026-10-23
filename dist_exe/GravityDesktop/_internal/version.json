@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.4.1",
-  "git_commit": "575c5f1",
+  "version": "2.4.2",
+  "git_commit": "d66fb62",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-23T16:21:32.551Z",
-  "release_notes": "feat: implement customizable financial parameters per line block with inheritance and prior audit continuity (v2.4.0)",
+  "build_timestamp": "2026-10-23T17:11:58.125Z",
+  "release_notes": "fix: restore prior internacion, arancel, and margin on initial estimate load without slider movement (v2.4.1)",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"
