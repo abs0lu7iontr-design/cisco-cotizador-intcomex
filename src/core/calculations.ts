@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { QuoteParameters, OverrideRuleType, ProcessedEstimateResult } from './types';
-import { generateQuotationFileName, isPureLicensingQuote } from './exportUtils';
+import { generateQuotationFileName, isPureLicensingQuote, resolveEffectiveQuoteRates } from './exportUtils';
 import { isCiscoIntangibleSku } from './ciscoTaxonomy';
 import {
   isCiscoAccessorySku,
@@ -1066,16 +1066,21 @@ export function recalculateEstimateResult(
   const clientFromName = parts[1] && !parts[1].match(/^(estimate|\d+)$/i) ? parts[1] : 'Cliente';
   const techFromName = parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|i\d+m\d+|\d+)$/i) ? parts[2] : 'Cisco';
 
+  const effectiveRates = resolveEffectiveQuoteRates(params, newItems);
+
   const newFileName = generateQuotationFileName({
     partner: currentResult.headerInfo?.companyName || partnerFromName,
     customerName: currentResult.headerInfo?.customerName || clientFromName,
     technologyOrFamily: techFromName,
     dealId: currentResult.headerInfo?.dealId,
     estimateId: currentResult.headerInfo?.estimateId || 'ESTIMATE',
-    internacionPct: params.internacionPct,
-    marginPct: params.margenPct,
+    internacionPct: effectiveRates.internacionPct,
+    marginPct: effectiveRates.marginPct,
+    arancelPct: effectiveRates.arancelPct,
     isRecalculated: isRecalc,
     isOnlyLicensing,
+    params,
+    items: newItems,
   });
 
   return {

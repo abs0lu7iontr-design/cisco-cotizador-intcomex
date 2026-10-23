@@ -24,7 +24,7 @@ import {
 import { generateOptimizedWorkbook, synthesizeOfficialEstimateWorkbook } from '../core/excelEngine';
 import { QuoteParameters, OverrideRuleType, EstimateHeaderInfo } from '../core/types';
 import { getCcwTimestamp, suggestFileName } from '../core/calculations';
-import { generateQuotationFileName } from '../core/exportUtils';
+import { generateQuotationFileName, resolveEffectiveQuoteRates } from '../core/exportUtils';
 import { useCiscoAutomatedStore } from '../core/store';
 import {
   isDesktopApp,
@@ -81,8 +81,14 @@ export function DownloadModal({
     currentParams?: QuoteParameters
   ) => {
     const activeParams = currentParams || params;
+    const hasActiveCustomLines = Boolean(
+      activeParams?.parameterMode === 'custom_lines' &&
+      activeParams?.lineCustomParams &&
+      Object.keys(activeParams.lineCustomParams).length > 0
+    );
     const isRecalc = Boolean(
       isRecalculated ||
+      hasActiveCustomLines ||
       (activeParams && ((!isOnlyLicensing && activeParams.internacionPct !== 7.0) || activeParams.margenPct !== 5.0)) ||
       (customOverrides && Object.keys(customOverrides).length > 0) ||
       (estimateVersionNumber > 1)
@@ -97,17 +103,22 @@ export function DownloadModal({
       }
     }
 
+    const effectiveRates = resolveEffectiveQuoteRates(activeParams, processedResult?.items);
+
     return generateQuotationFileName({
       partner: pName || defaultPartner || headerInfo?.companyName || 'Intcomex',
       customerName: cName || defaultClient || headerInfo?.customerName || 'Cliente',
       technologyOrFamily: tech,
       dealId: headerInfo?.dealId,
       estimateId: headerInfo?.estimateId || 'ESTIMATE',
-      internacionPct: activeParams?.internacionPct ?? 7.0,
-      marginPct: activeParams?.margenPct ?? 5.0,
+      internacionPct: effectiveRates.internacionPct,
+      marginPct: effectiveRates.marginPct,
+      arancelPct: effectiveRates.arancelPct,
       isRecalculated: isRecalc,
       isOnlyLicensing,
       versionNumber: estimateVersionNumber,
+      params: activeParams,
+      items: processedResult?.items,
     });
   };
 
@@ -133,7 +144,7 @@ export function DownloadModal({
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Actualización reactiva en vivo del nombre de archivo al mover parámetros de internación o margen
+  // Actualización reactiva en vivo del nombre de archivo al mover parámetros o cambiar de modo
   useEffect(() => {
     const currentPartner = partnerName || defaultPartner || headerInfo?.companyName || 'Intcomex';
     const currentClient = clientName || defaultClient || headerInfo?.customerName || 'Cliente Final';
@@ -142,6 +153,9 @@ export function DownloadModal({
   }, [
     params?.internacionPct,
     params?.margenPct,
+    params?.parameterMode,
+    params?.lineCustomParams,
+    processedResult?.items,
     defaultPartner,
     defaultClient,
     defaultModel,
@@ -149,6 +163,7 @@ export function DownloadModal({
     headerInfo?.dealId,
     isRecalculated,
     isOnlyLicensing,
+    estimateVersionNumber,
   ]);
 
   // Reset modal state completely every time the modal opens (no cache between files)
@@ -168,7 +183,7 @@ export function DownloadModal({
       setModelName(initialModel);
       setFilename(computeCorporateFilename(initialPartner, initialClient, initialModel, params));
     }
-  }, [isOpen, defaultPartner, defaultClient, defaultModel]);
+  }, [isOpen, defaultPartner, defaultClient, defaultModel, params, processedResult?.items]);
 
   const handlePartnerChange = (val: string) => {
     setPartnerName(val);

@@ -6,6 +6,15 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.4.3] - 2026-10-23
+### 🐛 Reparado (Nomenclatura Dinámica en Descarga con Parámetros Custom)
+- **Corrección de Tag Comercial en Nombre de Archivo (`_I{int}M{margen}_`):** Al descargar una cotización con parámetros personalizados por línea (`custom_lines` o `lineCustomParams`), el generador corporativo de nombres de archivo calcula y estampa exactamente las tasas efectivas aplicadas (ej. `_I23M6_`) en lugar de recaer en los valores por defecto CCW (`_I7M5_`).
+- **Cálculo Económico Ponderado (`resolveEffectiveQuoteRates`):** Resolución de internación efectiva ponderada sobre el hardware tangible real cotizado y consolidación de margen comercial general para la cotización `(Total Venta - Total Costo) / Total Venta * 100`.
+- **Sincronización Reactiva en `DownloadModal`:** Actualización en vivo del nombre sugerido de archivo al alternar entre modo Estándar y Por Línea, o al modificar las tasas de bloques madre en la barra lateral.
+- **Protección para Licencias Puras:** Mantiene la etiqueta disimulada `_M{margen}_` (omitiendo la `I`) cuando la cotización consta exclusivamente de licencias o SaaS, reflejando el margen personalizado correspondiente.
+
+---
+
 ## [v2.4.2] - 2026-10-23
 ### 🌟 Agregado (Cláusula de Validación Técnica y Armonización Legal)
 - **Cláusula Formal de Validación Técnica y Responsabilidad:** Incorporación obligatoria de la nota legal y técnica al pie de página de la cotización comercial Excel (debajo del Plazo de entrega): *"Validación Técnica y Responsabilidad: La presente cotización constituye una propuesta referencial de preventa basada en los requerimientos informados. Es responsabilidad exclusiva del Partner revisar y validar técnicamente la compatibilidad, completitud y exactitud de todos los números de parte (BOM) y licenciamiento antes de formalizar la orden de compra. Intcomex no asumirá costos ni mermas derivados de omisiones o inconsistencias en compras de productos a pedido no validadas previamente por el Partner."*

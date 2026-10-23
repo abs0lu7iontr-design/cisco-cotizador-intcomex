@@ -15,6 +15,7 @@ import {
 } from './types';
 import { parseEstimateWorkbook } from './excelEngine';
 import { recalculateEstimateResult } from './calculations';
+import { resolveEffectiveQuoteRates } from './exportUtils';
 import {
   auditEstimateWithFastTrack,
   FastTrackAuditResult,
@@ -873,6 +874,8 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         options?.versionTag || (resolvedVersionNum === 0 ? 'v0_RAW' : `v${resolvedVersionNum}`);
       const resolvedBaseline = baselineV0Amount > 0 ? baselineV0Amount : totalNetCisco;
 
+      const effectiveRates = resolveEffectiveQuoteRates(params, processedResult.items);
+
       const cloudPayload: Omit<CloudEstimateRecord, 'id'> = {
         dealId: processedResult.headerInfo.dealId || 'NA',
         estimateId: processedResult.headerInfo.estimateId || 'NA',
@@ -896,9 +899,14 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           totalNetCisco,
           totalCotizadoIntcomex: totalVenta,
           gananciaIntcomexUsd: profit,
-          margenPct: params.margenPct,
+          margenPct: effectiveRates.marginPct,
           currency: 'USD',
-          params,
+          params: {
+            ...params,
+            internacionPct: effectiveRates.internacionPct,
+            margenPct: effectiveRates.marginPct,
+            arancelPct: effectiveRates.arancelPct,
+          },
         },
         headerInfo: {
           ...processedResult.headerInfo,

@@ -29,7 +29,7 @@ import {
   getMotherLineKey,
 } from './calculations';
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../lib/intcomexLogoBase64';
-import { generateQuotationFileName, isPureLicensingQuote } from './exportUtils';
+import { generateQuotationFileName, isPureLicensingQuote, resolveEffectiveQuoteRates } from './exportUtils';
 import { parseEstimateWithHierarchy, ProcessedEstimateLine } from '../modules/estimate';
 
 function getCellString(cell: ExcelJS.Cell | null | undefined): string {
@@ -1238,16 +1238,21 @@ export async function parseEstimateWorkbook(
   const clientFromName = parts[1] && !parts[1].match(/^(estimate|\d+)$/i) ? parts[1] : 'Cliente';
   const techFromName = parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|i\d+m\d+|\d+)$/i) ? parts[2] : 'Cisco';
 
+  const effectiveRates = resolveEffectiveQuoteRates(activeCalculationParams, items);
+
   const outputFileName = generateQuotationFileName({
     partner: headerInfo?.companyName || partnerFromName,
     customerName: headerInfo?.customerName || clientFromName,
     technologyOrFamily: techFromName,
     dealId: headerInfo?.dealId,
     estimateId: headerInfo?.estimateId || 'ESTIMATE',
-    internacionPct: activeCalculationParams.internacionPct,
-    marginPct: activeCalculationParams.margenPct,
+    internacionPct: effectiveRates.internacionPct,
+    marginPct: effectiveRates.marginPct,
+    arancelPct: effectiveRates.arancelPct,
     isRecalculated: isRecalc,
     isOnlyLicensing,
+    params: activeCalculationParams,
+    items,
   });
 
   const result: ProcessedEstimateResult = {
@@ -1898,16 +1903,21 @@ export async function generateOptimizedWorkbook(
   const clientFromName = parts[1] && !parts[1].match(/^(estimate|\d+)$/i) ? parts[1] : 'Cliente';
   const techFromName = parts.length >= 3 && !parts[2].match(/^(estimate|calc|recalc|int\d+|ma\d+|i\d+|m\d+|i\d+m\d+|\d+)$/i) ? parts[2] : 'Cisco';
 
+  const effectiveRates = resolveEffectiveQuoteRates(params, items);
+
   const outputFileName = generateQuotationFileName({
     partner: headerInfo?.companyName || partnerFromName,
     customerName: headerInfo?.customerName || clientFromName,
     technologyOrFamily: techFromName,
     dealId: headerInfo?.dealId,
     estimateId: headerInfo?.estimateId || 'ESTIMATE',
-    internacionPct: params.internacionPct,
-    marginPct: params.margenPct,
+    internacionPct: effectiveRates.internacionPct,
+    marginPct: effectiveRates.marginPct,
+    arancelPct: effectiveRates.arancelPct,
     isRecalculated,
     isOnlyLicensing,
+    params,
+    items,
   });
 
   const result: ProcessedEstimateResult = {

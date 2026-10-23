@@ -15,11 +15,25 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.4.3',
+    date: '2026-10-23',
+    commit: 'fix-custom-params-filename',
+    title: 'Resolución Dinámica de Parámetros Custom en Nomenclatura de Descarga',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Corrección del tag comercial en el nombre del archivo al descargar: en modo custom o con líneas personalizadas refleja exactamente las tasas efectivas aplicadas (ej. _I23M6_) en lugar de los defaults CCW estándar (_I7M5_).',
+      'Cálculo ponderado real de internación sobre ítems tangibles cotizados y consolidación de margen comercial general para la cotización.',
+      'Sincronización reactiva inmediata en DownloadModal ante conmutación de modos o modificación de líneas custom en ParameterSidebar.',
+      'Preservación de tasas efectivas y mapa de líneas en el respaldo cloud sin sobreescribir auditoría previa.',
+    ],
+  },
+  {
     version: '2.4.2',
     date: '2026-10-23',
     commit: 'feat-tech-disclaimer',
     title: 'Cláusula Formal de Validación Técnica y Armonización de Notas al Pie',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Inyección obligatoria de la cláusula formal de Validación Técnica y Responsabilidad de preventa para Partners.',
