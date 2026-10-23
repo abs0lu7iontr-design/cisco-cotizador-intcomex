@@ -6,6 +6,26 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.4.1] - 2026-10-23
+### 🐛 Reparado (Bug Fixes & Estabilidad)
+- **Restauración Inmediata de Parámetros Previos en Carga de Archivos:** Se solucionó la discrepancia donde una cotización con parámetros personalizados (ej. 23% Internación, 6% Margen, 6% Arancel) cargaba inicialmente con los valores por defecto (7% / 5%) y solo se corregía al mover un slider. Ahora el motor aplica inmediatamente los parámetros guardados en `sys_metadata` desde el primer milisegundo.
+- **Sincronización Total de Estado y UI:** Los sliders de la barra lateral, el modo de cálculo (`[Estándar CCW]` o `[Por Línea]`) y la tabla de cotización se configuran de forma reactiva instantánea al abrir el archivo.
+- **Integridad y Persistencia de Arancel Aduanero:** Se incluyó formalmente el campo `naranja` (Arancel) en la extracción y restauración de auditoría previa (`previousArancelPct`), garantizando que aranceles modificados no se pierdan.
+- **Ampliación de Modal de Auditoría Previa (`PriorAuditDetectedModal`):** Despliegue explícito de las tres métricas base (*Internación Base*, *Arancel Base* y *Margen Base*) con badges diferenciados por color en el modal persuasivo.
+
+---
+
+## [v2.4.0] - 2026-10-23
+### 🌟 Agregado (Parámetros CCW Custom por Línea)
+- **Segmented Control de Modo de Costeo:** Switch en `ParameterSidebar` para alternar entre `[Estándar CCW]` (tasas globales para toda la cotización) y `[Por Línea]` (tasas personalizadas por bloque madre).
+- **Control Granular por Bloque Madre ($N.0$):** Sliders y campos numéricos individuales para definir tasas específicas de Internación (0% - 30%), Arancel (0% - 15%) y Margen Comercial (0% - 50%) por cada bloque madre.
+- **Herencia Jerárquica Automática a Sub-líneas ($N.x$):** Las sub-líneas secundarias heredan de inmediato los parámetros configurados en su línea madre respetando las excepciones de intangibles (0% int/ar).
+- **Indicadores Visuales en Tabla y Tarjetas Móviles:** Badges violetas `Línea N.0 Custom` y `↳ Hereda de N.0` en `InteractiveTable` y `MobileEstimateCardList`.
+- **Menú Contextual "Configurar Parámetros de Línea":** Acceso directo desde el clic derecho en cualquier fila de la tabla para ajustar parámetros del bloque madre correspondiente.
+- **Persistencia en Metadatos Sombra:** Almacenamiento seguro del mapa de parámetros por línea en la hoja ultra-oculta `sys_metadata` (`lineasCustom` y `modo`).
+
+---
+
 ## [v2.3.0] - 2026-10-22
 ### 📱 Agregado (Versión Móvil PWA & Modo Pocket)
 - **Barra Inferior de Navegación Móvil (`MobileBottomNav`):** Barra fija en la parte inferior para pantallas `< 768px`, optimizada ergonómicamente para pulgares con accesos a *Cotizar*, *ConfigurIAtor*, *Tracking BO*, *Métricas* y *Menú*.

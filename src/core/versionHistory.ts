@@ -15,11 +15,40 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.4.1',
+    date: '2026-10-23',
+    commit: 'fix-audit-load',
+    title: 'Restauración Inmediata de Parámetros Previos e Integridad de Arancel',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Eliminación de saltos en cálculos al cargar cotizaciones previamente editadas: valores se despliegan de inmediato con la tasa exacta guardada (ej. 23% internación, 6% arancel, 6% margen).',
+      'Preservación integral del arancel aduanero en metadatos sombra sys_metadata (naranja) y restauración bidireccional exacta.',
+      'Sincronización instantánea de sliders de la barra lateral y switches de modo al momento de la carga sin requerir interacción manual previa.',
+      'Ampliación del modal de detección de auditoría previa para exhibir Internación Base, Arancel Base y Margen Base con badges dedicados.',
+    ],
+  },
+  {
+    version: '2.4.0',
+    date: '2026-10-23',
+    commit: 'feat-custom-lines',
+    title: 'Parámetros CCW Custom por Línea y Herencia Jerárquica N.0 / N.x',
+    status: 'STABLE',
+    type: 'minor',
+    highlights: [
+      'Selector de modo de costeo [Estándar CCW] vs [Por Línea] en la barra de parámetros.',
+      'Configuración granular de Internación, Arancel y Margen por bloque de línea madre (1.0, 2.0, 3.0...).',
+      'Herencia matemática automática hacia todas las sub-líneas hijas (1.1, 1.2, 2.1...).',
+      'Visualización interactiva con badges violetas en tabla de cotización y tarjetas móviles.',
+      'Menú contextual y modal inteligente con alertas de recálculo previo al abrir archivos modificados.',
+    ],
+  },
+  {
     version: '2.3.0',
     date: '2026-10-22',
     commit: 'feat-mobile',
     title: 'Versión Móvil PWA & Modo Pocket Táctil para Smartphones',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Barra de navegación inferior fija (MobileBottomNav) para cotizar, consultar BO y acceder a la IA desde el celular.',

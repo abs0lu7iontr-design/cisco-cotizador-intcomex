@@ -334,7 +334,8 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           currentParams,
           fileName,
           overrides,
-          activePromoMap
+          activePromoMap,
+          { forceParams: true }
         );
         setProcessedResult(result);
         persistProcessedEstimateHistory(result, fileName, currentUser);
@@ -448,6 +449,23 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         setBaselineV0Amount(baseV0Cost);
 
         if (rawResult?.detectedAudit?.isRecalculated) {
+          const priorInt = rawResult.detectedAudit.previousInternacionPct;
+          const priorAr = rawResult.detectedAudit.previousArancelPct ?? 6.0;
+          const priorMarg = rawResult.detectedAudit.previousMarginPct;
+          const priorMode =
+            rawResult.detectedAudit.parameterMode ||
+            (rawResult.detectedAudit.hasCustomLineParams ? 'custom_lines' : 'standard');
+          const priorCustomLines = rawResult.detectedAudit.lineCustomParams || {};
+
+          const restoredParams: QuoteParameters = {
+            internacionPct: priorInt,
+            arancelPct: priorAr,
+            margenPct: priorMarg,
+            parameterMode: priorMode,
+            lineCustomParams: priorCustomLines,
+          };
+
+          setParams(restoredParams);
           setIsRecalculated(true);
           setDetectedAudit(rawResult.detectedAudit);
           setIsDetectedAuditModalOpen(true);
@@ -462,9 +480,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         setCustomOverrideMap(matchedOverrides);
 
         const hasCustomParams =
-          activeInitialParams.internacionPct !== DEFAULT_PARAMS.internacionPct ||
-          activeInitialParams.arancelPct !== DEFAULT_PARAMS.arancelPct ||
-          activeInitialParams.margenPct !== DEFAULT_PARAMS.margenPct;
+          !rawResult?.detectedAudit?.isRecalculated &&
+          (activeInitialParams.internacionPct !== DEFAULT_PARAMS.internacionPct ||
+            activeInitialParams.arancelPct !== DEFAULT_PARAMS.arancelPct ||
+            activeInitialParams.margenPct !== DEFAULT_PARAMS.margenPct);
 
         if (Object.keys(matchedOverrides).length > 0 || hasCustomParams) {
           await recompute(
@@ -950,6 +969,8 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       detectedAudit.previousMarginPct > 0 && detectedAudit.previousMarginPct <= 1
         ? Math.round(detectedAudit.previousMarginPct * 100)
         : Math.round(detectedAudit.previousMarginPct);
+    const rawAr = detectedAudit.previousArancelPct !== undefined ? detectedAudit.previousArancelPct : 6.0;
+    const priorAr = rawAr > 0 && rawAr <= 1 ? Math.round(rawAr * 100) : Math.round(rawAr);
 
     const hasCustom = Boolean(detectedAudit.hasCustomLineParams && detectedAudit.lineCustomParams);
     const mode = detectedAudit.parameterMode || (hasCustom ? 'custom_lines' : 'standard');
@@ -959,6 +980,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       parameterMode: mode,
       lineCustomParams: detectedAudit.lineCustomParams || {},
       internacionPct: priorInt,
+      arancelPct: priorAr,
       margenPct: priorMarg,
     };
     setParams(newParams);

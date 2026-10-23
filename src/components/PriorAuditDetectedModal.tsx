@@ -38,6 +38,7 @@ export function PriorAuditDetectedModal({
   };
 
   const intFormatted = formatPct(detectedAudit.previousInternacionPct);
+  const arFormatted = formatPct(detectedAudit.previousArancelPct ?? 6.0);
   const marFormatted = formatPct(detectedAudit.previousMarginPct);
 
   const hasCustomLines = Boolean(
@@ -88,11 +89,18 @@ export function PriorAuditDetectedModal({
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
               Parámetros Generales Guardados:
             </span>
-            <div className="flex items-center gap-4 text-sm font-semibold">
+            <div className="flex items-center gap-4 text-sm font-semibold flex-wrap">
               <div className="flex items-center gap-2 text-indigo-300">
                 <span className="text-slate-400 text-xs">Internación Base:</span>
                 <span className="px-2 py-0.5 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-200 font-mono">
                   {intFormatted}
+                </span>
+              </div>
+              <span className="text-slate-600">|</span>
+              <div className="flex items-center gap-2 text-purple-300">
+                <span className="text-slate-400 text-xs">Arancel Base:</span>
+                <span className="px-2 py-0.5 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-200 font-mono">
+                  {arFormatted}
                 </span>
               </div>
               <span className="text-slate-600">|</span>

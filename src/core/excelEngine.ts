@@ -26,6 +26,7 @@ import {
   roundFinancial,
   checkIsIntangible,
   checkLlevaArancel,
+  getMotherLineKey,
 } from './calculations';
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../lib/intcomexLogoBase64';
 import { generateQuotationFileName, isPureLicensingQuote } from './exportUtils';
@@ -460,7 +461,10 @@ export async function parseEstimateWorkbook(
   params: QuoteParameters,
   fileName: string,
   overrides?: Record<number, OverrideRuleType>,
-  promoNetPrices?: Record<number, number>
+  promoNetPrices?: Record<number, number>,
+  options?: {
+    forceParams?: boolean;
+  }
 ): Promise<{ result: ProcessedEstimateResult }> {
   // Always clone arrayBuffer to prevent memory detachment / buffer consumption issues
   const bufferCopy = arrayBuffer instanceof ArrayBuffer
@@ -481,8 +485,9 @@ export async function parseEstimateWorkbook(
   await workbook.xlsx.load(loadPayload as any);
 
   let isPreviouslyProcessed = false;
-  let priorMargin = 0;
-  let priorInternacion = 0;
+  let priorMargin = 5.0;
+  let priorInternacion = 7.0;
+  let priorArancel = 6.0;
   let priorTimestamp = '';
   let priorParameterMode: PricingParameterMode = 'standard';
   let priorLineCustomParams: LineParametersMap = {};
@@ -505,9 +510,12 @@ export async function parseEstimateWorkbook(
 
       if (parsed.token === 'cisco-ca-v2' && Array.isArray(parsed.huerto)) {
         isPreviouslyProcessed = true;
-        priorMargin = parsed.platano ?? 0;
+        const rawPlatano = parsed.platano !== undefined ? parsed.platano : 5.0;
+        priorMargin = rawPlatano > 0 && rawPlatano <= 1 ? rawPlatano * 100 : rawPlatano;
         const rawUva = parsed.uva !== undefined ? parsed.uva : 7.0;
         priorInternacion = rawUva > 0 && rawUva <= 1 ? rawUva * 100 : rawUva;
+        const rawNaranja = parsed.naranja !== undefined ? parsed.naranja : 6.0;
+        priorArancel = rawNaranja > 0 && rawNaranja <= 1 ? rawNaranja * 100 : rawNaranja;
         priorTimestamp = parsed.kiwi ?? '';
         priorParameterMode = parsed.modo === 'custom_lines' ? 'custom_lines' : 'standard';
         if (parsed.lineasCustom && typeof parsed.lineasCustom === 'object') {
@@ -524,6 +532,22 @@ export async function parseEstimateWorkbook(
       console.warn('Metadatos ilegibles o archivo original sin procesar.');
     }
   }
+
+  // Active Parameters for calculation:
+  // If forceParams is explicitly true, respect the caller's provided params (e.g. from sliders or reset).
+  // Otherwise, if the file was previously processed, calculate using the file's exact saved parameters.
+  const activeCalculationParams: QuoteParameters =
+    options?.forceParams
+      ? params
+      : isPreviouslyProcessed
+      ? {
+          internacionPct: priorInternacion,
+          arancelPct: priorArancel,
+          margenPct: priorMargin,
+          parameterMode: priorParameterMode,
+          lineCustomParams: priorLineCustomParams,
+        }
+      : params;
 
   const worksheet = workbook.worksheets[0];
   if (!worksheet) {
@@ -933,6 +957,32 @@ export async function parseEstimateWorkbook(
     }
 
     const effectiveLineNumber = lineNumStr || `${items.length + 1}.0`;
+    const motherKey = getMotherLineKey(effectiveLineNumber);
+    const hasCustomLineParams = Boolean(
+      activeCalculationParams.parameterMode === 'custom_lines' &&
+      activeCalculationParams.lineCustomParams &&
+      activeCalculationParams.lineCustomParams[motherKey]
+    );
+    const lineCustom = hasCustomLineParams ? activeCalculationParams.lineCustomParams![motherKey] : undefined;
+
+    const effectiveInternacionPct = lineCustom?.internacionPct !== undefined
+      ? lineCustom.internacionPct
+      : activeCalculationParams.internacionPct;
+
+    const effectiveArancelPct = lineCustom?.arancelPct !== undefined
+      ? lineCustom.arancelPct
+      : activeCalculationParams.arancelPct;
+
+    const effectiveMargenPct = lineCustom?.margenPct !== undefined
+      ? lineCustom.margenPct
+      : activeCalculationParams.margenPct;
+
+    const lineEffectiveParams: QuoteParameters = {
+      ...activeCalculationParams,
+      internacionPct: effectiveInternacionPct,
+      arancelPct: effectiveArancelPct,
+      margenPct: effectiveMargenPct,
+    };
 
     // Caso Sub-líneas a costo $0.00 (cables incluidos CAB-*, fuentes PWR-*, sub-licencias de fábrica o contenedores .0 a costo 0)
     if (rawNetCiscoUnit === 0 && rawExtCost === 0) {
@@ -981,6 +1031,11 @@ export async function parseEstimateWorkbook(
         costoTotalUnitario: 0,
         precioVentaUnitario: 0,
         precioVentaExtendido: 0,
+        effectiveInternacionPct,
+        effectiveArancelPct,
+        effectiveMargenPct,
+        isCustomParamApplied: hasCustomLineParams,
+        inheritedFromMotherLine: motherKey,
       });
       continue;
     }
@@ -1047,7 +1102,7 @@ export async function parseEstimateWorkbook(
 
         const rowOverride = overrides ? (overrides[r] ?? (sku ? (overrides as any)[sku] : undefined)) : undefined;
         // Multiplicación secuencial estricta de Precio Mensual * Meses * Qty
-        merakiResult = calculateMerakiLicenseCosts(unitListPrice, discPct, qty, months, params, rowOverride);
+        merakiResult = calculateMerakiLicenseCosts(unitListPrice, discPct, qty, months, lineEffectiveParams, rowOverride);
         isMerakiHandled = true;
         realUnitCost = merakiResult.costoTotalUnitario;
       } catch (err) {
@@ -1085,6 +1140,11 @@ export async function parseEstimateWorkbook(
         originalNetCiscoUnit: hasPromo ? (rawNetCiscoUnit * merakiResult.months) : undefined,
         fastTrackDiscountPct: hasPromo ? discPct : undefined,
         fastTrackSavings: hasPromo ? Number((((rawNetCiscoUnit * merakiResult.months) - merakiResult.costoTotalUnitario) * qty).toFixed(2)) : undefined,
+        effectiveInternacionPct,
+        effectiveArancelPct,
+        effectiveMargenPct,
+        isCustomParamApplied: hasCustomLineParams,
+        inheritedFromMotherLine: motherKey,
         ...merakiResult,
       });
     } else {
@@ -1103,7 +1163,7 @@ export async function parseEstimateWorkbook(
         qty,
         sku,
         description,
-        params,
+        lineEffectiveParams,
         rowOverride,
         effectiveLineNumber
       );
@@ -1135,6 +1195,11 @@ export async function parseEstimateWorkbook(
         originalNetCiscoUnit: hasPromo ? rawNetCiscoUnit : undefined,
         fastTrackDiscountPct: hasPromo ? discPct : undefined,
         fastTrackSavings: hasPromo ? Number(((rawNetCiscoUnit - netCiscoUnit) * qty).toFixed(2)) : undefined,
+        effectiveInternacionPct,
+        effectiveArancelPct,
+        effectiveMargenPct,
+        isCustomParamApplied: hasCustomLineParams,
+        inheritedFromMotherLine: motherKey,
         ...calculated,
       });
     }
@@ -1148,9 +1213,16 @@ export async function parseEstimateWorkbook(
 
   const isOnlyLicensing = isPureLicensingQuote(items);
 
+  const hasActiveCustomLines = Boolean(
+    activeCalculationParams.parameterMode === 'custom_lines' &&
+    activeCalculationParams.lineCustomParams &&
+    Object.keys(activeCalculationParams.lineCustomParams).length > 0
+  );
+
   const isRecalc = Boolean(
     isPreviouslyProcessed ||
-    (params && ((!isOnlyLicensing && params.internacionPct !== 7.0) || params.margenPct !== 5.0)) ||
+    hasActiveCustomLines ||
+    (activeCalculationParams && ((!isOnlyLicensing && activeCalculationParams.internacionPct !== 7.0) || activeCalculationParams.margenPct !== 5.0)) ||
     (overrides && Object.keys(overrides).length > 0)
   );
 
@@ -1166,8 +1238,8 @@ export async function parseEstimateWorkbook(
     technologyOrFamily: techFromName,
     dealId: headerInfo?.dealId,
     estimateId: headerInfo?.estimateId || 'ESTIMATE',
-    internacionPct: params.internacionPct,
-    marginPct: params.margenPct,
+    internacionPct: activeCalculationParams.internacionPct,
+    marginPct: activeCalculationParams.margenPct,
     isRecalculated: isRecalc,
     isOnlyLicensing,
   });
@@ -1188,6 +1260,7 @@ export async function parseEstimateWorkbook(
       ? {
           margin: priorMargin,
           internacion: priorInternacion,
+          arancel: priorArancel,
           timestamp: priorTimestamp,
         }
       : undefined,
@@ -1195,6 +1268,7 @@ export async function parseEstimateWorkbook(
       ? {
           previousMarginPct: priorMargin,
           previousInternacionPct: priorInternacion,
+          previousArancelPct: priorArancel,
           processedAt: priorTimestamp,
           isRecalculated: true,
           parameterMode: priorParameterMode,

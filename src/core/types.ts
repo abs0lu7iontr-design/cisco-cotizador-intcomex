@@ -94,6 +94,7 @@ export interface EstimateLineItem {
 export interface DetectedAuditInfo {
   previousMarginPct: number;
   previousInternacionPct: number;
+  previousArancelPct?: number;
   processedAt: string;
   isRecalculated: boolean;
   parameterMode?: PricingParameterMode;
@@ -119,6 +120,7 @@ export interface ProcessedEstimateResult {
   priorParameters?: {
     margin?: number;
     internacion?: number;
+    arancel?: number;
     timestamp?: string;
   };
   shadowSnapshot?: ProcessedEstimateResult | null;
