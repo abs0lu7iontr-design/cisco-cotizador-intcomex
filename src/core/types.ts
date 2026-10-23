@@ -6,11 +6,23 @@ export type Role = 'admin' | 'pm' | 'preventa' | 'standard';
 
 export type OverrideRuleType = 'equipo' | 'intangible' | 'arancel';
 
+export type PricingParameterMode = 'standard' | 'custom_lines';
+
+export interface LineCustomParameters {
+  internacionPct?: number;
+  arancelPct?: number;
+  margenPct?: number;
+}
+
+export type LineParametersMap = Record<string, LineCustomParameters>;
+
 export interface QuoteParameters {
   internacionPct: number; // e.g. 7.0 -> 0.07
   arancelPct: number;      // e.g. 6.0 -> 0.06
   margenPct: number;       // e.g. 5.0 -> 0.05
   targetMargin?: number;
+  parameterMode?: PricingParameterMode;
+  lineCustomParams?: LineParametersMap;
 }
 
 export interface EstimateHeaderInfo {
@@ -72,6 +84,11 @@ export interface EstimateLineItem {
   isPeriodicSubscription?: boolean;
   unitNetPriceCcw?: number;
   extendedNetPriceCcw?: number;
+  effectiveInternacionPct?: number;
+  effectiveArancelPct?: number;
+  effectiveMargenPct?: number;
+  isCustomParamApplied?: boolean;
+  inheritedFromMotherLine?: string;
 }
 
 export interface DetectedAuditInfo {
@@ -79,6 +96,9 @@ export interface DetectedAuditInfo {
   previousInternacionPct: number;
   processedAt: string;
   isRecalculated: boolean;
+  parameterMode?: PricingParameterMode;
+  lineCustomParams?: LineParametersMap;
+  hasCustomLineParams?: boolean;
 }
 
 export interface ProcessedEstimateResult {

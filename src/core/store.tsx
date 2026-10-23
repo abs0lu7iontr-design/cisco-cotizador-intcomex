@@ -10,6 +10,8 @@ import {
   OverrideRuleType,
   UserSession,
   DetectedAuditInfo,
+  PricingParameterMode,
+  LineParametersMap,
 } from './types';
 import { parseEstimateWorkbook } from './excelEngine';
 import { recalculateEstimateResult } from './calculations';
@@ -68,6 +70,8 @@ export const DEFAULT_PARAMS: QuoteParameters = {
   internacionPct: 7.0,
   arancelPct: 6.0,
   margenPct: 5.0,
+  parameterMode: 'standard',
+  lineCustomParams: {},
 };
 
 export interface CiscoAutomatedState {
@@ -134,6 +138,15 @@ export interface CiscoAutomatedState {
   setIsDetectedAuditModalOpen: (open: boolean) => void;
   loadPriorAuditMargins: () => Promise<void>;
   dismissDetectedAuditModal: () => void;
+  restoreOriginalUneditedEstimate: () => Promise<void>;
+
+  // Custom Line Parameters Mode & Operations
+  parameterMode: PricingParameterMode;
+  setParameterMode: (mode: PricingParameterMode) => void;
+  lineCustomParams: LineParametersMap;
+  setLineCustomParam: (motherLine: string, field: 'internacionPct' | 'arancelPct' | 'margenPct', value: number) => void;
+  resetLineCustomParams: (motherLine?: string) => void;
+  setBatchLineCustomParams: (map: LineParametersMap) => void;
 
   // Mining & Industrial Conditions Audit
   miningAuditData: AuditReport | null;
@@ -938,8 +951,13 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         ? Math.round(detectedAudit.previousMarginPct * 100)
         : Math.round(detectedAudit.previousMarginPct);
 
+    const hasCustom = Boolean(detectedAudit.hasCustomLineParams && detectedAudit.lineCustomParams);
+    const mode = detectedAudit.parameterMode || (hasCustom ? 'custom_lines' : 'standard');
+
     const newParams: QuoteParameters = {
       ...params,
+      parameterMode: mode,
+      lineCustomParams: detectedAudit.lineCustomParams || {},
       internacionPct: priorInt,
       margenPct: priorMarg,
     };
@@ -953,6 +971,72 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
 
   const dismissDetectedAuditModal = useCallback(() => {
     setIsDetectedAuditModalOpen(false);
+  }, []);
+
+  const restoreOriginalUneditedEstimate = useCallback(async () => {
+    const cleanParams: QuoteParameters = {
+      ...DEFAULT_PARAMS,
+      parameterMode: "standard",
+      lineCustomParams: {},
+    };
+    setParams(cleanParams);
+    setCustomOverrideMap({});
+    setIsRecalculated(false);
+    setIsDetectedAuditModalOpen(false);
+
+    if (rawWorkbookBuffer) {
+      await recompute(rawWorkbookBuffer, cleanParams, currentFileName, {}, fastTrackPromoMap);
+    }
+  }, [rawWorkbookBuffer, currentFileName, fastTrackPromoMap, recompute]);
+
+  const setParameterMode = useCallback((mode: PricingParameterMode) => {
+    setParams((prev) => ({
+      ...prev,
+      parameterMode: mode,
+    }));
+  }, []);
+
+  const setLineCustomParam = useCallback(
+    (motherLine: string, field: "internacionPct" | "arancelPct" | "margenPct", value: number) => {
+      setParams((prev) => ({
+        ...prev,
+        parameterMode: "custom_lines",
+        lineCustomParams: {
+          ...(prev.lineCustomParams || {}),
+          [motherLine]: {
+            ...(prev.lineCustomParams?.[motherLine] || {}),
+            [field]: value,
+          },
+        },
+      }));
+    },
+    []
+  );
+
+  const resetLineCustomParams = useCallback((motherLine?: string) => {
+    setParams((prev) => {
+      if (motherLine) {
+        const nextMap = { ...(prev.lineCustomParams || {}) };
+        delete nextMap[motherLine];
+        return {
+          ...prev,
+          lineCustomParams: nextMap,
+        };
+      }
+      return {
+        ...prev,
+        parameterMode: "standard",
+        lineCustomParams: {},
+      };
+    });
+  }, []);
+
+  const setBatchLineCustomParams = useCallback((map: LineParametersMap) => {
+    setParams((prev) => ({
+      ...prev,
+      parameterMode: "custom_lines",
+      lineCustomParams: { ...map },
+    }));
   }, []);
 
   const clearEstimate = useCallback(() => {
@@ -1022,6 +1106,13 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       setIsDetectedAuditModalOpen,
       loadPriorAuditMargins,
       dismissDetectedAuditModal,
+      restoreOriginalUneditedEstimate,
+      parameterMode: params.parameterMode || "standard",
+      setParameterMode,
+      lineCustomParams: params.lineCustomParams || {},
+      setLineCustomParam,
+      resetLineCustomParams,
+      setBatchLineCustomParams,
       miningAuditData,
       setMiningAuditData,
       isMiningAuditModalOpen,

@@ -1,5 +1,5 @@
 // ============================================================================
-// CISCO AUTOMATED v2.1 - PARAMETER SIDEBAR (WITH EQUITABLE GOAL SEEK PRICING)
+// CISCO AUTOMATED v2.3 - PARAMETER SIDEBAR (WITH HIERARCHICAL CUSTOM LINE PARAMS & GOAL SEEK)
 // ============================================================================
 
 import React, { useState, useMemo } from 'react';
@@ -21,9 +21,25 @@ import {
   Calendar,
   Trash2,
   Edit2,
+  Layers,
+  ChevronDown,
+  ChevronUp,
+  Info,
+  ShieldCheck,
 } from 'lucide-react';
-import { QuoteParameters, OverrideRuleType } from '../core/types';
-import { solveGoalSeekParameters, GoalSeekResult, isPureLicensingQuote } from '../core/calculations';
+import {
+  QuoteParameters,
+  OverrideRuleType,
+  PricingParameterMode,
+  LineParametersMap,
+} from '../core/types';
+import {
+  solveGoalSeekParameters,
+  GoalSeekResult,
+  isPureLicensingQuote,
+  getMotherLineKey,
+  isMainLineItem,
+} from '../core/calculations';
 import {
   saveParamProfile,
   deleteParamProfile,
@@ -42,11 +58,19 @@ interface ParameterSidebarProps {
   onResetDefaults?: () => void;
   onToggleCollapse?: () => void;
   items?: Array<{
+    lineNumber?: string;
     netCiscoUnit: number;
     qty: number;
     partNumber: string;
     description: string;
     rowIdx?: number;
+    isInfoRow?: boolean;
+    unitListPrice?: number;
+    discPct?: number;
+    months?: number;
+    precioVentaMensual?: number;
+    isIntangible?: boolean;
+    llevaArancel?: boolean;
   }>;
   overrides?: Record<number, OverrideRuleType>;
   currentTotal?: number;
@@ -70,10 +94,16 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
 }) => {
   const notifyChange = onChange || onChangeParams;
 
+  // Active Parameter Mode: 'standard' vs 'custom_lines'
+  const activeMode: PricingParameterMode = params.parameterMode || 'standard';
+
   // Goal Seek state
   const [goalMode, setGoalMode] = useState<'discount_amount' | 'target_price'>('discount_amount');
   const [targetInput, setTargetInput] = useState<string>('');
   const [appliedFeedback, setAppliedFeedback] = useState<string | null>(null);
+
+  // Accordion expanded state for custom line blocks
+  const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({});
 
   // Partner Parameters Cloud Profile State
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -92,6 +122,113 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
   const isOnlyLicensing = useMemo(() => isPureLicensingQuote(items as any), [items]);
 
   const effectivePartner = (customPartnerInput.trim() || detectedPartner || 'Partner General').trim();
+
+  // Detect and group unique mother line blocks (1.0, 2.0, 3.0...)
+  const motherLineBlocks = useMemo(() => {
+    if (!items || items.length === 0) return [];
+    const blockMap = new Map<
+      string,
+      {
+        motherKey: string;
+        mainItem?: any;
+        childCount: number;
+        totalCount: number;
+        samplePartNumber: string;
+        sampleDescription: string;
+      }
+    >();
+
+    for (const item of items) {
+      if (item.isInfoRow) continue;
+      const rawLine = item.lineNumber || '';
+      const motherKey = getMotherLineKey(rawLine);
+      if (!blockMap.has(motherKey)) {
+        blockMap.set(motherKey, {
+          motherKey,
+          mainItem: undefined,
+          childCount: 0,
+          totalCount: 0,
+          samplePartNumber: item.partNumber || '',
+          sampleDescription: item.description || '',
+        });
+      }
+      const block = blockMap.get(motherKey)!;
+      block.totalCount++;
+      if (isMainLineItem(rawLine)) {
+        block.mainItem = item;
+        block.samplePartNumber = item.partNumber || block.samplePartNumber;
+        block.sampleDescription = item.description || block.sampleDescription;
+      } else {
+        block.childCount++;
+      }
+    }
+
+    return Array.from(blockMap.values()).sort((a, b) => {
+      const numA = parseFloat(a.motherKey) || 0;
+      const numB = parseFloat(b.motherKey) || 0;
+      return numA - numB;
+    });
+  }, [items]);
+
+  const customLineCount = useMemo(() => {
+    return params.lineCustomParams ? Object.keys(params.lineCustomParams).length : 0;
+  }, [params.lineCustomParams]);
+
+  const toggleBlockExpanded = (key: string) => {
+    setExpandedBlocks((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const handleSwitchMode = (mode: PricingParameterMode) => {
+    if (notifyChange) {
+      notifyChange({
+        ...params,
+        parameterMode: mode,
+      });
+    }
+  };
+
+  const handleLineCustomParamChange = (
+    motherKey: string,
+    field: 'internacionPct' | 'arancelPct' | 'margenPct',
+    value: number
+  ) => {
+    if (!notifyChange) return;
+    const maxVal = field === 'margenPct' ? 99 : 100;
+    const cleanVal = Math.max(0, Math.min(maxVal, isNaN(value) ? 0 : value));
+
+    const currentLineMap = { ...(params.lineCustomParams || {}) };
+    const currentLine = { ...(currentLineMap[motherKey] || {}) };
+    currentLine[field] = cleanVal;
+    currentLineMap[motherKey] = currentLine;
+
+    notifyChange({
+      ...params,
+      parameterMode: 'custom_lines',
+      lineCustomParams: currentLineMap,
+    });
+  };
+
+  const handleResetLineCustom = (motherKey: string) => {
+    if (!notifyChange) return;
+    const currentLineMap = { ...(params.lineCustomParams || {}) };
+    delete currentLineMap[motherKey];
+    notifyChange({
+      ...params,
+      lineCustomParams: currentLineMap,
+    });
+  };
+
+  const handleResetAllLines = () => {
+    if (!notifyChange) return;
+    notifyChange({
+      ...params,
+      parameterMode: 'standard',
+      lineCustomParams: {},
+    });
+  };
 
   const handleSaveProfile = async () => {
     setIsSaving(true);
@@ -120,8 +257,10 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
         setToastFeedback(`¡Guardado para ${targetLabel} (${durLabel})!`);
         setShowConfigModal(false);
         setTimeout(() => setToastFeedback(null), 4000);
+      } else {
+        alert(res.error || 'Error al guardar el perfil en la nube.');
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
     } finally {
       setIsSaving(false);
@@ -133,7 +272,10 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
     try {
       await deleteParamProfile({
         scope: currentActiveProfile?.scope || scope,
-        partnerName: (currentActiveProfile?.scope || scope) === 'partner' ? (currentActiveProfile?.partnerName || effectivePartner) : undefined,
+        partnerName:
+          (currentActiveProfile?.scope || scope) === 'partner'
+            ? currentActiveProfile?.partnerName || effectivePartner
+            : undefined,
       });
       setCurrentActiveProfile(null);
       if (onProfileUpdated) onProfileUpdated(null);
@@ -167,32 +309,47 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
         internacionPct: 7.0,
         arancelPct: 6.0,
         margenPct: 5.0,
+        parameterMode: 'standard',
+        lineCustomParams: {},
       });
     }
   };
 
-  // Real-time Goal Seek simulation (does NOT move the main sliders until "Aplicar" is clicked)
+  // Solve Goal Seek real-time
   const goalSeekResult: GoalSeekResult | null = useMemo(() => {
-    const numVal = parseFloat(targetInput);
-    if (isNaN(numVal) || numVal <= 0 || !items || items.length === 0) {
-      return null;
-    }
-    return solveGoalSeekParameters(items, numVal, goalMode, params, overrides);
-  }, [items, targetInput, goalMode, params, overrides]);
+    const rawVal = parseFloat(targetInput);
+    if (isNaN(rawVal) || rawVal <= 0) return null;
+    if (!items || items.length === 0) return null;
 
-  // Apply button: Only moves the parameters and sliders when clicked
+    return solveGoalSeekParameters(
+      items,
+      rawVal,
+      goalMode,
+      params,
+      overrides
+    );
+  }, [targetInput, goalMode, items, params, overrides]);
+
   const handleApplyGoalSeek = () => {
-    if (goalSeekResult && goalSeekResult.success && notifyChange) {
-      notifyChange({
-        internacionPct: goalSeekResult.newInternacionPct,
-        arancelPct: goalSeekResult.newArancelPct,
-        margenPct: goalSeekResult.newMargenPct,
-      });
-      setAppliedFeedback(
-        `✅ ¡Descuentos aplicados! Internación: ${goalSeekResult.newInternacionPct}%, Margen: ${goalSeekResult.newMargenPct}%`
-      );
-      setTimeout(() => setAppliedFeedback(null), 4000);
-    }
+    if (!goalSeekResult || !goalSeekResult.success || !notifyChange) return;
+
+    notifyChange({
+      ...params,
+      internacionPct: goalSeekResult.newInternacionPct ?? params.internacionPct,
+      arancelPct: 6.0, // Strictly fixed
+      margenPct: goalSeekResult.newMargenPct ?? params.margenPct,
+    });
+
+    const diffText =
+      goalSeekResult.discountAmount && goalSeekResult.discountAmount > 0
+        ? `-$${goalSeekResult.discountAmount.toFixed(2)} USD`
+        : `$${goalSeekResult.achievedTotal?.toFixed(2)} USD`;
+
+    setAppliedFeedback(
+      `¡Aplicado con éxito! Total ajustado a ${diffText} (Int: ${goalSeekResult.newInternacionPct}%, Margen: ${goalSeekResult.newMargenPct}%).`
+    );
+    setTargetInput('');
+    setTimeout(() => setAppliedFeedback(null), 5000);
   };
 
   const formatUsd = (val: number) =>
@@ -203,7 +360,7 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
     });
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-6 text-slate-200">
+    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-5 text-slate-200">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-800 pb-3">
         <div className="flex items-center space-x-2">
@@ -214,7 +371,9 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
             <h2 className="text-xs font-black uppercase tracking-wider text-white">
               Parámetros CCW
             </h2>
-            <span className="text-[10px] text-slate-500">{APP_DISPLAY_NAME} {getFormattedAppVersion()}</span>
+            <span className="text-[10px] text-slate-500">
+              {APP_DISPLAY_NAME} {getFormattedAppVersion()}
+            </span>
           </div>
         </div>
 
@@ -239,343 +398,667 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
         </div>
       </div>
 
-      {/* Manual Percentage Inputs (Sliders) */}
-      <div className="space-y-4 text-xs">
-        {/* Internación */}
-        <div className="space-y-1.5">
-          <div className="flex justify-between font-bold">
-            <label className="text-slate-300">Costo de Internación</label>
-            <span className="font-mono text-indigo-400 font-bold">{params.internacionPct.toFixed(1)}%</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <input
-              type="range"
-              min="0"
-              max="25"
-              step="0.1"
-              value={params.internacionPct}
-              onChange={(e) => handleInputChange('internacionPct', parseFloat(e.target.value))}
-              className="w-full accent-indigo-500 cursor-pointer"
-            />
-            <input
-              type="number"
-              min="0"
-              max="100"
-              step="0.1"
-              value={params.internacionPct}
-              onChange={(e) => handleInputChange('internacionPct', parseFloat(e.target.value))}
-              className="w-14 bg-slate-950 border border-slate-800 rounded-xl p-1.5 text-center font-mono text-xs text-white"
-            />
-          </div>
-          {isOnlyLicensing ? (
-            <div className="p-1.5 bg-amber-500/10 border border-amber-500/25 rounded-lg text-[10px] text-amber-300 flex items-center gap-1.5">
-              <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
-              <span>Cotización 100% Licencias / Intangibles (Internación 0% no aplicable).</span>
-            </div>
-          ) : (
-            <p className="text-[10px] text-slate-500">
-              Aplica sobre hardware tangible. <em>Intangibles exentos (0%)</em>.
-            </p>
-          )}
-        </div>
-
-        {/* Arancel */}
-        <div className="space-y-1.5">
-          <div className="flex justify-between font-bold">
-            <div className="flex items-center gap-1.5">
-              <label className="text-slate-300">Arancel Aduanero</label>
-              <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-800/40 flex items-center gap-0.5">
-                <Lock className="w-2.5 h-2.5" /> Fijo
-              </span>
-            </div>
-            <span className="font-mono text-purple-400 font-bold">{params.arancelPct.toFixed(1)}%</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <input
-              type="range"
-              min="0"
-              max="25"
-              step="0.5"
-              value={params.arancelPct}
-              onChange={(e) => handleInputChange('arancelPct', parseFloat(e.target.value))}
-              className="w-full accent-purple-500 cursor-pointer"
-            />
-            <input
-              type="number"
-              min="0"
-              max="100"
-              step="0.5"
-              value={params.arancelPct}
-              onChange={(e) => handleInputChange('arancelPct', parseFloat(e.target.value))}
-              className="w-14 bg-slate-950 border border-slate-800 rounded-xl p-1.5 text-center font-mono text-xs text-white"
-            />
-          </div>
-          <p className="text-[10px] text-slate-500">
-            Aplica a accesorios terminados en '=' (ej: cables, brackets).
-          </p>
-        </div>
-
-        {/* Margen */}
-        <div className="space-y-1.5">
-          <div className="flex justify-between font-bold">
-            <label className="text-slate-300">Margen de Ganancia Intcomex</label>
-            <span className="font-mono text-emerald-400 font-bold">{params.margenPct.toFixed(1)}%</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <input
-              type="range"
-              min="0"
-              max="30"
-              step="0.1"
-              value={params.margenPct}
-              onChange={(e) => handleInputChange('margenPct', parseFloat(e.target.value))}
-              className="w-full accent-emerald-500 cursor-pointer"
-            />
-            <input
-              type="number"
-              min="0"
-              max="99"
-              step="0.1"
-              value={params.margenPct}
-              onChange={(e) => handleInputChange('margenPct', parseFloat(e.target.value))}
-              className="w-14 bg-slate-950 border border-slate-800 rounded-xl p-1.5 text-center font-mono text-xs text-white"
-            />
-          </div>
-          <p className="text-[10px] text-slate-500">
-            Margen comercial aplicado sobre el costo unitario total.
-          </p>
-        </div>
-      </div>
-
-      {/* SECCIÓN: PERFIL DE PARÁMETROS PARTNER / GLOBAL EN LA NUBE */}
-      <div className="pt-4 border-t border-slate-800 space-y-3">
-        {/* Active Profile Status Badge */}
-        {isProfileActive(currentActiveProfile) ? (
-          <div
-            className={`p-3 rounded-2xl border text-xs space-y-1.5 ${
-              currentActiveProfile!.scope === 'partner'
-                ? 'bg-cyan-950/40 border-cyan-500/40 text-cyan-200'
-                : 'bg-indigo-950/40 border-indigo-500/40 text-indigo-200'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="font-bold flex items-center gap-1.5">
-                {currentActiveProfile!.scope === 'partner' ? (
-                  <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
-                ) : (
-                  <Globe className="w-3.5 h-3.5 text-indigo-400" />
-                )}
-                <span>
-                  {currentActiveProfile!.scope === 'partner'
-                    ? `Regla: ${currentActiveProfile!.partnerName}`
-                    : 'Regla Global Activa'}
-                </span>
-              </span>
-              <span className="text-[10px] flex items-center gap-1 opacity-80 font-mono">
-                <Clock className="w-3 h-3" />
-                <span>{formatExpirationLabel(currentActiveProfile!.expiresAt)}</span>
-              </span>
-            </div>
-
-            <div className="font-mono text-[11px] opacity-90 flex gap-2">
-              <span>Int: {currentActiveProfile!.params.internacionPct}%</span>
-              <span>•</span>
-              <span>Ar: {currentActiveProfile!.params.arancelPct}%</span>
-              <span>•</span>
-              <span>Mg: {currentActiveProfile!.params.margenPct}%</span>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between text-xs px-1">
-            <span className="font-bold text-slate-300 flex items-center gap-1.5">
-              <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Partner BOM</span>
-            </span>
-            <span
-              className="font-mono text-[10px] text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded-lg border border-cyan-800/40 truncate max-w-[130px]"
-              title={effectivePartner}
-            >
-              {effectivePartner}
-            </span>
-          </div>
-        )}
+      {/* Segmented Mode Control: Estándar CCW (Global) vs Por Línea / Custom */}
+      <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-2xl border border-slate-800 text-[11px] font-bold">
+        <button
+          type="button"
+          onClick={() => handleSwitchMode('standard')}
+          className={`py-2 px-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            activeMode === 'standard'
+              ? 'bg-indigo-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Globe className="w-3.5 h-3.5" />
+          <span>Estándar CCW</span>
+        </button>
 
         <button
           type="button"
-          onClick={() => {
-            setCustomPartnerInput(detectedPartner || '');
-            setShowConfigModal(true);
-          }}
-          className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-900/40 to-indigo-900/40 hover:from-cyan-800/60 hover:to-indigo-800/60 text-cyan-200 border border-cyan-700/40 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm hover:border-cyan-400"
+          onClick={() => handleSwitchMode('custom_lines')}
+          className={`py-2 px-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            activeMode === 'custom_lines'
+              ? 'bg-indigo-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-white'
+          }`}
         >
-          <CloudUpload className="w-4 h-4 text-cyan-400" />
-          <span>Fijar Parámetros en la Nube</span>
+          <Layers className="w-3.5 h-3.5" />
+          <span>Por Línea</span>
+          {customLineCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono">
+              {customLineCount}
+            </span>
+          )}
         </button>
-
-        {toastFeedback && (
-          <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 text-[11px] flex items-center gap-2 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>{toastFeedback}</span>
-          </div>
-        )}
       </div>
 
-      {/* REQUERIMIENTO 4: NUEVA HERRAMIENTA VISUAL (CÁLCULO INVERSO EQUITATIVO) */}
-      <div className="pt-4 border-t border-slate-800 space-y-3.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="p-1.5 bg-amber-950/80 text-amber-400 rounded-lg border border-amber-500/30">
-              <Target className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <h3 className="text-xs font-bold text-white">Ajuste de Precio Objetivo</h3>
-              <p className="text-[10px] text-slate-400">Cálculo Inverso Equitativo</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Total Cotizado Intcomex Actual Banner */}
-        <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-between text-xs">
-          <span className="text-slate-400 font-medium">Total Cotizado Actual:</span>
-          <span className="font-mono font-black text-emerald-400 text-sm">
-            {formatUsd(currentTotal)}
-          </span>
-        </div>
-
-        {/* Mode Selector */}
-        <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-950 rounded-xl border border-slate-800 text-[11px] font-semibold">
-          <button
-            type="button"
-            onClick={() => setGoalMode('discount_amount')}
-            className={`py-1.5 px-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
-              goalMode === 'discount_amount'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <TrendingDown className="w-3 h-3" />
-            <span>Descuento ($)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setGoalMode('target_price')}
-            className={`py-1.5 px-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
-              goalMode === 'target_price'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <DollarSign className="w-3 h-3" />
-            <span>Precio Total</span>
-          </button>
-        </div>
-
-        {/* Target Input */}
-        <div className="space-y-1.5">
-          <label className="block text-[11px] font-bold text-slate-300">
-            {goalMode === 'discount_amount' ? 'Monto a Descontar (USD)' : 'Precio Objetivo Solicitado (USD)'}
-          </label>
-          <div className="relative">
-            <span className="absolute left-3 top-2.5 text-xs text-slate-500 font-mono">$</span>
-            <input
-              type="number"
-              step="1"
-              placeholder={
-                goalMode === 'discount_amount'
-                  ? 'ej. 40 (bajar 40 USD)'
-                  : currentTotal > 0
-                  ? `ej. ${(currentTotal - 40).toFixed(2)}`
-                  : 'ej. 1115'
-              }
-              value={targetInput}
-              onChange={(e) => setTargetInput(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 focus:border-amber-500 rounded-xl pl-7 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none transition-colors"
-            />
-          </div>
-          <p className="text-[10px] text-slate-500">
-            {goalMode === 'discount_amount'
-              ? 'Resta este monto al Total Cotizado reduciendo equitativamente internación y margen.'
-              : 'Calcula internación y margen para alcanzar exactamente este valor total.'}
-          </p>
-        </div>
-
-        {/* Feedback Alert */}
-        {appliedFeedback && (
-          <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 text-[11px] flex items-center space-x-2 animate-in fade-in">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>{appliedFeedback}</span>
-          </div>
-        )}
-
-        {/* Live Calculation Preview Box */}
-        {goalSeekResult && goalSeekResult.success && (
-          <div className="p-3.5 bg-slate-950/90 border border-amber-500/40 rounded-2xl space-y-3 animate-in fade-in">
-            <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
-              <span className="text-slate-400 font-medium">Nuevo Total Estimado:</span>
-              <span className="font-mono font-bold text-amber-300 text-sm">
-                {formatUsd(goalSeekResult.achievedTotal)}
-              </span>
+      {/* MODE 1: ESTÁNDAR CCW (GLOBAL) */}
+      {activeMode === 'standard' && (
+        <div className="space-y-5">
+          {/* Manual Percentage Inputs (Sliders) */}
+          <div className="space-y-4 text-xs">
+            {/* Internación */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between font-bold">
+                <label className="text-slate-300">Costo de Internación</label>
+                <span className="font-mono text-indigo-400 font-bold">
+                  {params.internacionPct.toFixed(1)}%
+                </span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="25"
+                  step="0.1"
+                  value={params.internacionPct}
+                  onChange={(e) => handleInputChange('internacionPct', parseFloat(e.target.value))}
+                  className="w-full accent-indigo-500 cursor-pointer"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={params.internacionPct}
+                  onChange={(e) => handleInputChange('internacionPct', parseFloat(e.target.value))}
+                  className="w-14 bg-slate-950 border border-slate-800 rounded-xl p-1.5 text-center font-mono text-xs text-white"
+                />
+              </div>
+              {isOnlyLicensing ? (
+                <div className="p-1.5 bg-amber-500/10 border border-amber-500/25 rounded-lg text-[10px] text-amber-300 flex items-center gap-1.5">
+                  <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
+                  <span>Cotización 100% Licencias / Intangibles (Internación 0% no aplicable).</span>
+                </div>
+              ) : (
+                <p className="text-[10px] text-slate-500">
+                  Aplica sobre hardware tangible. <em>Intangibles exentos (0%)</em>.
+                </p>
+              )}
             </div>
 
-            {goalSeekResult.discountAmount > 0 && (
-              <div className="flex items-center justify-between text-[11px] text-slate-400">
-                <span>Descuento aplicado:</span>
-                <span className="font-mono font-bold text-rose-400">
-                  -{formatUsd(goalSeekResult.discountAmount)}
+            {/* Arancel */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between font-bold">
+                <div className="flex items-center gap-1.5">
+                  <label className="text-slate-300">Arancel Aduanero</label>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 border border-purple-800/40 flex items-center gap-0.5">
+                    <Lock className="w-2.5 h-2.5" /> Fijo
+                  </span>
+                </div>
+                <span className="font-mono text-purple-400 font-bold">
+                  {params.arancelPct.toFixed(1)}%
+                </span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="25"
+                  step="0.5"
+                  value={params.arancelPct}
+                  onChange={(e) => handleInputChange('arancelPct', parseFloat(e.target.value))}
+                  className="w-full accent-purple-500 cursor-pointer"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value={params.arancelPct}
+                  onChange={(e) => handleInputChange('arancelPct', parseFloat(e.target.value))}
+                  className="w-14 bg-slate-950 border border-slate-800 rounded-xl p-1.5 text-center font-mono text-xs text-white"
+                />
+              </div>
+              <p className="text-[10px] text-slate-500">
+                Aplica a accesorios terminados en '=' (ej: cables, brackets).
+              </p>
+            </div>
+
+            {/* Margen */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between font-bold">
+                <label className="text-slate-300">Margen de Ganancia Intcomex</label>
+                <span className="font-mono text-emerald-400 font-bold">
+                  {params.margenPct.toFixed(1)}%
+                </span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="30"
+                  step="0.1"
+                  value={params.margenPct}
+                  onChange={(e) => handleInputChange('margenPct', parseFloat(e.target.value))}
+                  className="w-full accent-emerald-500 cursor-pointer"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="99"
+                  step="0.1"
+                  value={params.margenPct}
+                  onChange={(e) => handleInputChange('margenPct', parseFloat(e.target.value))}
+                  className="w-14 bg-slate-950 border border-slate-800 rounded-xl p-1.5 text-center font-mono text-xs text-white"
+                />
+              </div>
+              <p className="text-[10px] text-slate-500">
+                Margen comercial aplicado sobre el costo unitario total.
+              </p>
+            </div>
+          </div>
+
+          {/* PERFIL DE PARÁMETROS PARTNER / GLOBAL EN LA NUBE */}
+          <div className="pt-4 border-t border-slate-800 space-y-3">
+            {isProfileActive(currentActiveProfile) ? (
+              <div
+                className={`p-3 rounded-2xl border text-xs space-y-1.5 ${
+                  currentActiveProfile!.scope === 'partner'
+                    ? 'bg-cyan-950/40 border-cyan-500/40 text-cyan-200'
+                    : 'bg-indigo-950/40 border-indigo-500/40 text-indigo-200'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold flex items-center gap-1.5">
+                    {currentActiveProfile!.scope === 'partner' ? (
+                      <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
+                    ) : (
+                      <Globe className="w-3.5 h-3.5 text-indigo-400" />
+                    )}
+                    <span>
+                      {currentActiveProfile!.scope === 'partner'
+                        ? `Regla: ${currentActiveProfile!.partnerName}`
+                        : 'Regla Global Activa'}
+                    </span>
+                  </span>
+                  <span className="text-[10px] flex items-center gap-1 opacity-80 font-mono">
+                    <Clock className="w-3 h-3" />
+                    <span>{formatExpirationLabel(currentActiveProfile!.expiresAt)}</span>
+                  </span>
+                </div>
+
+                <div className="font-mono text-[11px] opacity-90 flex gap-2">
+                  <span>Int: {currentActiveProfile!.params.internacionPct}%</span>
+                  <span>•</span>
+                  <span>Ar: {currentActiveProfile!.params.arancelPct}%</span>
+                  <span>•</span>
+                  <span>Mg: {currentActiveProfile!.params.margenPct}%</span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between text-xs px-1">
+                <span className="font-bold text-slate-300 flex items-center gap-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Partner BOM</span>
+                </span>
+                <span
+                  className="font-mono text-[10px] text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded-lg border border-cyan-800/40 truncate max-w-[130px]"
+                  title={effectivePartner}
+                >
+                  {effectivePartner}
                 </span>
               </div>
             )}
 
-            <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
-              <div className="p-1.5 bg-slate-900 rounded-lg border border-slate-800">
-                <span className="text-slate-500 block">Internación</span>
-                <strong className="text-indigo-300 font-mono text-xs">
-                  {goalSeekResult.newInternacionPct.toFixed(1)}%
-                </strong>
-              </div>
-              <div className="p-1.5 bg-slate-900 rounded-lg border border-purple-900/30">
-                <span className="text-slate-500 block flex items-center justify-center gap-0.5">
-                  <Lock className="w-2 h-2 text-purple-400" /> Arancel
-                </span>
-                <strong className="text-purple-300 font-mono text-xs">
-                  {goalSeekResult.newArancelPct.toFixed(1)}%
-                </strong>
-              </div>
-              <div className="p-1.5 bg-slate-900 rounded-lg border border-slate-800">
-                <span className="text-slate-500 block">Margen</span>
-                <strong className="text-emerald-300 font-mono text-xs">
-                  {goalSeekResult.newMargenPct.toFixed(1)}%
-                </strong>
-              </div>
-            </div>
-
             <button
               type="button"
-              onClick={handleApplyGoalSeek}
-              className="w-full py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-lg shadow-amber-600/25 flex items-center justify-center space-x-2 transition-all cursor-pointer hover:scale-[1.02]"
+              onClick={() => {
+                setCustomPartnerInput(detectedPartner || '');
+                setShowConfigModal(true);
+              }}
+              className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-cyan-900/40 to-indigo-900/40 hover:from-cyan-800/60 hover:to-indigo-800/60 text-cyan-200 border border-cyan-700/40 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm hover:border-cyan-400"
             >
-              <Sparkles className="w-4 h-4" />
-              <span>Aplicar Descuentos Calculados</span>
+              <CloudUpload className="w-4 h-4 text-cyan-400" />
+              <span>Fijar Parámetros en la Nube</span>
             </button>
-          </div>
-        )}
 
-        {/* Unreachable Goal Seek Warning Box */}
-        {goalSeekResult && !goalSeekResult.success && goalSeekResult.error && (
-          <div className="p-3.5 bg-rose-950/60 border border-rose-500/40 rounded-2xl space-y-2 animate-in fade-in text-[11px] text-rose-200">
-            <div className="font-bold text-rose-300 flex items-center justify-between">
-              <span>⚠️ Objetivo Inalcanzable</span>
-              {typeof goalSeekResult.minPossibleTotal === 'number' && (
-                <span className="font-mono text-xs text-amber-300">
-                  Piso: {formatUsd(goalSeekResult.minPossibleTotal)}
-                </span>
-              )}
-            </div>
-            <p className="text-rose-200/90 leading-relaxed">{goalSeekResult.error}</p>
+            {toastFeedback && (
+              <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 text-[11px] flex items-center gap-2 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{toastFeedback}</span>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+
+          {/* AJUSTE DE PRECIO OBJETIVO (GOAL SEEK) */}
+          <div className="pt-4 border-t border-slate-800 space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="p-1.5 bg-amber-950/80 text-amber-400 rounded-lg border border-amber-500/30">
+                  <Target className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-white">Ajuste de Precio Objetivo</h3>
+                  <p className="text-[10px] text-slate-400">Cálculo Inverso Equitativo</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Total Cotizado Intcomex Actual Banner */}
+            <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-between text-xs">
+              <span className="text-slate-400 font-medium">Total Cotizado Actual:</span>
+              <span className="font-mono font-black text-emerald-400 text-sm">
+                {formatUsd(currentTotal)}
+              </span>
+            </div>
+
+            {/* Mode Selector */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-950 rounded-xl border border-slate-800 text-[11px] font-semibold">
+              <button
+                type="button"
+                onClick={() => setGoalMode('discount_amount')}
+                className={`py-1.5 px-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  goalMode === 'discount_amount'
+                    ? 'bg-amber-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <TrendingDown className="w-3 h-3" />
+                <span>Descuento ($)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setGoalMode('target_price')}
+                className={`py-1.5 px-2 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  goalMode === 'target_price'
+                    ? 'bg-amber-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <DollarSign className="w-3 h-3" />
+                <span>Precio Total</span>
+              </button>
+            </div>
+
+            {/* Target Input */}
+            <div className="space-y-1.5">
+              <label className="block text-[11px] font-bold text-slate-300">
+                {goalMode === 'discount_amount'
+                  ? 'Monto a Descontar (USD)'
+                  : 'Precio Objetivo Solicitado (USD)'}
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-xs text-slate-500 font-mono">$</span>
+                <input
+                  type="number"
+                  step="1"
+                  placeholder={
+                    goalMode === 'discount_amount'
+                      ? 'ej. 40 (bajar 40 USD)'
+                      : currentTotal > 0
+                      ? `ej. ${(currentTotal - 40).toFixed(2)}`
+                      : 'ej. 1115'
+                  }
+                  value={targetInput}
+                  onChange={(e) => setTargetInput(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 focus:border-amber-500 rounded-xl pl-7 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none transition-colors"
+                />
+              </div>
+              <p className="text-[10px] text-slate-500">
+                {goalMode === 'discount_amount'
+                  ? 'Resta este monto al Total Cotizado reduciendo equitativamente internación y margen.'
+                  : 'Calcula internación y margen para alcanzar exactamente este valor total.'}
+              </p>
+            </div>
+
+            {/* Feedback Alert */}
+            {appliedFeedback && (
+              <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-200 text-[11px] flex items-center space-x-2 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{appliedFeedback}</span>
+              </div>
+            )}
+
+            {/* Live Calculation Preview Box */}
+            {goalSeekResult && goalSeekResult.success && (
+              <div className="p-3.5 bg-slate-950/90 border border-amber-500/40 rounded-2xl space-y-3 animate-in fade-in">
+                <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
+                  <span className="text-slate-400 font-medium">Nuevo Total Estimado:</span>
+                  <span className="font-mono font-bold text-amber-300 text-sm">
+                    {formatUsd(goalSeekResult.achievedTotal)}
+                  </span>
+                </div>
+
+                {goalSeekResult.discountAmount > 0 && (
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <span>Descuento aplicado:</span>
+                    <span className="font-mono font-bold text-rose-400">
+                      -{formatUsd(goalSeekResult.discountAmount)}
+                    </span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
+                  <div className="p-1.5 bg-slate-900 rounded-lg border border-slate-800">
+                    <span className="text-slate-500 block">Internación</span>
+                    <strong className="text-indigo-300 font-mono text-xs">
+                      {goalSeekResult.newInternacionPct.toFixed(1)}%
+                    </strong>
+                  </div>
+                  <div className="p-1.5 bg-slate-900 rounded-lg border border-purple-900/30">
+                    <span className="text-slate-500 block flex items-center justify-center gap-0.5">
+                      <Lock className="w-2 h-2 text-purple-400" /> Arancel
+                    </span>
+                    <strong className="text-purple-300 font-mono text-xs">
+                      {goalSeekResult.newArancelPct.toFixed(1)}%
+                    </strong>
+                  </div>
+                  <div className="p-1.5 bg-slate-900 rounded-lg border border-slate-800">
+                    <span className="text-slate-500 block">Margen</span>
+                    <strong className="text-emerald-300 font-mono text-xs">
+                      {goalSeekResult.newMargenPct.toFixed(1)}%
+                    </strong>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleApplyGoalSeek}
+                  className="w-full py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-lg shadow-amber-600/25 flex items-center justify-center space-x-2 transition-all cursor-pointer hover:scale-[1.02]"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Aplicar Descuentos Calculados</span>
+                </button>
+              </div>
+            )}
+
+            {/* Unreachable Goal Seek Warning Box */}
+            {goalSeekResult && !goalSeekResult.success && goalSeekResult.error && (
+              <div className="p-3.5 bg-rose-950/60 border border-rose-500/40 rounded-2xl space-y-2 animate-in fade-in text-[11px] text-rose-200">
+                <div className="font-bold text-rose-300 flex items-center justify-between">
+                  <span>⚠️ Objetivo Inalcanzable</span>
+                  {typeof goalSeekResult.minPossibleTotal === 'number' && (
+                    <span className="font-mono text-xs text-amber-300">
+                      Piso: {formatUsd(goalSeekResult.minPossibleTotal)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-rose-200/90 leading-relaxed">{goalSeekResult.error}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODE 2: PARÁMETROS CUSTOM POR LÍNEA / JERÁRQUICO */}
+      {activeMode === 'custom_lines' && (
+        <div className="space-y-4 text-xs">
+          {/* Information & Hierarchy Rules Note */}
+          <div className="p-3.5 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 text-indigo-200 text-[11px] space-y-1.5 leading-relaxed">
+            <div className="flex items-center gap-1.5 font-bold text-white">
+              <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
+              <span>Herencia Jerárquica Activa</span>
+            </div>
+            <p className="text-slate-300 text-[10px]">
+              Modifica los porcentajes de cada <strong>Línea Madre (1.0, 2.0...)</strong>. Todas sus sub-líneas (1.1, 1.2...) heredarán automáticamente los valores configurados.
+            </p>
+            <p className="text-indigo-300 text-[10px]">
+              <em>Nota fiscal:</em> Licencias y servicios intangibles (CON-, DNA, SaaS) conservan su exención legal (0% Internación / 0% Arancel) y adoptan el margen del bloque.
+            </p>
+          </div>
+
+          {/* Quick Actions Bar */}
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[11px] font-bold text-slate-300">
+              Bloques Detectados ({motherLineBlocks.length})
+            </span>
+            {customLineCount > 0 && (
+              <button
+                type="button"
+                onClick={handleResetAllLines}
+                className="text-[10px] text-rose-400 hover:text-rose-300 flex items-center gap-1 transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Restablecer Todo</span>
+              </button>
+            )}
+          </div>
+
+          {/* Mother Line Blocks Accordion Cards */}
+          {motherLineBlocks.length === 0 ? (
+            <div className="p-6 text-center text-slate-500 text-xs bg-slate-950 rounded-2xl border border-slate-800">
+              No hay líneas CCW cargadas en memoria. Sube una cotización para ajustar parámetros por línea.
+            </div>
+          ) : (
+            <div className="space-y-2.5 max-h-[500px] overflow-y-auto pr-1">
+              {motherLineBlocks.map((block) => {
+                const motherKey = block.motherKey;
+                const isCustomized = Boolean(params.lineCustomParams?.[motherKey]);
+                const blockParams = params.lineCustomParams?.[motherKey] || {};
+
+                const effectiveInt =
+                  blockParams.internacionPct !== undefined
+                    ? blockParams.internacionPct
+                    : params.internacionPct;
+                const effectiveAr =
+                  blockParams.arancelPct !== undefined
+                    ? blockParams.arancelPct
+                    : params.arancelPct;
+                const effectiveMg =
+                  blockParams.margenPct !== undefined
+                    ? blockParams.margenPct
+                    : params.margenPct;
+
+                const isExpanded =
+                  expandedBlocks[motherKey] ?? (motherLineBlocks.length <= 4 || isCustomized);
+
+                return (
+                  <div
+                    key={motherKey}
+                    className={`rounded-2xl border transition-all ${
+                      isCustomized
+                        ? 'bg-slate-950/90 border-indigo-500/50 shadow-md'
+                        : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    {/* Block Header Button */}
+                    <div
+                      onClick={() => toggleBlockExpanded(motherKey)}
+                      className="p-3 flex items-center justify-between gap-2 cursor-pointer select-none"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`font-mono text-[11px] font-black px-2 py-0.5 rounded-lg border ${
+                              isCustomized
+                                ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm'
+                                : 'bg-slate-800 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            Línea {motherKey}
+                          </span>
+                          <span className="font-mono text-xs font-bold text-white truncate">
+                            {block.samplePartNumber || 'Línea CCW'}
+                          </span>
+                        </div>
+                        {block.sampleDescription && (
+                          <p className="text-[10px] text-slate-400 truncate mt-1">
+                            {block.sampleDescription}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="text-right font-mono text-[10px]">
+                          <span
+                            className={`block font-bold ${
+                              isCustomized ? 'text-indigo-300' : 'text-slate-400'
+                            }`}
+                          >
+                            {effectiveInt.toFixed(1)}% Int &bull; {effectiveMg.toFixed(1)}% Mg
+                          </span>
+                          <span className="text-slate-500 text-[9px] block">
+                            +{block.childCount} sub-líneas
+                          </span>
+                        </div>
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-slate-400" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-slate-400" />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Block Expanded Inputs */}
+                    {isExpanded && (
+                      <div className="p-3 pt-0 border-t border-slate-800/80 mt-1 space-y-3">
+                        {/* Status Ribbon and Per-Block Reset */}
+                        <div className="flex items-center justify-between pt-2">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            {isCustomized ? 'Valores Personalizados' : 'Heredando Estándar Global'}
+                          </span>
+                          {isCustomized && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleResetLineCustom(motherKey);
+                              }}
+                              className="text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer transition-colors"
+                              title="Restablecer este bloque a valores estándar"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              <span>Restablecer Bloque</span>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Internación Slider for Block */}
+                        <div className="space-y-1">
+                          <div className="flex justify-between font-bold text-[11px]">
+                            <label className="text-slate-300">Internación ({motherKey})</label>
+                            <span className="font-mono text-indigo-400 font-bold">
+                              {effectiveInt.toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="range"
+                              min="0"
+                              max="25"
+                              step="0.1"
+                              value={effectiveInt}
+                              onChange={(e) =>
+                                handleLineCustomParamChange(
+                                  motherKey,
+                                  'internacionPct',
+                                  parseFloat(e.target.value)
+                                )
+                              }
+                              className="w-full accent-indigo-500 cursor-pointer"
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={effectiveInt}
+                              onChange={(e) =>
+                                handleLineCustomParamChange(
+                                  motherKey,
+                                  'internacionPct',
+                                  parseFloat(e.target.value)
+                                )
+                              }
+                              className="w-13 bg-slate-900 border border-slate-700 rounded-lg p-1 text-center font-mono text-[11px] text-white"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Arancel Slider for Block */}
+                        <div className="space-y-1">
+                          <div className="flex justify-between font-bold text-[11px]">
+                            <label className="text-slate-300">Arancel ({motherKey})</label>
+                            <span className="font-mono text-purple-400 font-bold">
+                              {effectiveAr.toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="range"
+                              min="0"
+                              max="25"
+                              step="0.5"
+                              value={effectiveAr}
+                              onChange={(e) =>
+                                handleLineCustomParamChange(
+                                  motherKey,
+                                  'arancelPct',
+                                  parseFloat(e.target.value)
+                                )
+                              }
+                              className="w-full accent-purple-500 cursor-pointer"
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.5"
+                              value={effectiveAr}
+                              onChange={(e) =>
+                                handleLineCustomParamChange(
+                                  motherKey,
+                                  'arancelPct',
+                                  parseFloat(e.target.value)
+                                )
+                              }
+                              className="w-13 bg-slate-900 border border-slate-700 rounded-lg p-1 text-center font-mono text-[11px] text-white"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Margen Slider for Block */}
+                        <div className="space-y-1">
+                          <div className="flex justify-between font-bold text-[11px]">
+                            <label className="text-slate-300">Margen ({motherKey})</label>
+                            <span className="font-mono text-emerald-400 font-bold">
+                              {effectiveMg.toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="range"
+                              min="0"
+                              max="30"
+                              step="0.1"
+                              value={effectiveMg}
+                              onChange={(e) =>
+                                handleLineCustomParamChange(
+                                  motherKey,
+                                  'margenPct',
+                                  parseFloat(e.target.value)
+                                )
+                              }
+                              className="w-full accent-emerald-500 cursor-pointer"
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              max="99"
+                              step="0.1"
+                              value={effectiveMg}
+                              onChange={(e) =>
+                                handleLineCustomParamChange(
+                                  motherKey,
+                                  'margenPct',
+                                  parseFloat(e.target.value)
+                                )
+                              }
+                              className="w-13 bg-slate-900 border border-slate-700 rounded-lg p-1 text-center font-mono text-[11px] text-white"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* MODAL DE CONFIGURACIÓN DE PARÁMETROS EN LA NUBE */}
       {showConfigModal && (
@@ -688,7 +1171,9 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
                           : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
                       }`}
                     >
-                      <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-cyan-400' : 'text-slate-500'}`} />
+                      <Icon
+                        className={`w-3.5 h-3.5 ${isSelected ? 'text-cyan-400' : 'text-slate-500'}`}
+                      />
                       <span>{item.label}</span>
                     </button>
                   );

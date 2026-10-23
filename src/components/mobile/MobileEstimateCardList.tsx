@@ -83,6 +83,25 @@ export const MobileEstimateCardList: React.FC<MobileEstimateCardListProps> = ({
                 </div>
               </div>
 
+              {/* Hierarchy & Custom Line Parameters */}
+              {!isMain && (
+                <div className="text-[10px] text-slate-500 font-sans flex items-center gap-1 mb-1.5">
+                  <span>↳ Hereda de {item.inheritedFromMotherLine || (item.lineNumber ? `${item.lineNumber.split('.')[0]}.0` : '1.0')}</span>
+                  {item.isCustomParamApplied && (
+                    <span className="text-indigo-400 font-mono text-[9px]">
+                      ({item.isIntangible ? '0% Int/Ar' : `${item.effectiveInternacionPct}% Int`} • {item.effectiveMargenPct}% Mg)
+                    </span>
+                  )}
+                </div>
+              )}
+              {isMain && item.isCustomParamApplied && (
+                <div className="text-[10px] text-indigo-300 font-mono flex items-center gap-1 mb-1.5">
+                  <span className="px-1.5 py-0.2 rounded bg-indigo-500/20 border border-indigo-500/30 text-[9px] font-bold">
+                    Bloque Custom: {item.effectiveInternacionPct}% Int &bull; {item.effectiveMargenPct}% Mg
+                  </span>
+                </div>
+              )}
+
               {/* Description */}
               {item.description && (
                 <p className="text-[11px] text-slate-300 line-clamp-2 leading-relaxed mb-2.5">

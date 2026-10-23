@@ -531,6 +531,21 @@ export function isMainLineItem(lineNumber: string): boolean {
   return /^\d+\.0$/.test(normalized);
 }
 
+/**
+ * Extrae la clave de la Línea Madre asociada a cualquier número de línea de CCW.
+ * Ejemplos: "1.0" -> "1.0", "1.1" -> "1.0", "1.0.1" -> "1.0", "2.0" -> "2.0", "2.3" -> "2.0", "10.4" -> "10.0"
+ */
+export function getMotherLineKey(lineNumber?: string | number): string {
+  if (lineNumber === undefined || lineNumber === null) return '1.0';
+  const clean = normalizeCcwLineNumber(lineNumber);
+  if (!clean) return '1.0';
+  const match = clean.match(/^(\d+)/);
+  if (match) {
+    return `${match[1]}.0`;
+  }
+  return clean;
+}
+
 export interface GoalSeekResult {
   success: boolean;
   currentTotal?: number;
@@ -898,6 +913,35 @@ export function recalculateEstimateResult(
         : Boolean(item.months && item.months > 1 && isCloudSubscriptionSku(cleanSkuKey)));
     const durationMonths = isPeriodic ? (item.detectedDurationMonths ?? item.months ?? 1) : 1;
 
+    // Resolución de Parámetros Jerárquicos / Custom por Línea Madre (Bloque N.0)
+    const motherKey = getMotherLineKey(normalizedLineNumber);
+    const hasCustomLineParams = Boolean(
+      params.parameterMode === 'custom_lines' &&
+      params.lineCustomParams &&
+      params.lineCustomParams[motherKey]
+    );
+
+    const lineCustom = hasCustomLineParams ? params.lineCustomParams![motherKey] : undefined;
+
+    const effectiveInternacionPct = lineCustom?.internacionPct !== undefined
+      ? lineCustom.internacionPct
+      : params.internacionPct;
+
+    const effectiveArancelPct = lineCustom?.arancelPct !== undefined
+      ? lineCustom.arancelPct
+      : params.arancelPct;
+
+    const effectiveMargenPct = lineCustom?.margenPct !== undefined
+      ? lineCustom.margenPct
+      : params.margenPct;
+
+    const effectiveParams: QuoteParameters = {
+      ...params,
+      internacionPct: effectiveInternacionPct,
+      arancelPct: effectiveArancelPct,
+      margenPct: effectiveMargenPct,
+    };
+
     if (item.realUnitCost === 0 && (item.unitListPrice === 0 || item.netCiscoUnit === 0)) {
       // Sub-línea a costo $0.00 (ej. cables incluidos CAB-ACI, fuentes PWR-*, o sub-licencias LIC-MT-E-INCL)
       const normRule = normalizeOverrideRule(override);
@@ -925,6 +969,11 @@ export function recalculateEstimateResult(
         costoTotalUnitario: 0,
         precioVentaUnitario: 0,
         precioVentaExtendido: 0,
+        effectiveInternacionPct,
+        effectiveArancelPct,
+        effectiveMargenPct,
+        isCustomParamApplied: hasCustomLineParams,
+        inheritedFromMotherLine: motherKey,
       };
     } else if (isPeriodic && durationMonths > 1 && item.unitListPrice > 0) {
       const effectiveDisc = hasPromo && item.unitListPrice > 0
@@ -936,7 +985,7 @@ export function recalculateEstimateResult(
         effectiveDisc,
         item.qty,
         durationMonths,
-        params,
+        effectiveParams,
         override
       );
 
@@ -956,6 +1005,11 @@ export function recalculateEstimateResult(
         fastTrackSavings: hasPromo
           ? Number(((baseNetCiscoUnit - meraki.costoTotalUnitario) * item.qty).toFixed(2))
           : item.fastTrackSavings,
+        effectiveInternacionPct,
+        effectiveArancelPct,
+        effectiveMargenPct,
+        isCustomParamApplied: hasCustomLineParams,
+        inheritedFromMotherLine: motherKey,
       };
     } else {
       const calculated = calculateLineItemCosts(
@@ -963,7 +1017,7 @@ export function recalculateEstimateResult(
         item.qty,
         item.partNumber,
         item.description,
-        params,
+        effectiveParams,
         override,
         normalizedLineNumber
       );
@@ -977,6 +1031,11 @@ export function recalculateEstimateResult(
         netCiscoUnit,
         isFastTrackPromo: hasPromo,
         ...calculated,
+        effectiveInternacionPct,
+        effectiveArancelPct,
+        effectiveMargenPct,
+        isCustomParamApplied: hasCustomLineParams,
+        inheritedFromMotherLine: motherKey,
       };
     }
   });
@@ -989,7 +1048,14 @@ export function recalculateEstimateResult(
 
   const isOnlyLicensing = isPureLicensingQuote(newItems);
 
+  const hasActiveCustomLines = Boolean(
+    params.parameterMode === 'custom_lines' &&
+    params.lineCustomParams &&
+    Object.keys(params.lineCustomParams).length > 0
+  );
+
   const isRecalc = Boolean(
+    hasActiveCustomLines ||
     (params && ((!isOnlyLicensing && params.internacionPct !== 7.0) || params.margenPct !== 5.0)) ||
     (overrides && Object.keys(overrides).length > 0)
   );

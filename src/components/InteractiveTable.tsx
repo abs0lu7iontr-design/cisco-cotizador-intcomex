@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ProcessedEstimateResult, EstimateLineItem, QuoteParameters, OverrideRuleType } from '../core/types';
 import {
   isMainLineItem,
+  getMotherLineKey,
   CurrencyCode,
   CurrencyConversionRates,
   convertUsdToCurrency,
@@ -23,6 +24,7 @@ import {
   Zap,
   Tag,
   Save,
+  Layers,
 } from 'lucide-react';
 
 import { MobileEstimateCardList } from './mobile/MobileEstimateCardList';
@@ -179,7 +181,7 @@ const VIRTUALIZATION_ROW_THRESHOLD = 80;
 export const InteractiveTable: React.FC<InteractiveTableProps> = ({
   data,
   items: itemsProp,
-  params = { internacionPct: 7.0, arancelPct: 6.0, margenPct: 5.0 },
+  params = { internacionPct: 7.0, arancelPct: 6.0, margenPct: 5.0, parameterMode: 'standard', lineCustomParams: {} },
   onSetRowRule,
   onToggleRowRule,
 }) => {
@@ -449,6 +451,11 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
             <div className="font-mono text-xs font-black text-indigo-300 truncate">
               {contextMenu.item.partNumber}
             </div>
+            <div className="text-[10px] text-indigo-300 font-mono mt-0.5">
+              Bloque {contextMenu.item.inheritedFromMotherLine || getMotherLineKey(contextMenu.item.lineNumber)} &bull; Int:{' '}
+              {contextMenu.item.effectiveInternacionPct ?? params.internacionPct}% &bull; Mg:{' '}
+              {contextMenu.item.effectiveMargenPct ?? params.margenPct}%
+            </div>
             <div className="text-[10px] text-emerald-400 flex items-center gap-1 mt-0.5">
               <Save className="w-3 h-3" />
               <span>Se guarda en memoria automáticamente</span>
@@ -591,17 +598,30 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
       </div>
 
       {/* Helper Banner */}
-      <div className="px-4 py-2 bg-indigo-950/30 border-y border-indigo-500/20 text-[11px] text-indigo-300 flex items-center justify-between">
+      <div className="px-4 py-2 bg-indigo-950/30 border-y border-indigo-500/20 text-[11px] text-indigo-300 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <MousePointerClick className="w-3.5 h-3.5 text-indigo-400" />
           <span>
             <strong>Tip:</strong> Haz <strong>clic derecho</strong> sobre cualquier fila para cambiar su clasificación (Hardware / Intangible / Arancel). La regla se recordará automáticamente para ese SKU.
           </span>
         </div>
-        <span className="text-[10px] text-slate-500 font-mono hidden sm:inline">
+        <div className="flex items-center gap-3">
+          {params.parameterMode === 'custom_lines' ? (
+            <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-200 text-[10px] font-bold">
+              <Layers className="w-3 h-3 text-indigo-400" />
+              <span>Modo: Parámetros Custom por Línea</span>
+            </span>
+          ) : (
+            <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
+              Estándar CCW ({params.internacionPct}% Int &bull; {params.margenPct}% Mg)
+            </span>
+          )}
+
+          <span className="text-[10px] text-slate-500 font-mono hidden sm:inline">
           Mostrando {filteredItems.length} de {items.length} ítems
-          {virtualWindow.isVirtualized ? ` (Ventana activa: ${virtualWindow.startIndex + 1}-${virtualWindow.endIndex})` : ''}
-        </span>
+            {virtualWindow.isVirtualized ? ` (Ventana activa: ${virtualWindow.startIndex + 1}-${virtualWindow.endIndex})` : ''}
+          </span>
+        </div>
       </div>
 
       {/* Mobile Touch Cards View (Only rendered on screens < md) */}
@@ -698,7 +718,15 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                           isMain ? 'font-bold text-white' : 'font-normal text-slate-400'
                         }`}
                       >
-                        {item.lineNumber}
+                        <div>{item.lineNumber}</div>
+                        {isMain && item.isCustomParamApplied && (
+                          <span
+                            className="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 mt-0.5"
+                            title={`Bloque custom: ${item.effectiveInternacionPct}% Int / ${item.effectiveArancelPct}% Ar / ${item.effectiveMargenPct}% Mg`}
+                          >
+                            Custom
+                          </span>
+                        )}
                       </td>
                       <td
                         className={`p-3 font-mono whitespace-nowrap ${
@@ -717,6 +745,16 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                             </span>
                           )}
                         </div>
+                        {!isMain && (
+                          <div className="text-[10px] text-slate-500 font-sans flex items-center gap-1 mt-0.5">
+                            <span>↳ Hereda de {item.inheritedFromMotherLine || getMotherLineKey(item.lineNumber)}</span>
+                            {item.isCustomParamApplied && (
+                              <span className="text-indigo-400 font-mono text-[9px]">
+                                ({item.isIntangible ? "0% Int/Ar" : `${item.effectiveInternacionPct}% Int`} • {item.effectiveMargenPct}% Mg)
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td
                         className={`p-3 text-slate-300 max-w-xs truncate ${isMain ? '' : 'pl-6'}`}
@@ -734,12 +772,22 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                         {item.isIntangible ? (
                           <span className="text-slate-600">-</span>
                         ) : (
-                          formatCurrency(item.costoInternacion)
+                          <span
+                            className={item.isCustomParamApplied ? "text-indigo-300 font-semibold" : ""}
+                            title={item.isCustomParamApplied ? `Internación custom del bloque: ${item.effectiveInternacionPct}%` : undefined}
+                          >
+                            {formatCurrency(item.costoInternacion)}
+                          </span>
                         )}
                       </td>
                       <td className="p-3 text-right font-mono text-slate-400">
                         {item.llevaArancel ? (
-                          <span className="text-purple-400 font-bold">{formatCurrency(item.costoArancel)}</span>
+                          <span
+                            className="text-purple-400 font-bold"
+                            title={item.isCustomParamApplied ? `Arancel del bloque: ${item.effectiveArancelPct}%` : undefined}
+                          >
+                            {formatCurrency(item.costoArancel)}
+                          </span>
                         ) : (
                           <span className="text-slate-600">-</span>
                         )}
@@ -747,10 +795,20 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                       <td className="p-3 text-right font-mono text-slate-200 font-semibold">
                         {formatCurrency(item.costoTotalUnitario)}
                       </td>
-                      <td className="p-3 text-right font-mono font-bold text-indigo-300 bg-indigo-950/20">
+                      <td
+                        className={`p-3 text-right font-mono font-bold text-indigo-300 bg-indigo-950/20 ${
+                          item.isCustomParamApplied ? "ring-1 ring-inset ring-indigo-500/40" : ""
+                        }`}
+                        title={item.isCustomParamApplied ? `Margen de bloque: ${item.effectiveMargenPct}%` : undefined}
+                      >
                         {formatCurrency(item.precioVentaUnitario)}
                       </td>
-                      <td className="p-3 text-right font-mono font-bold text-emerald-400 bg-emerald-950/20">
+                      <td
+                        className={`p-3 text-right font-mono font-bold text-emerald-400 bg-emerald-950/20 ${
+                          item.isCustomParamApplied ? "ring-1 ring-inset ring-emerald-500/40" : ""
+                        }`}
+                        title={item.isCustomParamApplied ? `Margen de bloque: ${item.effectiveMargenPct}%` : undefined}
+                      >
                         {formatCurrency(item.precioVentaExtendido)}
                       </td>
                       <td className="p-3 text-center">

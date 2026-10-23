@@ -9,6 +9,8 @@ import {
   ProcessedEstimateResult,
   QuoteParameters,
   OverrideRuleType,
+  PricingParameterMode,
+  LineParametersMap,
 } from './types';
 import {
   calculateLineItemCosts,
@@ -482,6 +484,8 @@ export async function parseEstimateWorkbook(
   let priorMargin = 0;
   let priorInternacion = 0;
   let priorTimestamp = '';
+  let priorParameterMode: PricingParameterMode = 'standard';
+  let priorLineCustomParams: LineParametersMap = {};
   const shadowSnapshot: Record<string, any> = {};
 
   const metaSheet = workbook.getWorksheet('sys_metadata');
@@ -505,6 +509,10 @@ export async function parseEstimateWorkbook(
         const rawUva = parsed.uva !== undefined ? parsed.uva : 7.0;
         priorInternacion = rawUva > 0 && rawUva <= 1 ? rawUva * 100 : rawUva;
         priorTimestamp = parsed.kiwi ?? '';
+        priorParameterMode = parsed.modo === 'custom_lines' ? 'custom_lines' : 'standard';
+        if (parsed.lineasCustom && typeof parsed.lineasCustom === 'object') {
+          priorLineCustomParams = parsed.lineasCustom;
+        }
 
         parsed.huerto.forEach((entry: any) => {
           if (entry && entry.line) {
@@ -1189,6 +1197,9 @@ export async function parseEstimateWorkbook(
           previousInternacionPct: priorInternacion,
           processedAt: priorTimestamp,
           isRecalculated: true,
+          parameterMode: priorParameterMode,
+          lineCustomParams: priorLineCustomParams,
+          hasCustomLineParams: Object.keys(priorLineCustomParams).length > 0,
         }
       : null,
   };
@@ -1743,6 +1754,8 @@ export async function generateOptimizedWorkbook(
     kiwi: new Date().toISOString(),
     huerto: shadowLedger,
     token: 'cisco-ca-v2',
+    modo: params.parameterMode ?? 'standard',
+    lineasCustom: params.lineCustomParams ?? {},
   };
 
   const jsonString = JSON.stringify(payload);
@@ -2320,6 +2333,8 @@ export async function synthesizeOfficialEstimateWorkbook(
     kiwi: new Date().toISOString(),
     huerto: shadowLedger,
     token: 'cisco-ca-v2',
+    modo: params.parameterMode ?? 'standard',
+    lineasCustom: params.lineCustomParams ?? {},
   };
 
   const jsonString = JSON.stringify(payload);

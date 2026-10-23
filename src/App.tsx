@@ -114,6 +114,7 @@ function AppContent() {
     isDetectedAuditModalOpen,
     loadPriorAuditMargins,
     dismissDetectedAuditModal,
+    restoreOriginalUneditedEstimate,
     miningAuditData,
     isMiningAuditModalOpen,
     setIsMiningAuditModalOpen,
@@ -442,6 +443,7 @@ function AppContent() {
         isOpen={isDetectedAuditModalOpen}
         detectedAudit={detectedAudit}
         onLoadPriorMargins={loadPriorAuditMargins}
+        onRestoreOriginal={restoreOriginalUneditedEstimate}
         onModifyMargins={dismissDetectedAuditModal}
       />
 
