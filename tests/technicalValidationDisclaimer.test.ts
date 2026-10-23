@@ -91,7 +91,7 @@ async function runTests() {
   console.log('✅ generateOptimizedWorkbook generó las 3 cláusulas en orden secuencial perfecto (filas consecutivas con formato y wrapText).');
 
   console.log('\n--- 2. Prueba de synthesizeOfficialEstimateWorkbook ---');
-  const dummyResult: ProcessedEstimateResult = {
+  const dummyResult = {
     fileName: 'Test_Synthetic.xlsx',
     headerInfo: { estimateId: 'EST-1234', dealId: 'DEAL-99', companyName: 'Partner Test' },
     items: [
@@ -117,7 +117,7 @@ async function runTests() {
     subscriptionTotal: 0,
     finalTotalPrice: 2815.79,
     headerRowIndex: 13,
-  };
+  } as unknown as ProcessedEstimateResult;
 
   const syntheticBuffer = await synthesizeOfficialEstimateWorkbook(dummyResult, testParams);
   const synthWb = new ExcelJS.Workbook();
