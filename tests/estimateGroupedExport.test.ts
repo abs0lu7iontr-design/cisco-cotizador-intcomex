@@ -374,7 +374,43 @@ async function runTests() {
   if (isFooterOrNoteRow('1.0', 'C9200L-24P-4G-E', 'Catalyst')) throw new Error('isFooterOrNoteRow should NEVER trigger on valid item');
   console.log('✓ TEST 6 PASSED: Re-import protection correctly skips subtotals and executive summaries.');
 
-  console.log('\n🎉 ALL 6 SUITE TESTS PASSED 100% SUCCESFULLY!');
+  console.log('\n--- TEST 7: Exact BOM Validation of sittco_cayo_C8200_Estimate_NQ168576338QO & Nature Differentiation ---');
+  // Recreating the real BOM items from the user's quote:
+  const sittcoItems: EstimateLineItem[] = [
+    // Line 1.0 (6 Routers C8200)
+    { rowIdx: 14, lineNumber: '1.0', partNumber: 'C8200-1N-4T', smartAccountMandatory: 'No', description: 'Cisco Catalyst C8200-1N-4T Router', serviceDurationMonths: '0', unitListPrice: 2000, pricingTerm: '1', netCiscoUnit: 2354.37, unitNetPriceCcw: 2354.37, discPct: 50, qty: 6, isIntangible: false, llevaArancel: false, costoInternacion: 0, costoArancel: 0, costoTotalUnitario: 2354.37, precioVentaUnitario: 2354.37, precioVentaExtendido: 14126.22, originalLeadTimeDays: 14, transformedLeadTime: '4 a 5 semanas', isInfoRow: false },
+    { rowIdx: 15, lineNumber: '1.0.1', partNumber: 'CON-SNT-C82001N4', smartAccountMandatory: 'No', description: 'SNTC-8X5XNBD Cisco Catalyst C8200 (5Y)', serviceDurationMonths: '60', unitListPrice: 2000, pricingTerm: '60', netCiscoUnit: 2295.53, unitNetPriceCcw: 2295.53, discPct: 50, qty: 6, isIntangible: true, llevaArancel: false, costoInternacion: 0, costoArancel: 0, costoTotalUnitario: 2295.53, precioVentaUnitario: 2295.53, precioVentaExtendido: 13773.18, originalLeadTimeDays: 1, transformedLeadTime: 'Digital', isInfoRow: false },
+    { rowIdx: 16, lineNumber: '1.1', partNumber: 'MEM-C8200-4GB', smartAccountMandatory: 'No', description: 'Cisco Catalyst 8200 Edge 4GB memory ($0 included)', serviceDurationMonths: '0', unitListPrice: 0, pricingTerm: '1', netCiscoUnit: 0, unitNetPriceCcw: 0, discPct: 0, qty: 6, isIntangible: false, llevaArancel: false, costoInternacion: 0, costoArancel: 0, costoTotalUnitario: 0, precioVentaUnitario: 0, precioVentaExtendido: 0, originalLeadTimeDays: 14, transformedLeadTime: '', isInfoRow: false },
+    { rowIdx: 26, lineNumber: '1.11', partNumber: 'C-NIM-8T', smartAccountMandatory: 'No', description: 'Cisco NIM Switch Module 8-port 1G RJ45', serviceDurationMonths: '0', unitListPrice: 500, pricingTerm: '1', netCiscoUnit: 534.98, unitNetPriceCcw: 534.98, discPct: 50, qty: 6, isIntangible: false, llevaArancel: false, costoInternacion: 0, costoArancel: 0, costoTotalUnitario: 534.98, precioVentaUnitario: 534.98, precioVentaExtendido: 3209.88, originalLeadTimeDays: 14, transformedLeadTime: '4 a 5 semanas', isInfoRow: false },
+    { rowIdx: 27, lineNumber: '1.12', partNumber: 'GLC-SX-MMD', smartAccountMandatory: 'No', description: '1000BASE-SX SFP transceiver module, MMF, 850nm', serviceDurationMonths: '0', unitListPrice: 200, pricingTerm: '1', netCiscoUnit: 214.66, unitNetPriceCcw: 214.66, discPct: 50, qty: 12, isIntangible: false, llevaArancel: false, costoInternacion: 0, costoArancel: 0, costoTotalUnitario: 214.66, precioVentaUnitario: 214.66, precioVentaExtendido: 2575.92, originalLeadTimeDays: 14, transformedLeadTime: '4 a 5 semanas', isInfoRow: false },
+    { rowIdx: 43, lineNumber: '1.13.8', partNumber: 'DNA-P-T1-E-5Y', smartAccountMandatory: 'No', description: 'Cisco DNA Essentials On-Prem Lic 5Y', serviceDurationMonths: '60', unitListPrice: 1500, pricingTerm: '60', netCiscoUnit: 1584.00, unitNetPriceCcw: 1584.00, discPct: 50, qty: 6, isIntangible: true, llevaArancel: false, costoInternacion: 0, costoArancel: 0, costoTotalUnitario: 1584.00, precioVentaUnitario: 1584.00, precioVentaExtendido: 9504.00, originalLeadTimeDays: 1, transformedLeadTime: 'Digital', isInfoRow: false },
+
+    // Line 2.0 (12 Switches Catalyst 9300L)
+    { rowIdx: 49, lineNumber: '2.0', partNumber: 'C9300L-24P-4G-E', smartAccountMandatory: 'No', description: 'Catalyst 9300L 24p PoE, Network Essentials', serviceDurationMonths: '0', unitListPrice: 3000, pricingTerm: '1', netCiscoUnit: 2577.86, unitNetPriceCcw: 2577.86, discPct: 50, qty: 12, isIntangible: false, llevaArancel: false, costoInternacion: 0, costoArancel: 0, costoTotalUnitario: 2577.86, precioVentaUnitario: 2577.86, precioVentaExtendido: 30934.32, originalLeadTimeDays: 14, transformedLeadTime: '4 a 5 semanas', isInfoRow: false },
+    { rowIdx: 50, lineNumber: '2.0.1', partNumber: 'CON-SNT-C9300L2E', smartAccountMandatory: 'No', description: 'SNTC-8X5XNBD Catalyst 9300L 24p PoE (5Y)', serviceDurationMonths: '60', unitListPrice: 2000, pricingTerm: '60', netCiscoUnit: 1990.72, unitNetPriceCcw: 1990.72, discPct: 50, qty: 12, isIntangible: true, llevaArancel: false, costoInternacion: 0, costoArancel: 0, costoTotalUnitario: 1990.72, precioVentaUnitario: 1990.72, precioVentaExtendido: 23888.64, originalLeadTimeDays: 1, transformedLeadTime: 'Digital', isInfoRow: false },
+    { rowIdx: 52, lineNumber: '2.1.1', partNumber: 'C9300L-DNA-E-24-5Y', smartAccountMandatory: 'No', description: 'C9300L Cisco DNA Essentials, 24-port 5 Year Term', serviceDurationMonths: '60', unitListPrice: 500, pricingTerm: '60', netCiscoUnit: 444.65, unitNetPriceCcw: 444.65, discPct: 50, qty: 12, isIntangible: true, llevaArancel: false, costoInternacion: 0, costoArancel: 0, costoTotalUnitario: 444.65, precioVentaUnitario: 444.65, precioVentaExtendido: 5335.80, originalLeadTimeDays: 1, transformedLeadTime: 'Digital', isInfoRow: false },
+
+    // Line 3.0 (24 Transceivers Spare with Duty)
+    { rowIdx: 69, lineNumber: '3.0', partNumber: 'GLC-SX-MMD=', smartAccountMandatory: 'No', description: '1000BASE-SX SFP transceiver module, MMF, 850nm', serviceDurationMonths: '0', unitListPrice: 200, pricingTerm: '1', netCiscoUnit: 226.71, unitNetPriceCcw: 226.71, discPct: 50, qty: 24, isIntangible: false, llevaArancel: true, costoInternacion: 0, costoArancel: 0, costoTotalUnitario: 226.71, precioVentaUnitario: 226.71, precioVentaExtendido: 5441.04, originalLeadTimeDays: 14, transformedLeadTime: '4 a 5 semanas', isInfoRow: false },
+  ];
+
+  const sittcoSummary = categorizeEstimateItems(sittcoItems);
+  console.log('Sittco Hardware Qty:', sittcoSummary.hardwareQty, '(Expected: 60) | Total:', sittcoSummary.hardwareTotal, '(Expected: 56287.38)');
+  console.log('Sittco Software Qty:', sittcoSummary.softwareQty, '(Expected: 18) | Total:', sittcoSummary.softwareTotal, '(Expected: 14839.80)');
+  console.log('Sittco Services Qty:', sittcoSummary.servicesQty, '(Expected: 18) | Total:', sittcoSummary.servicesTotal, '(Expected: 37661.82)');
+  console.log('Sittco Grand Total Qty:', sittcoSummary.totalQty, '(Expected: 96) | Total:', sittcoSummary.grandTotal, '(Expected: 108789.00)');
+
+  if (sittcoSummary.hardwareQty !== 60) throw new Error(`Hardware Qty mismatch: got ${sittcoSummary.hardwareQty}, expected 60`);
+  if (sittcoSummary.hardwareTotal !== 56287.38) throw new Error(`Hardware total mismatch: got ${sittcoSummary.hardwareTotal}`);
+  if (sittcoSummary.softwareQty !== 18) throw new Error(`Software Qty mismatch: got ${sittcoSummary.softwareQty}, expected 18 (6 DNA routers + 12 DNA switches)`);
+  if (sittcoSummary.softwareTotal !== 14839.80) throw new Error(`Software total mismatch: got ${sittcoSummary.softwareTotal}`);
+  if (sittcoSummary.servicesQty !== 18) throw new Error(`Services Qty mismatch: got ${sittcoSummary.servicesQty}, expected 18 (6 SNTC routers + 12 SNTC switches)`);
+  if (sittcoSummary.servicesTotal !== 37661.82) throw new Error(`Services total mismatch: got ${sittcoSummary.servicesTotal}`);
+  if (sittcoSummary.totalQty !== 96) throw new Error(`Total Qty mismatch: got ${sittcoSummary.totalQty}, expected 96`);
+  if (sittcoSummary.grandTotal !== 108789.00) throw new Error(`Grand total mismatch: got ${sittcoSummary.grandTotal}, expected 108789.00`);
+  console.log('✓ TEST 7 PASSED: sittco real BOM confirmed: Hardware (60), Software (18), Services (18), Grand Total ($108,789.00).');
+
+  console.log('\n🎉 ALL 7 SUITE TESTS PASSED 100% SUCCESFULLY!');
 }
 
 runTests().catch((err) => {

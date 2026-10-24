@@ -261,6 +261,59 @@ export function checkIsIntangible(sku: string, description: string): boolean {
 }
 
 /**
+ * Detecta de forma estricta si un SKU o descripción corresponde a Servicios y Soporte Técnico Cisco
+ * (Smart Net Total Care, Solution Support, Partner Support, Software Support, etc.)
+ * para garantizar la correcta separación entre Servicios y Licencias de Software en todas las cotizaciones.
+ */
+export function isCiscoServiceItem(sku?: string, description?: string): boolean {
+  const upperSku = (sku || '').trim().toUpperCase();
+  const lowerDesc = (description || '').trim().toLowerCase();
+
+  // 1. Prefijos y códigos de contratos y servicios Cisco
+  if (
+    upperSku.startsWith('CON-') ||
+    upperSku.startsWith('CON ') ||
+    upperSku.startsWith('SVS-') ||
+    upperSku.includes('-SVS') ||
+    upperSku.startsWith('CX-') ||
+    upperSku.startsWith('CXE-') ||
+    upperSku.startsWith('CXS-') ||
+    upperSku.startsWith('CSS-') ||
+    upperSku.startsWith('SAS-') ||
+    upperSku.includes('SWSS') ||
+    upperSku.includes('-SNT')
+  ) {
+    return true;
+  }
+
+  // 2. Términos inequívocos de soporte y mantenimiento técnico
+  if (
+    lowerDesc.includes('smartnet') ||
+    lowerDesc.includes('smart net') ||
+    lowerDesc.includes('sntc') ||
+    lowerDesc.includes('8x5xnbd') ||
+    lowerDesc.includes('8x5x4') ||
+    lowerDesc.includes('24x7x4') ||
+    lowerDesc.includes('24x7x2') ||
+    lowerDesc.includes('support service') ||
+    lowerDesc.includes('partner support') ||
+    lowerDesc.includes('solution support') ||
+    lowerDesc.includes('software support') ||
+    lowerDesc.includes('technical support') ||
+    lowerDesc.includes('hardware support') ||
+    lowerDesc.includes('cisco support') ||
+    lowerDesc.includes('tac support') ||
+    lowerDesc.includes('warranty') ||
+    lowerDesc.includes('garantía') ||
+    lowerDesc.includes('garantia')
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Checks if a line item applies customs duty (Arancel 6% + Internación 7%):
  * 1. When a SKU ends with '=' (spare/repuesto), the probability that it comes in Mother Line format
  *    ("1.0", "2.0", "3.0", "4.0", "5.0", "6.0", etc.) is 100%, and it ALWAYS carries Arancel.

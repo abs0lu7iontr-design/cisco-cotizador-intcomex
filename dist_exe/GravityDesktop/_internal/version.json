@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
   "version": "2.4.6",
-  "git_commit": "8a18bae",
+  "git_commit": "6653a11",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-24T20:04:12.242Z",
-  "release_notes": "fix(estimate): remove warehouse codes and repeat column headers on lines 2.0+ in export",
+  "build_timestamp": "2026-10-24T20:25:43.842Z",
+  "release_notes": "feat(export): add Qty header to exec summary, sum only valued items and update lead time to weeks",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

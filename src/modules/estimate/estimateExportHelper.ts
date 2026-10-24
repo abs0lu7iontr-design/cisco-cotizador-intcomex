@@ -7,6 +7,7 @@ import {
   checkIsIntangible,
   getMotherLineKey,
   isCloudSubscriptionSku,
+  isCiscoServiceItem,
 } from '../../core/calculations';
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../../lib/intcomexLogoBase64';
 
@@ -122,20 +123,17 @@ export function categorizeEstimateItems(
     const skuUpper = (it.partNumber || '').toUpperCase().trim();
     const descLower = (it.description || '').toLowerCase().trim();
 
-    // Detección de naturaleza
-    if (
-      skuUpper.startsWith('CON-') ||
-      skuUpper.includes('-SVS') ||
-      descLower.includes('smartnet') ||
-      descLower.includes('support service') ||
-      descLower.includes('partner support')
-    ) {
+    // Detección estricta de naturaleza comercial Cisco
+    // 1. Servicios y Soporte SmartNet (Prioridad Máxima: CON-*, SVS-*, CXS-*, SmartNet, etc.)
+    if (isCiscoServiceItem(it.partNumber, it.description)) {
       servicesTotal += extNet;
       servicesCount++;
       if (hasValue) {
         servicesQty += itemQty;
       }
-    } else if (
+    }
+    // 2. Licenciamiento y Software Cloud / SaaS (DNA, LIC-*, L-*, Suscripciones, etc.)
+    else if (
       checkIsIntangible(it.partNumber, it.description) ||
       isCloudSubscriptionSku(it.partNumber)
     ) {
@@ -144,7 +142,9 @@ export function categorizeEstimateItems(
       if (hasValue) {
         softwareQty += itemQty;
       }
-    } else {
+    }
+    // 3. Equipamiento Físico Hardware (Switches, Routers, Módulos, Transceivers, etc.)
+    else {
       hardwareTotal += extNet;
       hardwareCount++;
       if (hasValue) {

@@ -25,6 +25,7 @@ export const VERSION_HISTORY: VersionHistoryItem[] = [
       'Exportación en Excel con separación por Líneas Madre (1.0, 2.0 e hijos) con subtotales y fórmulas nativas de Excel =SUM(...) para deals divididos en múltiples OC.',
       'Selector de modo de exportación en modal de descarga: [📋 Continuo Estándar] vs [📑 Agrupado por Líneas Madre con Subtotales].',
       'Tarjeta de Resumen Ejecutivo en Excel con desglose por categoría: Equipamiento Hardware, Licenciamiento / Software Cloud y Soporte SmartNet, encabezado explícito "Qty", sumando solo cantidades con valor (> $0) y omitiendo ítems $0.',
+      'Motor canónico de clasificación Cisco (isCiscoServiceItem) para diferenciar inequívocamente contratos de soporte (CON-, SVS-, CXS-) de licenciamiento y software cloud.',
       'Presentación simétrica con repetición del encabezado oficial de 7 columnas a partir de Línea 2.0 en Excel y PDF, con plazos expresados en semanas en inglés ("Estimated Lead Time (Weeks)").',
       'Generación de Propuesta Comercial en PDF con membrete oficial Intcomex, tablas vectoriales de alta definición y cláusulas comerciales oficiales listas para el cliente.',
       'Botón 1-Clic para Redactar Correo al Partner en Outlook con saludo formal ("Estimados,"), desglose económico por línea madre y copia en formato HTML enriquecido al portapapeles.',
