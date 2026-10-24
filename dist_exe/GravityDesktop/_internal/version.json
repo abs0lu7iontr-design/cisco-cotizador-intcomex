@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
   "version": "2.4.6",
-  "git_commit": "654871e",
+  "git_commit": "6015602",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-24T21:59:16.883Z",
-  "release_notes": "fix(estimate): remove executive summary and fix child line numbering hierarchy",
+  "build_timestamp": "2026-10-24T23:46:36.900Z",
+  "release_notes": "fix(estimate): safeguard unnumbered initial term subscription rows and preserve duration",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

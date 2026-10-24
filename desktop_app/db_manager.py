@@ -1080,18 +1080,17 @@ class DatabaseManager:
     # =========================================================================
 
     def _seed_default_users(self):
-        """Seeds initial required users: mskill (admin), madasme (pm), rcuevas (pm), jvalancia (pm)."""
+        """Seeds initial required administrator if no users exist in database."""
         try:
             from auth_manager import AuthManager
         except ImportError:
             from desktop_app.auth_manager import AuthManager
-        default_pwd_hash = AuthManager.hash_password("Intcomex2026!")
+        initial_pwd = os.getenv("INITIAL_ADMIN_PASSWORD", "AdminInitial2026#")
+        default_pwd_hash = AuthManager.hash_password(initial_pwd)
 
         users_seed = [
-            ("usr-001-admin", "mskill", "Mauricio Skill (Administrador)", "mauricio.skill@mayor.cl", default_pwd_hash, "admin"),
-            ("usr-002-pm", "madasme", "M. Adasme (Product Manager)", "madasme@intcomex.com", default_pwd_hash, "pm"),
-            ("usr-003-pm", "rcuevas", "R. Cuevas (Product Manager)", "rcuevas@intcomex.com", default_pwd_hash, "pm"),
-            ("usr-004-pm", "jvalancia", "J. Valancia (Product Manager)", "jvalancia@intcomex.com", default_pwd_hash, "pm"),
+            ("usr-001-admin", "admin", "Administrador del Sistema", "admin@cotizador.local", default_pwd_hash, "admin"),
+            ("usr-002-pm", "pm_cisco", "Product Manager Cisco", "pm@cotizador.local", default_pwd_hash, "pm"),
         ]
 
         with self.get_connection() as conn:
@@ -1104,8 +1103,8 @@ class DatabaseManager:
 
     def update_user_role(self, username: str, new_role: str) -> Tuple[bool, str]:
         """Updates user role (admin, pm, preventa)."""
-        if username == "mskill" and new_role != "admin":
-            return (False, "No es posible degradar al administrador principal (mskill).")
+        if username in ("admin", "mskill") and new_role != "admin":
+            return (False, "No es posible degradar al administrador principal.")
         if new_role not in ["admin", "pm", "preventa", "standard"]:
             return (False, f"Rol '{new_role}' no válido.")
         try:

@@ -101,7 +101,7 @@ export const RulesExplanationModal: React.FC<RulesExplanationModalProps> = ({ is
                 <span>4. RBAC & Roles (PM por Defecto)</span>
               </div>
               <p className="text-slate-400 text-[11px]">
-                Usuarios asignados al rol <strong>Product Manager (PM)</strong> por defecto, con control total de roles administrado por <strong>Mauricio Skill (mskill)</strong> y contraseñas cifradas con algoritmo seguro bcrypt.
+                Usuarios asignados al rol <strong>Product Manager (PM)</strong> por defecto, con control total de roles administrado por el <strong>Administrador del Sistema</strong> y contraseñas cifradas con algoritmo seguro bcrypt.
               </p>
             </div>
           </div>

@@ -11,16 +11,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-function decodeSeed(parts: string[]): string {
-  try {
-    return atob(parts.join(''));
-  } catch {
-    return '';
-  }
-}
-
-const DEFAULT_CLIENT_ID = decodeSeed(['cTcyOHY4eDRy', 'dWQyeGhzcWZy', 'Ynp0YWI2']);
-const DEFAULT_CLIENT_SECRET = decodeSeed(['ZmtCUlhRU1Fm', 'c2piRE1Ha25x', 'eFh4NW04']);
 const DEFAULT_AUTH_URL = 'https://id.cisco.com/oauth2/default/v1/token';
 
 export const onRequestOptions: PagesFunction = async () => {
@@ -37,13 +27,26 @@ export const onRequestPost: PagesFunction = async (context) => {
     const action = body?.action || 'token';
 
     const env = (context.env || {}) as Record<string, string | undefined>;
-    const clientId = (body?.clientId || env.VITE_CISCO_CLIENT_ID || DEFAULT_CLIENT_ID).trim();
+    const clientId = (body?.clientId || env.VITE_CISCO_CLIENT_ID || '').trim();
     const clientSecret = (
       body?.clientSecret ||
       env.VITE_CISCO_CLIENT_SECRET ||
-      DEFAULT_CLIENT_SECRET
+      ''
     ).trim();
     const authUrl = (body?.authUrl || env.VITE_CISCO_AUTH_URL || DEFAULT_AUTH_URL).trim();
+
+        if (!clientId || !clientSecret) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Credenciales Cisco M2M no configuradas en las variables de entorno de Cloudflare Pages (VITE_CISCO_CLIENT_ID / VITE_CISCO_CLIENT_SECRET).',
+        }),
+        {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        }
+      );
+    }
 
     if (action === 'token') {
       const form = new URLSearchParams();

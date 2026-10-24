@@ -7,6 +7,11 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 ---
 
 ## [v2.4.7] - 2026-10-24
+### 🔒 Seguridad y Privacidad (Sanitización Total de Secretos y Datos de Usuarios)
+- **Erradicación de Credenciales Hardcodeadas en Git:** Eliminadas todas las credenciales de Cisco Developer API (Client ID y Client Secret) de scripts/checkCiscoEntitlements.mjs, ciscoAuthService.ts, cisco-proxy.ts y del bundle generado, quedando 100% aisladas en variables de entorno privadas en la nube.
+- **Protección de Cloudflare Turnstile Secret Key:** Eliminadas las claves secretas hardcodeadas en erify.js, erify.ts y erify-turnstile.ts, haciendo que la validación de seguridad dependa estrictamente del secreto de entorno TURNSTILE_SECRET_KEY en Cloudflare Pages.
+- **Anonimización de Cuentas y Erradicación de Backdoors:** Eliminados del repositorio todos los nombres reales, correos corporativos y contraseñas por defecto en texto plano (schema.sql, db_manager.py, irestoreService.ts, LoginScreen.tsx y gui_app.py), reemplazándolos por cuentas administrativas genéricas y verificación criptográfica estricta sin contraseñas maestras maestras en el código.
+
 ### 🐛 Corregido (Eliminación de Resumen Ejecutivo, Jerarquía de Líneas Madre y Blindaje de Filas de Meses/Initial Term)
 - **Blindaje y Preservación de Filas de Suscripción / Initial Term (Líneas de Meses):** Verificado y blindado el tratamiento de las filas informativas de suscripción (Initial Term - XX.00 Months | Auto Renewal Term...) que no poseen número de línea en el Excel original de Cisco CCW. Se garantiza que:
   1. Mantengan lineNumber: '' (celda Columna A vacía) y isInfoRow: true, sin consumir ni alterar la secuencia de números de producto (.1, .2...).

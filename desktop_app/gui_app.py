@@ -62,7 +62,7 @@ class GravityDesktopGUI:
 
         ttk.Label(login_frame, text="Contraseña:", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(5, 2))
         self.password_entry = ttk.Entry(login_frame, width=32, show="•", font=("Segoe UI", 10))
-        self.password_entry.insert(0, "Intcomex2026!")
+        self.password_entry.insert(0, "")
         self.password_entry.pack(pady=(0, 20))
 
         btn_login = ttk.Button(

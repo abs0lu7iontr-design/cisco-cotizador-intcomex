@@ -67,13 +67,10 @@ CREATE INDEX IF NOT EXISTS idx_estimates_client ON estimates(client_final_name);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_username ON audit_logs(username);
 
 -- =============================================================================
--- INICIALIZACIÓN DE USUARIOS BASE (mskill, madasme, rcuevas, jvalancia)
--- Contraseña por defecto inicial: "Intcomex2026!" (Bcrypt Hash)
+-- INICIALIZACIÓN DE USUARIOS BASE (ADMINISTRADOR Y PM)
 -- =============================================================================
 
 INSERT INTO users (id, username, full_name, email, password_hash, role) VALUES
-('usr-001-admin', 'mskill', 'Mauricio Skill (Administrador)', 'mauricio.skill@mayor.cl', '$2b$12$eA8m9K4z3JkY1l1L1L1L1uO7qPqO1qO1qO1qO1qO1qO1qO1qO1qO', 'admin'),
-('usr-002-std', 'madasme', 'M. Adasme (Preventa)', 'madasme@intcomex.com', '$2b$12$eA8m9K4z3JkY1l1L1L1L1uO7qPqO1qO1qO1qO1qO1qO1qO1qO1qO', 'standard'),
-('usr-003-std', 'rcuevas', 'R. Cuevas (Ejecutivo Canales)', 'rcuevas@intcomex.com', '$2b$12$eA8m9K4z3JkY1l1L1L1L1uO7qPqO1qO1qO1qO1qO1qO1qO1qO1qO', 'standard'),
-('usr-004-std', 'jvalancia', 'J. Valancia (Preventa)', 'jvalancia@intcomex.com', '$2b$12$eA8m9K4z3JkY1l1L1L1L1uO7qPqO1qO1qO1qO1qO1qO1qO1qO1qO', 'standard')
+('usr-001-admin', 'admin', 'Administrador del Sistema', 'admin@cotizador.local', '$2b$12$eA8m9K4z3JkY1l1L1L1L1uO7qPqO1qO1qO1qO1qO1qO1qO1qO1qO', 'admin'),
+('usr-002-pm', 'pm_cisco', 'Product Manager Cisco', 'pm@cotizador.local', '$2b$12$eA8m9K4z3JkY1l1L1L1L1uO7qPqO1qO1qO1qO1qO1qO1qO1qO1qO', 'pm')
 ON CONFLICT (username) DO NOTHING;

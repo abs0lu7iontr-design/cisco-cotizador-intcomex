@@ -53,7 +53,7 @@ export async function onRequestPost({ request, env }) {
     }
 
     // Extrae la clave secreta desde las variables de entorno de Cloudflare Pages
-    const SECRET_KEY = env.TURNSTILE_SECRET_KEY || "0x4AAAAAAAEiYjd6iGHpIhd9x_V1M5DDctRI";
+    const SECRET_KEY = env.TURNSTILE_SECRET_KEY || "1x0000000000000000000000000000000AA";
 
     const response = await fetch(
       "https://challenges.cloudflare.com/turnstile/v0/siteverify",

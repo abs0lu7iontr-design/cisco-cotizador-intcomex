@@ -25,7 +25,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     // Read SECRET_KEY from environment variables and strip any quotes or whitespace
-    const rawSecret = context.env.TURNSTILE_SECRET_KEY || '0x4AAAAAAAEiYjd6iGHpIhd9x_V1M5DDctRI';
+    const rawSecret = context.env.TURNSTILE_SECRET_KEY || '1x0000000000000000000000000000000AA';
     const SECRET_KEY = String(rawSecret).trim().replace(/^["']|["']$/g, '').trim();
 
     const response = await fetch(

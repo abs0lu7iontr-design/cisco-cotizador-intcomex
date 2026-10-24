@@ -123,13 +123,10 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_username_created_at ON audit_logs(user
 CREATE INDEX IF NOT EXISTS idx_bo_sku_base_pn ON bo_sku_catalog(base_part_number);
 
 -- =============================================================================
--- INICIALIZACIÓN DE USUARIOS BASE (mskill, madasme, rcuevas, jvalancia)
--- Contraseña por defecto inicial: "Intcomex2026!" (Bcrypt Hash)
+-- INICIALIZACIÓN DE USUARIOS BASE (ADMINISTRADOR Y PM)
 -- =============================================================================
 
 INSERT INTO users (id, username, full_name, email, password_hash, role) VALUES
-('usr-001-admin', 'mskill', 'Mauricio Skill (Administrador)', 'mauricio.skill@mayor.cl', '$2b$12$eA8m9K4z3JkY1l1L1L1L1uO7qPqO1qO1qO1qO1qO1qO1qO1qO1qO', 'admin'),
-('usr-002-pm', 'madasme', 'M. Adasme (Product Manager)', 'madasme@intcomex.com', '$2b$12$eA8m9K4z3JkY1l1L1L1L1uO7qPqO1qO1qO1qO1qO1qO1qO1qO1qO', 'pm'),
-('usr-003-pm', 'rcuevas', 'R. Cuevas (Product Manager)', 'rcuevas@intcomex.com', '$2b$12$eA8m9K4z3JkY1l1L1L1L1uO7qPqO1qO1qO1qO1qO1qO1qO1qO1qO', 'pm'),
-('usr-004-pm', 'jvalancia', 'J. Valancia (Product Manager)', 'jvalancia@intcomex.com', '$2b$12$eA8m9K4z3JkY1l1L1L1L1uO7qPqO1qO1qO1qO1qO1qO1qO1qO1qO', 'pm')
+('usr-001-admin', 'admin', 'Administrador del Sistema', 'admin@cotizador.local', '$2b$12$eA8m9K4z3JkY1l1L1L1L1uO7qPqO1qO1qO1qO1qO1qO1qO1qO1qO', 'admin'),
+('usr-002-pm', 'pm_cisco', 'Product Manager Cisco', 'pm@cotizador.local', '$2b$12$eA8m9K4z3JkY1l1L1L1L1uO7qPqO1qO1qO1qO1qO1qO1qO1qO1qO', 'pm')
 ON CONFLICT (username) DO NOTHING;

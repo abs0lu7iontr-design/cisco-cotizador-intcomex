@@ -29,9 +29,15 @@ function loadDotEnv() {
 
 loadDotEnv();
 
-const CLIENT_ID = process.env.VITE_CISCO_CLIENT_ID || 'q728v8x4rud2xhsqfrbztab6';
-const CLIENT_SECRET = process.env.VITE_CISCO_CLIENT_SECRET || 'fkBRXQSQfsjbDMGknqxXx5m8';
+const CLIENT_ID = (process.env.VITE_CISCO_CLIENT_ID || '').trim();
+const CLIENT_SECRET = (process.env.VITE_CISCO_CLIENT_SECRET || '').trim();
 const TOKEN_URL = process.env.VITE_CISCO_AUTH_URL || 'https://id.cisco.com/oauth2/default/v1/token';
+
+if (!CLIENT_ID || !CLIENT_SECRET) {
+  console.error('[Error] VITE_CISCO_CLIENT_ID y VITE_CISCO_CLIENT_SECRET no están definidas en el entorno o .env.');
+  console.error('Configure sus credenciales en .env local (ignorado por Git) antes de ejecutar esta prueba.');
+  process.exit(1);
+}
 
 console.log('================================================================');
 console.log('   CISCO API & ENTITLEMENTS DIAGNOSTIC PROBE (v2.1)');

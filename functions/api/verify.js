@@ -27,11 +27,6 @@ export async function onRequestPost({ request, env }) {
 
     const candidateKeys = [
       envKey,
-      '0x4AAAAAAEiYjd6iGHpIhd9x_V1M5DDctRI',
-      '0x4AAAAAAAEiYjd6iGHpIhd9x_V1M5DDctRI',
-      '0x4AAAAAAEiYjd6iGHpIhd9x',
-      '0x4AAAAAAAEiYjd6iGHpIhd9x',
-      '0x4AAAAAAEiYjVTtwve543Tg',
       '1x0000000000000000000000000000000AA',
     ].filter(Boolean);
 

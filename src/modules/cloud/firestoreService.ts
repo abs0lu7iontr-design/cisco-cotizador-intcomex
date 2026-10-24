@@ -2490,36 +2490,18 @@ export async function sha256Salted(password: string): Promise<string> {
 
 export const DEFAULT_BASE_USERS: CloudUserRecord[] = [
   {
-    username: 'mskill',
-    full_name: 'Mauricio Skill (Administrador)',
-    email: 'mauricio.skill@mayor.cl',
+    username: 'admin',
+    full_name: 'Administrador del Sistema',
+    email: 'admin@cotizador.local',
     role: 'admin',
-    password_hash: '96b9554ea346ec7b66df877239ef74911d3311681fa940e70ca2b73bc2a3a5f8', // Intcomex2026!
-    is_active: 1,
-    created_at: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    username: 'madasme',
-    full_name: 'M. Adasme (Product Manager)',
-    email: 'madasme@intcomex.com',
-    role: 'pm',
     password_hash: '96b9554ea346ec7b66df877239ef74911d3311681fa940e70ca2b73bc2a3a5f8',
     is_active: 1,
     created_at: '2026-08-01T10:00:00.000Z',
   },
   {
-    username: 'rcuevas',
-    full_name: 'R. Cuevas (Product Manager)',
-    email: 'rcuevas@intcomex.com',
-    role: 'pm',
-    password_hash: '96b9554ea346ec7b66df877239ef74911d3311681fa940e70ca2b73bc2a3a5f8',
-    is_active: 1,
-    created_at: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    username: 'jvalancia',
-    full_name: 'J. Valancia (Product Manager)',
-    email: 'jvalancia@intcomex.com',
+    username: 'pm_cisco',
+    full_name: 'Product Manager Cisco',
+    email: 'pm@cotizador.local',
     role: 'pm',
     password_hash: '96b9554ea346ec7b66df877239ef74911d3311681fa940e70ca2b73bc2a3a5f8',
     is_active: 1,

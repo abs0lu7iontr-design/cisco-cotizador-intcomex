@@ -280,19 +280,12 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         return;
       }
 
-      // Compare cryptographic salted hash & master password
+      // Compare cryptographic salted hash
       const computedHash = await sha256Salted(cleanPass);
-      const defaultMasterHash = await sha256Salted('Intcomex2026!');
 
       const isPasswordValid =
-        foundUser.password_hash === computedHash ||
-        foundUser.password_hash === cleanPass ||
-        (cleanPass === 'Intcomex2026!' && (
-          !foundUser.password_hash ||
-          foundUser.password_hash === defaultMasterHash ||
-          foundUser.password_hash === 'Intcomex2026!' ||
-          cleanUser === 'mskill'
-        ));
+        Boolean(foundUser.password_hash) &&
+        (foundUser.password_hash === computedHash || foundUser.password_hash === cleanPass);
 
       if (isPasswordValid) {
         // Reset security state on success

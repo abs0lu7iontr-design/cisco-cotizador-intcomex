@@ -9,28 +9,9 @@ import { CiscoOAuthTokenResponse, CiscoApiConfig } from './types';
 const TOKEN_CACHE_KEY = 'cisco_oauth_token_v2';
 const CONFIG_CACHE_KEY = 'cisco_api_config_v2';
 
-function decodeSeed(parts: string[]): string {
-  try {
-    const joined = parts.join('');
-    if (typeof atob === 'function') {
-      return atob(joined);
-    }
-    if (typeof Buffer !== 'undefined') {
-      return Buffer.from(joined, 'base64').toString('utf-8');
-    }
-    return '';
-  } catch {
-    return '';
-  }
-}
-
-// Credenciales M2M preconfiguradas (decodificadas en runtime para evitar alertas de Git Secret Scanning)
-const SEED_CISCO_CLIENT_ID = decodeSeed(['cTcyOHY4eDRy', 'dWQyeGhzcWZy', 'Ynp0YWI2']);
-const SEED_CISCO_CLIENT_SECRET = decodeSeed(['ZmtCUlhRU1Fm', 'c2piRE1Ha25x', 'eFh4NW04']);
-
 export const DEFAULT_CISCO_CONFIG: CiscoApiConfig = {
-  clientId: (import.meta as any).env?.VITE_CISCO_CLIENT_ID || SEED_CISCO_CLIENT_ID,
-  clientSecret: (import.meta as any).env?.VITE_CISCO_CLIENT_SECRET || SEED_CISCO_CLIENT_SECRET,
+  clientId: ((import.meta as any).env?.VITE_CISCO_CLIENT_ID || '').trim(),
+  clientSecret: ((import.meta as any).env?.VITE_CISCO_CLIENT_SECRET || '').trim(),
   authUrl:
     (import.meta as any).env?.VITE_CISCO_AUTH_URL ||
     'https://id.cisco.com/oauth2/default/v1/token',

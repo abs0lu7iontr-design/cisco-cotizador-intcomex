@@ -312,8 +312,8 @@ export function UserManagementView() {
   };
 
   const handleToggleStatus = async (user: UserRecord) => {
-    if (user.username === 'mskill') {
-      showToast('No puedes desactivar la cuenta de Administrador principal (mskill).', 'error');
+    if (user.username === 'admin' || user.username === 'mskill') {
+      showToast('No puedes desactivar la cuenta de Administrador principal.', 'error');
       return;
     }
 
@@ -499,7 +499,7 @@ export function UserManagementView() {
                           <div>
                             <div className="font-bold text-white text-xs flex items-center gap-1.5">
                               <span>{u.full_name}</span>
-                              {u.username === 'mskill' && (
+                              {(u.username === 'admin' || u.username === 'mskill') && (
                                 <span className="px-1.5 py-0.2 rounded text-[9px] bg-rose-950 text-rose-300 border border-rose-800/50 font-bold">
                                   Root Admin
                                 </span>
@@ -563,7 +563,7 @@ export function UserManagementView() {
                           </button>
 
                           {/* Change Role Button */}
-                          {u.username !== 'mskill' && (
+                          {u.username !== 'admin' && u.username !== 'mskill' && (
                             <button
                               onClick={() => {
                                 setSelectedUserForAction(u);
@@ -651,7 +651,7 @@ export function UserManagementView() {
                   Rol en Plataforma
                 </label>
                 <select
-                  disabled={selectedUserForAction.username === 'mskill'}
+                  disabled={selectedUserForAction.username === 'admin' || selectedUserForAction.username === 'mskill'}
                   value={editRole}
                   onChange={(e) => setEditRole(e.target.value as Role)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-white outline-none focus:border-indigo-500 disabled:opacity-50"
@@ -675,7 +675,7 @@ export function UserManagementView() {
                 />
               </div>
 
-              {selectedUserForAction.username !== 'mskill' && (
+              {selectedUserForAction.username !== 'admin' && selectedUserForAction.username !== 'mskill' && (
                 <div className="pt-2">
                   <label className="flex items-center space-x-2.5 cursor-pointer">
                     <input

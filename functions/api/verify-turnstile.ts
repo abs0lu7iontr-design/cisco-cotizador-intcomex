@@ -22,7 +22,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       );
     }
 
-    const secretKey = context.env.TURNSTILE_SECRET_KEY || '0x4AAAAAAAEiYjd6iGHpIhd9x_V1M5DDctRI';
+    const secretKey = context.env.TURNSTILE_SECRET_KEY || '1x0000000000000000000000000000000AA';
 
     const formData = new FormData();
     formData.append('secret', secretKey);
