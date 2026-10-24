@@ -772,6 +772,8 @@ export async function parseEstimateWorkbook(
           }
         }
       }
+    } else if (isSubscriptionBillingInfoRow(partNum, desc) || isInformationalRow(partNum, desc)) {
+      resolvedPreLine = '';
     } else {
       const motherPrefix = preMotherLine.replace(/\.0$/, '') || '1';
       const isService = isCiscoServiceItem(partNum, desc);

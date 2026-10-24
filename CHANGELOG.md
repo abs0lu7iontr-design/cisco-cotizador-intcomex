@@ -7,7 +7,11 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 ---
 
 ## [v2.4.7] - 2026-10-24
-### 🐛 Corregido (Eliminación de Resumen Ejecutivo y Corrección de Jerarquía de Líneas Madre/Hijas)
+### 🐛 Corregido (Eliminación de Resumen Ejecutivo, Jerarquía de Líneas Madre y Blindaje de Filas de Meses/Initial Term)
+- **Blindaje y Preservación de Filas de Suscripción / Initial Term (Líneas de Meses):** Verificado y blindado el tratamiento de las filas informativas de suscripción (Initial Term - XX.00 Months | Auto Renewal Term...) que no poseen número de línea en el Excel original de Cisco CCW. Se garantiza que:
+  1. Mantengan lineNumber: '' (celda Columna A vacía) y isInfoRow: true, sin consumir ni alterar la secuencia de números de producto (.1, .2...).
+  2. El extractor de plazos herede de manera exacta la duración en meses (detectedDurationMonths: 12, 36, 60...) hacia las licencias de suscripción y servicios del grupo.
+  3. En la exportación a Excel, se rendericen con la Columna A vacía y las Columnas B a G fusionadas con formato cursiva gris, sin ensuciar cantidades ni subtotales matemáticos.
 - **Eliminación Temporal del Resumen Ejecutivo en Excel, PDF, Correo y Modal:** Retirado temporalmente el bloque de "Resumen Ejecutivo de la Solución" en todos los artefactos de salida (libro Excel, propuesta comercial PDF, borrador de correo para Outlook y previsualización modal) a la espera de auditar la estructura y criterio comercial exacto de Cisco para la totalización de servicios y licencias.
 - **Corrección de Jerarquía de Sub-líneas Hijas (Eliminación de Líneas Fantasma 2.0, 3.0, 4.0):** Corregido el motor de extracción y asignación jerárquica para que todo ítem hijo, accesorio o servicio sin número de línea explícito en el CCW original herede estrictamente la clave y numeración jerárquica de su Línea Madre activa (`1.0.1`, `1.1`, `1.2`...) en lugar de ser promovido erróneamente a nuevas Líneas Madre (`2.0, 3.0, 4.0`).
 - **Preservación Fiel del Estimate Original:** Garantizada la correspondencia 1:1 con la estructura oficial del BOM de Cisco CCW tanto en modo Continuo Estándar como en Agrupado por Línea Madre.
