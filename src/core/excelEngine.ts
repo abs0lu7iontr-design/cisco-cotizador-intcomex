@@ -30,7 +30,14 @@ import {
 } from './calculations';
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../lib/intcomexLogoBase64';
 import { generateQuotationFileName, isPureLicensingQuote, resolveEffectiveQuoteRates } from './exportUtils';
-import { parseEstimateWithHierarchy, ProcessedEstimateLine } from '../modules/estimate';
+import {
+  parseEstimateWithHierarchy,
+  ProcessedEstimateLine,
+  EstimateExportGroupingOptions,
+  categorizeEstimateItems,
+} from '../modules/estimate';
+
+export type { EstimateExportGroupingOptions };
 
 function getCellString(cell: ExcelJS.Cell | null | undefined): string {
   if (!cell || cell.value === null || cell.value === undefined) return '';
@@ -359,6 +366,7 @@ export function isFooterOrNoteRow(lineStr: string, partStr: string, descStr: str
     'total cotización',
     'total cotizacion',
     'total neto',
+    'resumen ejecutivo',
     'días corridos a contar',
     'dias corridos a contar',
     'fecha de emisión',
@@ -1295,6 +1303,578 @@ export async function parseEstimateWorkbook(
 export const processEstimateWorkbook = parseEstimateWorkbook;
 
 /**
+ * Renders the Estimate items table, mother-line groupings with subtotals,
+ * grand total, optional CLP reference, optional executive summary card,
+ * and the 3 official legal footers.
+ */
+function renderEstimateTableAndFooters(
+  worksheet: ExcelJS.Worksheet,
+  items: EstimateLineItem[],
+  calculatedProductTotal: number,
+  exportOptions?: EstimateExportGroupingOptions,
+  startHeaderRow: number = 13
+): { totalRowIndex: number; finalTotal: number } {
+  // 1. Filtrar ítems si se seleccionó una Línea Madre específica
+  let activeItems = items;
+  if (exportOptions?.selectedLine && exportOptions.selectedLine !== 'ALL') {
+    activeItems = items.filter((it) => {
+      if (it.isInfoRow) return true;
+      const mKey = getMotherLineKey(it.lineNumber);
+      return mKey === exportOptions.selectedLine;
+    });
+  }
+
+  const completeBorder: Partial<ExcelJS.Borders> = {
+    top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+  };
+
+  const writeItemRow = (item: EstimateLineItem, r: number, isAlternate: boolean) => {
+    const row = worksheet.getRow(r);
+    const isMain = isMainLineItem(item ? item.lineNumber : '1.0');
+
+    if (item.isInfoRow) {
+      row.getCell(1).value = '';
+      row.getCell(2).value = String(item.description || '').trim();
+      row.getCell(3).value = '';
+      row.getCell(4).value = '';
+      row.getCell(5).value = '';
+      row.getCell(6).value = '';
+      row.getCell(7).value = '';
+      row.height = 20;
+
+      for (let c = 1; c <= 7; c++) {
+        const cell = row.getCell(c);
+        cell.border = completeBorder;
+        if (isAlternate) {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFF8FAFC' },
+          };
+        }
+      }
+      row.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
+      try {
+        worksheet.mergeCells(r, 2, r, 7);
+      } catch (_) {}
+      const mergedCell = row.getCell(2);
+      mergedCell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: false, indent: 1 };
+      mergedCell.font = { name: 'Arial', size: 8.5, italic: true, color: { argb: 'FF595959' } };
+      return;
+    }
+
+    row.getCell(1).value = String(item.lineNumber || '').trim();
+    row.getCell(2).value = String(item.partNumber || '').trim();
+    row.getCell(3).value = String(item.description || '').trim();
+    row.getCell(4).value = String(item.transformedLeadTime || '').trim();
+    row.getCell(5).value = typeof item.qty === 'number' && !isNaN(item.qty) ? item.qty : 1;
+    row.getCell(6).value = Number(item.precioVentaUnitario) || 0;
+    row.getCell(7).value = Number(item.precioVentaExtendido) || 0;
+
+    const descStr = String(row.getCell(3).value || '');
+    const lines = Math.max(1, Math.ceil(descStr.length / 36));
+    row.height = lines > 1 ? Math.max(22, lines * 16) : 22;
+
+    for (let c = 1; c <= 7; c++) {
+      const cell = row.getCell(c);
+      cell.border = completeBorder;
+
+      if (isAlternate) {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF8FAFC' },
+        };
+      }
+
+      if (c === 1) {
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.font = {
+          name: 'Arial',
+          size: 9,
+          bold: isMain,
+          color: { argb: isMain ? 'FF000000' : 'FF475569' },
+        };
+      } else if (c === 2) {
+        cell.alignment = {
+          vertical: 'middle',
+          horizontal: 'left',
+          indent: isMain ? 0 : 1,
+        };
+        cell.font = {
+          name: 'Arial',
+          size: 9,
+          bold: isMain,
+          color: { argb: isMain ? 'FF000000' : 'FF334155' },
+        };
+      } else if (c === 3) {
+        cell.alignment = {
+          vertical: 'middle',
+          horizontal: 'left',
+          wrapText: true,
+          indent: isMain ? 0 : 1,
+        };
+        cell.font = {
+          name: 'Arial',
+          size: 9,
+          bold: false,
+          color: { argb: 'FF1E293B' },
+        };
+      } else if (c === 4) {
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.font = {
+          name: 'Arial',
+          size: 8.5,
+          bold: false,
+          color: { argb: 'FF64748B' },
+        };
+      } else if (c === 5) {
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        cell.font = {
+          name: 'Arial',
+          size: 9,
+          bold: false,
+          color: { argb: 'FF0F172A' },
+        };
+        cell.numFmt = '0';
+      } else if (c === 6 || c === 7) {
+        cell.alignment = { vertical: 'middle', horizontal: 'right' };
+        cell.font = {
+          name: 'Arial',
+          size: 9,
+          bold: false,
+          color: { argb: 'FF0F172A' },
+        };
+        cell.numFmt = '"$"#,##0.00';
+      }
+    }
+  };
+
+  let currentRow = startHeaderRow + 1;
+  const subtotalCells: string[] = [];
+  let calculatedGrandTotal = 0;
+
+  if (exportOptions?.groupByLine) {
+    // Agrupación por Línea Madre (con Subtotales por OC)
+    const motherMap = new Map<string, EstimateLineItem[]>();
+    let lastMotherKey = '1.0';
+
+    for (const it of activeItems) {
+      if (it.isInfoRow) {
+        if (!motherMap.has(lastMotherKey)) motherMap.set(lastMotherKey, []);
+        motherMap.get(lastMotherKey)!.push(it);
+        continue;
+      }
+      const mKey = getMotherLineKey(it.lineNumber) || '1.0';
+      lastMotherKey = mKey;
+      if (!motherMap.has(mKey)) motherMap.set(mKey, []);
+      motherMap.get(mKey)!.push(it);
+    }
+
+    const sortedKeys = Array.from(motherMap.keys()).sort(
+      (a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0)
+    );
+
+    for (const motherKey of sortedKeys) {
+      const groupItems = motherMap.get(motherKey)!;
+      const hasHw = groupItems.some(
+        (it) => !it.isInfoRow && !checkIsIntangible(it.partNumber, it.description)
+      );
+      const hasSw = groupItems.some(
+        (it) =>
+          !it.isInfoRow &&
+          (checkIsIntangible(it.partNumber, it.description) || isCloudSubscriptionSku(it.partNumber))
+      );
+      const typeBadge =
+        hasHw && !hasSw
+          ? '🔧 Hardware (E1)'
+          : !hasHw && hasSw
+          ? '☁️ Licencias / SaaS (ED)'
+          : '📦 Solución Integrada HW + SW';
+
+      // 1. Fila de Encabezado de Bloque de Línea Madre
+      const blockHeaderRow = worksheet.getRow(currentRow);
+      blockHeaderRow.height = 24;
+      for (let c = 1; c <= 7; c++) {
+        const cell = blockHeaderRow.getCell(c);
+        cell.border = completeBorder;
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFE2E8F0' },
+        };
+      }
+      safeUnmerge(worksheet, `A${currentRow}:G${currentRow}`);
+      worksheet.getCell(`A${currentRow}`).value = `📦 Bloque Línea ${motherKey} — ${typeBadge} (${groupItems.length} ${groupItems.length === 1 ? 'ítem' : 'ítems'})`;
+      worksheet.getCell(`A${currentRow}`).font = {
+        name: 'Arial',
+        size: 9.5,
+        bold: true,
+        color: { argb: 'FF1E293B' },
+      };
+      worksheet.getCell(`A${currentRow}`).alignment = {
+        vertical: 'middle',
+        horizontal: 'left',
+        indent: 1,
+      };
+      worksheet.mergeCells(`A${currentRow}:G${currentRow}`);
+      currentRow++;
+
+      // 2. Filas de productos e informativas del bloque
+      const blockStartRow = currentRow;
+      for (let idx = 0; idx < groupItems.length; idx++) {
+        const it = groupItems[idx];
+        writeItemRow(it, currentRow, idx % 2 === 1);
+        currentRow++;
+      }
+      const blockEndRow = currentRow - 1;
+
+      // 3. Fila de Subtotal de Línea Madre
+      const subtotalRow = worksheet.getRow(currentRow);
+      subtotalRow.height = 22;
+      const groupSubtotal =
+        Math.round(
+          groupItems.reduce((acc, it) => acc + (Number(it.precioVentaExtendido) || 0), 0) * 100
+        ) / 100;
+      calculatedGrandTotal += groupSubtotal;
+
+      for (let c = 1; c <= 7; c++) {
+        const cell = subtotalRow.getCell(c);
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF8FAFC' },
+        };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF94A3B8' } },
+          bottom: { style: 'thin', color: { argb: 'FF475569' } },
+          left: c === 1 ? { style: 'thin', color: { argb: 'FFCBD5E1' } } : undefined,
+          right: c === 7 ? { style: 'thin', color: { argb: 'FFCBD5E1' } } : undefined,
+        };
+
+        if (c === 2) {
+          cell.value = `Subtotal Línea ${motherKey}:`;
+          cell.font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FF1E293B' } };
+          cell.alignment = { vertical: 'middle', horizontal: 'left' };
+        } else if (c === 5) {
+          cell.value = {
+            formula: `SUM(E${blockStartRow}:E${blockEndRow})`,
+            result: groupItems.reduce(
+              (acc, it) => (it.isInfoRow ? acc : acc + (typeof it.qty === 'number' ? it.qty : 1)),
+              0
+            ),
+          };
+          cell.font = { name: 'Arial', size: 9, bold: true, color: { argb: 'FF0F172A' } };
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          cell.numFmt = '0';
+        } else if (c === 7) {
+          cell.value = {
+            formula: `SUM(G${blockStartRow}:G${blockEndRow})`,
+            result: groupSubtotal,
+          };
+          cell.font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FF0F172A' } };
+          cell.alignment = { vertical: 'middle', horizontal: 'right' };
+          cell.numFmt = '"$"#,##0.00';
+        }
+      }
+
+      subtotalCells.push(`G${currentRow}`);
+      currentRow++;
+
+      // Espaciador sutil entre bloques
+      const spacerRow = worksheet.getRow(currentRow);
+      spacerRow.height = 10;
+      currentRow++;
+    }
+  } else {
+    // Modo Continuo Estándar (CCW original)
+    for (let idx = 0; idx < activeItems.length; idx++) {
+      const it = activeItems[idx];
+      writeItemRow(it, currentRow, idx % 2 === 1);
+      currentRow++;
+    }
+    calculatedGrandTotal = calculatedProductTotal;
+  }
+
+  // 4. Fila de Total General (Price Total:)
+  const totalRowIndex = currentRow;
+  const totalRow = worksheet.getRow(totalRowIndex);
+  totalRow.height = 26;
+
+  for (let c = 1; c <= 7; c++) {
+    const cell = totalRow.getCell(c);
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFF1F5F9' },
+    };
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FF94A3B8' } },
+      bottom: { style: 'double', color: { argb: 'FF0F172A' } },
+      left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+      right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    };
+
+    if (c === 2 || c === 5) {
+      if (c === 2) {
+        cell.value = 'Price Total:';
+        cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+        cell.alignment = { vertical: 'middle', horizontal: 'left' };
+      }
+    } else if (c === 7) {
+      const finalVal = Math.round(calculatedGrandTotal * 100) / 100;
+      if (exportOptions?.groupByLine && subtotalCells.length > 0) {
+        cell.value = {
+          formula: `SUM(${subtotalCells.join(',')})`,
+          result: finalVal,
+        };
+      } else {
+        const firstDataRow = startHeaderRow + 1;
+        const lastDataRow = totalRowIndex - 1;
+        cell.value = {
+          formula: `SUM(G${firstDataRow}:G${lastDataRow})`,
+          result: finalVal,
+        };
+      }
+      cell.font = { name: 'Arial', size: 10.5, bold: true, color: { argb: 'FF0F172A' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'right' };
+      cell.numFmt = '"$"#,##0.00';
+    } else {
+      cell.value = null;
+    }
+  }
+  currentRow++;
+
+  // 5. Idea 4: Fila Referencial en Pesos Chilenos (CLP) si está habilitada
+  const clpRate = exportOptions?.clpExchangeRate || 0;
+  if (clpRate > 0) {
+    const clpRowIndex = currentRow;
+    const clpRow = worksheet.getRow(clpRowIndex);
+    clpRow.height = 22;
+
+    for (let c = 1; c <= 7; c++) {
+      const cell = clpRow.getCell(c);
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFF0FDF4' },
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF86EFAC' } },
+        bottom: { style: 'thin', color: { argb: 'FF86EFAC' } },
+        left: c === 1 ? { style: 'thin', color: { argb: 'FF86EFAC' } } : undefined,
+        right: c === 7 ? { style: 'thin', color: { argb: 'FF86EFAC' } } : undefined,
+      };
+    }
+
+    safeUnmerge(worksheet, `A${clpRowIndex}:D${clpRowIndex}`);
+    worksheet.getCell(`A${clpRowIndex}`).value = 'Total Solución Referencial Moneda Local:';
+    worksheet.getCell(`A${clpRowIndex}`).font = {
+      name: 'Arial',
+      size: 9,
+      bold: true,
+      color: { argb: 'FF166534' },
+    };
+    worksheet.getCell(`A${clpRowIndex}`).alignment = { vertical: 'middle', horizontal: 'right' };
+    worksheet.mergeCells(`A${clpRowIndex}:D${clpRowIndex}`);
+
+    safeUnmerge(worksheet, `E${clpRowIndex}:G${clpRowIndex}`);
+    const clpTotalVal = Math.round(calculatedGrandTotal * clpRate);
+    worksheet.getCell(`E${clpRowIndex}`).value = {
+      formula: `TEXT(G${totalRowIndex}*${clpRate}, "$#,##0") & " CLP (T/C: $" & ${clpRate} & " CLP/USD)"`,
+      result: `$${clpTotalVal.toLocaleString('es-CL')} CLP (T/C: $${clpRate} CLP/USD)`,
+    };
+    worksheet.getCell(`E${clpRowIndex}`).font = {
+      name: 'Arial',
+      size: 9,
+      bold: true,
+      color: { argb: 'FF166534' },
+    };
+    worksheet.getCell(`E${clpRowIndex}`).alignment = { vertical: 'middle', horizontal: 'right' };
+    worksheet.mergeCells(`E${clpRowIndex}:G${clpRowIndex}`);
+    currentRow++;
+  }
+
+  // 6. Idea 1: Tarjeta / Resumen Ejecutivo de la Solución (HW / SW / Soporte)
+  if (exportOptions?.showExecutiveSummary !== false) {
+    const summary = categorizeEstimateItems(activeItems);
+
+    currentRow++; // Fila vacía
+    const execHeaderRow = currentRow;
+    worksheet.getRow(execHeaderRow).height = 20;
+
+    for (let c = 1; c <= 7; c++) {
+      const cell = worksheet.getCell(execHeaderRow, c);
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1E293B' },
+      };
+      cell.border = completeBorder;
+    }
+    safeUnmerge(worksheet, `A${execHeaderRow}:G${execHeaderRow}`);
+    worksheet.getCell(`A${execHeaderRow}`).value =
+      'Resumen Ejecutivo de la Solución (Desglose por Categoría de Producto):';
+    worksheet.getCell(`A${execHeaderRow}`).font = {
+      name: 'Arial',
+      size: 8.5,
+      bold: true,
+      color: { argb: 'FFFFFFFF' },
+    };
+    worksheet.getCell(`A${execHeaderRow}`).alignment = {
+      vertical: 'middle',
+      horizontal: 'left',
+      indent: 1,
+    };
+    worksheet.mergeCells(`A${execHeaderRow}:G${execHeaderRow}`);
+    currentRow++;
+
+    const writeExecRow = (label: string, qty: number, amount: number) => {
+      const r = currentRow;
+      worksheet.getRow(r).height = 19;
+      for (let c = 1; c <= 7; c++) {
+        const cell = worksheet.getCell(r, c);
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+        cell.border = completeBorder;
+      }
+      safeUnmerge(worksheet, `A${r}:D${r}`);
+      worksheet.getCell(`A${r}`).value = label;
+      worksheet.getCell(`A${r}`).font = { name: 'Arial', size: 8, color: { argb: 'FF334155' } };
+      worksheet.getCell(`A${r}`).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+      worksheet.mergeCells(`A${r}:D${r}`);
+
+      worksheet.getCell(`E${r}`).value = qty;
+      worksheet.getCell(`E${r}`).font = {
+        name: 'Arial',
+        size: 8,
+        bold: true,
+        color: { argb: 'FF475569' },
+      };
+      worksheet.getCell(`E${r}`).alignment = { vertical: 'middle', horizontal: 'center' };
+      worksheet.getCell(`E${r}`).numFmt = '0';
+
+      worksheet.getCell(`F${r}`).value = '';
+
+      worksheet.getCell(`G${r}`).value = amount;
+      worksheet.getCell(`G${r}`).font = {
+        name: 'Arial',
+        size: 8.5,
+        bold: true,
+        color: { argb: 'FF0F172A' },
+      };
+      worksheet.getCell(`G${r}`).alignment = { vertical: 'middle', horizontal: 'right' };
+      worksheet.getCell(`G${r}`).numFmt = '"$"#,##0.00';
+      currentRow++;
+    };
+
+    if (summary.hardwareTotal > 0) {
+      writeExecRow(
+        '🔧 Equipamiento Físico Hardware (Bodega E1)',
+        summary.hardwareCount,
+        summary.hardwareTotal
+      );
+    }
+    if (summary.softwareTotal > 0) {
+      writeExecRow(
+        '☁️ Licenciamiento / Cloud SaaS (Bodega ED)',
+        summary.softwareCount,
+        summary.softwareTotal
+      );
+    }
+    if (summary.servicesTotal > 0) {
+      writeExecRow(
+        '🛡️ Servicios y Soporte SmartNet',
+        summary.servicesCount,
+        summary.servicesTotal
+      );
+    }
+  }
+
+  // 7. Ordered Footers (Validity, Lead Time & Technical Validation)
+  currentRow++; // Fila de separación
+  const validityRow = currentRow;
+  worksheet.getRow(validityRow).height = 16;
+  safeUnmerge(worksheet, `A${validityRow}:G${validityRow}`);
+  const validityCell = worksheet.getCell(`A${validityRow}`);
+  validityCell.value = {
+    richText: [
+      {
+        text: 'Validez de la Oferta: ',
+        font: { name: 'Arial', size: 7.5, bold: true, color: { argb: 'FF334155' } },
+      },
+      {
+        text: 'Esta cotización tiene una validez de ',
+        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
+      },
+      {
+        text: '14 días corridos',
+        font: { name: 'Arial', size: 7.5, bold: true, italic: true, color: { argb: 'FFB91C1C' } },
+      },
+      {
+        text: ' a contar de su fecha de emisión.',
+        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
+      },
+    ],
+  };
+  validityCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
+  validityCell.border = undefined;
+  validityCell.fill = undefined;
+  worksheet.mergeCells(`A${validityRow}:G${validityRow}`);
+  currentRow++;
+
+  const leadTimeNoticeRow = currentRow;
+  worksheet.getRow(leadTimeNoticeRow).height = 16;
+  safeUnmerge(worksheet, `A${leadTimeNoticeRow}:G${leadTimeNoticeRow}`);
+  const leadTimeCell = worksheet.getCell(`A${leadTimeNoticeRow}`);
+  leadTimeCell.value = {
+    richText: [
+      {
+        text: 'Plazo de entrega: ',
+        font: { name: 'Arial', size: 7.5, bold: true, color: { argb: 'FF334155' } },
+      },
+      {
+        text: 'El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden.',
+        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
+      },
+    ],
+  };
+  leadTimeCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
+  leadTimeCell.border = undefined;
+  leadTimeCell.fill = undefined;
+  worksheet.mergeCells(`A${leadTimeNoticeRow}:G${leadTimeNoticeRow}`);
+  currentRow++;
+
+  const technicalValidationRow = currentRow;
+  worksheet.getRow(technicalValidationRow).height = 30;
+  safeUnmerge(worksheet, `A${technicalValidationRow}:G${technicalValidationRow}`);
+  const technicalCell = worksheet.getCell(`A${technicalValidationRow}`);
+  technicalCell.value = {
+    richText: [
+      {
+        text: 'Validación Técnica y Responsabilidad: ',
+        font: { name: 'Arial', size: 7.5, bold: true, color: { argb: 'FF334155' } },
+      },
+      {
+        text: 'La presente cotización constituye una propuesta referencial de preventa basada en los requerimientos informados. Es responsabilidad exclusiva del Partner revisar y validar técnicamente la compatibilidad, completitud y exactitud de todos los números de parte (BOM) y licenciamiento antes de formalizar la orden de compra. Intcomex no asumirá costos ni mermas derivados de omisiones o inconsistencias en compras de productos a pedido no validadas previamente por el Partner.',
+        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
+      },
+    ],
+  };
+  technicalCell.alignment = { vertical: 'top', horizontal: 'left', wrapText: true };
+  technicalCell.border = undefined;
+  technicalCell.fill = undefined;
+  worksheet.mergeCells(`A${technicalValidationRow}:G${technicalValidationRow}`);
+
+  return {
+    totalRowIndex,
+    finalTotal: Math.round(calculatedGrandTotal * 100) / 100,
+  };
+}
+
+/**
  * EXPORT GENERATOR: Called only when user clicks "Descargar Archivo".
  * Formats the 7 clean columns, styles, and creates the downloadable buffer.
  */
@@ -1304,7 +1884,8 @@ export async function generateOptimizedWorkbook(
   fileName: string,
   overrides?: Record<number, OverrideRuleType>,
   promoNetPrices?: Record<number, number>,
-  precomputedResult?: ProcessedEstimateResult
+  precomputedResult?: ProcessedEstimateResult,
+  exportOptions?: EstimateExportGroupingOptions
 ): Promise<{ result: ProcessedEstimateResult; modifiedBuffer: ArrayBuffer }> {
   const workbook = new ExcelJS.Workbook();
   const loadPayload = typeof Buffer !== 'undefined' && !(arrayBuffer instanceof Buffer)
@@ -1337,10 +1918,6 @@ export async function generateOptimizedWorkbook(
   const headerInfo = parsedResult.headerInfo;
   const calculatedProductTotal = parsedResult.calculatedProductTotal;
   const originalProductTotal = parsedResult.originalProductTotal;
-
-  const lastItemRow = EXPORT_HEADER_ROW + items.length;
-  const totalRowIndex = lastItemRow + 1;
-  const noticeRowIdx = totalRowIndex + 2;
 
   // 2. Comprehensive Cleanup: Unmerge ALL existing merges in the entire worksheet first
   try {
@@ -1436,196 +2013,7 @@ export async function generateOptimizedWorkbook(
     };
   }
 
-  // 4. Write Item Rows strictly sequentially directly beneath header
-  const completeBorder: Partial<ExcelJS.Borders> = {
-    top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-    left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-    bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-    right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-  };
-
-  for (let idx = 0; idx < items.length; idx++) {
-    const item = items[idx];
-    const r = EXPORT_HEADER_ROW + 1 + idx;
-    const row = worksheet.getRow(r);
-    const isAlternate = idx % 2 === 1;
-    const isMain = isMainLineItem(item ? item.lineNumber : '1.0');
-
-    if (item.isInfoRow) {
-      // 1. Desplazamiento de Filas Informativas: Descripción exclusivamente en Columna B (Part Number), vacíos en Cols A, C, D, E, F, G
-      row.getCell(1).value = '';
-      row.getCell(2).value = String(item.description || '').trim();
-      row.getCell(3).value = '';
-      row.getCell(4).value = '';
-      row.getCell(5).value = '';
-      row.getCell(6).value = '';
-      row.getCell(7).value = '';
-      row.height = 20;
-
-      for (let c = 1; c <= 7; c++) {
-        const cell = row.getCell(c);
-        cell.border = completeBorder;
-        if (isAlternate) {
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFF8FAFC' },
-          };
-        }
-      }
-
-      // Estilo de Columna 1 (vacía)
-      row.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
-
-      // 2. Fusión de Celdas (MergeCells): Comienza en Columna 2 (B) y termina en Columna 7 (G)
-      try {
-        worksheet.mergeCells(r, 2, r, 7);
-      } catch (_) {}
-
-      // 3. Estilizado Dinámico (UI Blanca): Celda combinada en Columna 2 (B)
-      const mergedCell = row.getCell(2);
-      mergedCell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: false, indent: 1 };
-      mergedCell.font = { name: 'Arial', size: 8.5, italic: true, color: { argb: 'FF595959' } };
-
-      continue;
-    }
-
-    row.getCell(1).value = String(item.lineNumber || '').trim();
-    row.getCell(2).value = String(item.partNumber || '').trim();
-    row.getCell(3).value = String(item.description || '').trim();
-    row.getCell(4).value = String(item.transformedLeadTime || '').trim();
-    row.getCell(5).value = typeof item.qty === 'number' && !isNaN(item.qty) ? item.qty : 1;
-    row.getCell(6).value = Number(item.precioVentaUnitario) || 0;
-    row.getCell(7).value = Number(item.precioVentaExtendido) || 0;
-
-    const descStr = String(row.getCell(3).value || '');
-    const lines = Math.max(1, Math.ceil(descStr.length / 36));
-    row.height = lines > 1 ? Math.max(22, lines * 16) : 22;
-
-    for (let c = 1; c <= 7; c++) {
-      const cell = row.getCell(c);
-      cell.border = completeBorder;
-
-      if (isAlternate) {
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFF8FAFC' },
-        };
-      }
-
-      if (c === 1) {
-        // Line Number: Main item in Bold black font, Sub-item in regular font
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        cell.font = {
-          name: 'Arial',
-          size: 9,
-          bold: isMain,
-          color: { argb: isMain ? 'FF000000' : 'FF475569' },
-        };
-      } else if (c === 2) {
-        // Part Number: Main item in Bold black font, Sub-item in non-bold with visual indent
-        cell.alignment = {
-          vertical: 'middle',
-          horizontal: 'left',
-          indent: isMain ? 0 : 1,
-        };
-        cell.font = {
-          name: 'Arial',
-          size: 9,
-          bold: isMain,
-          color: { argb: isMain ? 'FF000000' : 'FF334155' },
-        };
-      } else if (c === 3) {
-        // Description: 100% Identical Arial 9 across all rows
-        cell.alignment = {
-          vertical: 'middle',
-          horizontal: 'left',
-          wrapText: true,
-          indent: isMain ? 0 : 1,
-        };
-        cell.font = {
-          name: 'Arial',
-          size: 9,
-          bold: false,
-          color: { argb: 'FF1E293B' },
-        };
-      } else if (c === 4) {
-        // Estimated Lead Time
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        cell.font = {
-          name: 'Arial',
-          size: 8.5,
-          bold: false,
-          color: { argb: 'FF64748B' },
-        };
-      } else if (c === 5) {
-        // Qty: Pure Integer Number (NO currency sign, NO decimals)
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        cell.font = {
-          name: 'Arial',
-          size: 9,
-          bold: false,
-          color: { argb: 'FF0F172A' },
-        };
-        cell.numFmt = '0';
-      } else if (c === 6 || c === 7) {
-        // Unit Net Price & Extended Net Price: Clean uniform price (regular font, NOT bold)
-        cell.alignment = { vertical: 'middle', horizontal: 'right' };
-        cell.font = {
-          name: 'Arial',
-          size: 9,
-          bold: false,
-          color: { argb: 'FF0F172A' },
-        };
-        cell.numFmt = '"$"#,##0.00';
-      }
-    }
-  }
-
-  // 5. Total Row: Modified label to "Price Total:"
-  const totalRow = worksheet.getRow(totalRowIndex);
-  totalRow.height = 26;
-  for (let c = 1; c <= 7; c++) {
-    const cell = totalRow.getCell(c);
-    cell.style = {};
-    cell.border = {
-      top: { style: 'thin', color: { argb: 'FF94A3B8' } },
-      bottom: { style: 'double', color: { argb: 'FF0F172A' } },
-      left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-      right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-    };
-
-    if (c === 5) {
-      cell.value = 'Price Total:';
-      cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF0F172A' } };
-      cell.alignment = { vertical: 'middle', horizontal: 'right' };
-    } else if (c === 7) {
-      cell.value = Number(calculatedProductTotal);
-      cell.font = { name: 'Arial', size: 10.5, bold: true, color: { argb: 'FF0F172A' } };
-      cell.alignment = { vertical: 'middle', horizontal: 'right' };
-      cell.numFmt = '"$"#,##0.00';
-      cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFF1F5F9' },
-      };
-    } else {
-      cell.value = null;
-    }
-  }
-
-  // 6. Clean footer cells
-  for (let r = totalRowIndex + 1; r <= maxScanRow; r++) {
-    for (let c = 1; c <= 7; c++) {
-      const cell = worksheet.getCell(r, c);
-      cell.value = null;
-      cell.border = undefined;
-      cell.fill = undefined;
-    }
-  }
-
-  // 7. Restore Clean Top Metadata
+  // 4. Restore Clean Top Metadata (Rows 1 to 12)
   try {
     safeUnmerge(worksheet, 'A2:L2');
     safeUnmerge(worksheet, 'A2:G2');
@@ -1732,7 +2120,7 @@ export async function generateOptimizedWorkbook(
     console.warn('Metadata restoration note:', err);
   }
 
-  // 8. Inject Intcomex Logo (Single instance, in A1 up to A3, non-duplicated)
+  // 5. Inject Intcomex Logo (Single instance, in A1 up to A3, non-duplicated)
   try {
     (worksheet as any)._media = [];
     if ((worksheet as any).model && (worksheet as any).model.media) {
@@ -1755,89 +2143,14 @@ export async function generateOptimizedWorkbook(
 
   worksheet.views = [{ showGridLines: false }];
 
-  worksheet.columns = [
-    { width: 12 }, // Line Number
-    { width: 20 }, // Part Number
-    { width: 32 }, // Description
-    { width: 24 }, // Lead Time
-    { width: 8  }, // Qty
-    { width: 15 }, // Unit Net Price
-    { width: 18 }, // Extended Net Price
-  ];
-
-  // 1. Fila de Validez de Oferta (Fila validityRow)
-  const validityRow = totalRowIndex + 2;
-  worksheet.getRow(validityRow).height = 16;
-  safeUnmerge(worksheet, `A${validityRow}:G${validityRow}`);
-  const validityCell = worksheet.getCell(`A${validityRow}`);
-  validityCell.value = {
-    richText: [
-      {
-        text: 'Validez de la Oferta: ',
-        font: { name: 'Arial', size: 7.5, bold: true, color: { argb: 'FF334155' } },
-      },
-      {
-        text: 'Esta cotización tiene una validez de ',
-        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
-      },
-      {
-        text: '14 días corridos',
-        font: { name: 'Arial', size: 7.5, bold: true, italic: true, color: { argb: 'FFB91C1C' } },
-      },
-      {
-        text: ' a contar de su fecha de emisión.',
-        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
-      },
-    ],
-  };
-  validityCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
-  validityCell.border = undefined;
-  validityCell.fill = undefined;
-  worksheet.mergeCells(`A${validityRow}:G${validityRow}`);
-
-  // 2. Fila de Plazo de Entrega Máximo (Fila validityRow + 1)
-  const leadTimeNoticeRow = validityRow + 1;
-  worksheet.getRow(leadTimeNoticeRow).height = 16;
-  safeUnmerge(worksheet, `A${leadTimeNoticeRow}:G${leadTimeNoticeRow}`);
-  const leadTimeCell = worksheet.getCell(`A${leadTimeNoticeRow}`);
-  leadTimeCell.value = {
-    richText: [
-      {
-        text: 'Plazo de entrega: ',
-        font: { name: 'Arial', size: 7.5, bold: true, color: { argb: 'FF334155' } },
-      },
-      {
-        text: 'El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden.',
-        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
-      },
-    ],
-  };
-  leadTimeCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
-  leadTimeCell.border = undefined;
-  leadTimeCell.fill = undefined;
-  worksheet.mergeCells(`A${leadTimeNoticeRow}:G${leadTimeNoticeRow}`);
-
-  // 3. Fila de Validación Técnica y Responsabilidad (Fila validityRow + 2)
-  const technicalValidationRow = validityRow + 2;
-  worksheet.getRow(technicalValidationRow).height = 30;
-  safeUnmerge(worksheet, `A${technicalValidationRow}:G${technicalValidationRow}`);
-  const technicalCell = worksheet.getCell(`A${technicalValidationRow}`);
-  technicalCell.value = {
-    richText: [
-      {
-        text: 'Validación Técnica y Responsabilidad: ',
-        font: { name: 'Arial', size: 7.5, bold: true, color: { argb: 'FF334155' } },
-      },
-      {
-        text: 'La presente cotización constituye una propuesta referencial de preventa basada en los requerimientos informados. Es responsabilidad exclusiva del Partner revisar y validar técnicamente la compatibilidad, completitud y exactitud de todos los números de parte (BOM) y licenciamiento antes de formalizar la orden de compra. Intcomex no asumirá costos ni mermas derivados de omisiones o inconsistencias en compras de productos a pedido no validadas previamente por el Partner.',
-        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
-      },
-    ],
-  };
-  technicalCell.alignment = { vertical: 'top', horizontal: 'left', wrapText: true };
-  technicalCell.border = undefined;
-  technicalCell.fill = undefined;
-  worksheet.mergeCells(`A${technicalValidationRow}:G${technicalValidationRow}`);
+  // 6. Render Table Items, Mother-Line Groupings, Subtotals, Grand Total & Legal Footers
+  const { totalRowIndex, finalTotal } = renderEstimateTableAndFooters(
+    worksheet,
+    items,
+    calculatedProductTotal,
+    exportOptions,
+    EXPORT_HEADER_ROW
+  );
 
   // Inyección de Snapshot espejo en hoja ultra-oculta (sys_metadata)
   let metaSheet = workbook.getWorksheet('sys_metadata');
@@ -2136,7 +2449,8 @@ export async function createSampleEstimateWorkbook(): Promise<{
 export async function synthesizeOfficialEstimateWorkbook(
   result: ProcessedEstimateResult,
   params: QuoteParameters,
-  overrides?: Record<number, OverrideRuleType>
+  overrides?: Record<number, OverrideRuleType>,
+  exportOptions?: EstimateExportGroupingOptions
 ): Promise<ArrayBuffer> {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Price Estimate');
@@ -2290,206 +2604,16 @@ export async function synthesizeOfficialEstimateWorkbook(
     };
   }
 
-  // 5. Line Items
+  // 5. Render Table Items, Mother-Line Groupings, Subtotals, Grand Total & Legal Footers
   const items = result.items || [];
-  const completeBorder: Partial<ExcelJS.Borders> = {
-    top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-    left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-    bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-    right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-  };
-
-  for (let idx = 0; idx < items.length; idx++) {
-    const item = items[idx];
-    const r = EXPORT_HEADER_ROW + 1 + idx;
-    const row = worksheet.getRow(r);
-    const isAlternate = idx % 2 === 1;
-    const isMain = isMainLineItem(item ? item.lineNumber : '1.0');
-
-    if (item.isInfoRow) {
-      row.getCell(1).value = '';
-      row.getCell(2).value = String(item.description || '').trim();
-      row.getCell(3).value = '';
-      row.getCell(4).value = '';
-      row.getCell(5).value = '';
-      row.getCell(6).value = '';
-      row.getCell(7).value = '';
-      row.height = 20;
-
-      for (let c = 1; c <= 7; c++) {
-        const cell = row.getCell(c);
-        cell.border = completeBorder;
-        if (isAlternate) {
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
-        }
-      }
-      row.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
-      try {
-        worksheet.mergeCells(r, 2, r, 7);
-      } catch (_) {}
-      const mergedCell = row.getCell(2);
-      mergedCell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: false, indent: 1 };
-      mergedCell.font = { name: 'Arial', size: 8.5, italic: true, color: { argb: 'FF595959' } };
-      continue;
-    }
-
-    row.getCell(1).value = String(item.lineNumber || '').trim();
-    row.getCell(2).value = String(item.partNumber || '').trim();
-    row.getCell(3).value = String(item.description || '').trim();
-    row.getCell(4).value = String(item.transformedLeadTime || '').trim();
-    row.getCell(5).value = typeof item.qty === 'number' && !isNaN(item.qty) ? item.qty : 1;
-    row.getCell(6).value = Number(item.precioVentaUnitario) || 0;
-    row.getCell(7).value = Number(item.precioVentaExtendido) || 0;
-
-    const descStr = String(row.getCell(3).value || '');
-    const lines = Math.max(1, Math.ceil(descStr.length / 36));
-    row.height = lines > 1 ? Math.max(22, lines * 16) : 22;
-
-    for (let c = 1; c <= 7; c++) {
-      const cell = row.getCell(c);
-      cell.border = completeBorder;
-
-      if (isAlternate) {
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFF8FAFC' },
-        };
-      }
-
-      if (c === 1) {
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        cell.font = { name: 'Arial', size: 9, bold: isMain, color: { argb: isMain ? 'FF000000' : 'FF475569' } };
-      } else if (c === 2) {
-        cell.alignment = { vertical: 'middle', horizontal: 'left', indent: isMain ? 0 : 1 };
-        cell.font = { name: 'Arial', size: 9, bold: isMain, color: { argb: isMain ? 'FF000000' : 'FF334155' } };
-      } else if (c === 3) {
-        cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true, indent: isMain ? 0 : 1 };
-        cell.font = { name: 'Arial', size: 9, bold: false, color: { argb: 'FF1E293B' } };
-      } else if (c === 4) {
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        cell.font = { name: 'Arial', size: 8.5, bold: false, color: { argb: 'FF64748B' } };
-      } else if (c === 5) {
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        cell.font = { name: 'Arial', size: 9, bold: false, color: { argb: 'FF0F172A' } };
-        cell.numFmt = '0';
-      } else if (c === 6 || c === 7) {
-        cell.alignment = { vertical: 'middle', horizontal: 'right' };
-        cell.font = { name: 'Arial', size: 9, bold: false, color: { argb: 'FF0F172A' } };
-        cell.numFmt = '"$"#,##0.00';
-      }
-    }
-  }
-
-  // 6. Total Row
-  const totalRowIndex = EXPORT_HEADER_ROW + items.length + 1;
-  const totalRow = worksheet.getRow(totalRowIndex);
-  totalRow.height = 26;
-  for (let c = 1; c <= 7; c++) {
-    const cell = totalRow.getCell(c);
-    cell.fill = {
-      type: 'pattern',
-      pattern: 'solid',
-      fgColor: { argb: 'FFF1F5F9' },
-    };
-    cell.border = {
-      top: { style: 'thin', color: { argb: 'FF94A3B8' } },
-      bottom: { style: 'double', color: { argb: 'FF0F172A' } },
-      left: c === 1 ? { style: 'thin', color: { argb: 'FFCBD5E1' } } : undefined,
-      right: c === 7 ? { style: 'thin', color: { argb: 'FFCBD5E1' } } : undefined,
-    };
-    if (c === 1) {
-      cell.value = '';
-    } else if (c === 2) {
-      cell.value = 'Price Total:';
-      cell.alignment = { vertical: 'middle', horizontal: 'left' };
-      cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF0F172A' } };
-    } else if (c === 7) {
-      const firstDataRow = EXPORT_HEADER_ROW + 1;
-      const lastDataRow = totalRowIndex - 1;
-      const sumOfLineExtended =
-        Math.round(items.reduce((acc, it) => acc + (Number(it.precioVentaExtendido) || 0), 0) * 100) / 100;
-      cell.value = {
-        formula: `SUM(G${firstDataRow}:G${lastDataRow})`,
-        result: sumOfLineExtended,
-      };
-      cell.alignment = { vertical: 'middle', horizontal: 'right' };
-      cell.font = { name: 'Arial', size: 10.5, bold: true, color: { argb: 'FF0F172A' } };
-      cell.numFmt = '"$"#,##0.00';
-    }
-  }
-
-  // 7. Ordered Footers (Validity, Lead Time & Technical Validation)
-  const validityRow = totalRowIndex + 2;
-  worksheet.getRow(validityRow).height = 16;
-  safeUnmerge(worksheet, `A${validityRow}:G${validityRow}`);
-  const validityCell = worksheet.getCell(`A${validityRow}`);
-  validityCell.value = {
-    richText: [
-      {
-        text: 'Validez de la Oferta: ',
-        font: { name: 'Arial', size: 7.5, bold: true, color: { argb: 'FF334155' } },
-      },
-      {
-        text: 'Esta cotización tiene una validez de ',
-        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
-      },
-      {
-        text: '14 días corridos',
-        font: { name: 'Arial', size: 7.5, bold: true, italic: true, color: { argb: 'FFB91C1C' } },
-      },
-      {
-        text: ' a contar de su fecha de emisión.',
-        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
-      },
-    ],
-  };
-  validityCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
-  validityCell.border = undefined;
-  validityCell.fill = undefined;
-  worksheet.mergeCells(`A${validityRow}:G${validityRow}`);
-
-  const leadTimeNoticeRow = validityRow + 1;
-  worksheet.getRow(leadTimeNoticeRow).height = 16;
-  safeUnmerge(worksheet, `A${leadTimeNoticeRow}:G${leadTimeNoticeRow}`);
-  const leadTimeCell = worksheet.getCell(`A${leadTimeNoticeRow}`);
-  leadTimeCell.value = {
-    richText: [
-      {
-        text: 'Plazo de entrega: ',
-        font: { name: 'Arial', size: 7.5, bold: true, color: { argb: 'FF334155' } },
-      },
-      {
-        text: 'El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden.',
-        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
-      },
-    ],
-  };
-  leadTimeCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
-  leadTimeCell.border = undefined;
-  leadTimeCell.fill = undefined;
-  worksheet.mergeCells(`A${leadTimeNoticeRow}:G${leadTimeNoticeRow}`);
-
-  const technicalValidationRow = validityRow + 2;
-  worksheet.getRow(technicalValidationRow).height = 30;
-  safeUnmerge(worksheet, `A${technicalValidationRow}:G${technicalValidationRow}`);
-  const technicalCell = worksheet.getCell(`A${technicalValidationRow}`);
-  technicalCell.value = {
-    richText: [
-      {
-        text: 'Validación Técnica y Responsabilidad: ',
-        font: { name: 'Arial', size: 7.5, bold: true, color: { argb: 'FF334155' } },
-      },
-      {
-        text: 'La presente cotización constituye una propuesta referencial de preventa basada en los requerimientos informados. Es responsabilidad exclusiva del Partner revisar y validar técnicamente la compatibilidad, completitud y exactitud de todos los números de parte (BOM) y licenciamiento antes de formalizar la orden de compra. Intcomex no asumirá costos ni mermas derivados de omisiones o inconsistencias en compras de productos a pedido no validadas previamente por el Partner.',
-        font: { name: 'Arial', size: 7.5, italic: true, color: { argb: 'FF64748B' } },
-      },
-    ],
-  };
-  technicalCell.alignment = { vertical: 'top', horizontal: 'left', wrapText: true };
-  technicalCell.border = undefined;
-  technicalCell.fill = undefined;
-  worksheet.mergeCells(`A${technicalValidationRow}:G${technicalValidationRow}`);
+  const calculatedProductTotal = result.calculatedProductTotal || 0;
+  const { totalRowIndex } = renderEstimateTableAndFooters(
+    worksheet,
+    items,
+    calculatedProductTotal,
+    exportOptions,
+    EXPORT_HEADER_ROW
+  );
   // 8. Inyección de Snapshot espejo en hoja ultra-oculta (sys_metadata)
   let metaSheet = workbook.getWorksheet('sys_metadata');
   if (!metaSheet) {

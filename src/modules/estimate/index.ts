@@ -4,5 +4,5 @@
 
 export * from './estimateHierarchyParser';
 export * from './pricingEngine';
+export * from './estimateExportHelper';
 export * from './components/EstimateDiffModal';
-

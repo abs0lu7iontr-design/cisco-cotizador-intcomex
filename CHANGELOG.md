@@ -6,6 +6,19 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.4.6] - 2026-10-24
+### 🌟 Agregado (Separación por Líneas Madre en Excel, PDF Comercial, Correo Outlook y Resumen Ejecutivo)
+- **Exportación en Excel con Separación por Líneas Madre y Subtotales:** Opción en el modal de descarga para estructurar la cotización en bloques ordenados por cada Línea Madre (`1.0`, `2.0`, etc.) con subtotales individuales de cantidad y precio de venta mediante fórmulas nativas de Excel `=SUM(...)`, consolidando la suma en la fila final de Price Total para deals separados por OC.
+- **Selector de Formato de Excel:** Alternancia en 1 clic entre `[📋 Continuo Estándar]` (formato CCW original) y `[📑 Agrupado por Líneas]` con selector de filtro para exportar todas las líneas o aislar una línea específica si el cliente formaliza solo una OC.
+- **Tarjeta de Resumen Ejecutivo en Excel (Idea 1):** Inclusión opcional de un bloque resumen al pie de la cotización que categoriza el valor total en Hardware Físico (Bodega E1), Licenciamiento / Cloud SaaS (Bodega ED) y Servicios de Soporte SmartNet.
+- **Exportación en PDF Comercial (Idea 2):** Generación instantánea de propuesta comercial en PDF lista para el cliente, con membrete oficial de Intcomex en alta definición, tabla completa de productos, desglose por líneas madre y las tres cláusulas legales vigentes.
+- **Redacción de Correo al Partner en Outlook (Idea 3):** Botón `[✉️ Redactar Correo (Outlook)]` que genera un correo profesional con saludo `"Estimados,"`, datos de Deal/Estimate, resumen comercial de la solución, y copia al portapapeles la versión en HTML enriquecido con tablas estilizadas para pegado nativo en Outlook.
+- **Valor Referencial Opcional en Pesos Chilenos - CLP (Idea 4):** Switch con input editable de Tipo de Cambio Observado (ej. `$950 CLP/USD`) para calcular e inyectar el total referencial en moneda local en Excel, PDF, correo Outlook y modal.
+- **Previsualización Rápida en el Modal (Idea 5):** Panel interactivo desplegable que muestra el conteo de ítems, totales por categoría (HW vs SW), desglose por línea madre, tasas efectivas (`_I...M..._`) y montos antes de la descarga.
+- **Blindaje Anti-Contaminación y Shadow Ledger:** La hoja oculta `sys_metadata` preserva el historial de cálculo intacto y las funciones de lectura reconocen los subtotales para evitar duplicaciones en caso de re-importación.
+
+---
+
 ## [v2.4.5] - 2026-10-24
 ### 🌟 Agregado (Encabezados Repetidos en Línea 2.0+, Saludo Plural y Gestión de OC Partner en BO)
 - **Encabezado Repetido de Columnas en Bloques Posteriores:** Inyección de la fila de cabecera idéntica a Línea 1.0 (`SKU | Part Number | Bodega | Qty | Unit Net Price | Extended Net Price | Quitar`) a partir de la Línea 2.0 en la interfaz modal y en la exportación HTML/Outlook para mantener perfecta alineación visual al revisar listas extensas.

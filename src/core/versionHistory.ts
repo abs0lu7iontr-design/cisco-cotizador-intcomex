@@ -15,11 +15,28 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.4.6',
+    date: '2026-10-24',
+    commit: 'feat-estimate-grouped-export-and-commercial-tools',
+    title: 'Separación por Líneas Madre en Excel, PDF Comercial, Correo Outlook y Resumen Ejecutivo',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Exportación en Excel con separación por Líneas Madre (1.0, 2.0 e hijos) con subtotales y fórmulas nativas de Excel =SUM(...) para deals divididos en múltiples OC.',
+      'Selector de modo de exportación en modal de descarga: [📋 Continuo Estándar] vs [📑 Agrupado por Líneas Madre con Subtotales].',
+      'Tarjeta de Resumen Ejecutivo superior e inferior en Excel con desglose por categoría: Equipamiento Hardware (E1), Licenciamiento / Cloud (ED) y Soporte SmartNet.',
+      'Generación de Propuesta Comercial en PDF con membrete oficial Intcomex, tablas vectoriales de alta definición y cláusulas comerciales oficiales listas para el cliente.',
+      'Botón 1-Clic para Redactar Correo al Partner en Outlook con saludo formal ("Estimados,"), desglose económico por línea madre y copia en formato HTML enriquecido al portapapeles.',
+      'Soporte opcional para Tipo de Cambio y Valor Referencial en Pesos Chilenos (CLP + IVA) en Excel, PDF comercial, correo y vista previa del modal.',
+      'Previsualización Rápida en el modal de descarga con detalle de BOM, tasas efectivas (_I...M..._), montos en USD/CLP y preservación de auditoría sys_metadata.',
+    ],
+  },
+  {
     version: '2.4.5',
     date: '2026-10-24',
     commit: 'feat-bo-line-headers-and-po',
     title: 'Encabezados Repetidos en Líneas 2.0+, Saludo Plural y Gestión de OC Partner',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Encabezado de columnas idéntico a Línea 1.0 (SKU, Part Number, Bodega, Qty, Unit Net Price, Extended Net Price, Quitar) agregado para Línea 2.0 y bloques posteriores para lectura simétrica.',
