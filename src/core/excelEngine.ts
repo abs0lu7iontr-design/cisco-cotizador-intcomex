@@ -1482,7 +1482,7 @@ function renderEstimateTableAndFooters(
       'Line Number',
       'Part Number',
       'Description',
-      'Estimated Lead Time (Days)',
+      'Estimated Lead Time (Weeks)',
       'Qty',
       'Unit Net Price',
       'Extended Net Price',
@@ -1714,6 +1714,7 @@ function renderEstimateTableAndFooters(
       cell.border = completeBorder;
     }
     safeUnmerge(worksheet, `A${execHeaderRow}:G${execHeaderRow}`);
+    safeUnmerge(worksheet, `A${execHeaderRow}:D${execHeaderRow}`);
     worksheet.getCell(`A${execHeaderRow}`).value =
       'Resumen Ejecutivo de la Solución (Desglose por Categoría de Producto):';
     worksheet.getCell(`A${execHeaderRow}`).font = {
@@ -1727,7 +1728,38 @@ function renderEstimateTableAndFooters(
       horizontal: 'left',
       indent: 1,
     };
-    worksheet.mergeCells(`A${execHeaderRow}:G${execHeaderRow}`);
+    worksheet.mergeCells(`A${execHeaderRow}:D${execHeaderRow}`);
+
+    // Encabezado de Columna E: Qty
+    const qtyHeader = worksheet.getCell(`E${execHeaderRow}`);
+    qtyHeader.value = 'Qty';
+    qtyHeader.font = {
+      name: 'Arial',
+      size: 8.5,
+      bold: true,
+      color: { argb: 'FFFFFFFF' },
+    };
+    qtyHeader.alignment = {
+      vertical: 'middle',
+      horizontal: 'center',
+    };
+
+    // Columna F: Vacía
+    worksheet.getCell(`F${execHeaderRow}`).value = '';
+
+    // Encabezado de Columna G: Total Neto USD
+    const totalHeader = worksheet.getCell(`G${execHeaderRow}`);
+    totalHeader.value = 'Total Neto USD';
+    totalHeader.font = {
+      name: 'Arial',
+      size: 8.5,
+      bold: true,
+      color: { argb: 'FFFFFFFF' },
+    };
+    totalHeader.alignment = {
+      vertical: 'middle',
+      horizontal: 'right',
+    };
     currentRow++;
 
     const writeExecRow = (label: string, qty: number, amount: number) => {
@@ -1752,7 +1784,7 @@ function renderEstimateTableAndFooters(
         color: { argb: 'FF475569' },
       };
       worksheet.getCell(`E${r}`).alignment = { vertical: 'middle', horizontal: 'center' };
-      worksheet.getCell(`E${r}`).numFmt = '0';
+      worksheet.getCell(`E${r}`).numFmt = '#,##0';
 
       worksheet.getCell(`F${r}`).value = '';
 
@@ -1771,21 +1803,21 @@ function renderEstimateTableAndFooters(
     if (summary.hardwareTotal > 0) {
       writeExecRow(
         '🔧 Equipamiento Hardware',
-        summary.hardwareCount,
+        summary.hardwareQty,
         summary.hardwareTotal
       );
     }
     if (summary.softwareTotal > 0) {
       writeExecRow(
         '☁️ Licenciamiento / Software Cloud',
-        summary.softwareCount,
+        summary.softwareQty,
         summary.softwareTotal
       );
     }
     if (summary.servicesTotal > 0) {
       writeExecRow(
         '🛡️ Servicios y Soporte SmartNet',
-        summary.servicesCount,
+        summary.servicesQty,
         summary.servicesTotal
       );
     }
@@ -1985,7 +2017,7 @@ export async function generateOptimizedWorkbook(
     'Line Number',
     'Part Number',
     'Description',
-    'Estimated Lead Time (Days)',
+    'Estimated Lead Time (Weeks)',
     'Qty',
     'Unit Net Price',
     'Extended Net Price',
@@ -2576,7 +2608,7 @@ export async function synthesizeOfficialEstimateWorkbook(
     'Line Number',
     'Part Number',
     'Description',
-    'Estimated Lead Time (Days)',
+    'Estimated Lead Time (Weeks)',
     'Qty',
     'Unit Net Price',
     'Extended Net Price',

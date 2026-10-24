@@ -696,7 +696,7 @@ export function DownloadModal({
                         <div className="text-xs font-bold text-white mt-0.5">
                           {formatUSD(solutionSummary.hardwareTotal)}
                         </div>
-                        <div className="text-[9px] text-slate-500">{solutionSummary.hardwareCount} ítems</div>
+                        <div className="text-[9px] text-slate-500">{solutionSummary.hardwareQty} Qty ({solutionSummary.hardwareCount} ítems)</div>
                       </div>
 
                       <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-center">
@@ -704,11 +704,11 @@ export function DownloadModal({
                         <div className="text-xs font-bold text-white mt-0.5">
                           {formatUSD(solutionSummary.softwareTotal)}
                         </div>
-                        <div className="text-[9px] text-slate-500">{solutionSummary.softwareCount} ítems</div>
+                        <div className="text-[9px] text-slate-500">{solutionSummary.softwareQty} Qty ({solutionSummary.softwareCount} ítems)</div>
                       </div>
 
                       <div className="p-2 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-center">
-                        <div className="text-[9px] text-emerald-400 font-bold uppercase">💰 Total Solución</div>
+                        <div className="text-[9px] text-emerald-400 font-bold uppercase">💰 Total ({solutionSummary.totalQty} Qty)</div>
                         <div className="text-xs font-black text-emerald-300 mt-0.5">
                           {formatUSD(solutionSummary.grandTotal)}
                         </div>

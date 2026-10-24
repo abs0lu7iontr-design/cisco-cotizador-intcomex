@@ -21,10 +21,13 @@ export interface EstimateExportGroupingOptions {
 export interface EstimateSolutionSummary {
   hardwareTotal: number;
   hardwareCount: number;
+  hardwareQty: number;
   softwareTotal: number;
   softwareCount: number;
+  softwareQty: number;
   servicesTotal: number;
   servicesCount: number;
+  servicesQty: number;
   grandTotal: number;
   totalQty: number;
   motherLines: {
@@ -66,10 +69,13 @@ export function categorizeEstimateItems(
 ): EstimateSolutionSummary {
   let hardwareTotal = 0;
   let hardwareCount = 0;
+  let hardwareQty = 0;
   let softwareTotal = 0;
   let softwareCount = 0;
+  let softwareQty = 0;
   let servicesTotal = 0;
   let servicesCount = 0;
+  let servicesQty = 0;
   let grandTotal = 0;
   let totalQty = 0;
 
@@ -103,9 +109,15 @@ export function categorizeEstimateItems(
     motherMap.get(mKey)!.push(it);
 
     const extNet = Number(it.precioVentaExtendido) || 0;
-    const qty = typeof it.qty === 'number' && !isNaN(it.qty) ? it.qty : 1;
+    const unitPrice = Number(it.precioVentaUnitario) || 0;
+    // Solo se consideran ítems con valor económico real (> $0), excluyendo componentes con costo $0
+    const hasValue = extNet > 0 || unitPrice > 0;
+    const itemQty = typeof it.qty === 'number' && !isNaN(it.qty) && it.qty > 0 ? it.qty : (hasValue ? 1 : 0);
+
     grandTotal += extNet;
-    totalQty += qty;
+    if (hasValue) {
+      totalQty += itemQty;
+    }
 
     const skuUpper = (it.partNumber || '').toUpperCase().trim();
     const descLower = (it.description || '').toLowerCase().trim();
@@ -120,15 +132,24 @@ export function categorizeEstimateItems(
     ) {
       servicesTotal += extNet;
       servicesCount++;
+      if (hasValue) {
+        servicesQty += itemQty;
+      }
     } else if (
       checkIsIntangible(it.partNumber, it.description) ||
       isCloudSubscriptionSku(it.partNumber)
     ) {
       softwareTotal += extNet;
       softwareCount++;
+      if (hasValue) {
+        softwareQty += itemQty;
+      }
     } else {
       hardwareTotal += extNet;
       hardwareCount++;
+      if (hasValue) {
+        hardwareQty += itemQty;
+      }
     }
   }
 
@@ -139,10 +160,16 @@ export function categorizeEstimateItems(
 
   const motherLines = sortedMotherKeys.map((motherKey) => {
     const groupItems = motherMap.get(motherKey)!;
-    const groupQty = groupItems.reduce(
-      (acc, it) => (it.isInfoRow ? acc : acc + (typeof it.qty === 'number' ? it.qty : 1)),
-      0
-    );
+    const groupQty = groupItems.reduce((acc, it) => {
+      if (it.isInfoRow) return acc;
+      const extNet = Number(it.precioVentaExtendido) || 0;
+      const unitPrice = Number(it.precioVentaUnitario) || 0;
+      const hasVal = extNet > 0 || unitPrice > 0;
+      if (!hasVal) return acc;
+      const q = typeof it.qty === 'number' && !isNaN(it.qty) && it.qty > 0 ? it.qty : 1;
+      return acc + q;
+    }, 0);
+
     const subtotal = groupItems.reduce(
       (acc, it) => (it.isInfoRow ? acc : acc + (Number(it.precioVentaExtendido) || 0)),
       0
@@ -176,10 +203,13 @@ export function categorizeEstimateItems(
   return {
     hardwareTotal: Math.round(hardwareTotal * 100) / 100,
     hardwareCount,
+    hardwareQty,
     softwareTotal: Math.round(softwareTotal * 100) / 100,
     softwareCount,
+    softwareQty,
     servicesTotal: Math.round(servicesTotal * 100) / 100,
     servicesCount,
+    servicesQty,
     grandTotal: Math.round(grandTotal * 100) / 100,
     totalQty,
     motherLines,
@@ -218,13 +248,13 @@ export function generatePartnerEmailDraft(options: {
 
   bodyText += `RESUMEN ECONÓMICO DE LA SOLUCIÓN:\n`;
   if (summary.hardwareTotal > 0) {
-    bodyText += `• Equipamiento Hardware: ${formatUSD(summary.hardwareTotal)} USD (${summary.hardwareCount} ítems)\n`;
+    bodyText += `• Equipamiento Hardware: ${formatUSD(summary.hardwareTotal)} USD (${summary.hardwareQty} Qty)\n`;
   }
   if (summary.softwareTotal > 0) {
-    bodyText += `• Licenciamiento / Software Cloud: ${formatUSD(summary.softwareTotal)} USD (${summary.softwareCount} ítems)\n`;
+    bodyText += `• Licenciamiento / Software Cloud: ${formatUSD(summary.softwareTotal)} USD (${summary.softwareQty} Qty)\n`;
   }
   if (summary.servicesTotal > 0) {
-    bodyText += `• Servicios y Soporte SmartNet: ${formatUSD(summary.servicesTotal)} USD (${summary.servicesCount} ítems)\n`;
+    bodyText += `• Servicios y Soporte SmartNet: ${formatUSD(summary.servicesTotal)} USD (${summary.servicesQty} Qty)\n`;
   }
   bodyText += `• TOTAL SOLUCIÓN: ${formatUSD(summary.grandTotal)} USD\n`;
   if (clpActive) {
@@ -252,7 +282,7 @@ export function generatePartnerEmailDraft(options: {
     summaryRowsHtml += `
       <tr>
         <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">🔧 Equipamiento Hardware</td>
-        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: center; color: #475569;">${summary.hardwareCount}</td>
+        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: center; color: #475569; font-weight: 600;">${summary.hardwareQty}</td>
         <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #0f172a;">${formatUSD(summary.hardwareTotal)}</td>
       </tr>`;
   }
@@ -260,7 +290,7 @@ export function generatePartnerEmailDraft(options: {
     summaryRowsHtml += `
       <tr>
         <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">☁️ Licenciamiento / Software Cloud</td>
-        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: center; color: #475569;">${summary.softwareCount}</td>
+        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: center; color: #475569; font-weight: 600;">${summary.softwareQty}</td>
         <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #0f172a;">${formatUSD(summary.softwareTotal)}</td>
       </tr>`;
   }
@@ -268,7 +298,7 @@ export function generatePartnerEmailDraft(options: {
     summaryRowsHtml += `
       <tr>
         <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">🛡️ Servicios y Soporte SmartNet</td>
-        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: center; color: #475569;">${summary.servicesCount}</td>
+        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: center; color: #475569; font-weight: 600;">${summary.servicesQty}</td>
         <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #0f172a;">${formatUSD(summary.servicesTotal)}</td>
       </tr>`;
   }
@@ -413,7 +443,7 @@ export function generateCommercialPdfHtml(options: {
             <th class="text-center" style="width: 45px;">Line Number</th>
             <th style="width: 140px;">Part Number</th>
             <th>Description</th>
-            <th class="text-center" style="width: 75px;">Estimated Lead Time (Days)</th>
+            <th class="text-center" style="width: 75px;">Estimated Lead Time (Weeks)</th>
             <th class="text-center" style="width: 45px;">Qty</th>
             <th class="text-right" style="width: 90px;">Unit Net Price</th>
             <th class="text-right" style="width: 100px;">Extended Net Price</th>
@@ -755,7 +785,7 @@ export function generateCommercialPdfHtml(options: {
           <thead>
             <tr>
               <th>Resumen Ejecutivo de la Solución</th>
-              <th class="text-center" style="width: 80px;">Ítems</th>
+              <th class="text-center" style="width: 80px;">Qty</th>
               <th class="text-right" style="width: 130px;">Total Neto USD</th>
             </tr>
           </thead>
@@ -764,7 +794,7 @@ export function generateCommercialPdfHtml(options: {
               summary.hardwareTotal > 0
                 ? `<tr>
                     <td>🔧 Equipamiento Hardware</td>
-                    <td class="text-center">${summary.hardwareCount}</td>
+                    <td class="text-center font-bold">${summary.hardwareQty}</td>
                     <td class="text-right font-medium">${formatUSD(summary.hardwareTotal)}</td>
                   </tr>`
                 : ''
@@ -773,7 +803,7 @@ export function generateCommercialPdfHtml(options: {
               summary.softwareTotal > 0
                 ? `<tr>
                     <td>☁️ Licenciamiento / Software Cloud</td>
-                    <td class="text-center">${summary.softwareCount}</td>
+                    <td class="text-center font-bold">${summary.softwareQty}</td>
                     <td class="text-right font-medium">${formatUSD(summary.softwareTotal)}</td>
                   </tr>`
                 : ''
@@ -782,7 +812,7 @@ export function generateCommercialPdfHtml(options: {
               summary.servicesTotal > 0
                 ? `<tr>
                     <td>🛡️ Servicios y Soporte SmartNet</td>
-                    <td class="text-center">${summary.servicesCount}</td>
+                    <td class="text-center font-bold">${summary.servicesQty}</td>
                     <td class="text-right font-medium">${formatUSD(summary.servicesTotal)}</td>
                   </tr>`
                 : ''
@@ -802,13 +832,13 @@ export function generateCommercialPdfHtml(options: {
       <table class="data-table">
         <thead>
           <tr>
-            <th class="text-center" style="width: 45px;">#</th>
+            <th class="text-center" style="width: 45px;">Line Number</th>
             <th style="width: 140px;">Part Number</th>
-            <th>Descripción</th>
-            <th class="text-center" style="width: 75px;">Lead Time</th>
+            <th>Description</th>
+            <th class="text-center" style="width: 75px;">Estimated Lead Time (Weeks)</th>
             <th class="text-center" style="width: 45px;">Qty</th>
-            <th class="text-right" style="width: 90px;">Unit Price</th>
-            <th class="text-right" style="width: 100px;">Ext Price</th>
+            <th class="text-right" style="width: 90px;">Unit Net Price</th>
+            <th class="text-right" style="width: 100px;">Extended Net Price</th>
           </tr>
         </thead>
         <tbody>

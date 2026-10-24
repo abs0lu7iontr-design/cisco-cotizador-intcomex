@@ -64,6 +64,30 @@ const mockItems: EstimateLineItem[] = [
   },
   {
     rowIdx: 16,
+    lineNumber: '1.2',
+    partNumber: 'CAB-CONSOLE-RJ45',
+    smartAccountMandatory: 'No',
+    description: 'Console Cable 6ft with RJ45 and DB9F (Included $0 accessory)',
+    serviceDurationMonths: '0',
+    unitListPrice: 0,
+    pricingTerm: '1',
+    netCiscoUnit: 0,
+    unitNetPriceCcw: 0,
+    discPct: 0,
+    qty: 5,
+    isIntangible: false,
+    llevaArancel: false,
+    costoInternacion: 0,
+    costoArancel: 0,
+    costoTotalUnitario: 0,
+    precioVentaUnitario: 0,
+    precioVentaExtendido: 0,
+    originalLeadTimeDays: 7,
+    transformedLeadTime: '7 days',
+    isInfoRow: false,
+  },
+  {
+    rowIdx: 17,
     lineNumber: '2.0',
     partNumber: 'C9200L-DNA-E-24-3Y',
     smartAccountMandatory: 'Yes',
@@ -150,18 +174,26 @@ async function runTests() {
   console.log('Hardware Total:', summary.hardwareTotal, '(Expected: 3309.00)');
   console.log('Software Total:', summary.softwareTotal, '(Expected: 1020.00)');
   console.log('Grand Total:', summary.grandTotal, '(Expected: 4329.00)');
+  console.log('Hardware Qty:', summary.hardwareQty, '(Expected: 4)');
+  console.log('Software Qty:', summary.softwareQty, '(Expected: 2)');
+  console.log('Total Qty (with value):', summary.totalQty, '(Expected: 6)');
   console.log('Total Mother Lines:', summary.motherLines.length, '(Expected: 2)');
 
   if (summary.hardwareTotal !== 3309.00) throw new Error('Hardware total mismatch');
   if (summary.softwareTotal !== 1020.00) throw new Error('Software total mismatch');
   if (summary.grandTotal !== 4329.00) throw new Error('Grand total mismatch');
+  if (summary.hardwareQty !== 4) throw new Error(`Hardware Qty mismatch: got ${summary.hardwareQty}, expected 4 (excluding 5 zero-price cables)`);
+  if (summary.softwareQty !== 2) throw new Error(`Software Qty mismatch: got ${summary.softwareQty}, expected 2`);
+  if (summary.totalQty !== 6) throw new Error(`Total Qty mismatch: got ${summary.totalQty}, expected 6`);
   if (summary.motherLines.length !== 2) throw new Error('Mother lines count mismatch');
 
   const line1 = summary.motherLines.find((m) => m.motherKey === '1.0')!;
   const line2 = summary.motherLines.find((m) => m.motherKey === '2.0')!;
   if (line1.subtotal !== 3309.00) throw new Error('Line 1 subtotal mismatch');
   if (line2.subtotal !== 1020.00) throw new Error('Line 2 subtotal mismatch');
-  console.log('✓ TEST 1 PASSED: Categorization and line mother grouping accurate.');
+  if (line1.totalQty !== 4) throw new Error(`Line 1 totalQty mismatch: got ${line1.totalQty}, expected 4 (excluding zero-price items)`);
+  if (line2.totalQty !== 2) throw new Error(`Line 2 totalQty mismatch: got ${line2.totalQty}, expected 2`);
+  console.log('✓ TEST 1 PASSED: Categorization and line mother grouping accurate (Qty excludes $0 items).');
 
   console.log('\n--- TEST 2: Filter by single mother line (selectedLine: "1.0") ---');
   const summaryFiltered = categorizeEstimateItems(mockItems, '1.0');
@@ -216,11 +248,13 @@ async function runTests() {
   if (pdfHtml.includes('Bloque Línea 1.0')) throw new Error('PDF must NOT contain banner row "Bloque Línea 1.0"');
   if (!pdfHtml.includes('repeated-header')) throw new Error('PDF missing repeated-header row for Line 2.0+');
   if (pdfHtml.includes('Bodega E1') || pdfHtml.includes('Bodega ED')) throw new Error('PDF must NOT contain internal warehouse codes');
+  if (!pdfHtml.includes('Estimated Lead Time (Weeks)')) throw new Error('PDF must contain Estimated Lead Time (Weeks)');
+  if (!pdfHtml.includes('<th class="text-center" style="width: 80px;">Qty</th>')) throw new Error('PDF Executive summary missing Qty column header');
   if (!pdfHtml.includes('Subtotal Línea 1.0:')) throw new Error('PDF missing Line 1.0 subtotal');
   if (!pdfHtml.includes('Subtotal Línea 2.0:')) throw new Error('PDF missing Line 2.0 subtotal');
   if (!pdfHtml.includes('PRICE TOTAL (USD):')) throw new Error('PDF missing Grand Total');
   if (!pdfHtml.includes('Validación Técnica y Responsabilidad:')) throw new Error('PDF missing technical validation clause');
-  console.log('✓ TEST 4 PASSED: Commercial PDF HTML template renders perfectly with repeated headers and no warehouse codes.');
+  console.log('✓ TEST 4 PASSED: Commercial PDF HTML template renders perfectly with repeated headers, weeks and no warehouse codes.');
 
   console.log('\n--- TEST 5: synthesizeOfficialEstimateWorkbook with Grouping & CLP ---');
   const exportGroupingOpts: EstimateExportGroupingOptions = {
@@ -245,8 +279,11 @@ async function runTests() {
   const ws = wb.getWorksheet('Price Estimate')!;
   if (!ws) throw new Error('Worksheet "Price Estimate" not found');
 
-  // Check title
+  // Check title & Column 4 header in Row 13
   if (ws.getCell('A2').value !== 'Price Estimate') throw new Error('Title A2 mismatch');
+  if (ws.getCell('D13').value !== 'Estimated Lead Time (Weeks)') {
+    throw new Error(`Row 13 column 4 header mismatch: expected 'Estimated Lead Time (Weeks)', got '${ws.getCell('D13').value}'`);
+  }
 
   // Search for mother line blocks, repeated headers and subtotals
   let foundBannerBlock = false;
@@ -257,6 +294,7 @@ async function runTests() {
   let foundPriceTotal = false;
   let foundClpRow = false;
   let foundExecSummary = false;
+  let foundExecSummaryQtyHeader = false;
   let foundValidity = false;
   let foundTechnicalValidation = false;
 
@@ -277,6 +315,10 @@ async function runTests() {
     // Repeated header on line 2.0+ (row > 13)
     if (r > 13 && aVal === 'Line Number' && bVal === 'Part Number') {
       foundRepeatedHeader = true;
+      const leadTimeHeader = ws.getCell(r, 4).value;
+      if (leadTimeHeader !== 'Estimated Lead Time (Weeks)') {
+        throw new Error(`Repeated header column 4 mismatch: got ${leadTimeHeader}`);
+      }
     }
 
     if (bVal.includes('Subtotal Línea 1.0:')) {
@@ -296,7 +338,13 @@ async function runTests() {
       console.log(`Price Total row ${r}:`, gVal);
     }
     if (aVal.includes('Total Solución Referencial')) foundClpRow = true;
-    if (aVal.includes('Resumen Ejecutivo de la Solución')) foundExecSummary = true;
+    if (aVal.includes('Resumen Ejecutivo de la Solución')) {
+      foundExecSummary = true;
+      const eHeaderVal = ws.getCell(r, 5).value;
+      const gHeaderVal = ws.getCell(r, 7).value;
+      if (eHeaderVal === 'Qty') foundExecSummaryQtyHeader = true;
+      console.log(`Exec Summary Header at row ${r}: Col E="${eHeaderVal}", Col G="${gHeaderVal}"`);
+    }
     if (aVal.includes('Validez de la Oferta:')) foundValidity = true;
     if (aVal.includes('Validación Técnica y Responsabilidad:')) foundTechnicalValidation = true;
   }
@@ -309,6 +357,7 @@ async function runTests() {
   if (!foundPriceTotal) throw new Error('Missing Price Total row');
   if (!foundClpRow) throw new Error('Missing CLP row');
   if (!foundExecSummary) throw new Error('Missing Executive Summary card');
+  if (!foundExecSummaryQtyHeader) throw new Error('Executive summary row must contain "Qty" in column E header');
   if (!foundValidity) throw new Error('Missing Validity clause');
   if (!foundTechnicalValidation) throw new Error('Missing Technical Validation clause');
 
