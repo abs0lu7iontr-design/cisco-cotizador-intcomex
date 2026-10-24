@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.4.4",
-  "git_commit": "1446c69",
+  "version": "2.4.5",
+  "git_commit": "38c20f1",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-23T23:58:50.317Z",
-  "release_notes": "fix(export): resolve effective custom rates in quotation download filename (v2.4.3)",
+  "build_timestamp": "2026-10-24T14:34:34.856Z",
+  "release_notes": "feat(bo): add line grouping, subtotals per line and selective copy for multi-OC deals (v2.4.4)",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

@@ -26,6 +26,7 @@ export const formatCL = formatCLP;
 export interface BoTableExportOptions {
   groupByLine?: boolean;
   selectedLine?: string; // 'ALL' or specific motherLine like '1.0'
+  partnerPosByLine?: Record<string, string>; // Mapeo de N° de OC del Partner por cada Línea Madre
 }
 
 /**
@@ -91,12 +92,32 @@ export function generateBoHtmlTable(
         0
       );
 
-      // Fila de encabezado de bloque de línea
+      // Identificar naturaleza del bloque (Hardware E1 vs Licencias ED vs Mixto)
+      const hasHw = groupItems.some((l) => l.isHardware);
+      const hasSvc = groupItems.some((l) => l.isServiceOrLicense);
+      const typeBadge = hasHw && !hasSvc
+        ? ' [🔧 Hardware - Bodega E1]'
+        : !hasHw && hasSvc
+        ? ' [☁️ Licencias / SaaS - Bodega ED]'
+        : ' [📦 Mixto HW + SW]';
+
+      const partnerPo = options?.partnerPosByLine?.[motherKey]?.trim();
+      const poLabel = partnerPo ? ` — OC Partner: ${partnerPo}` : '';
+
+      // Fila de encabezado de bloque de línea madre con Badge de Tipo y OC
       const headerRow = `
       <tr style="background-color: #e2e8f0; font-family: Calibri, sans-serif; font-size: 11pt; font-weight: bold; color: #1e293b;">
         <td colspan="6" style="border: 1px solid #000; padding: 6px; text-align: left;">
-          📦 Bloque Línea ${motherKey} (${groupItems.length} ${groupItems.length === 1 ? 'ítem' : 'ítems'})
+          📦 Bloque Línea ${motherKey}${typeBadge}${poLabel} (${groupItems.length} ${groupItems.length === 1 ? 'ítem' : 'ítems'})
         </td>
+      </tr>
+      <tr style="background-color: #cbd5e1; color: #000; font-weight: bold; font-family: Calibri, sans-serif; font-size: 10pt; text-align: center;">
+        <th style="border: 1px solid #000; padding: 4px;">SKU</th>
+        <th style="border: 1px solid #000; padding: 4px;">Part Number</th>
+        <th style="border: 1px solid #000; padding: 4px;">Bodega</th>
+        <th style="border: 1px solid #000; padding: 4px;">Qty</th>
+        <th style="border: 1px solid #000; padding: 4px;">Unit Net Price</th>
+        <th style="border: 1px solid #000; padding: 4px;">Extended Net Price</th>
       </tr>`;
 
       // Filas de los ítems del bloque
@@ -151,7 +172,7 @@ export function generateBoHtmlTable(
     : `Total General:`;
 
   return `
-  <p style="font-family: Calibri, sans-serif; font-size: 11pt;">Estimado,</p>
+  <p style="font-family: Calibri, sans-serif; font-size: 11pt;">Estimados,</p>
   <p style="font-family: Calibri, sans-serif; font-size: 11pt;">${greeting}, por favor crear BO${selectedLine ? ` para Línea ${selectedLine}` : ''}.</p>
   <table style="border-collapse: collapse; width: 100%; max-width: 850px; font-family: Calibri, sans-serif; font-size: 11pt; border: 1px solid #000;">
     <thead>
@@ -226,6 +247,19 @@ export function generateBoPlainTextTable(
         (acc, l) => acc + (Number(l.extendedNetPrice) || 0),
         0
       );
+
+      // Identificar naturaleza del bloque (Hardware E1 vs Licencias ED vs Mixto)
+      const hasHw = groupItems.some((l) => l.isHardware);
+      const hasSvc = groupItems.some((l) => l.isServiceOrLicense);
+      const typeBadge = hasHw && !hasSvc
+        ? ' [🔧 Hardware - E1]'
+        : !hasHw && hasSvc
+        ? ' [☁️ Licencias / SaaS - ED]'
+        : ' [📦 Mixto HW + SW]';
+
+      const partnerPo = options?.partnerPosByLine?.[motherKey]?.trim();
+      const poLabel = partnerPo ? ` (OC Partner: ${partnerPo})` : '';
+
       const itemsText = groupItems
         .map(
           (l) =>
@@ -233,7 +267,7 @@ export function generateBoPlainTextTable(
         )
         .join('\n');
       sections.push(
-        `--- Bloque Línea ${motherKey} (${groupItems.length} ítems) ---\n${itemsText}\nSubtotal Línea ${motherKey}:\t\t\t${groupQty}\t—\t$${formatCLP(groupSubtotal, 2)} USD`
+        `--- Bloque Línea ${motherKey}${typeBadge}${poLabel} (${groupItems.length} ítems) ---\nSKU\tPart Number\tBodega\tQty\tUnit Net Price\tExtended Net Price\n${itemsText}\nSubtotal Línea ${motherKey}:\t\t\t${groupQty}\t—\t$${formatCLP(groupSubtotal, 2)} USD`
       );
     }
     rowsText = sections.join('\n\n');
@@ -252,7 +286,7 @@ export function generateBoPlainTextTable(
     ? `Total General (Todas las Líneas):`
     : `Total General:`;
 
-  return `Estimado,\n${greeting}, por favor crear BO${selectedLine ? ` para Línea ${selectedLine}` : ''}.\n\nSKU\tPart Number\tBodega\tQty\tUnit Net Price\tExtended Net Price\n${rowsText}\n\n${grandTotalLabel}\t\t\t${totalQty}\t—\t$${formatCLP(totalVenta, 2)} USD`;
+  return `Estimados,\n${greeting}, por favor crear BO${selectedLine ? ` para Línea ${selectedLine}` : ''}.\n\nSKU\tPart Number\tBodega\tQty\tUnit Net Price\tExtended Net Price\n${rowsText}\n\n${grandTotalLabel}\t\t\t${totalQty}\t—\t$${formatCLP(totalVenta, 2)} USD`;
 }
 
 /**

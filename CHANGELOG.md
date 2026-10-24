@@ -6,6 +6,16 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.4.5] - 2026-10-24
+### 🌟 Agregado (Encabezados Repetidos en Línea 2.0+, Saludo Plural y Gestión de OC Partner en BO)
+- **Encabezado Repetido de Columnas en Bloques Posteriores:** Inyección de la fila de cabecera idéntica a Línea 1.0 (`SKU | Part Number | Bodega | Qty | Unit Net Price | Extended Net Price | Quitar`) a partir de la Línea 2.0 en la interfaz modal y en la exportación HTML/Outlook para mantener perfecta alineación visual al revisar listas extensas.
+- **Saludo Formal a Compras en Plural ("Estimados,"):** Corrección del encabezado de correspondencia a `"Estimados,"` tanto en las tablas HTML copiadas al portapapeles como en la versión de texto plano y en la plantilla del cliente de correo Outlook.
+- **Campo Dedicado "OC Partner" por Línea Madre:** Entrada de texto individual en la cabecera de cada bloque para ingresar la Orden de Compra del cliente asociada a cada línea (`OC Partner: [____]`). Al copiar o enviar, el número de OC se incorpora automáticamente en el asunto, cuerpo y registro de auditoría de Compras.
+- **Badges Inteligentes de Tipificación:** Reconocimiento dinámico de la naturaleza del lote por línea madre desplegando distintivos visuales de alto contraste: `[🔧 Hardware (E1)]`, `[☁️ Licencias / SaaS (ED)]` o `[📦 Mixto HW + SW]`.
+- **Alerta Preventiva y Asistente de SKUs:** Contador reactivo `⚠️ X ítems sin SKU` con botón `[Rellenar N/A]` para asistir al ejecutivo antes de remitir la solicitud y evitar rechazos operativos por parte del equipo de Compras.
+
+---
+
 ## [v2.4.4] - 2026-10-23
 ### 🌟 Agregado (Separación por Líneas y Subtotales por OC en Módulo BO)
 - **Modalidad Dual de Visualización:** Switch interactivo en `BoRequestModal` entre `[📋 Vista Unificada]` (tabla estándar) y `[📑 Separar por Líneas (Subtotales por OC)]`.

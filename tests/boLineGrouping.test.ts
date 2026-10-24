@@ -1,7 +1,8 @@
 // ============================================================================
-// CISCO AUTOMATED v2.4.4 - BO SEPARACIÓN POR LÍNEA Y SUB TOTALES TEST SUITE
+// CISCO AUTOMATED v2.4.5 - BO SEPARACIÓN POR LÍNEA, SUB TOTALES, ENCABEZADOS Y OC TEST SUITE
 // Valida la agrupación por número de línea madre (ej. 1.0, 2.0),
-// cálculo de subtotales por línea, y total general para deals divididos en múltiples OC.
+// cálculo de subtotales por línea, saludo "Estimados,", encabezado repetido en líneas 2.0+,
+// tipificación de hardware/licencias e inyección de N° OC de Partner por línea.
 // ============================================================================
 
 import assert from 'node:assert';
@@ -9,7 +10,7 @@ import { prepareBoLinesFromCalculated, partitionBoLinesByCost } from '../src/mod
 import { generateBoHtmlTable, generateBoPlainTextTable, formatCLP } from '../src/modules/bo/boEmailHelper';
 import { EstimateLineItem } from '../src/core/types';
 
-console.log('🧪 INICIANDO SUITE DE PRUEBAS DE AGRUPACIÓN Y SUB TOTALES BO (v2.4.4)...\n');
+console.log('🧪 INICIANDO SUITE DE PRUEBAS DE AGRUPACIÓN, ENCABEZADOS Y OC PARTNER BO (v2.4.5)...\n');
 
 // 1. Simulación de ítems de cotización con 2 líneas madre (1.0 y 2.0)
 const mockEstimateItems: EstimateLineItem[] = [
@@ -139,44 +140,59 @@ assert.strictEqual(line2_0?.motherLine, '2.0', 'Motherline de 2.0 debe ser 2.0')
 console.log('✅ Asignación de motherLine (1.0, 2.0) y sufijo -CBN validados con éxito.');
 
 // --- Test 2: generateBoHtmlTable en modo Unificado (Tradicional) ---
-console.log('\n--- 2. Prueba de Generación HTML en Modo Unificado ---');
+console.log('\n--- 2. Prueba de Generación HTML en Modo Unificado y Saludo "Estimados," ---');
 const htmlUnified = generateBoHtmlTable(activeLines, {
   groupByLine: false,
 });
 
+assert.ok(htmlUnified.includes('Estimados,'), 'El saludo debe ser en plural: "Estimados,"');
 assert.ok(htmlUnified.includes('C9300-48P-A-CBN'), 'Debe incluir ítem C9300');
 assert.ok(htmlUnified.includes('PWR-C1-715WAC-P-CBN'), 'Debe incluir ítem PWR');
 assert.ok(htmlUnified.includes('C9200L-24P-4G-E-CBN'), 'Debe incluir ítem C9200L');
 assert.ok(htmlUnified.includes('Total General'), 'Debe incluir Total General');
 assert.ok(!htmlUnified.includes('Subtotal Línea 1.0'), 'Modo unificado no debe tener subtotales por línea');
-console.log('✅ Modo unificado genera tabla estándar con Total General.');
+console.log('✅ Modo unificado genera tabla estándar con saludo plural "Estimados," y Total General.');
 
-// --- Test 3: generateBoHtmlTable en Modo Separar por Líneas (Agrupado con Subtotales) ---
-console.log('\n--- 3. Prueba de Generación HTML con Agrupación por Línea y Subtotales ---');
+// --- Test 3: generateBoHtmlTable en Modo Separar por Líneas (Agrupado con Subtotales, Encabezados y OC) ---
+console.log('\n--- 3. Prueba de Generación HTML con Agrupación por Línea, Encabezados Repetidos y N° OC ---');
+const partnerPos = {
+  '1.0': 'OC-77881',
+  '2.0': 'OC-77882',
+};
+
 const htmlGrouped = generateBoHtmlTable(activeLines, {
   groupByLine: true,
+  partnerPosByLine: partnerPos,
 });
 
-// Verificaciones de agrupación
+// Verificaciones de agrupación y saludo
+assert.ok(htmlGrouped.includes('Estimados,'), 'Debe incluir saludo plural "Estimados,"');
 assert.ok(htmlGrouped.includes('Bloque Línea 1.0'), 'Debe incluir cabecera de grupo Bloque Línea 1.0');
 assert.ok(htmlGrouped.includes('Bloque Línea 2.0'), 'Debe incluir cabecera de grupo Bloque Línea 2.0');
+
+// Verificaciones de N° OC Partner inyectada
+assert.ok(htmlGrouped.includes('OC Partner: OC-77881'), 'Debe inyectar N° OC-77881 en Línea 1.0');
+assert.ok(htmlGrouped.includes('OC Partner: OC-77882'), 'Debe inyectar N° OC-77882 en Línea 2.0');
+
+// Verificaciones de Encabezado repetido de columnas en cada bloque
+const headerCount = (htmlGrouped.match(/Extended Net Price/g) || []).length;
+assert.ok(headerCount >= 3, `Debe contener al menos 3 filas de encabezado (1 global + 2 por bloque), encontrado: ${headerCount}`);
+
+// Verificaciones de subtotales y total
 assert.ok(htmlGrouped.includes('Subtotal Línea 1.0'), 'Debe incluir fila de Subtotal Línea 1.0');
 assert.ok(htmlGrouped.includes('Subtotal Línea 2.0'), 'Debe incluir fila de Subtotal Línea 2.0');
 assert.ok(htmlGrouped.includes('Total General'), 'Debe incluir Total General al final');
-
-// Subtotal 1.0 = 11000 + 1320 = 12320.00
-// Subtotal 2.0 = 1400.00
-// Total General = 13720.00
 assert.ok(htmlGrouped.includes(formatCLP(12320, 2)), 'Subtotal Línea 1.0 debe ser 12.320,00');
 assert.ok(htmlGrouped.includes(formatCLP(1400, 2)), 'Subtotal Línea 2.0 debe ser 1.400,00');
 assert.ok(htmlGrouped.includes(formatCLP(13720, 2)), 'Total General debe ser 13.720,00');
-console.log('✅ Agrupación HTML genera cabeceras de línea, subtotales exactos (12.320,00 y 1.400,00) y total general (13.720,00).');
+console.log('✅ Agrupación HTML genera cabeceras de bloque con OC Partner, encabezados repetidos y subtotales.');
 
 // --- Test 4: Filtrado para una sola OC (selectedLine: '1.0') ---
 console.log('\n--- 4. Prueba de Filtrado por Línea para OC Individual (selectedLine: "1.0") ---');
 const htmlLine1Only = generateBoHtmlTable(activeLines, {
   groupByLine: true,
   selectedLine: '1.0',
+  partnerPosByLine: partnerPos,
 });
 
 assert.ok(htmlLine1Only.includes('C9300-48P-A-CBN'), 'Debe incluir C9300 de Línea 1');
@@ -185,14 +201,20 @@ assert.ok(!htmlLine1Only.includes('C9200L-24P-4G-E-CBN'), 'NO debe incluir ítem
 assert.ok(htmlLine1Only.includes('Total Línea 1.0') || htmlLine1Only.includes(formatCLP(12320, 2)), 'Debe reflejar total de Línea 1.0');
 console.log('✅ Filtrado por línea individual aísla perfectamente los ítems de la OC seleccionada.');
 
-// --- Test 5: Plain Text Table con Subtotales ---
-console.log('\n--- 5. Prueba de Texto Plano con Subtotales ---');
-const textGrouped = generateBoPlainTextTable(activeLines, { groupByLine: true });
+// --- Test 5: Plain Text Table con Subtotales, OC Partner y "Estimados," ---
+console.log('\n--- 5. Prueba de Texto Plano con Subtotales y OC Partner ---');
+const textGrouped = generateBoPlainTextTable(activeLines, {
+  groupByLine: true,
+  partnerPosByLine: partnerPos,
+});
+assert.ok(textGrouped.startsWith('Estimados,'), 'Texto plano debe iniciar con "Estimados,"');
 assert.ok(textGrouped.includes('Bloque Línea 1.0'), 'Debe incluir separador de LÍNEA 1.0');
+assert.ok(textGrouped.includes('OC-77881'), 'Debe incluir OC-77881 en bloque 1.0');
 assert.ok(textGrouped.includes(`Subtotal Línea 1.0:\t\t\t4\t—\t$${formatCLP(12320, 2)} USD`), 'Debe incluir subtotal texto de Línea 1.0');
 assert.ok(textGrouped.includes('Bloque Línea 2.0'), 'Debe incluir separador de LÍNEA 2.0');
+assert.ok(textGrouped.includes('OC-77882'), 'Debe incluir OC-77882 en bloque 2.0');
 assert.ok(textGrouped.includes(`Subtotal Línea 2.0:\t\t\t1\t—\t$${formatCLP(1400, 2)} USD`), 'Debe incluir subtotal texto de Línea 2.0');
 assert.ok(textGrouped.includes(`Total General (Todas las Líneas):\t\t\t5\t—\t$${formatCLP(13720, 2)} USD`), 'Debe incluir total general texto de 13.720,00');
-console.log('✅ Texto plano con subtotales validado al 100%.');
+console.log('✅ Texto plano con subtotales, encabezados y OC Partner validado al 100%.');
 
-console.log('\n🎉 ¡TODAS LAS PRUEBAS DE AGRUPACIÓN POR LÍNEA Y SUB TOTALES BO PASARON CON ÉXITO AL 100%!');
+console.log('\n🎉 ¡TODAS LAS PRUEBAS DE AGRUPACIÓN, ENCABEZADOS Y OC PARTNER BO PASARON CON ÉXITO AL 100%!');

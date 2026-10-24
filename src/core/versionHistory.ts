@@ -15,11 +15,26 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.4.5',
+    date: '2026-10-24',
+    commit: 'feat-bo-line-headers-and-po',
+    title: 'Encabezados Repetidos en Líneas 2.0+, Saludo Plural y Gestión de OC Partner',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Encabezado de columnas idéntico a Línea 1.0 (SKU, Part Number, Bodega, Qty, Unit Net Price, Extended Net Price, Quitar) agregado para Línea 2.0 y bloques posteriores para lectura simétrica.',
+      'Actualización del saludo formal a compras en plural ("Estimados,") en tablas HTML para Outlook, texto plano tabulado y plantilla de correo electrónico.',
+      'Campo editable "OC Partner" por cada línea madre para registrar e inyectar el número de orden de compra del cliente en deals divididos.',
+      'Badges inteligentes de tipificación por bloque: detección automática de [🔧 Hardware (E1)], [☁️ Licencias / SaaS (ED)] o [📦 Mixto HW + SW].',
+      'Asistente y alerta preventiva de calidad para ítems sin SKU Intcomex con botón de un clic para autocompletar con "N/A" y blindaje anti-rechazos de compras.',
+    ],
+  },
+  {
     version: '2.4.4',
     date: '2026-10-23',
     commit: 'feat-bo-line-grouping',
     title: 'Separación por Líneas Madre, Subtotales por OC y Copiado Selectivo en Módulo BO',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Nueva modalidad de visualización interactiva en el modal de solicitud de Back Order (BO): switch entre [Vista Unificada] y [Separar por Líneas (Subtotales por OC)].',

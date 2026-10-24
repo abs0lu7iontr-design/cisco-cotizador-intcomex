@@ -85,6 +85,8 @@ export const BoRequestModal: React.FC<Props> = ({
   const [viewMode, setViewMode] = useState<'unified' | 'by_line'>('unified');
   // Filtro de línea para generación/copia selectiva de OC separada ('ALL' o '1.0', '2.0', etc.)
   const [selectedLineFilter, setSelectedLineFilter] = useState<string>('ALL');
+  // N° de OC del Partner por cada Línea Madre para deals separados
+  const [partnerPosByLine, setPartnerPosByLine] = useState<Record<string, string>>({});
 
   // Estados de persistencia y catálogo en la nube
   const [skuCatalog, setSkuCatalog] = useState<Record<string, string>>({});
@@ -109,6 +111,7 @@ export const BoRequestModal: React.FC<Props> = ({
     setManualBodega(null);
     setViewMode('unified');
     setSelectedLineFilter('ALL');
+    setPartnerPosByLine({});
 
     const { activeLines, zeroCostLines } = partitionBoLinesByCost(initialLines);
     const initialAutoBodega = detectBodegaFromActiveLines(
@@ -167,6 +170,11 @@ export const BoRequestModal: React.FC<Props> = ({
     return { totalQty, totalExtended };
   }, [lines]);
 
+  // Contador de ítems activos sin SKU asignado (para alerta de calidad antes de enviar a compras)
+  const missingSkuCount = useMemo(() => {
+    return lines.filter((l) => !l.sku || l.sku.trim() === '').length;
+  }, [lines]);
+
   // Lista ordenada de todas las líneas madre disponibles en las líneas activas (ej. '1.0', '2.0')
   const availableMotherLines = useMemo(() => {
     const keys = new Set<string>();
@@ -177,7 +185,7 @@ export const BoRequestModal: React.FC<Props> = ({
     return Array.from(keys).sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
   }, [lines]);
 
-  // Agrupación estructurada de ítems por línea madre con subtotales e índices originales preservados
+  // Agrupación estructurada de ítems por línea madre con subtotales, tipificación HW/SW e índices originales preservados
   const lineGroups = useMemo(() => {
     const map = new Map<string, Array<{ line: BoLineItem; originalIndex: number }>>();
     lines.forEach((line, originalIndex) => {
@@ -194,11 +202,22 @@ export const BoRequestModal: React.FC<Props> = ({
       const itemsWithIndex = map.get(motherKey)!;
       const subtotalQty = itemsWithIndex.reduce((acc, { line }) => acc + (Number(line.qty) || 0), 0);
       const subtotalExtended = itemsWithIndex.reduce((acc, { line }) => acc + (Number(line.extendedNetPrice) || 0), 0);
+
+      // Tipificación inteligente del bloque (Hardware E1 vs Licencias ED vs Mixto)
+      const hasHw = itemsWithIndex.some(({ line }) => line.isHardware);
+      const hasSvc = itemsWithIndex.some(({ line }) => line.isServiceOrLicense);
+      const blockType = hasHw && !hasSvc
+        ? { label: '🔧 Hardware (E1)', colorClass: 'bg-amber-950/60 text-amber-300 border-amber-700/60' }
+        : !hasHw && hasSvc
+        ? { label: '☁️ Licencias / SaaS (ED)', colorClass: 'bg-cyan-950/60 text-cyan-300 border-cyan-700/60' }
+        : { label: '📦 Mixto HW + SW', colorClass: 'bg-purple-950/60 text-purple-300 border-purple-700/60' };
+
       return {
         motherKey,
         itemsWithIndex,
         subtotalQty,
         subtotalExtended,
+        blockType,
       };
     });
   }, [lines]);
@@ -249,6 +268,21 @@ export const BoRequestModal: React.FC<Props> = ({
     setManualBodega(targetBodega);
     setLines((prev) => prev.map((l) => ({ ...l, bodega: targetBodega })));
     setDiscardedLines((prev) => prev.map((l) => ({ ...l, bodega: targetBodega })));
+  };
+
+  // Actualización de N° de OC del Partner para una Línea Madre específica
+  const handlePartnerPoChange = (motherKey: string, poValue: string) => {
+    setPartnerPosByLine((prev) => ({
+      ...prev,
+      [motherKey]: poValue,
+    }));
+  };
+
+  // Rellenar automáticamente los ítems activos sin SKU con "N/A"
+  const handleFillMissingSkusWithNA = () => {
+    setLines((prev) =>
+      prev.map((l) => (!l.sku || l.sku.trim() === '' ? { ...l, sku: 'N/A' } : l))
+    );
   };
 
   if (!isOpen) return null;
@@ -411,14 +445,16 @@ export const BoRequestModal: React.FC<Props> = ({
     const copyRes = await copyBoTableWithDetail(linesWithCurrentBodega, {
       groupByLine: false,
       selectedLine: motherKey,
+      partnerPosByLine,
     });
 
     const linesToSync = linesWithCurrentBodega.filter(
       (l) => (l.motherLine || getMotherLineKey(l.lineNumber)) === motherKey
     );
+    const currentPo = partnerPosByLine[motherKey]?.trim();
     const syncRes = await syncBoOrderFromEstimateModal({
       estimate: estimateResult,
-      clientName: `${clientName} (Línea ${motherKey})`,
+      clientName: `${clientName} (Línea ${motherKey}${currentPo ? ` - OC ${currentPo}` : ''})`,
       lines: linesToSync,
       bodega: currentBodega,
       author: currentUser?.full_name || currentUser?.username || 'Usuario',
@@ -432,9 +468,10 @@ export const BoRequestModal: React.FC<Props> = ({
     if (copyRes.success) {
       setCopied(true);
       const grp = lineGroups.find((g) => g.motherKey === motherKey);
+      const poDesc = currentPo ? ` [OC: ${currentPo}]` : '';
       setImportNotice({
         type: 'success',
-        message: `¡Tabla de Línea ${motherKey} copiada para Outlook (Subtotal: $${formatCLP(grp?.subtotalExtended || 0, 2)} USD)!`,
+        message: `¡Tabla de Línea ${motherKey}${poDesc} copiada para Outlook (Subtotal: $${formatCLP(grp?.subtotalExtended || 0, 2)} USD)!`,
       });
       setTimeout(() => {
         setCopied(false);
@@ -459,6 +496,7 @@ export const BoRequestModal: React.FC<Props> = ({
     const exportOpts: BoTableExportOptions = {
       groupByLine: viewMode === 'by_line',
       selectedLine: selectedLineFilter !== 'ALL' ? selectedLineFilter : undefined,
+      partnerPosByLine,
     };
     const copyRes = await copyBoTableWithDetail(linesWithCurrentBodega, exportOpts);
 
@@ -467,9 +505,11 @@ export const BoRequestModal: React.FC<Props> = ({
       ? linesWithCurrentBodega.filter((l) => (l.motherLine || getMotherLineKey(l.lineNumber)) === selectedLineFilter)
       : linesWithCurrentBodega;
 
+    const currentPo = selectedLineFilter !== 'ALL' ? partnerPosByLine[selectedLineFilter]?.trim() : '';
+    const poDesc = currentPo ? ` - OC ${currentPo}` : '';
     const syncRes = await syncBoOrderFromEstimateModal({
       estimate: estimateResult,
-      clientName: selectedLineFilter !== 'ALL' ? `${clientName} (Línea ${selectedLineFilter})` : clientName,
+      clientName: selectedLineFilter !== 'ALL' ? `${clientName} (Línea ${selectedLineFilter}${poDesc})` : clientName,
       lines: linesToSync,
       bodega: currentBodega,
       author: currentUser?.full_name || currentUser?.username || 'Usuario',
@@ -484,9 +524,9 @@ export const BoRequestModal: React.FC<Props> = ({
     if (copyRes.success) {
       setCopied(true);
       const modeDesc = selectedLineFilter !== 'ALL'
-        ? `Línea ${selectedLineFilter}`
+        ? `Línea ${selectedLineFilter}${poDesc}`
         : viewMode === 'by_line'
-        ? 'agrupada con subtotales por línea'
+        ? 'agrupada con subtotales y OCs por línea'
         : 'vista unificada';
       setImportNotice({
         type: 'success',
@@ -516,9 +556,12 @@ export const BoRequestModal: React.FC<Props> = ({
       ? linesWithCurrentBodega.filter((l) => (l.motherLine || getMotherLineKey(l.lineNumber)) === selectedLineFilter)
       : linesWithCurrentBodega;
 
+    const currentPo = selectedLineFilter !== 'ALL' ? (partnerPosByLine[selectedLineFilter]?.trim() || '') : '';
+    const poDesc = currentPo ? ` - OC ${currentPo}` : '';
+
     const syncRes = await syncBoOrderFromEstimateModal({
       estimate: estimateResult,
-      clientName: selectedLineFilter !== 'ALL' ? `${clientName} (Línea ${selectedLineFilter})` : clientName,
+      clientName: selectedLineFilter !== 'ALL' ? `${clientName} (Línea ${selectedLineFilter}${poDesc})` : clientName,
       lines: linesToSync,
       bodega: currentBodega,
       author: currentUser?.full_name || currentUser?.username || 'Usuario',
@@ -532,8 +575,9 @@ export const BoRequestModal: React.FC<Props> = ({
 
     const greeting = getBoTimeBasedGreeting();
     const lineSuffix = selectedLineFilter !== 'ALL' ? ` - Línea ${selectedLineFilter}` : '';
-    const rawSubject = `RV: Cotización ${clientName.trim()}${lineSuffix}`;
-    const rawBody = `Estimado,\n\n${greeting}, por favor crear BO${selectedLineFilter !== 'ALL' ? ` para Línea ${selectedLineFilter}` : ''}.\n\n(Pega aquí la tabla copiada usando CTRL+V)\n\nSaludos,`;
+    const poSubjectSuffix = currentPo ? ` (OC: ${currentPo})` : '';
+    const rawSubject = `RV: Cotización ${clientName.trim()}${lineSuffix}${poSubjectSuffix}`;
+    const rawBody = `Estimados,\n\n${greeting}, por favor crear BO${selectedLineFilter !== 'ALL' ? ` para Línea ${selectedLineFilter}` : ''}${currentPo ? ` (OC Partner: ${currentPo})` : ''}.\n\n(Pega aquí la tabla copiada usando CTRL+V)\n\nSaludos,`;
 
     // Intentar abrir vía API nativa de escritorio (Outlook / Windows Shell)
     const openedInDesktop = await openDesktopEmailClient(recipientEmail, ccEmail, rawSubject, rawBody);
@@ -843,6 +887,21 @@ export const BoRequestModal: React.FC<Props> = ({
                     <span>📑 Separar por Líneas (Subtotales)</span>
                   </button>
                 </div>
+
+                {/* Alerta y Asistente de Calidad: SKUs Intcomex Pendientes */}
+                {missingSkuCount > 0 && (
+                  <div className="flex items-center gap-1.5 bg-amber-950/40 border border-amber-800/60 rounded-md px-2 py-0.5 text-[11px] font-mono text-amber-300">
+                    <span>⚠️ {missingSkuCount} {missingSkuCount === 1 ? 'ítem sin SKU' : 'ítems sin SKU'}</span>
+                    <button
+                      type="button"
+                      onClick={handleFillMissingSkusWithNA}
+                      className="text-[10px] text-amber-200 underline hover:text-white cursor-pointer ml-0.5 font-sans"
+                      title="Rellenar campos vacíos con 'N/A' para que Compras procese la orden sin rebotar"
+                    >
+                      Rellenar N/A
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2 text-[11px] text-zinc-400 font-mono">
@@ -950,20 +1009,38 @@ export const BoRequestModal: React.FC<Props> = ({
                     (selectedLineFilter === 'ALL'
                       ? lineGroups
                       : lineGroups.filter((g) => g.motherKey === selectedLineFilter)
-                    ).map((group) => (
+                    ).map((group, grpIdx) => (
                       <React.Fragment key={group.motherKey}>
-                        {/* Fila de Encabezado de Bloque de Línea Madre */}
+                        {/* Fila de Encabezado de Bloque de Línea Madre con Badges y N° OC */}
                         <tr className="bg-zinc-800/80 border-y border-zinc-700 font-sans">
                           <td colSpan={7} className="px-3 py-2">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
                                 <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono text-xs font-bold">
                                   📦 Bloque Línea {group.motherKey}
                                 </span>
+                                {group.blockType && (
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${group.blockType.colorClass}`}>
+                                    {group.blockType.label}
+                                  </span>
+                                )}
                                 <span className="text-zinc-300 text-xs font-medium">
                                   ({group.itemsWithIndex.length}{' '}
                                   {group.itemsWithIndex.length === 1 ? 'ítem' : 'ítems'})
                                 </span>
+
+                                {/* Campo Editable N° OC Partner para deals divididos */}
+                                <div className="flex items-center gap-1.5 ml-1">
+                                  <span className="text-[10px] font-mono text-zinc-400">OC Partner:</span>
+                                  <input
+                                    type="text"
+                                    value={partnerPosByLine[group.motherKey] || ''}
+                                    onChange={(e) => handlePartnerPoChange(group.motherKey, e.target.value)}
+                                    placeholder={`OC #${grpIdx + 1} del Partner`}
+                                    className="bg-zinc-950 border border-zinc-700 rounded px-2 py-0.5 text-xs font-mono text-amber-300 placeholder:text-zinc-600 w-36 focus:border-amber-400 focus:outline-none"
+                                    title={`Número de Orden de Compra del Partner para los ítems de Línea ${group.motherKey}`}
+                                  />
+                                </div>
                               </div>
                               <div className="flex items-center gap-3">
                                 <span className="text-xs font-mono text-zinc-400">
@@ -989,6 +1066,19 @@ export const BoRequestModal: React.FC<Props> = ({
                           </td>
                         </tr>
 
+                        {/* Encabezado repetido para líneas desde 2.0 (o bloques posteriores) */}
+                        {grpIdx > 0 && (
+                          <tr className="bg-[#808080] text-black font-bold border-b border-zinc-800">
+                            <th className="p-2 text-center w-36">SKU</th>
+                            <th className="p-2 text-center">Part Number</th>
+                            <th className="p-2 text-center w-20">Bodega</th>
+                            <th className="p-2 text-center w-16">Qty</th>
+                            <th className="p-2 text-right w-32">Unit Net Price</th>
+                            <th className="p-2 text-right w-36">Extended Net Price</th>
+                            <th className="p-2 text-center w-14">Quitar</th>
+                          </tr>
+                        )}
+
                         {/* Filas de los Ítems pertenecientes a este Bloque */}
                         {group.itemsWithIndex.map(({ line, originalIndex }) => (
                           <tr
@@ -999,10 +1089,14 @@ export const BoRequestModal: React.FC<Props> = ({
                               <input
                                 type="text"
                                 value={line.sku}
-                                placeholder="SKU Intcomex"
+                                placeholder={!line.sku ? '⚠️ SKU Pendiente' : 'SKU Intcomex'}
                                 onChange={(e) => handleSkuChange(originalIndex, e.target.value)}
                                 onBlur={() => handleSkuBlur(originalIndex)}
-                                className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-center font-mono text-white text-xs w-32 focus:border-amber-400 focus:outline-none uppercase"
+                                className={`bg-zinc-950 border rounded px-2 py-1 text-center font-mono text-white text-xs w-32 focus:outline-none uppercase transition-colors ${
+                                  !line.sku || line.sku.trim() === ''
+                                    ? 'border-amber-500/80 bg-amber-950/20 text-amber-200 placeholder:text-amber-400/70 focus:border-amber-400'
+                                    : 'border-zinc-700 focus:border-amber-400'
+                                }`}
                                 title="Código SKU Intcomex (se guarda automáticamente en la nube al salir del campo)"
                               />
                             </td>
@@ -1084,10 +1178,14 @@ export const BoRequestModal: React.FC<Props> = ({
                           <input
                             type="text"
                             value={line.sku}
-                            placeholder="SKU Intcomex"
+                            placeholder={!line.sku ? '⚠️ SKU Pendiente' : 'SKU Intcomex'}
                             onChange={(e) => handleSkuChange(originalIndex, e.target.value)}
                             onBlur={() => handleSkuBlur(originalIndex)}
-                            className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-center font-mono text-white text-xs w-32 focus:border-amber-400 focus:outline-none uppercase"
+                            className={`bg-zinc-950 border rounded px-2 py-1 text-center font-mono text-white text-xs w-32 focus:outline-none uppercase transition-colors ${
+                              !line.sku || line.sku.trim() === ''
+                                ? 'border-amber-500/80 bg-amber-950/20 text-amber-200 placeholder:text-amber-400/70 focus:border-amber-400'
+                                : 'border-zinc-700 focus:border-amber-400'
+                            }`}
                             title="Código SKU Intcomex (se guarda automáticamente en la nube al salir del campo)"
                           />
                         </td>
