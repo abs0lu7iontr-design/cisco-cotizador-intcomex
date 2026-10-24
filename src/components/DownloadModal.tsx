@@ -149,7 +149,7 @@ export function DownloadModal({
   // Export Format & Features
   const [exportFormat, setExportFormat] = useState<'unified' | 'by_line'>('unified');
   const [selectedLine, setSelectedLine] = useState<string>('ALL');
-  const [showExecutiveSummary, setShowExecutiveSummary] = useState(true);
+  const [showExecutiveSummary] = useState(false);
   const [enableClp, setEnableClp] = useState(false);
   const [clpExchangeRate, setClpExchangeRate] = useState(950);
 
@@ -620,25 +620,8 @@ export function DownloadModal({
                 </div>
               </div>
 
-              {/* Opciones Comerciales Complementarias (Idea 1 & Idea 4) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {/* Idea 1: Resumen Ejecutivo */}
-                <label className="flex items-center justify-between p-2.5 bg-slate-950/70 border border-slate-800 rounded-xl cursor-pointer hover:border-slate-700 transition-colors">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={showExecutiveSummary}
-                      onChange={(e) => setShowExecutiveSummary(e.target.checked)}
-                      className="rounded bg-slate-900 border-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
-                    />
-                    <span className="text-[10px] font-semibold text-slate-300">
-                      Resumen Ejecutivo (HW/SW)
-                    </span>
-                  </div>
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                </label>
-
-                {/* Idea 4: Valor Referencial CLP */}
+              {/* Opción Comercial: Valor Referencial CLP */}
+              <div className="w-full">
                 <div className="p-2.5 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5">
                   <div className="flex items-center justify-between">
                     <label className="flex items-center gap-2 cursor-pointer">
@@ -689,32 +672,22 @@ export function DownloadModal({
 
                 {showPreview && (
                   <div className="p-3.5 pt-0 space-y-3 border-t border-slate-800/80 animate-in fade-in duration-150">
-                    {/* Summary Cards */}
-                    <div className="grid grid-cols-3 gap-2 pt-3">
-                      <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-center">
-                        <div className="text-[9px] text-slate-400 font-bold uppercase">🔧 Hardware</div>
-                        <div className="text-xs font-bold text-white mt-0.5">
-                          {formatUSD(solutionSummary.hardwareTotal)}
-                        </div>
-                        <div className="text-[9px] text-slate-500">{solutionSummary.hardwareQty} Qty ({solutionSummary.hardwareCount} ítems)</div>
-                      </div>
-
-                      <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-center">
-                        <div className="text-[9px] text-slate-400 font-bold uppercase">☁️ Licencias/SaaS</div>
-                        <div className="text-xs font-bold text-white mt-0.5">
-                          {formatUSD(solutionSummary.softwareTotal)}
-                        </div>
-                        <div className="text-[9px] text-slate-500">{solutionSummary.softwareQty} Qty ({solutionSummary.softwareCount} ítems)</div>
-                      </div>
-
-                      <div className="p-2 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-center">
-                        <div className="text-[9px] text-emerald-400 font-bold uppercase">💰 Total ({solutionSummary.totalQty} Qty)</div>
-                        <div className="text-xs font-black text-emerald-300 mt-0.5">
-                          {formatUSD(solutionSummary.grandTotal)}
+                    {/* Summary Card */}
+                    <div className="pt-3">
+                      <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+                        <div>
+                          <div className="text-[10px] text-slate-400 font-bold uppercase">Total Solución ({solutionSummary.totalQty} und.)</div>
+                          <div className="text-base font-black text-white mt-0.5">
+                            {formatUSD(solutionSummary.grandTotal)} <span className="text-[10px] font-normal text-slate-400">USD</span>
+                          </div>
                         </div>
                         {enableClp && (
-                          <div className="text-[8.5px] text-emerald-400/80 font-mono">
-                            {formatCLP(totalClp)} CLP
+                          <div className="text-right">
+                            <div className="text-[9px] text-emerald-400 font-bold uppercase">Referencial CLP + IVA</div>
+                            <div className="text-sm font-bold text-emerald-300 font-mono mt-0.5">
+                              {formatCLP(totalClp)} CLP
+                            </div>
+                            <div className="text-[8.5px] text-slate-500 font-mono">(T/C: ${clpExchangeRate})</div>
                           </div>
                         )}
                       </div>

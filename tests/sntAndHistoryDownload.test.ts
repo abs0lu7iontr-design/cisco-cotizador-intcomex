@@ -164,7 +164,7 @@ async function runTests() {
   assert.strictEqual(headerRow.getCell(1).value, 'Line Number');
   assert.strictEqual(headerRow.getCell(2).value, 'Part Number');
   assert.strictEqual(headerRow.getCell(3).value, 'Description');
-  assert.strictEqual(headerRow.getCell(4).value, 'Estimated Lead Time (Days)');
+  assert.strictEqual(headerRow.getCell(4).value, 'Estimated Lead Time (Weeks)');
   assert.strictEqual(headerRow.getCell(5).value, 'Qty');
   assert.strictEqual(headerRow.getCell(6).value, 'Unit Net Price');
   assert.strictEqual(headerRow.getCell(7).value, 'Extended Net Price');

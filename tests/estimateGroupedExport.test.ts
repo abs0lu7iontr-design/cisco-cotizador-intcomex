@@ -9,7 +9,7 @@ import {
   generateCommercialPdfHtml,
   EstimateExportGroupingOptions,
 } from '../src/modules/estimate/estimateExportHelper';
-import { synthesizeOfficialEstimateWorkbook, isFooterOrNoteRow } from '../src/core/excelEngine';
+import { synthesizeOfficialEstimateWorkbook, isFooterOrNoteRow, parseEstimateWorkbook } from '../src/core/excelEngine';
 import { EstimateLineItem, ProcessedEstimateResult, QuoteParameters } from '../src/core/types';
 
 // Mock items: Línea 1.0 (Hardware switch + power cord) & Línea 2.0 (DNA Cloud License + Info Row)
@@ -222,12 +222,14 @@ async function runTests() {
   if (!emailDraft.bodyText.includes('14 días corridos')) throw new Error('Missing validity clause');
   if (!emailDraft.bodyText.includes('Validación Técnica y Responsabilidad')) throw new Error('Missing technical validation clause');
   if (!emailDraft.bodyText.includes('950 CLP/USD')) throw new Error('Missing CLP rate');
-  if (!emailDraft.bodyHtml.includes('🔧 Equipamiento Hardware')) throw new Error('HTML missing Hardware row');
-  if (!emailDraft.bodyHtml.includes('☁️ Licenciamiento / Software Cloud')) throw new Error('HTML missing Cloud row');
+  if (emailDraft.bodyHtml.includes('🔧 Equipamiento Hardware') || emailDraft.bodyHtml.includes('Resumen Ejecutivo')) {
+    throw new Error('Email HTML must NOT contain disputed executive summary / hardware category rows');
+  }
+  if (!emailDraft.bodyHtml.includes('TOTAL SOLUCIÓN CISCO:')) throw new Error('Email HTML missing TOTAL SOLUCIÓN CISCO');
   if (emailDraft.bodyHtml.includes('Bodega E1') || emailDraft.bodyHtml.includes('Bodega ED')) {
     throw new Error('Email HTML must NOT mention internal warehouse codes (Bodega E1 / ED)');
   }
-  console.log('✓ TEST 3 PASSED: Partner email draft contains professional greetings, clauses, and CLP (without warehouse codes).');
+  console.log('✓ TEST 3 PASSED: Partner email draft contains professional greetings, clauses, and CLP (without disputed executive summary or warehouse codes).');
 
   console.log('\n--- TEST 4: generateCommercialPdfHtml ---');
   const pdfHtml = generateCommercialPdfHtml({
@@ -249,7 +251,9 @@ async function runTests() {
   if (!pdfHtml.includes('repeated-header')) throw new Error('PDF missing repeated-header row for Line 2.0+');
   if (pdfHtml.includes('Bodega E1') || pdfHtml.includes('Bodega ED')) throw new Error('PDF must NOT contain internal warehouse codes');
   if (!pdfHtml.includes('Estimated Lead Time (Weeks)')) throw new Error('PDF must contain Estimated Lead Time (Weeks)');
-  if (!pdfHtml.includes('<th class="text-center" style="width: 80px;">Qty</th>')) throw new Error('PDF Executive summary missing Qty column header');
+  if (pdfHtml.includes('exec-card') || pdfHtml.includes('Resumen Ejecutivo de la Solución')) {
+    throw new Error('Commercial PDF HTML must NOT contain Executive Summary card');
+  }
   if (!pdfHtml.includes('Subtotal Línea 1.0:')) throw new Error('PDF missing Line 1.0 subtotal');
   if (!pdfHtml.includes('Subtotal Línea 2.0:')) throw new Error('PDF missing Line 2.0 subtotal');
   if (!pdfHtml.includes('PRICE TOTAL (USD):')) throw new Error('PDF missing Grand Total');
@@ -356,8 +360,7 @@ async function runTests() {
   if (!foundSubtotal2) throw new Error('Missing Subtotal Línea 2.0 row');
   if (!foundPriceTotal) throw new Error('Missing Price Total row');
   if (!foundClpRow) throw new Error('Missing CLP row');
-  if (!foundExecSummary) throw new Error('Missing Executive Summary card');
-  if (!foundExecSummaryQtyHeader) throw new Error('Executive summary row must contain "Qty" in column E header');
+  if (foundExecSummary) throw new Error('Excel Price Estimate must NOT contain Executive Summary card (removed as requested)');
   if (!foundValidity) throw new Error('Missing Validity clause');
   if (!foundTechnicalValidation) throw new Error('Missing Technical Validation clause');
 
@@ -410,7 +413,109 @@ async function runTests() {
   if (sittcoSummary.grandTotal !== 108789.00) throw new Error(`Grand total mismatch: got ${sittcoSummary.grandTotal}, expected 108789.00`);
   console.log('✓ TEST 7 PASSED: sittco real BOM confirmed: Hardware (60), Software (18), Services (18), Grand Total ($108,789.00).');
 
-  console.log('\n🎉 ALL 7 SUITE TESTS PASSED 100% SUCCESFULLY!');
+  console.log('\n--- TEST 8: Child Items Without Line Number Stay Under Mother Line 1.0 (No phantom 2.0, 3.0, 4.0) ---');
+  // Build a test workbook with 1 mother line and 3 child items without line numbers
+  const testWb = new ExcelJS.Workbook();
+  const testWs = testWb.addWorksheet('Price Estimate');
+  // Header row at 13
+  const hRow = testWs.getRow(13);
+  hRow.getCell(1).value = 'Line Number';
+  hRow.getCell(2).value = 'Part Number';
+  hRow.getCell(4).value = 'Description';
+  hRow.getCell(7).value = 'List Price';
+  hRow.getCell(9).value = 'Qty';
+  hRow.getCell(10).value = 'Unit Net Price';
+  hRow.getCell(12).value = 'Ext Net Price';
+
+  // Row 14: Mother line 1.0
+  const r14 = testWs.getRow(14);
+  r14.getCell(1).value = '1.0';
+  r14.getCell(2).value = 'C8200-1N-4T';
+  r14.getCell(4).value = 'Cisco Catalyst C8200-1N-4T Router';
+  r14.getCell(7).value = 3000;
+  r14.getCell(9).value = 1;
+  r14.getCell(10).value = 1500;
+  r14.getCell(12).value = 1500;
+
+  // Row 15: Child item with NO line number (SmartNet Service CON-SNT)
+  const r15 = testWs.getRow(15);
+  r15.getCell(1).value = ''; // BLANK LINE NUMBER
+  r15.getCell(2).value = 'CON-SNT-C82001N4';
+  r15.getCell(4).value = 'SNTC-8X5XNBD Cisco Catalyst C8200';
+  r15.getCell(7).value = 500;
+  r15.getCell(9).value = 1;
+  r15.getCell(10).value = 250;
+  r15.getCell(12).value = 250;
+
+  // Row 16: Child item with NO line number (Hardware Component PWR-C1-BLANK)
+  const r16 = testWs.getRow(16);
+  r16.getCell(1).value = ''; // BLANK LINE NUMBER
+  r16.getCell(2).value = 'PWR-C1-BLANK';
+  r16.getCell(4).value = 'Power Supply Blank';
+  r16.getCell(7).value = 0;
+  r16.getCell(9).value = 1;
+  r16.getCell(10).value = 0;
+  r16.getCell(12).value = 0;
+
+  // Row 17: Child item with NO line number (Software License DNA-C8200-SW)
+  const r17 = testWs.getRow(17);
+  r17.getCell(1).value = ''; // BLANK LINE NUMBER
+  r17.getCell(2).value = 'DNA-C8200-SW';
+  r17.getCell(4).value = 'Cisco DNA subscription for C8200';
+  r17.getCell(7).value = 1000;
+  r17.getCell(9).value = 1;
+  r17.getCell(10).value = 500;
+  r17.getCell(12).value = 500;
+
+  // Row 18: Genuine Mother line 2.0
+  const r18 = testWs.getRow(18);
+  r18.getCell(1).value = '2.0';
+  r18.getCell(2).value = 'C9300L-24P-4G-E';
+  r18.getCell(4).value = 'Catalyst 9300L 24p PoE Switch';
+  r18.getCell(7).value = 4000;
+  r18.getCell(9).value = 1;
+  r18.getCell(10).value = 2000;
+  r18.getCell(12).value = 2000;
+
+  const testBuf = await testWb.xlsx.writeBuffer();
+  const { result: parsedHierarchyResult } = await parseEstimateWorkbook(
+    testBuf as any,
+    mockParams,
+    'Test_Blank_Lines.xlsx'
+  );
+
+  const parsedItems = parsedHierarchyResult.items.filter(it => !it.isInfoRow);
+  console.log('Parsed Items Line Numbers:');
+  parsedItems.forEach(it => {
+    console.log(`  SKU: ${it.partNumber.padEnd(18)} | Line: ${it.lineNumber.padEnd(8)} | Mother: ${it.inheritedFromMotherLine}`);
+  });
+
+  const item1 = parsedItems[0];
+  const item2 = parsedItems[1];
+  const item3 = parsedItems[2];
+  const item4 = parsedItems[3];
+  const item5 = parsedItems[4];
+
+  if (item1.lineNumber !== '1.0') throw new Error(`Item 1 line should be 1.0, got ${item1.lineNumber}`);
+  if (item2.lineNumber !== '1.0.1') throw new Error(`Item 2 line should be 1.0.1 (service child), got ${item2.lineNumber}`);
+  if (item2.inheritedFromMotherLine !== '1.0') throw new Error(`Item 2 should inherit from 1.0, got ${item2.inheritedFromMotherLine}`);
+  if (item3.lineNumber !== '1.1') throw new Error(`Item 3 line should be 1.1 (component child), got ${item3.lineNumber}`);
+  if (item3.inheritedFromMotherLine !== '1.0') throw new Error(`Item 3 should inherit from 1.0, got ${item3.inheritedFromMotherLine}`);
+  if (item4.lineNumber !== '1.2') throw new Error(`Item 4 line should be 1.2 (software child), got ${item4.lineNumber}`);
+  if (item4.inheritedFromMotherLine !== '1.0') throw new Error(`Item 4 should inherit from 1.0, got ${item4.inheritedFromMotherLine}`);
+  if (item5.lineNumber !== '2.0') throw new Error(`Item 5 line should be 2.0 (mother line), got ${item5.lineNumber}`);
+
+  // Verify that NO phantom mother lines (3.0 or 4.0) were generated
+  const phantomLines = parsedItems.filter(it => it.lineNumber === '3.0' || it.lineNumber === '4.0');
+  if (phantomLines.length > 0) {
+    throw new Error(`Phantom mother lines 3.0 or 4.0 detected: ${phantomLines.map(p => p.lineNumber).join(', ')}`);
+  }
+
+  console.log('✓ TEST 8 PASSED: Child items without line numbers stay strictly as children under 1.0 and do NOT create lines 2.0, 3.0, 4.0.');
+
+  console.log('\n=======================================================');
+  console.log('🎉 ALL ESTIMATE GROUPED EXPORT & CLP TESTS PASSED (8/8)');
+  console.log('=======================================================');
 }
 
 runTests().catch((err) => {

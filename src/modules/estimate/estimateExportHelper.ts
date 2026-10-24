@@ -246,16 +246,7 @@ export function generatePartnerEmailDraft(options: {
   bodyText += `• Deal ID: ${dealLabel}\n`;
   bodyText += `• Estimate ID: ${estimateLabel}\n\n`;
 
-  bodyText += `RESUMEN ECONÓMICO DE LA SOLUCIÓN:\n`;
-  if (summary.hardwareTotal > 0) {
-    bodyText += `• Equipamiento Hardware: ${formatUSD(summary.hardwareTotal)} USD (${summary.hardwareQty} Qty)\n`;
-  }
-  if (summary.softwareTotal > 0) {
-    bodyText += `• Licenciamiento / Software Cloud: ${formatUSD(summary.softwareTotal)} USD (${summary.softwareQty} Qty)\n`;
-  }
-  if (summary.servicesTotal > 0) {
-    bodyText += `• Servicios y Soporte SmartNet: ${formatUSD(summary.servicesTotal)} USD (${summary.servicesQty} Qty)\n`;
-  }
+  bodyText += `RESUMEN DE LA PROPUESTA:\n`;
   bodyText += `• TOTAL SOLUCIÓN: ${formatUSD(summary.grandTotal)} USD\n`;
   if (clpActive) {
     bodyText += `• TOTAL REFERENCIAL CLP: ${formatCLP(totalClp)} CLP + IVA (T/C: $${clpRate} CLP/USD)\n`;
@@ -276,32 +267,7 @@ export function generatePartnerEmailDraft(options: {
   bodyText += `Saludos cordiales,\n`;
   bodyText += `Cisco Team Chile | Intcomex\n`;
 
-  // HTML Enriquecido para Outlook
-  let summaryRowsHtml = '';
-  if (summary.hardwareTotal > 0) {
-    summaryRowsHtml += `
-      <tr>
-        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">🔧 Equipamiento Hardware</td>
-        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: center; color: #475569; font-weight: 600;">${summary.hardwareQty}</td>
-        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #0f172a;">${formatUSD(summary.hardwareTotal)}</td>
-      </tr>`;
-  }
-  if (summary.softwareTotal > 0) {
-    summaryRowsHtml += `
-      <tr>
-        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">☁️ Licenciamiento / Software Cloud</td>
-        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: center; color: #475569; font-weight: 600;">${summary.softwareQty}</td>
-        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #0f172a;">${formatUSD(summary.softwareTotal)}</td>
-      </tr>`;
-  }
-  if (summary.servicesTotal > 0) {
-    summaryRowsHtml += `
-      <tr>
-        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">🛡️ Servicios y Soporte SmartNet</td>
-        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: center; color: #475569; font-weight: 600;">${summary.servicesQty}</td>
-        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #0f172a;">${formatUSD(summary.servicesTotal)}</td>
-      </tr>`;
-  }
+
 
   let lineBreakdownHtml = '';
   if (groupingOptions.groupByLine && summary.motherLines.length > 1) {
@@ -369,20 +335,11 @@ export function generatePartnerEmailDraft(options: {
         </tr>
       </table>
 
-      <h4 style="margin: 16px 0 8px 0; font-size: 11pt; color: #0f172a;">📊 Resumen Ejecutivo de la Solución:</h4>
-      <table style="width: 100%; border-collapse: collapse; font-size: 10pt; border: 1px solid #cbd5e1;">
-        <thead>
-          <tr style="background-color: #0f172a; color: #ffffff; text-align: left;">
-            <th style="padding: 8px 10px;">Categoría</th>
-            <th style="padding: 8px 10px; text-align: center;">Qty</th>
-            <th style="padding: 8px 10px; text-align: right;">Total Neto USD</th>
-          </tr>
-        </thead>
+      <table style="width: 100%; border-collapse: collapse; font-size: 10pt; border: 1px solid #cbd5e1; margin-top: 14px;">
         <tbody>
-          ${summaryRowsHtml}
           <tr style="background-color: #f8fafc; font-weight: bold;">
-            <td colspan="2" style="padding: 8px 10px; border-top: 2px solid #94a3b8; color: #0f172a; font-size: 11pt;">TOTAL SOLUCIÓN CISCO:</td>
-            <td style="padding: 8px 10px; border-top: 2px solid #94a3b8; text-align: right; color: #0f172a; font-size: 12pt;">${formatUSD(summary.grandTotal)}</td>
+            <td style="padding: 10px 12px; color: #0f172a; font-size: 11pt;">TOTAL SOLUCIÓN CISCO:</td>
+            <td style="padding: 10px 12px; text-align: right; color: #0f172a; font-size: 12pt;">${formatUSD(summary.grandTotal)}</td>
           </tr>
           ${clpHtmlRow}
         </tbody>
@@ -599,26 +556,7 @@ export function generateCommercialPdfHtml(options: {
           color: #0f172a;
           width: 35%;
         }
-        .exec-card {
-          width: 100%;
-          border-collapse: collapse;
-          margin-bottom: 14px;
-          border: 1px solid #cbd5e1;
-          border-radius: 6px;
-          overflow: hidden;
-        }
-        .exec-card th {
-          background: #1e293b;
-          color: #ffffff;
-          padding: 6px 8px;
-          font-size: 8pt;
-          text-align: left;
-        }
-        .exec-card td {
-          padding: 5px 8px;
-          font-size: 8pt;
-          border-bottom: 1px solid #e2e8f0;
-        }
+
         .data-table {
           width: 100%;
           border-collapse: collapse;
@@ -776,57 +714,6 @@ export function generateCommercialPdfHtml(options: {
           <td class="meta-value">${dealId}</td>
         </tr>
       </table>
-
-      <!-- Resumen Ejecutivo (Idea 1) -->
-      ${
-        groupingOptions.showExecutiveSummary !== false
-          ? `
-        <table class="exec-card">
-          <thead>
-            <tr>
-              <th>Resumen Ejecutivo de la Solución</th>
-              <th class="text-center" style="width: 80px;">Qty</th>
-              <th class="text-right" style="width: 130px;">Total Neto USD</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${
-              summary.hardwareTotal > 0
-                ? `<tr>
-                    <td>🔧 Equipamiento Hardware</td>
-                    <td class="text-center font-bold">${summary.hardwareQty}</td>
-                    <td class="text-right font-medium">${formatUSD(summary.hardwareTotal)}</td>
-                  </tr>`
-                : ''
-            }
-            ${
-              summary.softwareTotal > 0
-                ? `<tr>
-                    <td>☁️ Licenciamiento / Software Cloud</td>
-                    <td class="text-center font-bold">${summary.softwareQty}</td>
-                    <td class="text-right font-medium">${formatUSD(summary.softwareTotal)}</td>
-                  </tr>`
-                : ''
-            }
-            ${
-              summary.servicesTotal > 0
-                ? `<tr>
-                    <td>🛡️ Servicios y Soporte SmartNet</td>
-                    <td class="text-center font-bold">${summary.servicesQty}</td>
-                    <td class="text-right font-medium">${formatUSD(summary.servicesTotal)}</td>
-                  </tr>`
-                : ''
-            }
-            <tr style="background: #f1f5f9; font-weight: 700;">
-              <td>TOTAL SOLUCIÓN</td>
-              <td class="text-center">${summary.totalQty} und.</td>
-              <td class="text-right">${formatUSD(summary.grandTotal)}</td>
-            </tr>
-          </tbody>
-        </table>
-      `
-          : ''
-      }
 
       <!-- Detailed Items Table -->
       <table class="data-table">

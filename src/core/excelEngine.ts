@@ -27,6 +27,8 @@ import {
   checkIsIntangible,
   checkLlevaArancel,
   getMotherLineKey,
+  normalizeCcwLineNumber,
+  isCiscoServiceItem,
 } from './calculations';
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../lib/intcomexLogoBase64';
 import { generateQuotationFileName, isPureLicensingQuote, resolveEffectiveQuoteRates } from './exportUtils';
@@ -34,7 +36,6 @@ import {
   parseEstimateWithHierarchy,
   ProcessedEstimateLine,
   EstimateExportGroupingOptions,
-  categorizeEstimateItems,
 } from '../modules/estimate';
 
 export type { EstimateExportGroupingOptions };
@@ -437,11 +438,13 @@ export function isEquipmentDescriptionOrGroupRow(
   const hasValidLineNumber = /^\d+(\.\d+)*$/.test(cleanLine);
   const hasZeroPrices = unitListPrice === 0 && rawNetCiscoUnit === 0 && rawExtCost === 0;
 
-  // Rule 1: Every genuine CCW product/software/service row has a hierarchical Line Number (1.0, 1.0.1, 1.1, 2.0, etc.).
-  // Any row inside the table without a valid Line Number (that is not a subscription Initial Term row)
-  // is a Group / Solution Description, custom partner note, or section banner and MUST be skipped via continue.
+  // Rule 1: Row without a valid Line Number:
+  // If it has no part number, an excessively long text, or is a natural-language description/banner, skip it.
+  // Genuine child components/services with a valid SKU are preserved and assigned to the current mother line.
   if (!hasValidLineNumber) {
-    return true;
+    if (!cleanPart || cleanPart.length > 45 || (cleanPart.split(/\s+/).length >= 3 && hasZeroPrices)) {
+      return true;
+    }
   }
 
   // Rule 2: Missing Part Number or abnormally long text (> 45 chars) in Part Number column
@@ -708,6 +711,9 @@ export async function parseEstimateWorkbook(
 
   // 4. Pre-parse rows with Hierarchical Parser (Multi-Block Initial Terms & Subscriptions)
   const rawRows: any[][] = [];
+  let preMotherLine = '1.0';
+  let preServiceCounter = 0;
+  let preComponentCounter = 0;
   for (let r = headerRowIndex + 1; r <= worksheet.rowCount; r++) {
     // Strictly omit any pre-table description/banner rows (such as Row 19 when 1.0 starts at Row 20)
     if (firstProductRowIndex !== -1 && r < firstProductRowIndex) {
@@ -745,8 +751,41 @@ export async function parseEstimateWorkbook(
       continue;
     }
 
+    let resolvedPreLine = '';
+    if (lineNum) {
+      const cleanLine = normalizeCcwLineNumber(lineNum);
+      if (isMainLineItem(cleanLine)) {
+        preMotherLine = cleanLine;
+        preServiceCounter = 0;
+        preComponentCounter = 0;
+        resolvedPreLine = cleanLine;
+      } else {
+        preMotherLine = getMotherLineKey(cleanLine) || preMotherLine;
+        resolvedPreLine = cleanLine;
+        const sMatch = cleanLine.match(/^\d+\.0\.(\d+)$/);
+        if (sMatch) {
+          preServiceCounter = Math.max(preServiceCounter, parseInt(sMatch[1], 10));
+        } else {
+          const cMatch = cleanLine.match(/^\d+\.(\d+)$/);
+          if (cMatch) {
+            preComponentCounter = Math.max(preComponentCounter, parseInt(cMatch[1], 10));
+          }
+        }
+      }
+    } else {
+      const motherPrefix = preMotherLine.replace(/\.0$/, '') || '1';
+      const isService = isCiscoServiceItem(partNum, desc);
+      if (isService) {
+        preServiceCounter++;
+        resolvedPreLine = `${motherPrefix}.0.${preServiceCounter}`;
+      } else {
+        preComponentCounter++;
+        resolvedPreLine = `${motherPrefix}.${preComponentCounter}`;
+      }
+    }
+
     const rowArr: any[] = [];
-    rowArr[0] = lineNum;
+    rowArr[0] = resolvedPreLine;
     rowArr[1] = partNum;
     rowArr[2] = getDistinctColumnString(worksheet, r, colMap.colSmart);
     rowArr[3] = desc;
@@ -768,6 +807,9 @@ export async function parseEstimateWorkbook(
   });
 
   // 5. Extract and calculate line items
+  let currentMotherLine = '1.0';
+  let childServiceCounter = 0;
+  let childComponentCounter = 0;
   for (let r = headerRowIndex + 1; r <= worksheet.rowCount; r++) {
     // Option A: Strictly omit any pre-table description/comment rows (e.g., Row 19 before 1.0 on Row 20)
     if (firstProductRowIndex !== -1 && r < firstProductRowIndex) {
@@ -970,8 +1012,42 @@ export async function parseEstimateWorkbook(
       }
     }
 
-    const effectiveLineNumber = lineNumStr || `${items.length + 1}.0`;
-    const motherKey = getMotherLineKey(effectiveLineNumber);
+    let effectiveLineNumber = '';
+    if (lineNumStr) {
+      const cleanLine = normalizeCcwLineNumber(lineNumStr);
+      if (isMainLineItem(cleanLine)) {
+        currentMotherLine = cleanLine;
+        childServiceCounter = 0;
+        childComponentCounter = 0;
+        effectiveLineNumber = cleanLine;
+      } else {
+        currentMotherLine = getMotherLineKey(cleanLine) || currentMotherLine;
+        effectiveLineNumber = cleanLine;
+        const sMatch = cleanLine.match(/^\d+\.0\.(\d+)$/);
+        if (sMatch) {
+          childServiceCounter = Math.max(childServiceCounter, parseInt(sMatch[1], 10));
+        } else {
+          const cMatch = cleanLine.match(/^\d+\.(\d+)$/);
+          if (cMatch) {
+            childComponentCounter = Math.max(childComponentCounter, parseInt(cMatch[1], 10));
+          }
+        }
+      }
+    } else {
+      // Si la celda de Line Number está vacía o combinada en el Excel original:
+      // NUNCA promover a nueva Línea Madre ("2.0", "3.0", "4.0").
+      // Siempre pertenece como sub-línea hija de la Línea Madre actual.
+      const motherPrefix = currentMotherLine.replace(/\.0$/, '') || '1';
+      const isService = isCiscoServiceItem(partNumStr, description || rawDescStr);
+      if (isService) {
+        childServiceCounter++;
+        effectiveLineNumber = `${motherPrefix}.0.${childServiceCounter}`;
+      } else {
+        childComponentCounter++;
+        effectiveLineNumber = `${motherPrefix}.${childComponentCounter}`;
+      }
+    }
+    const motherKey = getMotherLineKey(effectiveLineNumber) || currentMotherLine;
     const hasCustomLineParams = Boolean(
       activeCalculationParams.parameterMode === 'custom_lines' &&
       activeCalculationParams.lineCustomParams &&
@@ -1694,133 +1770,6 @@ function renderEstimateTableAndFooters(
     worksheet.getCell(`E${clpRowIndex}`).alignment = { vertical: 'middle', horizontal: 'right' };
     worksheet.mergeCells(`E${clpRowIndex}:G${clpRowIndex}`);
     currentRow++;
-  }
-
-  // 6. Idea 1: Tarjeta / Resumen Ejecutivo de la Solución (HW / SW / Soporte)
-  if (exportOptions?.showExecutiveSummary !== false) {
-    const summary = categorizeEstimateItems(activeItems);
-
-    currentRow++; // Fila vacía
-    const execHeaderRow = currentRow;
-    worksheet.getRow(execHeaderRow).height = 20;
-
-    for (let c = 1; c <= 7; c++) {
-      const cell = worksheet.getCell(execHeaderRow, c);
-      cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF1E293B' },
-      };
-      cell.border = completeBorder;
-    }
-    safeUnmerge(worksheet, `A${execHeaderRow}:G${execHeaderRow}`);
-    safeUnmerge(worksheet, `A${execHeaderRow}:D${execHeaderRow}`);
-    worksheet.getCell(`A${execHeaderRow}`).value =
-      'Resumen Ejecutivo de la Solución (Desglose por Categoría de Producto):';
-    worksheet.getCell(`A${execHeaderRow}`).font = {
-      name: 'Arial',
-      size: 8.5,
-      bold: true,
-      color: { argb: 'FFFFFFFF' },
-    };
-    worksheet.getCell(`A${execHeaderRow}`).alignment = {
-      vertical: 'middle',
-      horizontal: 'left',
-      indent: 1,
-    };
-    worksheet.mergeCells(`A${execHeaderRow}:D${execHeaderRow}`);
-
-    // Encabezado de Columna E: Qty
-    const qtyHeader = worksheet.getCell(`E${execHeaderRow}`);
-    qtyHeader.value = 'Qty';
-    qtyHeader.font = {
-      name: 'Arial',
-      size: 8.5,
-      bold: true,
-      color: { argb: 'FFFFFFFF' },
-    };
-    qtyHeader.alignment = {
-      vertical: 'middle',
-      horizontal: 'center',
-    };
-
-    // Columna F: Vacía
-    worksheet.getCell(`F${execHeaderRow}`).value = '';
-
-    // Encabezado de Columna G: Total Neto USD
-    const totalHeader = worksheet.getCell(`G${execHeaderRow}`);
-    totalHeader.value = 'Total Neto USD';
-    totalHeader.font = {
-      name: 'Arial',
-      size: 8.5,
-      bold: true,
-      color: { argb: 'FFFFFFFF' },
-    };
-    totalHeader.alignment = {
-      vertical: 'middle',
-      horizontal: 'right',
-    };
-    currentRow++;
-
-    const writeExecRow = (label: string, qty: number, amount: number) => {
-      const r = currentRow;
-      worksheet.getRow(r).height = 19;
-      for (let c = 1; c <= 7; c++) {
-        const cell = worksheet.getCell(r, c);
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
-        cell.border = completeBorder;
-      }
-      safeUnmerge(worksheet, `A${r}:D${r}`);
-      worksheet.getCell(`A${r}`).value = label;
-      worksheet.getCell(`A${r}`).font = { name: 'Arial', size: 8, color: { argb: 'FF334155' } };
-      worksheet.getCell(`A${r}`).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-      worksheet.mergeCells(`A${r}:D${r}`);
-
-      worksheet.getCell(`E${r}`).value = qty;
-      worksheet.getCell(`E${r}`).font = {
-        name: 'Arial',
-        size: 8,
-        bold: true,
-        color: { argb: 'FF475569' },
-      };
-      worksheet.getCell(`E${r}`).alignment = { vertical: 'middle', horizontal: 'center' };
-      worksheet.getCell(`E${r}`).numFmt = '#,##0';
-
-      worksheet.getCell(`F${r}`).value = '';
-
-      worksheet.getCell(`G${r}`).value = amount;
-      worksheet.getCell(`G${r}`).font = {
-        name: 'Arial',
-        size: 8.5,
-        bold: true,
-        color: { argb: 'FF0F172A' },
-      };
-      worksheet.getCell(`G${r}`).alignment = { vertical: 'middle', horizontal: 'right' };
-      worksheet.getCell(`G${r}`).numFmt = '"$"#,##0.00';
-      currentRow++;
-    };
-
-    if (summary.hardwareTotal > 0) {
-      writeExecRow(
-        '🔧 Equipamiento Hardware',
-        summary.hardwareQty,
-        summary.hardwareTotal
-      );
-    }
-    if (summary.softwareTotal > 0) {
-      writeExecRow(
-        '☁️ Licenciamiento / Software Cloud',
-        summary.softwareQty,
-        summary.softwareTotal
-      );
-    }
-    if (summary.servicesTotal > 0) {
-      writeExecRow(
-        '🛡️ Servicios y Soporte SmartNet',
-        summary.servicesQty,
-        summary.servicesTotal
-      );
-    }
   }
 
   // 7. Ordered Footers (Validity, Lead Time & Technical Validation)

@@ -6,6 +6,14 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.4.7] - 2026-10-24
+### 🐛 Corregido (Eliminación de Resumen Ejecutivo y Corrección de Jerarquía de Líneas Madre/Hijas)
+- **Eliminación Temporal del Resumen Ejecutivo en Excel, PDF, Correo y Modal:** Retirado temporalmente el bloque de "Resumen Ejecutivo de la Solución" en todos los artefactos de salida (libro Excel, propuesta comercial PDF, borrador de correo para Outlook y previsualización modal) a la espera de auditar la estructura y criterio comercial exacto de Cisco para la totalización de servicios y licencias.
+- **Corrección de Jerarquía de Sub-líneas Hijas (Eliminación de Líneas Fantasma 2.0, 3.0, 4.0):** Corregido el motor de extracción y asignación jerárquica para que todo ítem hijo, accesorio o servicio sin número de línea explícito en el CCW original herede estrictamente la clave y numeración jerárquica de su Línea Madre activa (`1.0.1`, `1.1`, `1.2`...) en lugar de ser promovido erróneamente a nuevas Líneas Madre (`2.0, 3.0, 4.0`).
+- **Preservación Fiel del Estimate Original:** Garantizada la correspondencia 1:1 con la estructura oficial del BOM de Cisco CCW tanto en modo Continuo Estándar como en Agrupado por Línea Madre.
+
+---
+
 ## [v2.4.6] - 2026-10-24
 ### 🌟 Agregado (Separación por Líneas Madre en Excel, PDF Comercial, Correo Outlook y Resumen Ejecutivo)
 - **Exportación en Excel con Separación por Líneas Madre y Subtotales:** Opción en el modal de descarga para estructurar la cotización en bloques ordenados por cada Línea Madre (`1.0`, `2.0`, etc.) con subtotales individuales de cantidad y precio de venta mediante fórmulas nativas de Excel `=SUM(...)`, consolidando la suma en la fila final de Price Total para deals separados por OC.
