@@ -16,7 +16,9 @@ import {
   copyBoTableToClipboard,
   copyBoTableWithDetail,
   getBoTimeBasedGreeting,
+  BoTableExportOptions,
 } from './boEmailHelper';
+import { getMotherLineKey } from '../../core/calculations';
 import {
   fetchBoSkuCatalog,
   saveBoSkuMapping,
@@ -42,6 +44,7 @@ import {
   RefreshCw,
   Upload,
   Truck,
+  Layers,
 } from 'lucide-react';
 
 interface Props {
@@ -78,6 +81,11 @@ export const BoRequestModal: React.FC<Props> = ({
   const [isDiscardedExpanded, setIsDiscardedExpanded] = useState<boolean>(true);
   const [copied, setCopied] = useState<boolean>(false);
 
+  // Modo de visualización: 'unified' (tabla continua) o 'by_line' (separado por línea madre con subtotales)
+  const [viewMode, setViewMode] = useState<'unified' | 'by_line'>('unified');
+  // Filtro de línea para generación/copia selectiva de OC separada ('ALL' o '1.0', '2.0', etc.)
+  const [selectedLineFilter, setSelectedLineFilter] = useState<string>('ALL');
+
   // Estados de persistencia y catálogo en la nube
   const [skuCatalog, setSkuCatalog] = useState<Record<string, string>>({});
   const [isCloudReady, setIsCloudReady] = useState<boolean>(false);
@@ -99,6 +107,8 @@ export const BoRequestModal: React.FC<Props> = ({
     setCcEmail(DEFAULT_BO_EMAIL_CC);
     setCopied(false);
     setManualBodega(null);
+    setViewMode('unified');
+    setSelectedLineFilter('ALL');
 
     const { activeLines, zeroCostLines } = partitionBoLinesByCost(initialLines);
     const initialAutoBodega = detectBodegaFromActiveLines(
@@ -113,41 +123,103 @@ export const BoRequestModal: React.FC<Props> = ({
       setMemorizedSkuCount(count);
 
       // Auto-rellenar SKU si no viene definido y sincronizar bodega según líneas activas
-      const filledActive = activeLines.map((line) => {
+      const filledActive = activeLines.map((line, idx) => {
         const matched = !line.sku ? findSkuInCatalog(line.partNumber, catalog) : line.sku;
         const isSvcOrLic = isBoServiceOrLicense(line.partNumber, undefined, line.isHardware);
+        const resolvedLineNumber = line.lineNumber || estimateResult?.items?.[idx]?.lineNumber || '1.0';
+        const resolvedMotherLine = line.motherLine || (resolvedLineNumber ? getMotherLineKey(resolvedLineNumber) : '1.0');
         return {
           ...line,
           sku: matched || line.sku,
           bodega: initialAutoBodega,
           isServiceOrLicense: isSvcOrLic,
           isHardware: !isSvcOrLic,
+          lineNumber: resolvedLineNumber,
+          motherLine: resolvedMotherLine,
         };
       });
 
       const filledDiscarded = zeroCostLines.map((line) => {
         const matched = !line.sku ? findSkuInCatalog(line.partNumber, catalog) : line.sku;
         const isSvcOrLic = isBoServiceOrLicense(line.partNumber, undefined, line.isHardware);
+        const resolvedLineNumber = line.lineNumber || '1.0';
+        const resolvedMotherLine = line.motherLine || (resolvedLineNumber ? getMotherLineKey(resolvedLineNumber) : '1.0');
         return {
           ...line,
           sku: matched || line.sku,
           bodega: initialAutoBodega,
           isServiceOrLicense: isSvcOrLic,
           isHardware: !isSvcOrLic,
+          lineNumber: resolvedLineNumber,
+          motherLine: resolvedMotherLine,
         };
       });
 
       setLines(filledActive);
       setDiscardedLines(filledDiscarded);
     });
-  }, [isOpen, initialClientName, initialLines]);
+  }, [isOpen, initialClientName, initialLines, estimateResult]);
 
-  // Totales de la tabla activa
+  // Totales de la tabla activa completa
   const totals = useMemo(() => {
     const totalQty = lines.reduce((acc, l) => acc + (Number(l.qty) || 0), 0);
     const totalExtended = lines.reduce((acc, l) => acc + (Number(l.extendedNetPrice) || 0), 0);
     return { totalQty, totalExtended };
   }, [lines]);
+
+  // Lista ordenada de todas las líneas madre disponibles en las líneas activas (ej. '1.0', '2.0')
+  const availableMotherLines = useMemo(() => {
+    const keys = new Set<string>();
+    for (const l of lines) {
+      const key = l.motherLine || (l.lineNumber ? getMotherLineKey(l.lineNumber) : '1.0');
+      keys.add(key);
+    }
+    return Array.from(keys).sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
+  }, [lines]);
+
+  // Agrupación estructurada de ítems por línea madre con subtotales e índices originales preservados
+  const lineGroups = useMemo(() => {
+    const map = new Map<string, Array<{ line: BoLineItem; originalIndex: number }>>();
+    lines.forEach((line, originalIndex) => {
+      const motherKey = line.motherLine || (line.lineNumber ? getMotherLineKey(line.lineNumber) : '1.0');
+      if (!map.has(motherKey)) {
+        map.set(motherKey, []);
+      }
+      map.get(motherKey)!.push({ line, originalIndex });
+    });
+
+    const sortedKeys = Array.from(map.keys()).sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
+
+    return sortedKeys.map((motherKey) => {
+      const itemsWithIndex = map.get(motherKey)!;
+      const subtotalQty = itemsWithIndex.reduce((acc, { line }) => acc + (Number(line.qty) || 0), 0);
+      const subtotalExtended = itemsWithIndex.reduce((acc, { line }) => acc + (Number(line.extendedNetPrice) || 0), 0);
+      return {
+        motherKey,
+        itemsWithIndex,
+        subtotalQty,
+        subtotalExtended,
+      };
+    });
+  }, [lines]);
+
+  // Líneas filtradas según selectedLineFilter con su índice original en 'lines'
+  const displayLinesWithIndex = useMemo(() => {
+    return lines
+      .map((line, originalIndex) => ({ line, originalIndex }))
+      .filter(({ line }) => {
+        if (selectedLineFilter === 'ALL') return true;
+        const key = line.motherLine || (line.lineNumber ? getMotherLineKey(line.lineNumber) : '1.0');
+        return key === selectedLineFilter;
+      });
+  }, [lines, selectedLineFilter]);
+
+  // Totales de las líneas visualizadas (considerando filtro de línea madre activo)
+  const displayTotals = useMemo(() => {
+    const totalQty = displayLinesWithIndex.reduce((acc, { line }) => acc + (Number(line.qty) || 0), 0);
+    const totalExtended = displayLinesWithIndex.reduce((acc, { line }) => acc + (Number(line.extendedNetPrice) || 0), 0);
+    return { totalQty, totalExtended };
+  }, [displayLinesWithIndex]);
 
   // Bodega detectada automáticamente a partir de los ítems activos en la Tabla Principal para BO
   const autoDetectedBodega: 'E1' | 'ED' = useMemo(() => {
@@ -332,20 +404,73 @@ export const BoRequestModal: React.FC<Props> = ({
     }
   };
 
+  // Copiar solo un bloque de línea madre al portapapeles en formato Outlook
+  const handleCopyLineBlock = async (motherKey: string) => {
+    await syncAllCurrentSkus();
+    const linesWithCurrentBodega = lines.map((l) => ({ ...l, bodega: currentBodega }));
+    const copyRes = await copyBoTableWithDetail(linesWithCurrentBodega, {
+      groupByLine: false,
+      selectedLine: motherKey,
+    });
+
+    const linesToSync = linesWithCurrentBodega.filter(
+      (l) => (l.motherLine || getMotherLineKey(l.lineNumber)) === motherKey
+    );
+    const syncRes = await syncBoOrderFromEstimateModal({
+      estimate: estimateResult,
+      clientName: `${clientName} (Línea ${motherKey})`,
+      lines: linesToSync,
+      bodega: currentBodega,
+      author: currentUser?.full_name || currentUser?.username || 'Usuario',
+      partnerName: detectedPartner,
+      actionSource: 'COPY_HTML',
+    });
+    if (syncRes.success && syncRes.record && onOrderSynced) {
+      onOrderSynced(syncRes.record);
+    }
+
+    if (copyRes.success) {
+      setCopied(true);
+      const grp = lineGroups.find((g) => g.motherKey === motherKey);
+      setImportNotice({
+        type: 'success',
+        message: `¡Tabla de Línea ${motherKey} copiada para Outlook (Subtotal: $${formatCLP(grp?.subtotalExtended || 0, 2)} USD)!`,
+      });
+      setTimeout(() => {
+        setCopied(false);
+        setImportNotice(null);
+      }, 4000);
+    } else {
+      setImportNotice({
+        type: 'error',
+        message: copyRes.error || copyRes.message || 'No se pudo copiar la tabla al portapapeles.',
+      });
+      setTimeout(() => setImportNotice(null), 4000);
+    }
+  };
+
   // Copiar tabla HTML al portapapeles, sincronizar SKUs a la nube y registrar BO en tracking
   const handleCopy = async () => {
     // 1. Guardar y sincronizar todos los SKUs cargados a la base de datos antes de copiar
     await syncAllCurrentSkus();
 
-    // 2. Copiar tabla enriquecida para Outlook
+    // 2. Copiar tabla enriquecida para Outlook respetando el modo (unificado vs agrupado por líneas con subtotales)
     const linesWithCurrentBodega = lines.map((l) => ({ ...l, bodega: currentBodega }));
-    const copyRes = await copyBoTableWithDetail(linesWithCurrentBodega);
+    const exportOpts: BoTableExportOptions = {
+      groupByLine: viewMode === 'by_line',
+      selectedLine: selectedLineFilter !== 'ALL' ? selectedLineFilter : undefined,
+    };
+    const copyRes = await copyBoTableWithDetail(linesWithCurrentBodega, exportOpts);
 
     // 3. Registrar la transición del Estimate a Back Order (BO) en la base de datos de seguimiento logístico
+    const linesToSync = selectedLineFilter !== 'ALL'
+      ? linesWithCurrentBodega.filter((l) => (l.motherLine || getMotherLineKey(l.lineNumber)) === selectedLineFilter)
+      : linesWithCurrentBodega;
+
     const syncRes = await syncBoOrderFromEstimateModal({
       estimate: estimateResult,
-      clientName,
-      lines: linesWithCurrentBodega,
+      clientName: selectedLineFilter !== 'ALL' ? `${clientName} (Línea ${selectedLineFilter})` : clientName,
+      lines: linesToSync,
       bodega: currentBodega,
       author: currentUser?.full_name || currentUser?.username || 'Usuario',
       partnerName: detectedPartner,
@@ -358,10 +483,14 @@ export const BoRequestModal: React.FC<Props> = ({
 
     if (copyRes.success) {
       setCopied(true);
+      const modeDesc = selectedLineFilter !== 'ALL'
+        ? `Línea ${selectedLineFilter}`
+        : viewMode === 'by_line'
+        ? 'agrupada con subtotales por línea'
+        : 'vista unificada';
       setImportNotice({
         type: 'success',
-        message:
-          '¡Tabla BO copiada para Outlook y registrada en Base de Datos & Tracking (Etapa: OC Recibida)!',
+        message: `¡Tabla BO (${modeDesc}) copiada para Outlook y registrada en Base de Datos & Tracking (Etapa: OC Recibida)!`,
       });
       setTimeout(() => {
         setCopied(false);
@@ -383,10 +512,14 @@ export const BoRequestModal: React.FC<Props> = ({
 
     // 2. Registrar la transición del Estimate a Back Order (BO) en la base de datos de seguimiento logístico
     const linesWithCurrentBodega = lines.map((l) => ({ ...l, bodega: currentBodega }));
+    const linesToSync = selectedLineFilter !== 'ALL'
+      ? linesWithCurrentBodega.filter((l) => (l.motherLine || getMotherLineKey(l.lineNumber)) === selectedLineFilter)
+      : linesWithCurrentBodega;
+
     const syncRes = await syncBoOrderFromEstimateModal({
       estimate: estimateResult,
-      clientName,
-      lines: linesWithCurrentBodega,
+      clientName: selectedLineFilter !== 'ALL' ? `${clientName} (Línea ${selectedLineFilter})` : clientName,
+      lines: linesToSync,
       bodega: currentBodega,
       author: currentUser?.full_name || currentUser?.username || 'Usuario',
       partnerName: detectedPartner,
@@ -398,8 +531,9 @@ export const BoRequestModal: React.FC<Props> = ({
     }
 
     const greeting = getBoTimeBasedGreeting();
-    const rawSubject = `RV: Cotización ${clientName.trim()}`;
-    const rawBody = `Estimado,\n\n${greeting}, por favor crear BO.\n\n(Pega aquí la tabla copiada usando CTRL+V)\n\nSaludos,`;
+    const lineSuffix = selectedLineFilter !== 'ALL' ? ` - Línea ${selectedLineFilter}` : '';
+    const rawSubject = `RV: Cotización ${clientName.trim()}${lineSuffix}`;
+    const rawBody = `Estimado,\n\n${greeting}, por favor crear BO${selectedLineFilter !== 'ALL' ? ` para Línea ${selectedLineFilter}` : ''}.\n\n(Pega aquí la tabla copiada usando CTRL+V)\n\nSaludos,`;
 
     // Intentar abrir vía API nativa de escritorio (Outlook / Windows Shell)
     const openedInDesktop = await openDesktopEmailClient(recipientEmail, ccEmail, rawSubject, rawBody);
@@ -647,14 +781,21 @@ export const BoRequestModal: React.FC<Props> = ({
           </div>
           <div className="flex items-center justify-between sm:justify-end gap-3 sm:border-l sm:border-zinc-800 sm:pl-3">
             <div className="text-right">
-              <span className="text-zinc-400 font-mono text-[10px] block">Total Venta BO:</span>
+              <span className="text-zinc-400 font-mono text-[10px] block">
+                {selectedLineFilter === 'ALL' ? 'Total Venta BO:' : `Total Línea ${selectedLineFilter}:`}
+              </span>
               <span className="text-emerald-400 font-mono font-bold text-sm">
-                ${formatCLP(totals.totalExtended, 2)} USD
+                ${formatCLP(displayTotals.totalExtended, 2)} USD
               </span>
             </div>
             <div className="text-right">
               <span className="text-zinc-400 font-mono text-[10px] block">Líneas Activas:</span>
-              <span className="text-white font-mono font-bold text-sm">{lines.length}</span>
+              <span className="text-white font-mono font-bold text-sm">
+                {displayLinesWithIndex.length}
+                {selectedLineFilter !== 'ALL' && (
+                  <span className="text-[10px] text-zinc-500 font-normal"> / {lines.length}</span>
+                )}
+              </span>
             </div>
           </div>
         </div>
@@ -663,11 +804,47 @@ export const BoRequestModal: React.FC<Props> = ({
         <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
           {/* TABLA PRINCIPAL (LÍNEAS CON VALOR ECONÓMICO) */}
           <div className="border border-zinc-800 rounded-xl overflow-hidden shadow-sm">
-            <div className="bg-zinc-900 px-3.5 py-2 border-b border-zinc-800 flex items-center justify-between">
-              <span className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
-                Tabla Principal para BO ({lines.length} {lines.length === 1 ? 'ítem con costo' : 'ítems con costo'})
-              </span>
+            <div className="bg-zinc-900 px-3.5 py-2.5 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+                  Tabla Principal para BO ({displayLinesWithIndex.length}{' '}
+                  {displayLinesWithIndex.length === 1 ? 'ítem activo' : 'ítems activos'})
+                </span>
+
+                {/* Segmented Control: Vista Unificada vs Separar por Líneas (Subtotales por OC) */}
+                <div className="inline-flex items-center bg-zinc-950 p-0.5 rounded-lg border border-zinc-800 text-[11px] font-sans">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewMode('unified');
+                      setSelectedLineFilter('ALL');
+                    }}
+                    className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                      viewMode === 'unified'
+                        ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700/60 font-semibold'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                    title="Vista unificada estándar (todos los ítems en una sola tabla continua)"
+                  >
+                    <span>📋 Vista Unificada</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('by_line')}
+                    className={`px-2.5 py-1 rounded-md font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                      viewMode === 'by_line'
+                        ? 'bg-indigo-600 text-white shadow-sm font-semibold'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                    title="Separar ítems por Línea Madre (con subtotales por OC y Total General al final)"
+                  >
+                    <Layers className="w-3 h-3 text-indigo-300" />
+                    <span>📑 Separar por Líneas (Subtotales)</span>
+                  </button>
+                </div>
+              </div>
+
               <div className="flex items-center gap-2 text-[11px] text-zinc-400 font-mono">
                 <span>Bodega Asignada:</span>
                 <div className="inline-flex items-center gap-1 bg-zinc-950 border border-zinc-800 rounded-md p-0.5">
@@ -696,8 +873,57 @@ export const BoRequestModal: React.FC<Props> = ({
                     ED
                   </button>
                 </div>
+                <span className="text-[9px] text-zinc-500">
+                  ({currentBodega === 'ED' ? 'Licencias/Servicios' : 'Con Equipos'})
+                </span>
               </div>
             </div>
+
+            {/* Barra de Filtro de Líneas Madre para OCs separadas */}
+            {availableMotherLines.length > 1 && (
+              <div className="bg-zinc-950/90 px-3.5 py-1.5 border-b border-zinc-800/80 flex flex-wrap items-center gap-1.5 text-xs">
+                <span className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider mr-1">
+                  Filtrar OC:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLineFilter('ALL')}
+                  className={`px-2 py-0.5 rounded-full text-[11px] font-mono transition-colors cursor-pointer border ${
+                    selectedLineFilter === 'ALL'
+                      ? 'bg-zinc-800 text-white border-zinc-600 font-bold'
+                      : 'bg-zinc-900/60 text-zinc-400 border-zinc-800 hover:text-zinc-200'
+                  }`}
+                  title="Ver todas las líneas del deal"
+                >
+                  Todas las Líneas ({lines.length})
+                </button>
+                {availableMotherLines.map((mKey) => {
+                  const grp = lineGroups.find((g) => g.motherKey === mKey);
+                  const isSelected = selectedLineFilter === mKey;
+                  return (
+                    <button
+                      key={mKey}
+                      type="button"
+                      onClick={() => {
+                        setSelectedLineFilter(mKey);
+                        setViewMode('by_line');
+                      }}
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-mono transition-colors cursor-pointer border flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-indigo-600/30 text-indigo-300 border-indigo-500 font-bold'
+                          : 'bg-zinc-900/60 text-zinc-400 border-zinc-800 hover:border-zinc-700 hover:text-zinc-200'
+                      }`}
+                      title={`Filtrar para generar BO exclusivo para la OC de Línea ${mKey}`}
+                    >
+                      <span>Línea {mKey}</span>
+                      <span className="text-[10px] opacity-75">
+                        ({grp?.itemsWithIndex.length || 0} ítems &bull; ${formatCLP(grp?.subtotalExtended || 0, 2)})
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left border-collapse">
@@ -719,33 +945,176 @@ export const BoRequestModal: React.FC<Props> = ({
                         No hay líneas con costo en la tabla activa. Puedes agregar líneas desde la sección de descartados abajo.
                       </td>
                     </tr>
+                  ) : viewMode === 'by_line' ? (
+                    // MODO SEPARADO POR LÍNEA MADRE CON SUBTOTAES
+                    (selectedLineFilter === 'ALL'
+                      ? lineGroups
+                      : lineGroups.filter((g) => g.motherKey === selectedLineFilter)
+                    ).map((group) => (
+                      <React.Fragment key={group.motherKey}>
+                        {/* Fila de Encabezado de Bloque de Línea Madre */}
+                        <tr className="bg-zinc-800/80 border-y border-zinc-700 font-sans">
+                          <td colSpan={7} className="px-3 py-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono text-xs font-bold">
+                                  📦 Bloque Línea {group.motherKey}
+                                </span>
+                                <span className="text-zinc-300 text-xs font-medium">
+                                  ({group.itemsWithIndex.length}{' '}
+                                  {group.itemsWithIndex.length === 1 ? 'ítem' : 'ítems'})
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs font-mono text-zinc-400">
+                                  Subtotal Línea {group.motherKey}:{' '}
+                                  <strong className="text-emerald-400 font-bold text-xs">
+                                    ${formatCLP(group.subtotalExtended, 2)} USD
+                                  </strong>{' '}
+                                  <span className="text-[10px] text-zinc-500">
+                                    ({group.subtotalQty} uds)
+                                  </span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyLineBlock(group.motherKey)}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-zinc-900 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-700/50 hover:border-indigo-500 transition-colors cursor-pointer"
+                                  title={`Copiar solo la tabla de Línea ${group.motherKey} con formato Outlook para esta OC`}
+                                >
+                                  <Copy className="w-2.5 h-2.5" />
+                                  <span>Copiar Línea {group.motherKey}</span>
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Filas de los Ítems pertenecientes a este Bloque */}
+                        {group.itemsWithIndex.map(({ line, originalIndex }) => (
+                          <tr
+                            key={originalIndex}
+                            className="hover:bg-zinc-800/40 transition-colors"
+                          >
+                            <td className="p-2 text-center">
+                              <input
+                                type="text"
+                                value={line.sku}
+                                placeholder="SKU Intcomex"
+                                onChange={(e) => handleSkuChange(originalIndex, e.target.value)}
+                                onBlur={() => handleSkuBlur(originalIndex)}
+                                className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-center font-mono text-white text-xs w-32 focus:border-amber-400 focus:outline-none uppercase"
+                                title="Código SKU Intcomex (se guarda automáticamente en la nube al salir del campo)"
+                              />
+                            </td>
+                            <td className="p-2 text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                {line.lineNumber && (
+                                  <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono">
+                                    {line.lineNumber}
+                                  </span>
+                                )}
+                                <input
+                                  type="text"
+                                  value={line.partNumber}
+                                  onChange={(e) =>
+                                    handlePartNumberChange(originalIndex, e.target.value)
+                                  }
+                                  className="bg-zinc-950 border border-zinc-700/80 rounded px-2 py-1 text-center font-mono font-bold text-zinc-100 text-xs w-full max-w-[240px] focus:border-amber-400 focus:outline-none"
+                                  title="Part Number Cisco (editable, por defecto incluye sufijo -CBN o puedes usar espacio CBN)"
+                                />
+                              </div>
+                            </td>
+                            <td className="p-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleManualBodegaChange(currentBodega === 'E1' ? 'ED' : 'E1')
+                                }
+                                className={`px-2 py-0.5 rounded font-bold text-xs border transition-colors cursor-pointer ${
+                                  currentBodega === 'ED'
+                                    ? 'bg-cyan-950/60 text-cyan-300 border-cyan-700/60 hover:bg-cyan-900/60'
+                                    : 'bg-amber-950/60 text-amber-400 border-amber-700/60 hover:bg-amber-900/60'
+                                }`}
+                                title="Clic para cambiar bodega entre E1 y ED"
+                              >
+                                {currentBodega}
+                              </button>
+                            </td>
+                            <td className="p-2 text-center">{line.qty}</td>
+                            <td className="p-2 text-right text-zinc-300">
+                              {formatCLP(line.unitNetPrice, 2)}
+                            </td>
+                            <td className="p-2 text-right font-bold text-emerald-400">
+                              {formatCLP(line.extendedNetPrice, 2)}
+                            </td>
+                            <td className="p-2 text-center">
+                              <button
+                                onClick={() => handleRemoveActiveLine(originalIndex)}
+                                className="p-1 text-zinc-500 hover:text-rose-400 hover:bg-rose-950/30 rounded transition-colors cursor-pointer"
+                                title="Descartar de la solicitud BO"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+
+                        {/* Fila de Subtotal del Bloque de Línea */}
+                        <tr className="bg-zinc-900/90 font-mono font-bold text-xs border-b-2 border-zinc-800 text-zinc-300">
+                          <td colSpan={3} className="p-2 text-right text-zinc-400 font-sans">
+                            Subtotal Línea {group.motherKey}:
+                          </td>
+                          <td className="p-2 text-center text-zinc-200">{group.subtotalQty}</td>
+                          <td className="p-2 text-right text-zinc-500">—</td>
+                          <td className="p-2 text-right text-emerald-400 font-bold">
+                            ${formatCLP(group.subtotalExtended, 2)}
+                          </td>
+                          <td className="p-2 text-center"></td>
+                        </tr>
+                      </React.Fragment>
+                    ))
                   ) : (
-                    lines.map((line, idx) => (
-                      <tr key={idx} className="hover:bg-zinc-800/40 transition-colors">
+                    // MODO UNIFICADO ESTÁNDAR
+                    displayLinesWithIndex.map(({ line, originalIndex }) => (
+                      <tr
+                        key={originalIndex}
+                        className="hover:bg-zinc-800/40 transition-colors"
+                      >
                         <td className="p-2 text-center">
                           <input
                             type="text"
                             value={line.sku}
                             placeholder="SKU Intcomex"
-                            onChange={(e) => handleSkuChange(idx, e.target.value)}
-                            onBlur={() => handleSkuBlur(idx)}
+                            onChange={(e) => handleSkuChange(originalIndex, e.target.value)}
+                            onBlur={() => handleSkuBlur(originalIndex)}
                             className="bg-zinc-950 border border-zinc-700 rounded px-2 py-1 text-center font-mono text-white text-xs w-32 focus:border-amber-400 focus:outline-none uppercase"
                             title="Código SKU Intcomex (se guarda automáticamente en la nube al salir del campo)"
                           />
                         </td>
                         <td className="p-2 text-center">
-                          <input
-                            type="text"
-                            value={line.partNumber}
-                            onChange={(e) => handlePartNumberChange(idx, e.target.value)}
-                            className="bg-zinc-950 border border-zinc-700/80 rounded px-2 py-1 text-center font-mono font-bold text-zinc-100 text-xs w-full max-w-[240px] focus:border-amber-400 focus:outline-none"
-                            title="Part Number Cisco (editable, por defecto incluye sufijo -CBN o puedes usar espacio CBN)"
-                          />
+                          <div className="flex items-center justify-center gap-1.5">
+                            {line.lineNumber && (
+                              <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono">
+                                {line.lineNumber}
+                              </span>
+                            )}
+                            <input
+                              type="text"
+                              value={line.partNumber}
+                              onChange={(e) =>
+                                handlePartNumberChange(originalIndex, e.target.value)
+                              }
+                              className="bg-zinc-950 border border-zinc-700/80 rounded px-2 py-1 text-center font-mono font-bold text-zinc-100 text-xs w-full max-w-[240px] focus:border-amber-400 focus:outline-none"
+                              title="Part Number Cisco (editable, por defecto incluye sufijo -CBN o puedes usar espacio CBN)"
+                            />
+                          </div>
                         </td>
                         <td className="p-2 text-center">
                           <button
                             type="button"
-                            onClick={() => handleManualBodegaChange(currentBodega === 'E1' ? 'ED' : 'E1')}
+                            onClick={() =>
+                              handleManualBodegaChange(currentBodega === 'E1' ? 'ED' : 'E1')
+                            }
                             className={`px-2 py-0.5 rounded font-bold text-xs border transition-colors cursor-pointer ${
                               currentBodega === 'ED'
                                 ? 'bg-cyan-950/60 text-cyan-300 border-cyan-700/60 hover:bg-cyan-900/60'
@@ -765,7 +1134,7 @@ export const BoRequestModal: React.FC<Props> = ({
                         </td>
                         <td className="p-2 text-center">
                           <button
-                            onClick={() => handleRemoveActiveLine(idx)}
+                            onClick={() => handleRemoveActiveLine(originalIndex)}
                             className="p-1 text-zinc-500 hover:text-rose-400 hover:bg-rose-950/30 rounded transition-colors cursor-pointer"
                             title="Descartar de la solicitud BO"
                           >
@@ -776,14 +1145,20 @@ export const BoRequestModal: React.FC<Props> = ({
                     ))
                   )}
                 </tbody>
-                {lines.length > 0 && (
+                {displayLinesWithIndex.length > 0 && (
                   <tfoot className="bg-zinc-900 font-mono font-bold text-xs border-t border-zinc-800 text-zinc-200">
                     <tr>
-                      <td colSpan={3} className="p-2.5 text-right font-sans">Totales:</td>
-                      <td className="p-2.5 text-center text-white">{totals.totalQty}</td>
+                      <td colSpan={3} className="p-2.5 text-right font-sans">
+                        {selectedLineFilter === 'ALL'
+                          ? viewMode === 'by_line'
+                            ? 'Total General (Todas las Líneas):'
+                            : 'Totales Generales:'
+                          : `Total Línea ${selectedLineFilter}:`}
+                      </td>
+                      <td className="p-2.5 text-center text-white">{displayTotals.totalQty}</td>
                       <td className="p-2.5 text-right text-zinc-400">—</td>
                       <td className="p-2.5 text-right text-emerald-400 text-sm">
-                        ${formatCLP(totals.totalExtended, 2)}
+                        ${formatCLP(displayTotals.totalExtended, 2)}
                       </td>
                       <td className="p-2.5 text-center"></td>
                     </tr>
@@ -1005,7 +1380,13 @@ export const BoRequestModal: React.FC<Props> = ({
                   ? 'bg-emerald-600 text-white shadow-emerald-900/40'
                   : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/40'
               }`}
-              title="Copiar tabla HTML con cabecera gris para pegar directamente en Outlook"
+              title={
+                selectedLineFilter !== 'ALL'
+                  ? `Copiar tabla HTML de Línea ${selectedLineFilter} para pegar en Outlook`
+                  : viewMode === 'by_line'
+                  ? 'Copiar tabla HTML agrupada por líneas con subtotales por OC para pegar en Outlook'
+                  : 'Copiar tabla HTML con cabecera gris para pegar directamente en Outlook'
+              }
             >
               {copied ? (
                 <>
@@ -1015,7 +1396,13 @@ export const BoRequestModal: React.FC<Props> = ({
               ) : (
                 <>
                   <Copy className="w-3.5 h-3.5" />
-                  <span>Copiar Tabla HTML para Outlook</span>
+                  <span>
+                    {selectedLineFilter !== 'ALL'
+                      ? `Copiar Tabla Línea ${selectedLineFilter} para Outlook`
+                      : viewMode === 'by_line'
+                      ? 'Copiar Tabla con Subtotales para Outlook'
+                      : 'Copiar Tabla HTML para Outlook'}
+                  </span>
                 </>
               )}
             </button>

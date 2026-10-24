@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { BoLineItem } from './boTypes';
+import { getMotherLineKey } from '../../core/calculations';
 import {
   copyHtmlAndTextToClipboard,
   ClipboardCopyDetailedResult,
@@ -22,6 +23,11 @@ export const formatCLP = (val: number, decimals: number = 2): string => {
 
 export const formatCL = formatCLP;
 
+export interface BoTableExportOptions {
+  groupByLine?: boolean;
+  selectedLine?: string; // 'ALL' or specific motherLine like '1.0'
+}
+
 /**
  * Obtiene el saludo dinámico según la hora local del sistema:
  * - Antes de las 12:00 hrs -> "Buenos días"
@@ -33,32 +39,120 @@ export function getBoTimeBasedGreeting(date: Date = new Date()): string {
 }
 
 /**
- * Genera la tabla HTML compatible con el portapapeles de Microsoft Outlook,
- * mostrando siempre 2 decimales obligatorios con formato chileno y fila de Total General.
+ * Genera la tabla HTML compatible con el portapapeles de Microsoft Outlook.
+ * Admite tanto vista unificada estándar como agrupación por Línea Madre (con subtotales por OC
+ * y Total General al final).
  */
-export function generateBoHtmlTable(lines: BoLineItem[]): string {
-  const activeLines = lines.filter((l) => !l.isExcludedZeroCost && (l.extendedNetPrice > 0 || l.unitNetPrice > 0));
+export function generateBoHtmlTable(
+  lines: BoLineItem[],
+  options?: BoTableExportOptions
+): string {
+  const isGrouped = Boolean(options?.groupByLine);
+  const selectedLine = options?.selectedLine && options.selectedLine !== 'ALL' ? options.selectedLine : null;
+
+  let activeLines = lines.filter(
+    (l) => !l.isExcludedZeroCost && (l.extendedNetPrice > 0 || l.unitNetPrice > 0)
+  );
+
+  if (selectedLine) {
+    activeLines = activeLines.filter(
+      (l) => (l.motherLine || getMotherLineKey(l.lineNumber)) === selectedLine
+    );
+  }
+
   const greeting = getBoTimeBasedGreeting();
-
-  const rowsHtml = activeLines
-    .map(
-      (line) => `
-    <tr style="text-align: center; font-family: Calibri, sans-serif; font-size: 11pt;">
-      <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.sku || 'N/A'}</td>
-      <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.partNumber}</td>
-      <td style="border: 1px solid #000; padding: 6px; text-align: center; font-weight: bold;">${line.bodega}</td>
-      <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.qty}</td>
-      <td style="border: 1px solid #000; padding: 6px; text-align: right;">${formatCLP(line.unitNetPrice, 2)}</td>
-      <td style="border: 1px solid #000; padding: 6px; text-align: right; font-weight: bold;">${formatCLP(line.extendedNetPrice, 2)}</td>
-    </tr>`
-    )
-    .join('');
-
   const totalVenta = activeLines.reduce((acc, l) => acc + (Number(l.extendedNetPrice) || 0), 0);
+  const totalQty = activeLines.reduce((acc, l) => acc + (Number(l.qty) || 0), 0);
+
+  let rowsHtml = '';
+
+  if (isGrouped && !selectedLine) {
+    // Agrupar ítems por línea madre (ej. 1.0, 2.0...)
+    const groupMap = new Map<string, BoLineItem[]>();
+    for (const line of activeLines) {
+      const motherKey = line.motherLine || getMotherLineKey(line.lineNumber) || '1.0';
+      if (!groupMap.has(motherKey)) {
+        groupMap.set(motherKey, []);
+      }
+      groupMap.get(motherKey)!.push(line);
+    }
+
+    // Ordenar numéricamente por línea madre
+    const sortedKeys = Array.from(groupMap.keys()).sort(
+      (a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0)
+    );
+
+    const groupSections: string[] = [];
+    for (const motherKey of sortedKeys) {
+      const groupItems = groupMap.get(motherKey)!;
+      const groupQty = groupItems.reduce((acc, l) => acc + (Number(l.qty) || 0), 0);
+      const groupSubtotal = groupItems.reduce(
+        (acc, l) => acc + (Number(l.extendedNetPrice) || 0),
+        0
+      );
+
+      // Fila de encabezado de bloque de línea
+      const headerRow = `
+      <tr style="background-color: #e2e8f0; font-family: Calibri, sans-serif; font-size: 11pt; font-weight: bold; color: #1e293b;">
+        <td colspan="6" style="border: 1px solid #000; padding: 6px; text-align: left;">
+          📦 Bloque Línea ${motherKey} (${groupItems.length} ${groupItems.length === 1 ? 'ítem' : 'ítems'})
+        </td>
+      </tr>`;
+
+      // Filas de los ítems del bloque
+      const itemRows = groupItems
+        .map(
+          (line) => `
+      <tr style="text-align: center; font-family: Calibri, sans-serif; font-size: 11pt;">
+        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.sku || 'N/A'}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.partNumber}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center; font-weight: bold;">${line.bodega}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.qty}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: right;">${formatCLP(line.unitNetPrice, 2)}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: right; font-weight: bold;">${formatCLP(line.extendedNetPrice, 2)}</td>
+      </tr>`
+        )
+        .join('');
+
+      // Fila de Subtotal de este bloque de línea
+      const subtotalRow = `
+      <tr style="background-color: #f1f5f9; font-family: Calibri, sans-serif; font-size: 11pt; font-weight: bold; color: #334155;">
+        <td colspan="3" style="border: 1px solid #000; padding: 6px; text-align: right;">Subtotal Línea ${motherKey}:</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${groupQty}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: right;">—</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: right; color: #059669;">$${formatCLP(groupSubtotal, 2)}</td>
+      </tr>`;
+
+      groupSections.push(headerRow + itemRows + subtotalRow);
+    }
+
+    rowsHtml = groupSections.join('');
+  } else {
+    // Vista unificada estándar (o línea única filtrada)
+    rowsHtml = activeLines
+      .map(
+        (line) => `
+      <tr style="text-align: center; font-family: Calibri, sans-serif; font-size: 11pt;">
+        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.sku || 'N/A'}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.partNumber}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center; font-weight: bold;">${line.bodega}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.qty}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: right;">${formatCLP(line.unitNetPrice, 2)}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: right; font-weight: bold;">${formatCLP(line.extendedNetPrice, 2)}</td>
+      </tr>`
+      )
+      .join('');
+  }
+
+  const grandTotalLabel = selectedLine
+    ? `Total Línea ${selectedLine}:`
+    : isGrouped
+    ? `Total General (Todas las Líneas):`
+    : `Total General:`;
 
   return `
   <p style="font-family: Calibri, sans-serif; font-size: 11pt;">Estimado,</p>
-  <p style="font-family: Calibri, sans-serif; font-size: 11pt;">${greeting}, por favor crear BO.</p>
+  <p style="font-family: Calibri, sans-serif; font-size: 11pt;">${greeting}, por favor crear BO${selectedLine ? ` para Línea ${selectedLine}` : ''}.</p>
   <table style="border-collapse: collapse; width: 100%; max-width: 850px; font-family: Calibri, sans-serif; font-size: 11pt; border: 1px solid #000;">
     <thead>
       <tr style="background-color: #808080; color: #000; font-weight: bold; text-align: center;">
@@ -72,9 +166,11 @@ export function generateBoHtmlTable(lines: BoLineItem[]): string {
     </thead>
     <tbody>
       ${rowsHtml}
-      <tr style="font-family: Calibri, sans-serif; font-size: 11pt; font-weight: bold; background-color: #f2f2f2;">
-        <td colspan="4" style="border: 1px solid #000; padding: 6px; text-align: right;">Total General:</td>
-        <td colspan="2" style="border: 1px solid #000; padding: 6px; text-align: right;">$${formatCLP(totalVenta, 2)} USD</td>
+      <tr style="font-family: Calibri, sans-serif; font-size: 11pt; font-weight: bold; background-color: #f2f2f2; border-top: 2px solid #000;">
+        <td colspan="3" style="border: 1px solid #000; padding: 6px; text-align: right;">${grandTotalLabel}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${totalQty}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: right;">—</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: right; color: #047857;">$${formatCLP(totalVenta, 2)} USD</td>
       </tr>
     </tbody>
   </table>
@@ -85,33 +181,100 @@ export function generateBoHtmlTable(lines: BoLineItem[]): string {
 /**
  * Genera el texto plano tabulado de la tabla BO como fallback.
  */
-export function generateBoPlainTextTable(lines: BoLineItem[]): string {
-  const activeLines = lines.filter((l) => !l.isExcludedZeroCost && (l.extendedNetPrice > 0 || l.unitNetPrice > 0));
+export function generateBoPlainTextTable(
+  lines: BoLineItem[],
+  options?: BoTableExportOptions
+): string {
+  const isGrouped = Boolean(options?.groupByLine);
+  const selectedLine = options?.selectedLine && options.selectedLine !== 'ALL' ? options.selectedLine : null;
+
+  let activeLines = lines.filter(
+    (l) => !l.isExcludedZeroCost && (l.extendedNetPrice > 0 || l.unitNetPrice > 0)
+  );
+
+  if (selectedLine) {
+    activeLines = activeLines.filter(
+      (l) => (l.motherLine || getMotherLineKey(l.lineNumber)) === selectedLine
+    );
+  }
+
   const greeting = getBoTimeBasedGreeting();
   const totalVenta = activeLines.reduce((acc, l) => acc + (Number(l.extendedNetPrice) || 0), 0);
-  const rowsText = activeLines
-    .map(
-      (l) =>
-        `${l.sku || 'N/A'}\t${l.partNumber}\t${l.bodega}\t${l.qty}\t${formatCLP(l.unitNetPrice, 2)}\t${formatCLP(l.extendedNetPrice, 2)}`
-    )
-    .join('\n');
+  const totalQty = activeLines.reduce((acc, l) => acc + (Number(l.qty) || 0), 0);
 
-  return `Estimado,\n${greeting}, por favor crear BO.\n\nSKU\tPart Number\tBodega\tQty\tUnit Net Price\tExtended Net Price\n${rowsText}\nTotal General:\t$${formatCLP(totalVenta, 2)} USD`;
+  let rowsText = '';
+
+  if (isGrouped && !selectedLine) {
+    const groupMap = new Map<string, BoLineItem[]>();
+    for (const line of activeLines) {
+      const motherKey = line.motherLine || getMotherLineKey(line.lineNumber) || '1.0';
+      if (!groupMap.has(motherKey)) {
+        groupMap.set(motherKey, []);
+      }
+      groupMap.get(motherKey)!.push(line);
+    }
+
+    const sortedKeys = Array.from(groupMap.keys()).sort(
+      (a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0)
+    );
+
+    const sections: string[] = [];
+    for (const motherKey of sortedKeys) {
+      const groupItems = groupMap.get(motherKey)!;
+      const groupQty = groupItems.reduce((acc, l) => acc + (Number(l.qty) || 0), 0);
+      const groupSubtotal = groupItems.reduce(
+        (acc, l) => acc + (Number(l.extendedNetPrice) || 0),
+        0
+      );
+      const itemsText = groupItems
+        .map(
+          (l) =>
+            `${l.sku || 'N/A'}\t${l.partNumber}\t${l.bodega}\t${l.qty}\t${formatCLP(l.unitNetPrice, 2)}\t${formatCLP(l.extendedNetPrice, 2)}`
+        )
+        .join('\n');
+      sections.push(
+        `--- Bloque Línea ${motherKey} (${groupItems.length} ítems) ---\n${itemsText}\nSubtotal Línea ${motherKey}:\t\t\t${groupQty}\t—\t$${formatCLP(groupSubtotal, 2)} USD`
+      );
+    }
+    rowsText = sections.join('\n\n');
+  } else {
+    rowsText = activeLines
+      .map(
+        (l) =>
+          `${l.sku || 'N/A'}\t${l.partNumber}\t${l.bodega}\t${l.qty}\t${formatCLP(l.unitNetPrice, 2)}\t${formatCLP(l.extendedNetPrice, 2)}`
+      )
+      .join('\n');
+  }
+
+  const grandTotalLabel = selectedLine
+    ? `Total Línea ${selectedLine}:`
+    : isGrouped
+    ? `Total General (Todas las Líneas):`
+    : `Total General:`;
+
+  return `Estimado,\n${greeting}, por favor crear BO${selectedLine ? ` para Línea ${selectedLine}` : ''}.\n\nSKU\tPart Number\tBodega\tQty\tUnit Net Price\tExtended Net Price\n${rowsText}\n\n${grandTotalLabel}\t\t\t${totalQty}\t—\t$${formatCLP(totalVenta, 2)} USD`;
 }
 
 /**
  * Copia la tabla BO al portapapeles devolviendo el modo ('rich' | 'plain' | 'none').
  */
-export async function copyBoTableWithDetail(lines: BoLineItem[]): Promise<ClipboardCopyDetailedResult> {
-  const htmlContent = generateBoHtmlTable(lines);
-  const plainText = generateBoPlainTextTable(lines);
+export async function copyBoTableWithDetail(
+  lines: BoLineItem[],
+  options?: BoTableExportOptions
+): Promise<ClipboardCopyDetailedResult> {
+  const htmlContent = generateBoHtmlTable(lines, options);
+  const plainText = generateBoPlainTextTable(lines, options);
   return copyHtmlAndTextToClipboard(htmlContent, plainText);
 }
 
 /**
  * Copia el HTML con formato directamente al portapapeles para pegar en Outlook (con fallback a texto plano).
  */
-export async function copyBoTableToClipboard(lines: BoLineItem[]): Promise<boolean> {
-  const res = await copyBoTableWithDetail(lines);
+export async function copyBoTableToClipboard(
+  lines: BoLineItem[],
+  options?: BoTableExportOptions
+): Promise<boolean> {
+  const res = await copyBoTableWithDetail(lines, options);
   return res.success;
 }
+

@@ -1,0 +1,198 @@
+// ============================================================================
+// CISCO AUTOMATED v2.4.4 - BO SEPARACIÓN POR LÍNEA Y SUB TOTALES TEST SUITE
+// Valida la agrupación por número de línea madre (ej. 1.0, 2.0),
+// cálculo de subtotales por línea, y total general para deals divididos en múltiples OC.
+// ============================================================================
+
+import assert from 'node:assert';
+import { prepareBoLinesFromCalculated, partitionBoLinesByCost } from '../src/modules/bo/boTypes';
+import { generateBoHtmlTable, generateBoPlainTextTable, formatCLP } from '../src/modules/bo/boEmailHelper';
+import { EstimateLineItem } from '../src/core/types';
+
+console.log('🧪 INICIANDO SUITE DE PRUEBAS DE AGRUPACIÓN Y SUB TOTALES BO (v2.4.4)...\n');
+
+// 1. Simulación de ítems de cotización con 2 líneas madre (1.0 y 2.0)
+const mockEstimateItems: EstimateLineItem[] = [
+  {
+    rowIdx: 14,
+    lineNumber: '1.0',
+    partNumber: 'C9300-48P-A',
+    smartAccountMandatory: 'No',
+    description: 'Catalyst 9300 48-port PoE+',
+    serviceDurationMonths: '',
+    originalLeadTimeDays: 14,
+    transformedLeadTime: '14 días',
+    unitListPrice: 10000,
+    pricingTerm: '1',
+    qty: 2,
+    netCiscoUnit: 5000,
+    discPct: 50,
+    realUnitCost: 5000,
+    isIntangible: false,
+    llevaArancel: false,
+    costoInternacion: 0,
+    costoArancel: 0,
+    costoTotalUnitario: 5000,
+    precioVentaUnitario: 5500,
+    precioVentaExtendido: 11000,
+  },
+  {
+    rowIdx: 15,
+    lineNumber: '1.1',
+    partNumber: 'PWR-C1-715WAC-P',
+    smartAccountMandatory: 'No',
+    description: '715W AC 80+ Platinum Power Supply',
+    serviceDurationMonths: '',
+    originalLeadTimeDays: 7,
+    transformedLeadTime: '7 días',
+    unitListPrice: 1200,
+    pricingTerm: '1',
+    qty: 2,
+    netCiscoUnit: 600,
+    discPct: 50,
+    realUnitCost: 600,
+    isIntangible: false,
+    llevaArancel: false,
+    costoInternacion: 0,
+    costoArancel: 0,
+    costoTotalUnitario: 600,
+    precioVentaUnitario: 660,
+    precioVentaExtendido: 1320,
+  },
+  {
+    rowIdx: 16,
+    lineNumber: '2.0',
+    partNumber: 'C9200L-24P-4G-E',
+    smartAccountMandatory: 'No',
+    description: 'Catalyst 9200L 24-port PoE+',
+    serviceDurationMonths: '',
+    originalLeadTimeDays: 14,
+    transformedLeadTime: '14 días',
+    unitListPrice: 2500,
+    pricingTerm: '1',
+    qty: 1,
+    netCiscoUnit: 1250,
+    discPct: 50,
+    realUnitCost: 1250,
+    isIntangible: false,
+    llevaArancel: false,
+    costoInternacion: 0,
+    costoArancel: 0,
+    costoTotalUnitario: 1250,
+    precioVentaUnitario: 1400,
+    precioVentaExtendido: 1400,
+  },
+  {
+    rowIdx: 17,
+    lineNumber: '2.1',
+    partNumber: 'CAB-TA-NA',
+    smartAccountMandatory: 'No',
+    description: 'North America AC Type A Power Cable',
+    serviceDurationMonths: '',
+    originalLeadTimeDays: 0,
+    transformedLeadTime: '0 días',
+    unitListPrice: 0,
+    pricingTerm: '1',
+    qty: 1,
+    netCiscoUnit: 0,
+    discPct: 0,
+    realUnitCost: 0,
+    isIntangible: false,
+    llevaArancel: false,
+    costoInternacion: 0,
+    costoArancel: 0,
+    costoTotalUnitario: 0,
+    precioVentaUnitario: 0,
+    precioVentaExtendido: 0,
+  },
+];
+
+// --- Test 1: prepareBoLinesFromCalculated asigna motherLine y maneja descartados de $0 ---
+console.log('--- 1. Prueba de Mapeo de Líneas y Detección de Mother Line ---');
+const rawConverted = mockEstimateItems.map((item) => ({
+  partNumber: item.partNumber,
+  qty: item.qty,
+  unitSalePrice: item.precioVentaUnitario,
+  extendedSalePrice: item.precioVentaExtendido,
+  isIntangible: item.isIntangible,
+  lineNumber: item.lineNumber,
+}));
+
+const { lines } = prepareBoLinesFromCalculated(rawConverted);
+const { activeLines, zeroCostLines } = partitionBoLinesByCost(lines);
+
+console.log(`Líneas activas (precio > 0): ${activeLines.length}`);
+console.log(`Líneas descartadas (precio = 0): ${zeroCostLines.length}`);
+
+assert.strictEqual(activeLines.length, 3, 'Debe haber 3 líneas activas');
+assert.strictEqual(zeroCostLines.length, 1, 'CAB-TA-NA ($0) debe estar en descartadas');
+
+// Verificar asignación de motherLine
+const line1_0 = activeLines.find((l) => l.partNumber === 'C9300-48P-A-CBN');
+const line1_1 = activeLines.find((l) => l.partNumber === 'PWR-C1-715WAC-P-CBN');
+const line2_0 = activeLines.find((l) => l.partNumber === 'C9200L-24P-4G-E-CBN');
+
+assert.ok(line1_0, 'Línea 1.0 debe existir');
+assert.strictEqual(line1_0?.motherLine, '1.0', 'Motherline de 1.0 debe ser 1.0');
+assert.strictEqual(line1_1?.motherLine, '1.0', 'Motherline de 1.1 debe ser 1.0');
+assert.strictEqual(line2_0?.motherLine, '2.0', 'Motherline de 2.0 debe ser 2.0');
+console.log('✅ Asignación de motherLine (1.0, 2.0) y sufijo -CBN validados con éxito.');
+
+// --- Test 2: generateBoHtmlTable en modo Unificado (Tradicional) ---
+console.log('\n--- 2. Prueba de Generación HTML en Modo Unificado ---');
+const htmlUnified = generateBoHtmlTable(activeLines, {
+  groupByLine: false,
+});
+
+assert.ok(htmlUnified.includes('C9300-48P-A-CBN'), 'Debe incluir ítem C9300');
+assert.ok(htmlUnified.includes('PWR-C1-715WAC-P-CBN'), 'Debe incluir ítem PWR');
+assert.ok(htmlUnified.includes('C9200L-24P-4G-E-CBN'), 'Debe incluir ítem C9200L');
+assert.ok(htmlUnified.includes('Total General'), 'Debe incluir Total General');
+assert.ok(!htmlUnified.includes('Subtotal Línea 1.0'), 'Modo unificado no debe tener subtotales por línea');
+console.log('✅ Modo unificado genera tabla estándar con Total General.');
+
+// --- Test 3: generateBoHtmlTable en Modo Separar por Líneas (Agrupado con Subtotales) ---
+console.log('\n--- 3. Prueba de Generación HTML con Agrupación por Línea y Subtotales ---');
+const htmlGrouped = generateBoHtmlTable(activeLines, {
+  groupByLine: true,
+});
+
+// Verificaciones de agrupación
+assert.ok(htmlGrouped.includes('Bloque Línea 1.0'), 'Debe incluir cabecera de grupo Bloque Línea 1.0');
+assert.ok(htmlGrouped.includes('Bloque Línea 2.0'), 'Debe incluir cabecera de grupo Bloque Línea 2.0');
+assert.ok(htmlGrouped.includes('Subtotal Línea 1.0'), 'Debe incluir fila de Subtotal Línea 1.0');
+assert.ok(htmlGrouped.includes('Subtotal Línea 2.0'), 'Debe incluir fila de Subtotal Línea 2.0');
+assert.ok(htmlGrouped.includes('Total General'), 'Debe incluir Total General al final');
+
+// Subtotal 1.0 = 11000 + 1320 = 12320.00
+// Subtotal 2.0 = 1400.00
+// Total General = 13720.00
+assert.ok(htmlGrouped.includes(formatCLP(12320, 2)), 'Subtotal Línea 1.0 debe ser 12.320,00');
+assert.ok(htmlGrouped.includes(formatCLP(1400, 2)), 'Subtotal Línea 2.0 debe ser 1.400,00');
+assert.ok(htmlGrouped.includes(formatCLP(13720, 2)), 'Total General debe ser 13.720,00');
+console.log('✅ Agrupación HTML genera cabeceras de línea, subtotales exactos (12.320,00 y 1.400,00) y total general (13.720,00).');
+
+// --- Test 4: Filtrado para una sola OC (selectedLine: '1.0') ---
+console.log('\n--- 4. Prueba de Filtrado por Línea para OC Individual (selectedLine: "1.0") ---');
+const htmlLine1Only = generateBoHtmlTable(activeLines, {
+  groupByLine: true,
+  selectedLine: '1.0',
+});
+
+assert.ok(htmlLine1Only.includes('C9300-48P-A-CBN'), 'Debe incluir C9300 de Línea 1');
+assert.ok(htmlLine1Only.includes('PWR-C1-715WAC-P-CBN'), 'Debe incluir PWR de Línea 1');
+assert.ok(!htmlLine1Only.includes('C9200L-24P-4G-E-CBN'), 'NO debe incluir ítem de Línea 2.0');
+assert.ok(htmlLine1Only.includes('Total Línea 1.0') || htmlLine1Only.includes(formatCLP(12320, 2)), 'Debe reflejar total de Línea 1.0');
+console.log('✅ Filtrado por línea individual aísla perfectamente los ítems de la OC seleccionada.');
+
+// --- Test 5: Plain Text Table con Subtotales ---
+console.log('\n--- 5. Prueba de Texto Plano con Subtotales ---');
+const textGrouped = generateBoPlainTextTable(activeLines, { groupByLine: true });
+assert.ok(textGrouped.includes('Bloque Línea 1.0'), 'Debe incluir separador de LÍNEA 1.0');
+assert.ok(textGrouped.includes(`Subtotal Línea 1.0:\t\t\t4\t—\t$${formatCLP(12320, 2)} USD`), 'Debe incluir subtotal texto de Línea 1.0');
+assert.ok(textGrouped.includes('Bloque Línea 2.0'), 'Debe incluir separador de LÍNEA 2.0');
+assert.ok(textGrouped.includes(`Subtotal Línea 2.0:\t\t\t1\t—\t$${formatCLP(1400, 2)} USD`), 'Debe incluir subtotal texto de Línea 2.0');
+assert.ok(textGrouped.includes(`Total General (Todas las Líneas):\t\t\t5\t—\t$${formatCLP(13720, 2)} USD`), 'Debe incluir total general texto de 13.720,00');
+console.log('✅ Texto plano con subtotales validado al 100%.');
+
+console.log('\n🎉 ¡TODAS LAS PRUEBAS DE AGRUPACIÓN POR LÍNEA Y SUB TOTALES BO PASARON CON ÉXITO AL 100%!');

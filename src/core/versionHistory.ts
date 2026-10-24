@@ -15,11 +15,26 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.4.4',
+    date: '2026-10-23',
+    commit: 'feat-bo-line-grouping',
+    title: 'Separación por Líneas Madre, Subtotales por OC y Copiado Selectivo en Módulo BO',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Nueva modalidad de visualización interactiva en el modal de solicitud de Back Order (BO): switch entre [Vista Unificada] y [Separar por Líneas (Subtotales por OC)].',
+      'Agrupación automática de ítems por línea madre (ej. 1.0, 2.0) con subtotales individuales de cantidad y precio extendido para deals divididos en múltiples órdenes de compra por el Partner.',
+      'Selector dinámico y pestañas de filtrado por línea específica con 1 clic para exportar o enviar por correo solo la orden seleccionada (ej. OC #1 para Línea 1.0 u OC #2 para Línea 2.0).',
+      'Botón de copiado rápido individual por bloque de línea con formato HTML enriquecido directo a Microsoft Outlook y tabla resumen con Total General consolidado.',
+      'Preservación íntegra de reglas comerciales y técnicas del módulo BO: sufijos -CBN, edición de SKU, bodega E1/ED por split de hardware/servicios y gaveta de descartados de costo cero.',
+    ],
+  },
+  {
     version: '2.4.3',
     date: '2026-10-23',
     commit: 'fix-custom-params-filename',
     title: 'Resolución Dinámica de Parámetros Custom en Nomenclatura de Descarga',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Corrección del tag comercial en el nombre del archivo al descargar: en modo custom o con líneas personalizadas refleja exactamente las tasas efectivas aplicadas (ej. _I23M6_) en lugar de los defaults CCW estándar (_I7M5_).',

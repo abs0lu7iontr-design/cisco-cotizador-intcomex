@@ -1,7 +1,7 @@
-# Cisco Automated v2.4.3 (Enterprise Suite)
+# Cisco Automated v2.4.4 (Enterprise Suite)
 ### Intcomex Chile | Plataforma Corporativa Híbrida Web Standalone, Cloud CDN & Desktop Portable con IA
 
-[![Versión](https://img.shields.io/badge/Versi%C3%B3n-2.4.3%20Enterprise-blue.svg)](https://develop.cisco-automated.pages.dev)
+[![Versión](https://img.shields.io/badge/Versi%C3%B3n-2.4.4%20Enterprise-blue.svg)](https://develop.cisco-automated.pages.dev)
 [![Changelog](https://img.shields.io/badge/Changelog-Keep%20a%20Changelog-orange.svg)](CHANGELOG.md)
 [![React 19](https://img.shields.io/badge/React-19.0.1-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.2-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -18,7 +18,7 @@
 
 ## 🌟 Descripción General
 
-**Cisco Automated v2.4.3** es la suite integral de software corporativo de alta disponibilidad diseñada y construida para **Intcomex Chile**, el distribuidor mayorista oficial de tecnología líder en la región. 
+**Cisco Automated v2.4.4** es la suite integral de software corporativo de alta disponibilidad diseñada y construida para **Intcomex Chile**, el distribuidor mayorista oficial de tecnología líder en la región. 
 
 La plataforma automatiza de extremo a extremo todo el ciclo de ingeniería de preventa, cotizaciones oficiales de Cisco Commerce Workspace (CCW), optimización de margen sobre ventas, homologación de órdenes DSV, verificación de promociones Fast Track, diseño de arquitecturas con Inteligencia Artificial, logística de importación y Back Order (BO), y mesa de ayuda técnica con triaje predictivo.
 

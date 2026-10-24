@@ -2,7 +2,7 @@
 // CISCO AUTOMATED v2.1 - BACK ORDER (BO) REQUEST MODULE: TYPES & WAREHOUSE LOGIC
 // ============================================================================
 
-import { checkIsIntangible } from '../../core/calculations';
+import { checkIsIntangible, getMotherLineKey } from '../../core/calculations';
 
 export interface BoLineItem {
   id?: string;
@@ -15,6 +15,8 @@ export interface BoLineItem {
   isHardware: boolean;
   isServiceOrLicense?: boolean;
   isExcludedZeroCost?: boolean;
+  lineNumber?: string;       // Número de línea CCW (ej. "1.0", "1.1", "2.0")
+  motherLine?: string;       // Clave de línea madre CCW (ej. "1.0", "2.0")
 }
 
 export interface BoEstimateData {
@@ -156,6 +158,8 @@ export function resolveWarehouseForLines(
     isIntangible?: boolean;
     isHardware?: boolean;
     initialTermMonths?: number;
+    lineNumber?: string;
+    motherLine?: string;
   }>,
   skuCatalogLookup?: (pn: string) => string
 ): BoLineItem[] {
@@ -175,13 +179,15 @@ export function resolveWarehouseForLines(
 
     const resolvedSku =
       line.sku ||
-      (skuCatalogLookup
+      (typeof skuCatalogLookup === 'function'
         ? skuCatalogLookup(boPn) ||
           skuCatalogLookup(rawPn) ||
           skuCatalogLookup(normalizeBasePartNumber(rawPn))
         : '');
 
     const isExcludedZeroCost = finalUnitPrice === 0 && finalExtendedPrice === 0;
+    const resolvedLineNumber = line.lineNumber || '';
+    const resolvedMotherLine = line.motherLine || (line.lineNumber ? getMotherLineKey(line.lineNumber) : '1.0');
 
     return {
       sku: resolvedSku,
@@ -192,6 +198,8 @@ export function resolveWarehouseForLines(
       isHardware: isLineHw,
       isServiceOrLicense,
       isExcludedZeroCost,
+      lineNumber: resolvedLineNumber,
+      motherLine: resolvedMotherLine,
     };
   });
 
@@ -222,6 +230,8 @@ export function prepareBoLinesFromCalculated(
     extendedNetPrice?: number;
     isIntangible?: boolean;
     isHardware?: boolean;
+    lineNumber?: string;
+    motherLine?: string;
   }>,
   skuCatalogLookup?: (pn: string) => string
 ): { lines: BoLineItem[]; assignedBodega: 'E1' | 'ED' } {

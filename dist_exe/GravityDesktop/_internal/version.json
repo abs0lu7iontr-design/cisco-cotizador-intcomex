@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.4.3",
-  "git_commit": "615ad21",
+  "version": "2.4.4",
+  "git_commit": "1446c69",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-23T19:07:23.310Z",
-  "release_notes": "chore: update dependencies and optimize build pipeline",
+  "build_timestamp": "2026-10-23T23:58:50.317Z",
+  "release_notes": "fix(export): resolve effective custom rates in quotation download filename (v2.4.3)",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

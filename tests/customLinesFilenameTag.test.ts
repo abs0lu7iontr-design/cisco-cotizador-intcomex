@@ -7,7 +7,7 @@
 import assert from 'node:assert';
 import { generateQuotationFileName, resolveEffectiveQuoteRates } from '../src/core/exportUtils';
 import { recalculateEstimateResult } from '../src/core/calculations';
-import { QuoteParameters, ProcessedEstimateResult, EstimateItem } from '../src/core/types';
+import { QuoteParameters, ProcessedEstimateResult, EstimateLineItem } from '../src/core/types';
 
 console.log('🧪 INICIANDO SUITE DE PRUEBAS DE NOMENCLATURA CON PARÁMETROS CUSTOM (v2.4.3)...\n');
 
@@ -84,14 +84,19 @@ console.log('✅ Modo standard preserva _I7M5_ de manera impecable.');
 // ----------------------------------------------------------------------------
 console.log('\n--- 3. Prueba de recalculateEstimateResult con Líneas Custom ---');
 
-const mockItems: EstimateItem[] = [
+const mockItems: EstimateLineItem[] = [
   {
     rowIdx: 14,
     lineNumber: '1.0',
     partNumber: 'C9300-48P-A',
+    smartAccountMandatory: 'No',
     description: 'Catalyst 9300 48-port PoE+',
-    qty: 2,
+    serviceDurationMonths: '',
+    originalLeadTimeDays: 14,
+    transformedLeadTime: '14 días',
     unitListPrice: 10000,
+    pricingTerm: '1',
+    qty: 2,
     netCiscoUnit: 5000,
     discPct: 50,
     realUnitCost: 5000,
@@ -124,6 +129,8 @@ const mockResult: ProcessedEstimateResult = {
   calculatedProductTotal: 10000,
   serviceTotal: 0,
   subscriptionTotal: 0,
+  finalTotalPrice: 10000,
+  headerRowIndex: 13,
 };
 
 const recalculated = recalculateEstimateResult(mockResult, customParams);
@@ -148,14 +155,19 @@ const licensingParams: QuoteParameters = {
   },
 };
 
-const mockLicensingItems: EstimateItem[] = [
+const mockLicensingItems: EstimateLineItem[] = [
   {
     rowIdx: 14,
     lineNumber: '1.0',
     partNumber: 'DNA-C-A-3Y',
+    smartAccountMandatory: 'No',
     description: 'Cisco DNA Advantage 3 Year Term License',
-    qty: 1,
+    serviceDurationMonths: '36',
+    originalLeadTimeDays: 0,
+    transformedLeadTime: '0 días',
     unitListPrice: 3000,
+    pricingTerm: '36',
+    qty: 1,
     netCiscoUnit: 1500,
     discPct: 50,
     realUnitCost: 1500,
@@ -188,6 +200,8 @@ const mockLicensingResult: ProcessedEstimateResult = {
   calculatedProductTotal: 1630.43,
   serviceTotal: 0,
   subscriptionTotal: 0,
+  finalTotalPrice: 1630.43,
+  headerRowIndex: 13,
 };
 
 const recalculatedLic = recalculateEstimateResult(mockLicensingResult, licensingParams);

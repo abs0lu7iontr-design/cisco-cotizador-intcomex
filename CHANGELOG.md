@@ -6,6 +6,17 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.4.4] - 2026-10-23
+### 🌟 Agregado (Separación por Líneas y Subtotales por OC en Módulo BO)
+- **Modalidad Dual de Visualización:** Switch interactivo en `BoRequestModal` entre `[📋 Vista Unificada]` (tabla estándar) y `[📑 Separar por Líneas (Subtotales por OC)]`.
+- **Agrupación Automática por Línea Madre:** Agrupación visual e interactiva por cada línea principal de la cotización (`1.0`, `2.0`, etc.) calculando subtotales dedicados de cantidad y precio de venta extendido ($ USD), culminando en el Total General consolidado.
+- **Pestañas de Filtrado Selectivo:** Barra de filtros interactiva con botones estilo píldora (`[Todas las Líneas]`, `[Línea 1.0 (OC #1)]`, `[Línea 2.0 (OC #2)]`...) para visualizar y procesar compras de manera aislada cuando los Partners dividen un deal en órdenes de compra separadas.
+- **Botón de Copiado Rápido por Línea:** Acceso directo `[Copiar Línea {motherKey}]` en la cabecera de cada bloque para copiar al portapapeles en formato HTML enriquecido solo los ítems y subtotal de la línea seleccionada.
+- **Compatibilidad Total de Portapapeles (Outlook):** Funciones `generateBoHtmlTable` y `generateBoPlainTextTable` ampliadas con soporte de opciones de agrupación (`groupByLine`) y filtro de línea (`selectedLine`) para correos electrónicos con subtotales estructurados o cotizaciones parciales.
+- **Preservación Rigurosa de Reglas del Módulo BO:** Mantiene intacto el sufijo `-CBN` en part numbers editables, el autocompletado y sincronización de SKUs desde el catálogo Firestore/localStorage, la separación inteligente de bodegas E1/ED y la gaveta lateral de ítems descartados con costo $0 USD.
+
+---
+
 ## [v2.4.3] - 2026-10-23
 ### 🐛 Reparado (Nomenclatura Dinámica en Descarga con Parámetros Custom)
 - **Corrección de Tag Comercial en Nombre de Archivo (`_I{int}M{margen}_`):** Al descargar una cotización con parámetros personalizados por línea (`custom_lines` o `lineCustomParams`), el generador corporativo de nombres de archivo calcula y estampa exactamente las tasas efectivas aplicadas (ej. `_I23M6_`) en lugar de recaer en los valores por defecto CCW (`_I7M5_`).

@@ -20,6 +20,7 @@ import { QuickCalculator } from './components/QuickCalculator';
 import { RulesExplanationModal } from './components/RulesExplanationModal';
 import { DownloadModal } from './components/DownloadModal';
 import { isPureLicensingQuote } from './core/exportUtils';
+import { getMotherLineKey } from './core/calculations';
 import { openDesktopFileDialog } from './core/desktopBridge';
 import { PriorAuditDetectedModal } from './components/PriorAuditDetectedModal';
 import {
@@ -222,6 +223,8 @@ function AppContent() {
         extendedSalePrice: it.precioVentaExtendido,
         isIntangible: it.isIntangible,
         isHardware: !it.isIntangible,
+        lineNumber: it.lineNumber,
+        motherLine: it.inheritedFromMotherLine || (it.lineNumber ? getMotherLineKey(it.lineNumber) : '1.0'),
       })),
       (pn) => findSkuInCatalog(pn, localCatalog)
     );
