@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
   "version": "2.4.6",
-  "git_commit": "fb6406a",
+  "git_commit": "e68cccb",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-24T18:57:53.697Z",
-  "release_notes": "feat(bo): add repeated headers on line 2.0+, plural greeting and partner PO per line (v2.4.5)",
+  "build_timestamp": "2026-10-24T19:37:17.492Z",
+  "release_notes": "feat(export): add line grouping, executive summary, partner email, pdf and clp reference (v2.4.6)",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

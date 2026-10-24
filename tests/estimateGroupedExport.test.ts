@@ -15,14 +15,23 @@ import { EstimateLineItem, ProcessedEstimateResult, QuoteParameters } from '../s
 // Mock items: Línea 1.0 (Hardware switch + power cord) & Línea 2.0 (DNA Cloud License + Info Row)
 const mockItems: EstimateLineItem[] = [
   {
+    rowIdx: 14,
     lineNumber: '1.0',
     partNumber: 'C9200L-24P-4G-E',
+    smartAccountMandatory: 'No',
     description: 'Catalyst 9200L 24-port PoE+ 4x1G uplink',
     serviceDurationMonths: '0',
     unitListPrice: 3200,
+    pricingTerm: '1',
+    netCiscoUnit: 1280,
     unitNetPriceCcw: 1280,
     discPct: 60,
     qty: 2,
+    isIntangible: false,
+    llevaArancel: false,
+    costoInternacion: 0,
+    costoArancel: 0,
+    costoTotalUnitario: 1280,
     precioVentaUnitario: 1450.50,
     precioVentaExtendido: 2901.00,
     originalLeadTimeDays: 14,
@@ -30,14 +39,23 @@ const mockItems: EstimateLineItem[] = [
     isInfoRow: false,
   },
   {
+    rowIdx: 15,
     lineNumber: '1.1',
     partNumber: 'PWR-C5-1KWAC',
+    smartAccountMandatory: 'No',
     description: '1KW AC Config 5 Power Supply',
     serviceDurationMonths: '0',
     unitListPrice: 450,
+    pricingTerm: '1',
+    netCiscoUnit: 180,
     unitNetPriceCcw: 180,
     discPct: 60,
     qty: 2,
+    isIntangible: false,
+    llevaArancel: false,
+    costoInternacion: 0,
+    costoArancel: 0,
+    costoTotalUnitario: 180,
     precioVentaUnitario: 204.00,
     precioVentaExtendido: 408.00,
     originalLeadTimeDays: 7,
@@ -45,14 +63,23 @@ const mockItems: EstimateLineItem[] = [
     isInfoRow: false,
   },
   {
+    rowIdx: 16,
     lineNumber: '2.0',
     partNumber: 'C9200L-DNA-E-24-3Y',
+    smartAccountMandatory: 'Yes',
     description: 'C9200L Cisco DNA Essentials 24-port, 3 Year Term',
     serviceDurationMonths: '36',
     unitListPrice: 900,
+    pricingTerm: '36',
+    netCiscoUnit: 450,
     unitNetPriceCcw: 450,
     discPct: 50,
     qty: 2,
+    isIntangible: true,
+    llevaArancel: false,
+    costoInternacion: 0,
+    costoArancel: 0,
+    costoTotalUnitario: 450,
     precioVentaUnitario: 510.00,
     precioVentaExtendido: 1020.00,
     originalLeadTimeDays: 1,
@@ -61,14 +88,23 @@ const mockItems: EstimateLineItem[] = [
     isPeriodicSubscription: true,
   },
   {
+    rowIdx: 17,
     lineNumber: '',
     partNumber: '',
+    smartAccountMandatory: '',
     description: 'Initial Term: 36.00 Months | Auto Renewal Term: 0 Months | Billing Model: Prepaid',
     serviceDurationMonths: '0',
     unitListPrice: 0,
+    pricingTerm: '',
+    netCiscoUnit: 0,
     unitNetPriceCcw: 0,
     discPct: 0,
     qty: 0,
+    isIntangible: false,
+    llevaArancel: false,
+    costoInternacion: 0,
+    costoArancel: 0,
+    costoTotalUnitario: 0,
     precioVentaUnitario: 0,
     precioVentaExtendido: 0,
     originalLeadTimeDays: 0,
@@ -155,8 +191,11 @@ async function runTests() {
   if (!emailDraft.bodyText.includes('Validación Técnica y Responsabilidad')) throw new Error('Missing technical validation clause');
   if (!emailDraft.bodyText.includes('950 CLP/USD')) throw new Error('Missing CLP rate');
   if (!emailDraft.bodyHtml.includes('🔧 Equipamiento Hardware')) throw new Error('HTML missing Hardware row');
-  if (!emailDraft.bodyHtml.includes('☁️ Licenciamiento / Cloud')) throw new Error('HTML missing Cloud row');
-  console.log('✓ TEST 3 PASSED: Partner email draft contains professional greetings, clauses, and CLP.');
+  if (!emailDraft.bodyHtml.includes('☁️ Licenciamiento / Software Cloud')) throw new Error('HTML missing Cloud row');
+  if (emailDraft.bodyHtml.includes('Bodega E1') || emailDraft.bodyHtml.includes('Bodega ED')) {
+    throw new Error('Email HTML must NOT mention internal warehouse codes (Bodega E1 / ED)');
+  }
+  console.log('✓ TEST 3 PASSED: Partner email draft contains professional greetings, clauses, and CLP (without warehouse codes).');
 
   console.log('\n--- TEST 4: generateCommercialPdfHtml ---');
   const pdfHtml = generateCommercialPdfHtml({
@@ -174,12 +213,14 @@ async function runTests() {
 
   if (!pdfHtml.includes('@page') || !pdfHtml.includes('size: letter portrait;')) throw new Error('PDF CSS missing page settings');
   if (!pdfHtml.includes('PROPUESTA COMERCIAL')) throw new Error('PDF missing commercial title');
-  if (!pdfHtml.includes('Bloque Línea 1.0')) throw new Error('PDF missing Line 1.0 header');
+  if (pdfHtml.includes('Bloque Línea 1.0')) throw new Error('PDF must NOT contain banner row "Bloque Línea 1.0"');
+  if (!pdfHtml.includes('repeated-header')) throw new Error('PDF missing repeated-header row for Line 2.0+');
+  if (pdfHtml.includes('Bodega E1') || pdfHtml.includes('Bodega ED')) throw new Error('PDF must NOT contain internal warehouse codes');
   if (!pdfHtml.includes('Subtotal Línea 1.0:')) throw new Error('PDF missing Line 1.0 subtotal');
   if (!pdfHtml.includes('Subtotal Línea 2.0:')) throw new Error('PDF missing Line 2.0 subtotal');
   if (!pdfHtml.includes('PRICE TOTAL (USD):')) throw new Error('PDF missing Grand Total');
   if (!pdfHtml.includes('Validación Técnica y Responsabilidad:')) throw new Error('PDF missing technical validation clause');
-  console.log('✓ TEST 4 PASSED: Commercial PDF HTML template renders perfectly.');
+  console.log('✓ TEST 4 PASSED: Commercial PDF HTML template renders perfectly with repeated headers and no warehouse codes.');
 
   console.log('\n--- TEST 5: synthesizeOfficialEstimateWorkbook with Grouping & CLP ---');
   const exportGroupingOpts: EstimateExportGroupingOptions = {
@@ -207,9 +248,10 @@ async function runTests() {
   // Check title
   if (ws.getCell('A2').value !== 'Price Estimate') throw new Error('Title A2 mismatch');
 
-  // Search for mother line blocks and subtotals
-  let foundBlock1 = false;
-  let foundBlock2 = false;
+  // Search for mother line blocks, repeated headers and subtotals
+  let foundBannerBlock = false;
+  let foundRepeatedHeader = false;
+  let foundWarehouseCode = false;
   let foundSubtotal1 = false;
   let foundSubtotal2 = false;
   let foundPriceTotal = false;
@@ -227,8 +269,16 @@ async function runTests() {
     const bVal = String(ws.getCell(r, 2).value || '');
     const gVal = ws.getCell(r, 7).value;
 
-    if (aVal.includes('Bloque Línea 1.0')) foundBlock1 = true;
-    if (aVal.includes('Bloque Línea 2.0')) foundBlock2 = true;
+    if (aVal.includes('Bloque Línea')) foundBannerBlock = true;
+    if (aVal.includes('Bodega E1') || aVal.includes('Bodega ED') || bVal.includes('Bodega E1')) {
+      foundWarehouseCode = true;
+    }
+
+    // Repeated header on line 2.0+ (row > 13)
+    if (r > 13 && aVal === 'Line Number' && bVal === 'Part Number') {
+      foundRepeatedHeader = true;
+    }
+
     if (bVal.includes('Subtotal Línea 1.0:')) {
       foundSubtotal1 = true;
       if (typeof gVal === 'object' && gVal !== null && 'formula' in gVal) {
@@ -251,8 +301,9 @@ async function runTests() {
     if (aVal.includes('Validación Técnica y Responsabilidad:')) foundTechnicalValidation = true;
   }
 
-  if (!foundBlock1) throw new Error('Missing Bloque Línea 1.0 header');
-  if (!foundBlock2) throw new Error('Missing Bloque Línea 2.0 header');
+  if (foundBannerBlock) throw new Error('Banner "Bloque Línea X.0" must NOT be present');
+  if (!foundRepeatedHeader) throw new Error('Repeated header row (Line Number | Part Number...) must be present on Line 2.0+');
+  if (foundWarehouseCode) throw new Error('Warehouse codes (Bodega E1 / ED) must NOT be present in Estimate');
   if (!foundSubtotal1) throw new Error('Missing Subtotal Línea 1.0 row');
   if (!foundSubtotal2) throw new Error('Missing Subtotal Línea 2.0 row');
   if (!foundPriceTotal) throw new Error('Missing Price Total row');

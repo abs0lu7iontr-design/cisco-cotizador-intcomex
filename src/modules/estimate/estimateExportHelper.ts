@@ -159,9 +159,9 @@ export function categorizeEstimateItems(
 
     const typeBadge =
       hasHw && !hasSw
-        ? '🔧 Hardware (E1)'
+        ? '🔧 Hardware'
         : !hasHw && hasSw
-        ? '☁️ Licencias / SaaS (ED)'
+        ? '☁️ Licencias / Software Cloud'
         : '📦 Solución Integrada HW + SW';
 
     return {
@@ -218,10 +218,10 @@ export function generatePartnerEmailDraft(options: {
 
   bodyText += `RESUMEN ECONÓMICO DE LA SOLUCIÓN:\n`;
   if (summary.hardwareTotal > 0) {
-    bodyText += `• Equipamiento Hardware (E1): ${formatUSD(summary.hardwareTotal)} USD (${summary.hardwareCount} ítems)\n`;
+    bodyText += `• Equipamiento Hardware: ${formatUSD(summary.hardwareTotal)} USD (${summary.hardwareCount} ítems)\n`;
   }
   if (summary.softwareTotal > 0) {
-    bodyText += `• Licenciamiento / Cloud (ED): ${formatUSD(summary.softwareTotal)} USD (${summary.softwareCount} ítems)\n`;
+    bodyText += `• Licenciamiento / Software Cloud: ${formatUSD(summary.softwareTotal)} USD (${summary.softwareCount} ítems)\n`;
   }
   if (summary.servicesTotal > 0) {
     bodyText += `• Servicios y Soporte SmartNet: ${formatUSD(summary.servicesTotal)} USD (${summary.servicesCount} ítems)\n`;
@@ -251,7 +251,7 @@ export function generatePartnerEmailDraft(options: {
   if (summary.hardwareTotal > 0) {
     summaryRowsHtml += `
       <tr>
-        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">🔧 Equipamiento Hardware (Bodega E1)</td>
+        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">🔧 Equipamiento Hardware</td>
         <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: center; color: #475569;">${summary.hardwareCount}</td>
         <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #0f172a;">${formatUSD(summary.hardwareTotal)}</td>
       </tr>`;
@@ -259,7 +259,7 @@ export function generatePartnerEmailDraft(options: {
   if (summary.softwareTotal > 0) {
     summaryRowsHtml += `
       <tr>
-        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">☁️ Licenciamiento / Cloud (Bodega ED)</td>
+        <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; color: #334155;">☁️ Licenciamiento / Software Cloud</td>
         <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: center; color: #475569;">${summary.softwareCount}</td>
         <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: 600; color: #0f172a;">${formatUSD(summary.softwareTotal)}</td>
       </tr>`;
@@ -403,15 +403,23 @@ export function generateCommercialPdfHtml(options: {
   let tableRowsHtml = '';
 
   if (groupingOptions.groupByLine) {
-    for (const group of summary.motherLines) {
-      tableRowsHtml += `
-        <tr class="group-header">
-          <td colspan="7">
-            <strong>📦 Bloque Línea ${group.motherKey}</strong> — ${group.typeBadge} 
-            <span style="font-weight: normal; color: #475569;">(${group.items.length} ${group.items.length === 1 ? 'ítem' : 'ítems'})</span>
-          </td>
-        </tr>
-      `;
+    for (let groupIdx = 0; groupIdx < summary.motherLines.length; groupIdx++) {
+      const group = summary.motherLines[groupIdx];
+
+      // Para Línea 2.0 en adelante, repetimos la fila de encabezados oficial de la tabla
+      if (groupIdx > 0) {
+        tableRowsHtml += `
+          <tr class="repeated-header">
+            <th class="text-center" style="width: 45px;">Line Number</th>
+            <th style="width: 140px;">Part Number</th>
+            <th>Description</th>
+            <th class="text-center" style="width: 75px;">Estimated Lead Time (Days)</th>
+            <th class="text-center" style="width: 45px;">Qty</th>
+            <th class="text-right" style="width: 90px;">Unit Net Price</th>
+            <th class="text-right" style="width: 100px;">Extended Net Price</th>
+          </tr>
+        `;
+      }
 
       group.items.forEach((item, idx) => {
         if (item.isInfoRow) {
@@ -604,15 +612,14 @@ export function generateCommercialPdfHtml(options: {
         .row-alt {
           background-color: #f8fafc;
         }
-        .group-header {
-          background-color: #f1f5f9;
-          font-size: 8.5pt;
-          color: #0f172a;
-          border-top: 1.5px solid #cbd5e1;
-          border-bottom: 1.5px solid #cbd5e1;
-        }
-        .group-header td {
-          padding: 6px 8px;
+        .repeated-header th {
+          background: #e2e8f0;
+          color: #1e293b;
+          padding: 6px 6px;
+          font-weight: 700;
+          border-top: 1px solid #94a3b8;
+          border-bottom: 2px solid #475569;
+          text-align: left;
         }
         .subtotal-row {
           background-color: #f8fafc;
@@ -756,7 +763,7 @@ export function generateCommercialPdfHtml(options: {
             ${
               summary.hardwareTotal > 0
                 ? `<tr>
-                    <td>🔧 Equipamiento Físico Hardware (Bodega E1)</td>
+                    <td>🔧 Equipamiento Hardware</td>
                     <td class="text-center">${summary.hardwareCount}</td>
                     <td class="text-right font-medium">${formatUSD(summary.hardwareTotal)}</td>
                   </tr>`
@@ -765,7 +772,7 @@ export function generateCommercialPdfHtml(options: {
             ${
               summary.softwareTotal > 0
                 ? `<tr>
-                    <td>☁️ Licenciamiento / Cloud SaaS (Bodega ED)</td>
+                    <td>☁️ Licenciamiento / Software Cloud</td>
                     <td class="text-center">${summary.softwareCount}</td>
                     <td class="text-right font-medium">${formatUSD(summary.softwareTotal)}</td>
                   </tr>`

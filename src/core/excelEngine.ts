@@ -1478,52 +1478,50 @@ function renderEstimateTableAndFooters(
       (a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0)
     );
 
-    for (const motherKey of sortedKeys) {
-      const groupItems = motherMap.get(motherKey)!;
-      const hasHw = groupItems.some(
-        (it) => !it.isInfoRow && !checkIsIntangible(it.partNumber, it.description)
-      );
-      const hasSw = groupItems.some(
-        (it) =>
-          !it.isInfoRow &&
-          (checkIsIntangible(it.partNumber, it.description) || isCloudSubscriptionSku(it.partNumber))
-      );
-      const typeBadge =
-        hasHw && !hasSw
-          ? '🔧 Hardware (E1)'
-          : !hasHw && hasSw
-          ? '☁️ Licencias / SaaS (ED)'
-          : '📦 Solución Integrada HW + SW';
+    const headers7 = [
+      'Line Number',
+      'Part Number',
+      'Description',
+      'Estimated Lead Time (Days)',
+      'Qty',
+      'Unit Net Price',
+      'Extended Net Price',
+    ];
 
-      // 1. Fila de Encabezado de Bloque de Línea Madre
-      const blockHeaderRow = worksheet.getRow(currentRow);
-      blockHeaderRow.height = 24;
+    const writeHeaderRow = (rowNumber: number) => {
+      const headerRow = worksheet.getRow(rowNumber);
+      headerRow.height = 26;
       for (let c = 1; c <= 7; c++) {
-        const cell = blockHeaderRow.getCell(c);
-        cell.border = completeBorder;
+        const cell = headerRow.getCell(c);
+        cell.value = headers7[c - 1];
+        cell.font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FF1F1F1F' } };
         cell.fill = {
           type: 'pattern',
           pattern: 'solid',
-          fgColor: { argb: 'FFE2E8F0' },
+          fgColor: { argb: 'FFD9D9D9' },
+        };
+        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF94A3B8' } },
+          bottom: { style: 'medium', color: { argb: 'FF475569' } },
+          left: { style: 'thin', color: { argb: 'FF94A3B8' } },
+          right: { style: 'thin', color: { argb: 'FF94A3B8' } },
         };
       }
-      safeUnmerge(worksheet, `A${currentRow}:G${currentRow}`);
-      worksheet.getCell(`A${currentRow}`).value = `📦 Bloque Línea ${motherKey} — ${typeBadge} (${groupItems.length} ${groupItems.length === 1 ? 'ítem' : 'ítems'})`;
-      worksheet.getCell(`A${currentRow}`).font = {
-        name: 'Arial',
-        size: 9.5,
-        bold: true,
-        color: { argb: 'FF1E293B' },
-      };
-      worksheet.getCell(`A${currentRow}`).alignment = {
-        vertical: 'middle',
-        horizontal: 'left',
-        indent: 1,
-      };
-      worksheet.mergeCells(`A${currentRow}:G${currentRow}`);
-      currentRow++;
+    };
 
-      // 2. Filas de productos e informativas del bloque
+    for (let groupIdx = 0; groupIdx < sortedKeys.length; groupIdx++) {
+      const motherKey = sortedKeys[groupIdx];
+      const groupItems = motherMap.get(motherKey)!;
+
+      // Para Línea 2.0 en adelante, repetimos el encabezado oficial de columnas
+      // (Línea 1.0 ya tiene el encabezado principal de la fila 13)
+      if (groupIdx > 0) {
+        writeHeaderRow(currentRow);
+        currentRow++;
+      }
+
+      // 1. Filas de productos e informativas del bloque
       const blockStartRow = currentRow;
       for (let idx = 0; idx < groupItems.length; idx++) {
         const it = groupItems[idx];
@@ -1772,14 +1770,14 @@ function renderEstimateTableAndFooters(
 
     if (summary.hardwareTotal > 0) {
       writeExecRow(
-        '🔧 Equipamiento Físico Hardware (Bodega E1)',
+        '🔧 Equipamiento Hardware',
         summary.hardwareCount,
         summary.hardwareTotal
       );
     }
     if (summary.softwareTotal > 0) {
       writeExecRow(
-        '☁️ Licenciamiento / Cloud SaaS (Bodega ED)',
+        '☁️ Licenciamiento / Software Cloud',
         summary.softwareCount,
         summary.softwareTotal
       );
