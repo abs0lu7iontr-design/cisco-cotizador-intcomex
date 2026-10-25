@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
   "version": "2.4.6",
-  "git_commit": "3fd5a2b",
+  "git_commit": "c62d301",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-25T01:10:30.386Z",
-  "release_notes": "fix(security): sanitize all lockout thresholds and attempt counters from login ui",
+  "build_timestamp": "2026-10-25T01:18:17.024Z",
+  "release_notes": "fix(security): eliminate duplicate error banners and sanitize python desktop backend",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"
