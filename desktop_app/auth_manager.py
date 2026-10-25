@@ -58,7 +58,7 @@ class AuthManager:
             secs = remaining_sec % 60
             return (
                 False,
-                f"⛔ Cuenta bloqueada por seguridad tras 3 intentos fallidos. Reintente en {mins:02d}:{secs:02d}."
+                f"⛔ Acceso temporalmente restringido por seguridad. Reintente en {mins:02d}:{secs:02d}."
             )
 
         user = self.db.get_user_by_username(clean_user)
@@ -68,8 +68,8 @@ class AuthManager:
             self.failed_attempts[clean_user] = attempts
             if attempts >= 3:
                 self.lockout_until[clean_user] = now + 900  # 15 min
-                return (False, "⛔ Bloqueo de seguridad activado tras 3 intentos fallidos. Reintente en 15 minutos.")
-            return (False, f"Usuario o contraseña incorrectos. Intento {attempts} de 3.")
+                return (False, "⛔ Acceso temporalmente restringido por motivos de seguridad.")
+            return (False, "Usuario o contraseña incorrectos.")
 
         if not user.get("is_active", True):
             return (False, "⚠️ Esta cuenta se encuentra deshabilitada o expirada. Contacte al Administrador (mskill).")
@@ -95,12 +95,12 @@ class AuthManager:
                 )
                 return (
                     False,
-                    "⛔ Bloqueo de seguridad activado: Se han alcanzado 3 intentos fallidos. Cuenta bloqueada por 15 minutos."
+                    "⛔ Acceso temporalmente restringido por motivos de seguridad."
                 )
 
             self.db.log_audit_event(username, "LOGIN_FAILED", f"Intento fallido {attempts} de 3")
             remaining = 3 - attempts
-            return (False, f"Contraseña incorrecta. Le quedan {remaining} intento(s) antes del bloqueo de seguridad.")
+            return (False, "Usuario o contraseña incorrectos.")
 
     def logout(self):
         """Logs out current user."""

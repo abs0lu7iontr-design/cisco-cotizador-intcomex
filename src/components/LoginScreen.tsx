@@ -527,13 +527,8 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           </button>
         </form>
 
-        {/* Security & Encryption Footnote */}
-        <div className="mt-7 pt-5 border-t border-slate-800/80 text-center space-y-1.5">
-          <div className="inline-flex items-center gap-1.5 text-[10px] text-emerald-400 font-semibold bg-emerald-950/40 border border-emerald-800/30 px-3 py-1 rounded-full">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Conexión Segura SSL/TLS • Sistema Protegido</span>
-          </div>
-
+        {/* Footer */}
+        <div className="mt-7 pt-5 border-t border-slate-800/80 text-center">
           <div className="text-[10px] text-slate-500">
             © Cisco Automated &bull; Intcomex Chile SA
           </div>
