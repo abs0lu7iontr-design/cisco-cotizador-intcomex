@@ -17,6 +17,7 @@ import {
   EyeOff,
   Clock,
   Cloud,
+  Globe,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import {
@@ -29,6 +30,13 @@ import {
   withTimeout,
   FirebaseConfigModal,
 } from '../modules/cloud';
+import {
+  checkGeoLocation,
+  sendTwoFactorOtp,
+  GeoLocationInfo,
+  OtpSessionState,
+  TwoFactorModal,
+} from '../modules/security';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: UserSession) => void;
@@ -91,10 +99,30 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
   const lockTimerRef = useRef<number | null>(null);
 
+  // Adaptive 2FA & Geolocation State
+  const [geoInfo, setGeoInfo] = useState<GeoLocationInfo | null>(null);
+  const [showTwoFactorModal, setShowTwoFactorModal] = useState(false);
+  const [pendingUserSession, setPendingUserSession] = useState<UserSession | null>(null);
+  const [pendingOtpSession, setPendingOtpSession] = useState<OtpSessionState | undefined>(undefined);
+
   // Sync Cloud Users and check security on mount
   useEffect(() => {
     // 1. Fetch cloud users into local cache in background
     getCloudUsers().catch((e) => console.warn('Cloud users sync note:', e));
+
+    // Detect Geolocation origin for adaptive 2FA
+    checkGeoLocation()
+      .then((info) => setGeoInfo(info))
+      .catch(() => {
+        setGeoInfo({
+          country: 'CL',
+          city: 'Santiago',
+          region: 'RM',
+          ip: '127.0.0.1',
+          isChile: true,
+          requires2FA: false,
+        });
+      });
 
     // 2. Clear any stale lock
     const state = loadSecurityState();
@@ -145,6 +173,20 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     };
   }, [isLocked, remainingLockSeconds]);
 
+  const handleTwoFactorVerified = () => {
+    setShowTwoFactorModal(false);
+    if (pendingUserSession) {
+      onLoginSuccess(pendingUserSession);
+      setPendingUserSession(null);
+    }
+  };
+
+  const handleTwoFactorCancel = () => {
+    setShowTwoFactorModal(false);
+    setPendingUserSession(null);
+    setErrorMsg('Verificación 2FA cancelada. Se requiere autenticación de doble factor para conexiones internacionales.');
+  };
+
   const formatCountdown = (totalSeconds: number): string => {
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
@@ -192,6 +234,16 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             lastAttemptTime: now,
             recentRequestTimestamps: [],
           });
+          const currentGeo = geoInfo || (await checkGeoLocation());
+          if (!geoInfo) setGeoInfo(currentGeo);
+          if (currentGeo.requires2FA) {
+            const otpRes = await sendTwoFactorOtp(cleanUser, res.user.email || '', currentGeo);
+            setPendingUserSession(res.user);
+            setPendingOtpSession(otpRes.otpSession);
+            setShowTwoFactorModal(true);
+            setIsLoading(false);
+            return;
+          }
           onLoginSuccess(res.user);
           return;
         } else {
@@ -303,12 +355,27 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           last_login: new Date().toISOString(),
         }).catch(() => {});
 
-        onLoginSuccess({
+        const userSession: UserSession = {
           username: cleanUser,
           full_name: foundUser.full_name,
           role: foundUser.role as any,
           email: foundUser.email,
-        });
+        };
+
+        const currentGeo = geoInfo || (await checkGeoLocation());
+        if (!geoInfo) setGeoInfo(currentGeo);
+
+        if (currentGeo.requires2FA) {
+          const otpRes = await sendTwoFactorOtp(cleanUser, foundUser.email || '', currentGeo);
+          setPendingUserSession(userSession);
+          setPendingOtpSession(otpRes.otpSession);
+          setShowTwoFactorModal(true);
+          setIsLoading(false);
+          return;
+        }
+
+        onLoginSuccess(userSession);
+        return;
       } else {
         // Register failed attempt
         const newFailed = secState.failedAttempts + 1;
@@ -487,6 +554,18 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           </button>
         </form>
 
+        {/* Geolocation Security Badge */}
+        {geoInfo && (
+          <div className="mt-4 flex items-center justify-center gap-1.5 text-[10px] text-slate-400 bg-slate-950/60 py-1.5 px-3 rounded-full border border-slate-800/80">
+            <Globe className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+            <span>
+              {geoInfo.isChile
+                ? `📍 Conexión Nacional (Chile • ${geoInfo.city || 'Santiago'}) — Acceso Directo`
+                : `🌍 Conexión Internacional (${geoInfo.country}${geoInfo.city ? ' • ' + geoInfo.city : ''}) — 2FA Adaptativo`}
+            </span>
+          </div>
+        )}
+
         {/* Security & Encryption Footnote */}
         <div className="mt-7 pt-5 border-t border-slate-800/80 text-center space-y-1.5">
           <div className="inline-flex items-center gap-1.5 text-[10px] text-emerald-400 font-semibold bg-emerald-950/40 border border-emerald-800/30 px-3 py-1 rounded-full">
@@ -499,6 +578,19 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           </div>
         </div>
       </div>
+
+      {/* Adaptive 2FA Modal */}
+      {showTwoFactorModal && pendingUserSession && (
+        <TwoFactorModal
+          isOpen={showTwoFactorModal}
+          username={pendingUserSession.username}
+          email={pendingUserSession.email || ''}
+          geoInfo={geoInfo || { country: 'EXT', city: '', region: '', ip: '', isChile: false, requires2FA: true }}
+          initialOtpSession={pendingOtpSession}
+          onVerified={handleTwoFactorVerified}
+          onCancel={handleTwoFactorCancel}
+        />
+      )}
     </div>
   );
 }

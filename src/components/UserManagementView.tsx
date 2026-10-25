@@ -24,7 +24,10 @@ import {
   Check,
   X,
   Cloud,
+  Globe,
+  Copy,
 } from 'lucide-react';
+import { getAdminOverrideCode } from '../modules/security';
 import {
   getCloudUsers,
   saveCloudUser,
@@ -63,6 +66,38 @@ export function UserManagementView() {
   // Form States - Quick Actions
   const [resetPasswordVal, setResetPasswordVal] = useState('Intcomex2026!');
   const [targetRole, setTargetRole] = useState<Role>('pm');
+
+  // 2FA Admin Unlock & Contingency State
+  const [adminUnlockTarget, setAdminUnlockTarget] = useState<string>('');
+  const [adminGeneratedCode, setAdminGeneratedCode] = useState<string | null>(null);
+  const [isGeneratingUnlockCode, setIsGeneratingUnlockCode] = useState<boolean>(false);
+  const [codeCopied, setCodeCopied] = useState<boolean>(false);
+
+  const handleGenerateOverride = async () => {
+    setIsGeneratingUnlockCode(true);
+    setAdminGeneratedCode(null);
+    try {
+      const res = await getAdminOverrideCode(adminUnlockTarget);
+      if (res.success && res.code) {
+        setAdminGeneratedCode(res.code);
+        showToast('Código de contingencia generado para hoy.', 'success');
+      } else {
+        showToast(res.error || 'Error al generar código.', 'error');
+      }
+    } catch (e: any) {
+      showToast(e?.message || 'Error de conexión.', 'error');
+    } finally {
+      setIsGeneratingUnlockCode(false);
+    }
+  };
+
+  const handleCopyUnlockCode = () => {
+    if (!adminGeneratedCode) return;
+    navigator.clipboard.writeText(adminGeneratedCode);
+    setCodeCopied(true);
+    showToast('Código copiado al portapapeles', 'success');
+    setTimeout(() => setCodeCopied(false), 2500);
+  };
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMsg({ text, type });
@@ -599,6 +634,129 @@ export function UserManagementView() {
               )}
             </tbody>
           </table>
+                </div>
+      </div>
+
+      {/* ADMIN CONTINGENCY & GEOLOCATION 2FA PANEL (MSKILL / ADMIN) */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+              <Globe className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                <span>Control de Seguridad Geográfica y Desbloqueo 2FA Internacional</span>
+                <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800/60 font-semibold px-2 py-0.5 rounded-full">
+                  Activo
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Política de acceso adaptativo: Acceso directo desde Chile (<code className="text-indigo-300">CL</code>) y verificación 2FA por correo para conexiones internacionales.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* Policy Information Card */}
+          <div className="lg:col-span-1 bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 space-y-2.5 text-xs">
+            <div className="font-bold text-slate-300 flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-400" />
+              <span>Reglas de Acceso Activas</span>
+            </div>
+            <ul className="space-y-2 text-slate-400 text-[11px] leading-relaxed">
+              <li className="flex items-start gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                <span><strong>Conexiones en Chile:</strong> Acceso habitual con usuario y contraseña sin fricción ni doble factor.</span>
+              </li>
+              <li className="flex items-start gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />
+                <span><strong>Conexiones Internacionales:</strong> Requiere código OTP de 6 dígitos con validez de 10 min enviado al correo corporativo.</span>
+              </li>
+              <li className="flex items-start gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                <span><strong>Desbloqueo de Administrador (mskill):</strong> Si el colaborador viaja y no puede acceder a su correo, el administrador puede autorizar su acceso con un código diario.</span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Generator Card */}
+          <div className="lg:col-span-2 bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div className="font-bold text-white text-xs flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-indigo-400" />
+                <span>Generador de Código Maestro de Desbloqueo (Viajes / Contingencia)</span>
+              </div>
+              <span className="text-[10px] text-slate-500 font-mono">Validez: Hoy (00:00 - 23:59 UTC)</span>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Seleccione el usuario que se encuentra en el exterior para generar su clave de anulación autorizada. El usuario puede ingresarla en la casilla 2FA en lugar del código de correo.
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="flex-1">
+                <select
+                  value={adminUnlockTarget}
+                  onChange={(e) => setAdminUnlockTarget(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-indigo-500"
+                >
+                  <option value="">-- Código Maestro Global (Cualquier Usuario) --</option>
+                  {users.map((u) => (
+                    <option key={u.username} value={u.username}>
+                      @{u.username} — {u.full_name} ({u.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGenerateOverride}
+                disabled={isGeneratingUnlockCode}
+                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingUnlockCode ? 'animate-spin' : ''}`} />
+                <span>{isGeneratingUnlockCode ? 'Generando...' : 'Generar Código'}</span>
+              </button>
+            </div>
+
+            {/* Generated Code Output Box */}
+            {adminGeneratedCode && (
+              <div className="p-3.5 bg-indigo-950/40 border border-indigo-700/60 rounded-xl flex items-center justify-between gap-4 animate-fade-in">
+                <div className="space-y-0.5">
+                  <div className="text-[10px] text-indigo-300 uppercase font-bold tracking-wider">
+                    Código de Anulación {adminUnlockTarget ? `(@${adminUnlockTarget})` : '(Global)'}
+                  </div>
+                  <div className="font-mono text-xl font-black text-white tracking-widest selection:bg-indigo-500">
+                    {adminGeneratedCode}
+                  </div>
+                  <div className="text-[10px] text-slate-400">
+                    Proporcione este código al colaborador para que lo introduzca en la pantalla 2FA.
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCopyUnlockCode}
+                  className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
+                >
+                  {codeCopied ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-300" />
+                      <span>¡Copiado!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copiar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

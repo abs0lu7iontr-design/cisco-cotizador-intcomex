@@ -6,3 +6,5 @@ export * from './turnstileService';
 export * from './TurnstileWidget';
 export * from './useSessionInactivity';
 export * from './SessionInactivityModal';
+export * from './twoFactorService';
+export * from './TwoFactorModal';
