@@ -18,7 +18,7 @@ import {
   Clock,
   Cloud,
 } from 'lucide-react';
-import { CISCO_AUTOMATED_ANIMATED_LOGO_DATA_URI } from '../core/brandingLogos';
+import { CISCO_HALLOWEEN_ANIMATED_LOGO_DATA_URI } from '../core/brandingLogos';
 import {
   getCloudUsers,
   saveCloudUser,
@@ -405,12 +405,8 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
         {/* Official Intcomex Metallic Brand Logo & Header */}
         <div className="text-center mb-7 relative z-10">
-          <div className="inline-flex items-center justify-center w-24 h-24 rounded-2xl bg-slate-950 p-2 shadow-2xl shadow-indigo-600/20 mb-3 border-2 border-slate-700/80 overflow-hidden hover:scale-105 transition-transform">
-            <img
-              src={CISCO_AUTOMATED_ANIMATED_LOGO_DATA_URI}
-              alt="Cisco Automated Seal Logo"
-              className="w-full h-full object-contain rounded-xl"
-            />
+          <div className="inline-flex items-center justify-center w-28 h-28 rounded-2xl bg-slate-950 p-1.5 shadow-2xl shadow-indigo-600/20 mb-3 border-2 border-slate-700/80 overflow-hidden hover:scale-105 transition-transform">
+            <img src={CISCO_HALLOWEEN_ANIMATED_LOGO_DATA_URI} alt="Cisco Automated Animated Halloween Logo" className="w-full h-full object-contain rounded-xl" />
           </div>
           <h1 className="text-2xl font-black tracking-tight text-white">Cisco Automated</h1>
           <p className="text-[11px] font-extrabold text-indigo-400 mt-1 uppercase tracking-widest">

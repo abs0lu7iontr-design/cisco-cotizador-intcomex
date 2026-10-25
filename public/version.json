@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
   "version": "2.4.6",
-  "git_commit": "c62d301",
+  "git_commit": "37495d1",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-25T01:18:17.024Z",
-  "release_notes": "fix(security): eliminate duplicate error banners and sanitize python desktop backend",
+  "build_timestamp": "2026-10-25T01:30:12.088Z",
+  "release_notes": "feat(ui): update login screen with animated metallic lightning logo",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"
