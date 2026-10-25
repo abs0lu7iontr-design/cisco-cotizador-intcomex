@@ -16,6 +16,10 @@
 *.sql text eol=lf
 *.py text eol=lf
 
+# Bundled and precompiled desktop artifacts (preserve verbatim bytes, do not touch line endings)
+dist_exe/** -text
+desktop_app/** -text
+
 # Binary files - preserve raw bytes without corruption
 *.exe binary
 *.dll binary
