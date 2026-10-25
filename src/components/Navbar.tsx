@@ -21,7 +21,6 @@ import {
   Check,
   Sparkles,
   Palette,
-  Search,
   ClipboardPaste,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
@@ -53,7 +52,6 @@ interface NavbarProps {
   hasData: boolean;
   fileName?: string;
   onOpenLiveStudio?: () => void;
-  onOpenSpotlight?: () => void;
   onOpenQuickIngest?: () => void;
 }
 
@@ -82,7 +80,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   hasData,
   fileName,
   onOpenLiveStudio,
-  onOpenSpotlight,
   onOpenQuickIngest,
 }) => {
   const { mode, changeMode, isAesthetic } = useUiExperience();
@@ -200,21 +197,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Center / Right Section: Dual View Switcher (Clásica vs Aesthetic) & Actions */}
         <div className="flex items-center flex-wrap gap-2">
-          {/* Global Spotlight / Command Palette Button (Ctrl+K) */}
-          {onOpenSpotlight && (
-            <button
-              type="button"
-              onClick={onOpenSpotlight}
-              className="inline-flex items-center space-x-2 text-xs font-medium px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-indigo-500/50 text-slate-400 hover:text-white transition-all cursor-pointer shadow-inner"
-              title="Paleta de comandos y búsqueda global (Ctrl+K)"
-            >
-              <Search className="w-3.5 h-3.5 text-slate-400" />
-              <span className="hidden lg:inline text-[11px]">Comandos</span>
-              <kbd className="hidden sm:inline-block px-1.5 py-0.2 text-[9px] font-mono bg-slate-800 text-slate-300 rounded border border-slate-700">
-                Ctrl K
-              </kbd>
-            </button>
-          )}
           {/* Dual-View Mode Switcher: Clásica vs Aesthetic */}
           <div className="flex items-center p-0.5 bg-slate-950/80 rounded-2xl border border-slate-800 shadow-inner">
             <button

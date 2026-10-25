@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.6.2',
+    date: '2026-10-25',
+    commit: 'refactor-remove-keyboard-shortcuts-and-spotlight',
+    title: 'Remoción de Atajos de Teclado y Paleta de Comandos Spotlight por Preferencia Comercial',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Eliminación total de atajos de teclado globales (Ctrl+K, Ctrl+U, Ctrl+D) y atajos de tabla (H, I, A, ?, flechas) para priorizar el uso nativo sin interferencias con el navegador.',
+      'Eliminación de la paleta de comandos Spotlight y de la chuleta de atajos, aligerando la carga de componentes.',
+      'Preservación absoluta de los guardarraíles del 4%, auditor de BOM Cisco, Quick Ingest, notas PM, plantilla ERP y lámina ejecutiva.'
+    ],
+  },
+  {
     version: '2.6.1',
     date: '2026-10-25',
     commit: 'fix-react-hooks-error-310',
     title: 'Corrección de Reglas de Hooks de React y Blindaje del Ciclo de Vida en App',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Reparación de la llamada incondicional del hook global de atajos de teclado en App.tsx antes del flujo de autenticación, erradicando el error crítico de React #310.',

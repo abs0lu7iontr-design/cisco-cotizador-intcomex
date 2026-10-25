@@ -6,6 +6,11 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.6.2] - 2026-10-25
+### 🗑️ Eliminado (Remoción de Atajos de Teclado y Paleta Spotlight a Petición de Usuario)
+- **Eliminación de Atajos Globales y de Tabla:** Remoción completa de los atajos de teclado globales (`Ctrl+K`, `Ctrl+U`, `Ctrl+D`), atajos de reasignación en tabla (`H`, `I`, `A`, `?`, `↑ / ↓`) y depuración de componentes modales asociados (`CommandPaletteModal` y `KeyboardShortcutsModal`).
+- **Preservación Integral:** Se mantienen al 100% los guardarraíles financieros con piso del 4.0%, el auditor predictivo de BOM Cisco, el extractor rápido Quick Ingest, las notas PM por fila, la plantilla de carga ERP Intcomex, la lámina ejecutiva slide y el motor completo de cálculo.
+
 ## [v2.6.1] - 2026-10-25
 ### 🩹 Corregido (Reparación de Reglas de Hooks de React - Error #310)
 - **Blindaje de Hooks Globales en `App.tsx`:** Reubicación de la escucha de atajos de teclado globales (`useEffect` para `Ctrl+K`, `Ctrl+U`, `Ctrl+D`) al nivel superior del componente antes de la condición de renderizado de la pantalla de login (`if (!currentUser)`). Esto elimina de forma definitiva el error crítico de React #310 (*"Rendered more hooks than during the previous render"*), garantizando un número y orden idéntico de hooks en todos los ciclos de renderizado.

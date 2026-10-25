@@ -27,7 +27,6 @@ import {
   Layers,
   MessageSquare,
   ShieldAlert,
-  HelpCircle,
   X,
   FileEdit,
 } from 'lucide-react';
@@ -36,7 +35,6 @@ import { MobileEstimateCardList } from './mobile/MobileEstimateCardList';
 import { useUiExperience } from '../core/themeEngine';
 import { validateCiscoBom } from '../core/bomValidator';
 import { BomValidatorModal } from './BomValidatorModal';
-import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 
 export type InteractiveTableFilterType = 'all' | 'intangible' | 'tangible' | 'arancel';
 
@@ -216,7 +214,6 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
   }, []);
 
   const [isBomModalOpen, setIsBomModalOpen] = useState(false);
-  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [editingNoteItem, setEditingNoteItem] = useState<EstimateLineItem | null>(null);
   const [editingNoteText, setEditingNoteText] = useState('');
   const [rowNotes, setRowNotes] = useState<Record<number, string>>(() => {
@@ -365,83 +362,6 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
     [openContextMenuAtPosition]
   );
 
-  const ensureFilterIndexVisible = useCallback(
-    (indexInFiltered: number) => {
-      if (!virtualWindow.isVirtualized || !scrollContainerRef.current) return;
-      const rowTop = indexInFiltered * VIRTUAL_ROW_HEIGHT_PX;
-      const rowBottom = rowTop + VIRTUAL_ROW_HEIGHT_PX;
-      const container = scrollContainerRef.current;
-      if (rowTop < container.scrollTop) {
-        container.scrollTop = rowTop;
-        setScrollTop(rowTop);
-      } else if (rowBottom > container.scrollTop + container.clientHeight) {
-        const nextScroll = Math.max(0, rowBottom - container.clientHeight);
-        container.scrollTop = nextScroll;
-        setScrollTop(nextScroll);
-      }
-    },
-    [virtualWindow.isVirtualized]
-  );
-
-  const handleTableKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (filteredItems.length === 0) return;
-
-      const currentIdx = filteredItems.findIndex((it) => it.rowIdx === selectedRowIdx);
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        const nextIdx = currentIdx < 0 ? 0 : Math.min(filteredItems.length - 1, currentIdx + 1);
-        const nextItem = filteredItems[nextIdx];
-        if (nextItem) {
-          setSelectedRowIdx(nextItem.rowIdx);
-          ensureFilterIndexVisible(nextIdx);
-        }
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        const prevIdx = currentIdx <= 0 ? 0 : currentIdx - 1;
-        const prevItem = filteredItems[prevIdx];
-        if (prevItem) {
-          setSelectedRowIdx(prevItem.rowIdx);
-          ensureFilterIndexVisible(prevIdx);
-        }
-      } else if (e.key === 'ContextMenu' || (e.key === 'Enter' && currentIdx >= 0)) {
-        const activeItem = filteredItems[currentIdx];
-        if (activeItem && !activeItem.isInfoRow) {
-          e.preventDefault();
-          const rect = scrollContainerRef.current?.getBoundingClientRect();
-          const x = rect ? rect.left + rect.width / 2 : 240;
-          const y = rect ? rect.top + 120 : 200;
-          openContextMenuAtPosition(x, y, activeItem);
-        }
-      } else if (e.key === '?') {
-        e.preventDefault();
-        setIsShortcutsModalOpen(true);
-      } else if (currentIdx >= 0) {
-        const activeItem = filteredItems[currentIdx];
-        if (activeItem && !activeItem.isInfoRow) {
-          const lower = e.key.toLowerCase();
-          if (lower === 'h') {
-            e.preventDefault();
-            if (onSetRowRule) onSetRowRule(activeItem.rowIdx, 'equipo', activeItem.partNumber);
-            setToastMessage(`SKU ${activeItem.partNumber} → Hardware (+${params.internacionPct}%)`);
-            setTimeout(() => setToastMessage(null), 2000);
-          } else if (lower === 'i') {
-            e.preventDefault();
-            if (onSetRowRule) onSetRowRule(activeItem.rowIdx, 'intangible', activeItem.partNumber);
-            setToastMessage(`SKU ${activeItem.partNumber} → Intangible (0% Int/Ar)`);
-            setTimeout(() => setToastMessage(null), 2000);
-          } else if (lower === 'a') {
-            e.preventDefault();
-            if (onSetRowRule) onSetRowRule(activeItem.rowIdx, 'arancel', activeItem.partNumber);
-            setToastMessage(`SKU ${activeItem.partNumber} → Arancel (=) (+${params.arancelPct}%)`);
-            setTimeout(() => setToastMessage(null), 2000);
-          }
-        }
-      }
-    },
-    [filteredItems, selectedRowIdx, ensureFilterIndexVisible, openContextMenuAtPosition, onSetRowRule, params]
-  );
-
   const handleSelectRule = (rule: OverrideRuleType) => {
     if (!contextMenu.item) return;
 
@@ -490,8 +410,6 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
           ? 'aesthetic-card rounded-2xl shadow-2xl overflow-hidden space-y-4 relative focus:outline-none border backdrop-blur-md transition-all duration-300'
           : 'bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden space-y-4 relative focus:outline-none'
       }
-      tabIndex={0}
-      onKeyDown={handleTableKeyDown}
     >
       {/* Toast Notification */}
       {toastMessage && (
@@ -679,15 +597,6 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
             </button>
           )}
 
-          {/* Keyboard Shortcuts Trigger */}
-          <button
-            type="button"
-            onClick={() => setIsShortcutsModalOpen(true)}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-            title="Ver atajos de teclado (o presiona ?)"
-          >
-            <HelpCircle className="w-4 h-4" />
-          </button>
         </div>
       </div>
 
@@ -1047,11 +956,6 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
         report={bomReport}
       />
 
-      {/* Keyboard Shortcuts Modal */}
-      <KeyboardShortcutsModal
-        isOpen={isShortcutsModalOpen}
-        onClose={() => setIsShortcutsModalOpen(false)}
-      />
     </div>
   );
 };
