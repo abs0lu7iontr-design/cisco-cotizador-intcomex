@@ -15,11 +15,46 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.5.0',
+    date: '2026-10-25',
+    commit: 'feat-dual-experience-and-live-studio',
+    title: 'Arquitectura Dual de Experiencia: Vista Clásica vs Vista Aesthetic + Estudio Custom en Caliente',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Sistema Dual de Vistas con conmutación en 1 clic: [🏛️ Vista Clásica | ✨ Vista Aesthetic] en la barra de navegación y en Configuración, sin alterar fórmulas ni datos.',
+      'Barra de navegación en isla flotante (Floating Island Navbar) con efecto de cristal acrílico backdrop-blur-xl y bordes redondeados.',
+      'Malla dinámica de luz ambiental (AmbientMeshGlow) con esferas de luz desenfocada que reaccionan a la paleta activa.',
+      'Tarjetas KPI ejecutivas con cristal acrílico (aesthetic-card), elevación suave hover y tipografía tabular monospace FinTech.',
+      'Badges de clasificación con micro-LEDs animados: Verde (Hardware), Ámbar (Intangibles) y Púrpura (Arancel =).',
+      'Efecto Spotlight en filas de tabla (table-row-spotlight) para resaltar visualmente la fila activa sin perder el foco en BOMs extensos.',
+      'Tacómetro / Indicador de margen visual dinámico en la Calculadora Rápida con barra de gradiente tricolor.',
+      'Zona de Dropzone con levitación tridimensional y borde pulsante interactivo en la vista de carga de cotizaciones.',
+      'Estudio de Personalización "Custom en Caliente" (LiveStudioModal) con color pickers en vivo para 4 zonas, 6 presets rápidos (Cisco Executive, Cyberpunk, Emerald, Sunset, Nordic, Stealth), control de desenfoque, radio de esquinas, densidad y modo Zen.',
+      'Persistencia en localStorage (cisco_ui_experience_mode y cisco_live_studio_config) con sincronización reactiva en todo el DOM.',
+    ],
+  },
+  {
+    version: '2.4.7',
+    date: '2026-10-25',
+    commit: 'feat-security-hardening-and-branding',
+    title: 'Auditoría de Seguridad, Sanitización de Secretos y Optimización de Branding en Login',
+    status: 'STABLE',
+    type: 'patch',
+    highlights: [
+      'Erradicación total de credenciales y API keys hardcodeadas en Git (APIs de Cisco, Cloudflare Turnstile, tokens y contraseñas de admin).',
+      'Anonimización estricta de cuentas maestras y credenciales en texto plano en todas las bases de datos y scripts locales.',
+      'Integración de logos estacionales animados ultralivianos (Halloween animado de bajo peso y Navidad con nieve programado para dic 2026).',
+      'Optimización de pantalla de login: eliminación de leyendas redundantes sobre intentos y consolidación de mensajes de error limpios.',
+      'Blindaje definitivo para la preservación de líneas de Initial Term / Meses y corrección jerárquica de sub-líneas hijas.',
+    ],
+  },
+  {
     version: '2.4.6',
     date: '2026-10-24',
     commit: 'feat-estimate-grouped-export-and-commercial-tools',
     title: 'Separación por Líneas Madre en Excel, PDF Comercial, Correo Outlook y Resumen Ejecutivo',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Exportación en Excel con separación por Líneas Madre (1.0, 2.0 e hijos) con subtotales y fórmulas nativas de Excel =SUM(...) para deals divididos en múltiples OC.',

@@ -6,7 +6,32 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
-## [v2.4.7] - 2026-10-24
+## [v2.5.0] - 2026-10-25
+### 🌟 Agregado (Arquitectura Dual de Experiencia: Vista Clásica vs Vista Aesthetic + Estudio Custom en Caliente)
+- **Sistema Dual de Vistas Conmutable en 1 Clic:** Interruptor interactivo en la barra de navegación superior y en Configuración (`[ 🏛️ Vista Clásica | ✨ Vista Aesthetic ]`) que permite alternar instantáneamente entre la experiencia corporativa tradicional y la nueva experiencia visual de última generación sin tocar ningún cálculo matemático o dato de cotización.
+- **Barra de Navegación en Isla Flotante (`Floating Island Navbar`):** Encabezado desacoplado de bordes con esquinas redondeadas (`rounded-2xl`), efecto acrílico `backdrop-blur-xl`, borde sutil y sombreado tridimensional.
+- **Malla Dinámica de Luz Ambiental (`AmbientMeshGlow`):** Esferas de luz desenfocada (`blur-[100px]`) que respiran suavemente en el fondo de la pantalla al compás de la paleta activa en modo Aesthetic.
+- **Tarjetas KPI Ejecutivas con Cristal Acrílico (`aesthetic-card`):** Elevación suave hover (`-translate-y-0.5`), halo luminoso de acento y tipografía tabular monospace de alta fidelidad FinTech.
+- **Micro-LEDs Pulsantes en Badges de Clasificación:** Puntos de luz LED animados en tiempo real: Verde (Hardware), Ámbar (Intangibles / Licencias) y Púrpura (Arancel aduanero `=`).
+- **Efecto Spotlight en Filas de Tabla (`table-row-spotlight`):** Resaltado perimetral inteligente en cada fila de la tabla interactiva al posar el cursor para no perder el foco de lectura en cotizaciones complejas.
+- **Tacómetro / Indicador de Margen Visual Dinámico:** Visualizador de margen comercial en el simulador (`QuickCalculator`) con barra degradada tricolor y porcentaje en tiempo real.
+- **Zona de Dropzone con Levitación Tridimensional:** En la vista de carga de archivos (`UploadView`), el icono levita suavemente con sombra proyectada al pasar el cursor y el borde perimetral pulsa interactivamente.
+- **Estudio de Personalización "Custom en Caliente" (`LiveStudioModal`):**
+  - Botón directo `[ 🎨 Custom en Caliente ]` en la barra superior al activar la vista Aesthetic.
+  - Paleta interactiva con color pickers en vivo para acento primario, secundario, fondo principal y paneles.
+  - 6 Presets instantáneos de 1 clic: *Cisco Executive, Cyberpunk Neon, Emerald FinTech, Sunset Amber, Nordic Frost, Stealth Titanium*.
+  - Sliders en vivo de desenfoque acrílico (`0px` a `24px`) y opacidad de paneles (`10%` a `95%`).
+  - Selectores de radio de esquinas (`sharp`, `modern`, `curved`, `pill`) y densidad de tabla (`compact`, `comfortable`, `spacious`).
+  - Toggles para luz ambiental, resplandor de tarjetas y modo Zen.
+  - Botón de 1 clic para restablecer la configuración base recomendada.
+- **Persistencia Reactiva en LocalStorage:** El modo de vista (`cisco_ui_experience_mode`) y la configuración del estudio (`cisco_live_studio_config`) se preservan de forma segura en el navegador y se reflejan al instante en el DOM sin recargar la página.
+
+## [v2.4.7] - 2026-10-25
+### 🎨 Experiencia de Login y Optimización de Branding
+- **Logos Animados Estacionales de Alto Rendimiento:** Integración de logos animados ultralivianos en formato GIF optimizado (Halloween animado activo, y conmutación programada al logo de Navidad con nieve a partir del 1 de diciembre de 2026), reduciendo drásticamente el peso de carga sin ralentizar la aplicación.
+- **Simplificación y Discreción en Pantalla de Login:** Eliminada la leyenda redundante "Autenticación Cifrada • Bloqueo al 3er Intento" para mantener discreción en la seguridad y evitar pistas innecesarias.
+- **Consolidación de Mensajes de Error en Login:** Corregida la duplicidad en los avisos de error al fallar credenciales, mostrando un único mensaje claro y elegante.
+
 ### 🔒 Seguridad y Privacidad (Sanitización Total de Secretos y Datos de Usuarios)
 - **Erradicación de Credenciales Hardcodeadas en Git:** Eliminadas todas las credenciales de Cisco Developer API (Client ID y Client Secret) de scripts/checkCiscoEntitlements.mjs, ciscoAuthService.ts, cisco-proxy.ts y del bundle generado, quedando 100% aisladas en variables de entorno privadas en la nube.
 - **Protección de Cloudflare Turnstile Secret Key:** Eliminadas las claves secretas hardcodeadas en erify.js, erify.ts y erify-turnstile.ts, haciendo que la validación de seguridad dependa estrictamente del secreto de entorno TURNSTILE_SECRET_KEY en Cloudflare Pages.
