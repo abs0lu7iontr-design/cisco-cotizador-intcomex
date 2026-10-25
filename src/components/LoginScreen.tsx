@@ -17,7 +17,6 @@ import {
   EyeOff,
   Clock,
   Cloud,
-  Globe,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import {
@@ -553,18 +552,6 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             )}
           </button>
         </form>
-
-        {/* Geolocation Security Badge */}
-        {geoInfo && (
-          <div className="mt-4 flex items-center justify-center gap-1.5 text-[10px] text-slate-400 bg-slate-950/60 py-1.5 px-3 rounded-full border border-slate-800/80">
-            <Globe className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-            <span>
-              {geoInfo.isChile
-                ? `📍 Conexión Nacional (Chile • ${geoInfo.city || 'Santiago'}) — Acceso Directo`
-                : `🌍 Conexión Internacional (${geoInfo.country}${geoInfo.city ? ' • ' + geoInfo.city : ''}) — 2FA Adaptativo`}
-            </span>
-          </div>
-        )}
 
         {/* Security & Encryption Footnote */}
         <div className="mt-7 pt-5 border-t border-slate-800/80 text-center space-y-1.5">
