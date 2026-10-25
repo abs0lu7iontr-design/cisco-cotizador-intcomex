@@ -44,6 +44,11 @@ for (const target of desktopTargets) {
     }
     fs.writeFileSync(target, portableBundleBuffer);
     console.log(`📋 [deploy-prep] Sincronizado a desktop local: ${path.relative(rootDir, target)}`);
+    // Sincronizar assets estaticos adicionales (ej: logo estacional de Navidad)
+    const seasonalLogoSrc = path.join(rootDir, 'public', 'logo-navidad-nieve.gif');
+    if (fs.existsSync(seasonalLogoSrc)) {
+      fs.copyFileSync(seasonalLogoSrc, path.join(dir, 'logo-navidad-nieve.gif'));
+    }
   } catch (err) {
     console.warn(`⚠️ [deploy-prep] No se pudo escribir en ${target}:`, err.message);
   }
