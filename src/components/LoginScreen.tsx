@@ -263,14 +263,9 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           if (willLock) {
             setIsLocked(true);
             setRemainingLockSeconds(LOCKOUT_DURATION_MS / 1000);
-            setErrorMsg(
-              '⛔ Se han alcanzado 3 intentos fallidos. Acceso bloqueado por 15 minutos por seguridad anti-fuerza bruta.'
-            );
+            setErrorMsg('⛔ Acceso restringido temporalmente por motivos de seguridad.');
           } else {
-            const rem = MAX_FAILED_ATTEMPTS - newFailed;
-            setErrorMsg(
-              `Usuario o contraseña incorrectos. Le quedan ${rem} intento(s) antes del bloqueo de seguridad.`
-            );
+            setErrorMsg('Usuario o contraseña incorrectos.');
           }
           return;
         }
@@ -313,14 +308,9 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         if (willLock) {
           setIsLocked(true);
           setRemainingLockSeconds(LOCKOUT_DURATION_MS / 1000);
-          setErrorMsg(
-            '⛔ Se han alcanzado 3 intentos fallidos. Acceso bloqueado por 15 minutos por seguridad anti-fuerza bruta.'
-          );
+          setErrorMsg('⛔ Acceso restringido temporalmente por motivos de seguridad.');
         } else {
-          const rem = MAX_FAILED_ATTEMPTS - newFailed;
-          setErrorMsg(
-            `Usuario o contraseña incorrectos. Le quedan ${rem} intento(s) antes del bloqueo de seguridad.`
-          );
+          setErrorMsg('Usuario o contraseña incorrectos.');
         }
         return;
       }
@@ -393,14 +383,9 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         if (willLock) {
           setIsLocked(true);
           setRemainingLockSeconds(LOCKOUT_DURATION_MS / 1000);
-          setErrorMsg(
-            '⛔ Se han alcanzado 3 intentos fallidos. Acceso bloqueado por 15 minutos por seguridad anti-fuerza bruta.'
-          );
+          setErrorMsg('⛔ Acceso restringido temporalmente por motivos de seguridad.');
         } else {
-          const rem = MAX_FAILED_ATTEMPTS - newFailed;
-          setErrorMsg(
-            `Usuario o contraseña incorrectos. Le quedan ${rem} intento(s) antes del bloqueo de seguridad.`
-          );
+          setErrorMsg('Usuario o contraseña incorrectos.');
         }
         return;
       }
@@ -438,14 +423,14 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           <div className="mb-5 p-4 bg-rose-950/90 border border-rose-600 rounded-2xl text-rose-200 text-xs space-y-2 shadow-lg shadow-rose-950/50 animate-pulse">
             <div className="flex items-center space-x-2.5 font-bold text-rose-300">
               <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
-              <span>Acceso Temporalmente Bloqueado</span>
+              <span>Acceso Temporalmente Restringido</span>
             </div>
             <p className="text-[11px] text-rose-200/90 leading-relaxed">
-              Por motivos de seguridad y prevención anti-fuerza bruta / DDoS, el acceso se encuentra restringido tras 3 intentos fallidos consecutivos.
+              El acceso se encuentra temporalmente restringido por motivos de seguridad institucional.
             </p>
             <div className="flex items-center justify-between pt-1 border-t border-rose-800/40 text-[11px]">
               <span className="flex items-center gap-1 text-rose-300 font-semibold">
-                <Clock className="w-3.5 h-3.5" /> Tiempo restante:
+                <Clock className="w-3.5 h-3.5" /> Tiempo de espera:
               </span>
               <span className="font-mono font-black text-rose-100 bg-rose-900/80 px-2.5 py-0.5 rounded-md border border-rose-700/50">
                 {formatCountdown(remainingLockSeconds)}
@@ -462,18 +447,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           </div>
         )}
 
-        {/* Security Counter Badge */}
-        {!isLocked && failedCount > 0 && failedCount < MAX_FAILED_ATTEMPTS && (
-          <div className="mb-4 px-3 py-2 bg-amber-950/60 border border-amber-600/50 rounded-xl text-amber-200 text-[11px] flex items-center justify-between">
-            <span className="flex items-center gap-1.5 font-medium">
-              <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
-              Intentos fallidos registrados:
-            </span>
-            <span className="font-mono font-bold text-amber-300 bg-amber-900/60 px-2 py-0.5 rounded">
-              {failedCount} de {MAX_FAILED_ATTEMPTS}
-            </span>
-          </div>
-        )}
+        
 
         {/* Clean Login Form (No pre-filling, no suggestions) */}
         <form onSubmit={handleLogin} className="space-y-4 relative z-10">
@@ -557,7 +531,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         <div className="mt-7 pt-5 border-t border-slate-800/80 text-center space-y-1.5">
           <div className="inline-flex items-center gap-1.5 text-[10px] text-emerald-400 font-semibold bg-emerald-950/40 border border-emerald-800/30 px-3 py-1 rounded-full">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Autenticación Cifrada • Bloqueo al 3er Intento</span>
+            <span>Conexión Segura SSL/TLS • Sistema Protegido</span>
           </div>
 
           <div className="text-[10px] text-slate-500">

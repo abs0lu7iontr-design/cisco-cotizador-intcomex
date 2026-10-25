@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
   "version": "2.4.6",
-  "git_commit": "6d48943",
+  "git_commit": "f24d1b8",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-25T00:39:56.606Z",
-  "release_notes": "feat(security): implement adaptive 2FA geo-authentication for international access and mskill unlock panel",
+  "build_timestamp": "2026-10-25T00:46:27.106Z",
+  "release_notes": "fix(security): remove public geolocation indicator from login screen to prevent reconnaissance",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"
