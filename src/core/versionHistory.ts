@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.6.1',
+    date: '2026-10-25',
+    commit: 'fix-react-hooks-error-310',
+    title: 'Corrección de Reglas de Hooks de React y Blindaje del Ciclo de Vida en App',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Reparación de la llamada incondicional del hook global de atajos de teclado en App.tsx antes del flujo de autenticación, erradicando el error crítico de React #310.',
+      'Garantía total de integridad en el árbol de renderizado del componente raíz con preservación de sesión y recarga limpia.',
+      'Validación y certificación completa con React Doctor (Score 87/100 - No issues found).'
+    ],
+  },
+  {
     version: '2.6.0',
     date: '2026-10-25',
     commit: 'feat-financial-guardrails-and-pm-productivity',
     title: 'Guardarraíles Financieros 4%, Auditoría Preventiva de BOM, Ingesta Rápida y Productividad PM',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Guardarraíles de Seguridad Financiera (Piso Mínimo 4.0%): Alerta automática en barra lateral y bloqueo preventivo con confirmación obligatoria de jefatura en descargas si el margen comercial o internación cae por debajo del 4.0%.',

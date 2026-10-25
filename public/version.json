@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.6.0",
-  "git_commit": "9281c62",
+  "version": "2.6.1",
+  "git_commit": "7b21335",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-25T21:48:35.961Z",
-  "release_notes": "feat(v2.5.0): update version, changelog, in-app version history and permanent rule in memory",
+  "build_timestamp": "2026-10-25T21:59:05.680Z",
+  "release_notes": "feat(v2.6.0): implement financial guardrails 4pct, bom validator, quick ingest, spotlight ctrl+k, pm sticky notes, erp export, and executive slide",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

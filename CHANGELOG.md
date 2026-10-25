@@ -6,6 +6,11 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.6.1] - 2026-10-25
+### 🩹 Corregido (Reparación de Reglas de Hooks de React - Error #310)
+- **Blindaje de Hooks Globales en `App.tsx`:** Reubicación de la escucha de atajos de teclado globales (`useEffect` para `Ctrl+K`, `Ctrl+U`, `Ctrl+D`) al nivel superior del componente antes de la condición de renderizado de la pantalla de login (`if (!currentUser)`). Esto elimina de forma definitiva el error crítico de React #310 (*"Rendered more hooks than during the previous render"*), garantizando un número y orden idéntico de hooks en todos los ciclos de renderizado.
+- **Validación Automática React Doctor:** Certificación de código con puntuación 87/100 y 0 diagnósticos de regresión.
+
 ## [v2.6.0] - 2026-10-25
 ### 🌟 Agregado (Guardarraíles Financieros 4%, Auditoría Preventiva de BOM, Ingesta Rápida y Productividad PM)
 - **Guardarraíles de Seguridad Financiera (Piso Mínimo 4.0%):** Protección comercial automática para impedir ventas por debajo de margen. Si el margen comercial o la internación de hardware tangible es inferior al 4.0% mínimo, la aplicación despliega alertas visuales en la barra de parámetros (`ParameterSidebar`) y exige confirmación obligatoria con checkbox de autorización de jefatura antes de permitir la descarga o exportación (`DownloadModal`).

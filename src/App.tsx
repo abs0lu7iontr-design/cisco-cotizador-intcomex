@@ -299,15 +299,6 @@ function AppContent() {
     }
   };
 
-  // If not logged in, show LoginScreen
-  if (!currentUser) {
-    return (
-      <ErrorBoundary fallbackTitle="Error en Pantalla de Acceso">
-        <LoginScreen onLoginSuccess={(u) => setCurrentUser(u)} />
-      </ErrorBoundary>
-    );
-  }
-
   // Handle native file input trigger
   const handleUploadClick = async () => {
     const desktopRes = await openDesktopFileDialog();
@@ -339,9 +330,10 @@ function AppContent() {
     }
   };
 
-  // Global Keyboard Shortcuts (Ctrl+K, Ctrl+U, Ctrl+D)
+  // Global Keyboard Shortcuts (Ctrl+K, Ctrl+U, Ctrl+D) - Registered unconditionally at top level
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (!currentUser) return;
       // Ctrl+K or Cmd+K: Open Spotlight Command Palette
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -361,7 +353,16 @@ function AppContent() {
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [processedResult]);
+  }, [currentUser, processedResult]);
+
+  // If not logged in, show LoginScreen
+  if (!currentUser) {
+    return (
+      <ErrorBoundary fallbackTitle="Error en Pantalla de Acceso">
+        <LoginScreen onLoginSuccess={(u) => setCurrentUser(u)} />
+      </ErrorBoundary>
+    );
+  }
 
   // Parse partner, client and model from filename or header info
   const getPartnerClientDefaults = () => {
