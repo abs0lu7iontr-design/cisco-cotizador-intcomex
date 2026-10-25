@@ -33,6 +33,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { AuditReport } from '../modules/mining';
+import { useUiExperience } from '../core/themeEngine';
 
 interface SummaryCardsProps {
   data: ProcessedEstimateResult;
@@ -47,6 +48,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
   miningAudit,
   onOpenMiningAudit,
 }) => {
+  const { isAesthetic } = useUiExperience();
   const [currency, setCurrency] = useState<CurrencyCode>(() => {
     try {
       const saved = localStorage.getItem('cisco_selected_currency');
@@ -309,94 +311,121 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
 
       <div id="summary-kpis" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* KPI 1: Base Cisco Net Cost / COGS */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2">
+        <div
+          className={
+            isAesthetic
+              ? 'aesthetic-card rounded-2xl p-4 shadow-xl space-y-2 border transition-all duration-300 hover:shadow-indigo-500/10 hover:border-indigo-500/40 hover:-translate-y-0.5 relative overflow-hidden backdrop-blur-md'
+              : 'bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2'
+          }
+        >
           <div className="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider">
             <span>Net Cost (COGS) Cisco</span>
-            <div className="p-1.5 bg-slate-800 text-slate-400 rounded-lg">
-            <DollarSign className="w-4 h-4" />
+            <div className={`p-1.5 rounded-lg ${isAesthetic ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'bg-slate-800 text-slate-400'}`}>
+              <DollarSign className="w-4 h-4" />
+            </div>
           </div>
-        </div>
-        <div>
-          <span className="text-xl font-black font-mono text-white">
-            {formatCurrency(data.originalProductTotal)}
-          </span>
-        </div>
-        <p className="text-[10px] text-slate-500">
-          Costo base de compra Cisco (sin internación ni margen)
-        </p>
-      </div>
-
-      {/* KPI 2: Total Revenue / Cotizado Intcomex */}
-      <div className="bg-gradient-to-br from-indigo-950/80 to-slate-900 border border-indigo-500/40 rounded-2xl p-4 shadow-md space-y-2 relative overflow-hidden">
-        <div className="flex items-center justify-between text-indigo-300 text-[11px] font-bold uppercase tracking-wider">
-          <span>Total Revenue / Facturación</span>
-          <div className="p-1.5 bg-indigo-500/20 text-indigo-300 rounded-lg">
-            <TrendingUp className="w-4 h-4" />
-          </div>
-        </div>
-        <div>
-          <span className="text-xl font-black font-mono text-emerald-400">
-            {formatCurrency(data.calculatedProductTotal)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-indigo-500/20">
-          <span>
-            Spread: <strong className="text-indigo-300">+{formatCurrency(totalDelta)}</strong>
-          </span>
-          <span className="text-emerald-400 font-bold">
-            Target Margen {params.margenPct}%
-          </span>
-        </div>
-      </div>
-
-      {/* KPI 3: Net Profit / Utilidad Comercial */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2">
-        <div className="flex items-center justify-between text-amber-400 text-[11px] font-bold uppercase tracking-wider">
-          <span>Net Profit (Ganancia Neta)</span>
-          <div className="p-1.5 bg-amber-500/10 text-amber-400 rounded-lg">
-            <Sparkles className="w-4 h-4" />
-          </div>
-        </div>
-        <div className="flex items-baseline space-x-2">
-          <span className="text-xl font-black font-mono text-amber-400">
-            {formatCurrency(netProfit)}
-          </span>
-          <span className="text-[11px] font-bold text-emerald-400 font-mono">
-            ({profitMarginReal.toFixed(1)}% ROS)
-          </span>
-        </div>
-        <p className="text-[10px] text-slate-500">
-          Utilidad líquida estimada para Intcomex Chile
-        </p>
-      </div>
-
-      {/* KPI 4: Reglas & Clasificación */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2">
-        <div className="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider">
-          <span>Clasificación de SKUs</span>
-          <div className="p-1.5 bg-slate-800 text-slate-400 rounded-lg">
-            <Layers className="w-4 h-4" />
-          </div>
-        </div>
-        <div className="flex items-center space-x-2 text-xs font-bold">
-          <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300">
-            {data.items.length - intangiblesCount - arancelCount} Hardware
-          </span>
-          {intangiblesCount > 0 && (
-            <span className="px-2 py-0.5 rounded-md bg-amber-950/70 text-amber-400 border border-amber-800/40">
-              {intangiblesCount} Intang.
+          <div>
+            <span className="text-xl font-black font-mono text-white tracking-tight">
+              {formatCurrency(data.originalProductTotal)}
             </span>
-          )}
-          {arancelCount > 0 && (
-            <span className="px-2 py-0.5 rounded-md bg-purple-950/70 text-purple-400 border border-purple-800/40">
-              {arancelCount} Arancel
-            </span>
-          )}
+          </div>
+          <p className="text-[10px] text-slate-500">
+            Costo base de compra Cisco (sin internación ni margen)
+          </p>
         </div>
-        <p className="text-[10px] text-slate-500">
-          {totalItemsCount} unidades totales {ftCount > 0 ? `(${ftCount} con promo Fast Track)` : ''}
-        </p>
-      </div>
+
+        {/* KPI 2: Total Revenue / Cotizado Intcomex */}
+        <div
+          className={
+            isAesthetic
+              ? 'aesthetic-card bg-gradient-to-br from-indigo-950/70 via-slate-900/90 to-slate-900/90 border border-indigo-500/40 rounded-2xl p-4 shadow-xl space-y-2 relative overflow-hidden transition-all duration-300 hover:shadow-indigo-500/20 hover:border-indigo-400/60 hover:-translate-y-0.5 backdrop-blur-md'
+              : 'bg-gradient-to-br from-indigo-950/80 to-slate-900 border border-indigo-500/40 rounded-2xl p-4 shadow-md space-y-2 relative overflow-hidden'
+          }
+        >
+          <div className="flex items-center justify-between text-indigo-300 text-[11px] font-bold uppercase tracking-wider">
+            <span>Total Revenue / Facturación</span>
+            <div className="p-1.5 bg-indigo-500/20 text-indigo-300 rounded-lg border border-indigo-500/30">
+              <TrendingUp className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <span className="text-xl font-black font-mono text-emerald-400 tracking-tight">
+              {formatCurrency(data.calculatedProductTotal)}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-indigo-500/20">
+            <span>
+              Spread: <strong className="text-indigo-300">+{formatCurrency(totalDelta)}</strong>
+            </span>
+            <span className="text-emerald-400 font-bold">
+              Target Margen {params.margenPct}%
+            </span>
+          </div>
+        </div>
+
+        {/* KPI 3: Net Profit / Utilidad Comercial */}
+        <div
+          className={
+            isAesthetic
+              ? 'aesthetic-card rounded-2xl p-4 shadow-xl space-y-2 border transition-all duration-300 hover:shadow-amber-500/10 hover:border-amber-500/40 hover:-translate-y-0.5 relative overflow-hidden backdrop-blur-md'
+              : 'bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2'
+          }
+        >
+          <div className="flex items-center justify-between text-amber-400 text-[11px] font-bold uppercase tracking-wider">
+            <span>Net Profit (Ganancia Neta)</span>
+            <div className="p-1.5 bg-amber-500/10 text-amber-400 rounded-lg border border-amber-500/20">
+              <Sparkles className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-baseline space-x-2">
+            <span className="text-xl font-black font-mono text-amber-400 tracking-tight">
+              {formatCurrency(netProfit)}
+            </span>
+            <span className="text-[11px] font-bold text-emerald-400 font-mono">
+              ({profitMarginReal.toFixed(1)}% ROS)
+            </span>
+          </div>
+          <p className="text-[10px] text-slate-500">
+            Utilidad líquida estimada para Intcomex Chile
+          </p>
+        </div>
+
+        {/* KPI 4: Reglas & Clasificación */}
+        <div
+          className={
+            isAesthetic
+              ? 'aesthetic-card rounded-2xl p-4 shadow-xl space-y-2 border transition-all duration-300 hover:shadow-indigo-500/10 hover:border-indigo-500/40 hover:-translate-y-0.5 relative overflow-hidden backdrop-blur-md'
+              : 'bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2'
+          }
+        >
+          <div className="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider">
+            <span>Clasificación de SKUs</span>
+            <div className={`p-1.5 rounded-lg ${isAesthetic ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'bg-slate-800 text-slate-400'}`}>
+              <Layers className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 text-xs font-bold">
+            <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 inline-flex items-center">
+              {isAesthetic && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block mr-1.5 animate-pulse" />}
+              {data.items.length - intangiblesCount - arancelCount} Hardware
+            </span>
+            {intangiblesCount > 0 && (
+              <span className="px-2 py-0.5 rounded-md bg-amber-950/70 text-amber-400 border border-amber-800/40 inline-flex items-center">
+                {isAesthetic && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block mr-1.5 animate-pulse" />}
+                {intangiblesCount} Intang.
+              </span>
+            )}
+            {arancelCount > 0 && (
+              <span className="px-2 py-0.5 rounded-md bg-purple-950/70 text-purple-400 border border-purple-800/40 inline-flex items-center">
+                {isAesthetic && <span className="w-1.5 h-1.5 rounded-full bg-purple-400 inline-block mr-1.5 animate-pulse" />}
+                {arancelCount} Arancel
+              </span>
+            )}
+          </div>
+          <p className="text-[10px] text-slate-500">
+            {totalItemsCount} unidades totales {ftCount > 0 ? `(${ftCount} con promo Fast Track)` : ''}
+          </p>
+        </div>
 
       {/* Mining Audit Executive Banner */}
       {miningAudit && miningAudit.overallStatus !== 'NO_RULES' && onOpenMiningAudit && (

@@ -13,12 +13,14 @@ import {
   Info,
 } from 'lucide-react';
 import { openDesktopFileDialog, isDesktopApp } from '../core/desktopBridge';
+import { useUiExperience } from '../core/themeEngine';
 
 interface UploadViewProps {
   onProcessFile: (buffer: ArrayBuffer, fileName: string) => void;
 }
 
 export function UploadView({ onProcessFile }: UploadViewProps) {
+  const { isAesthetic } = useUiExperience();
   const [isProcessing, setIsProcessing] = useState(false);
   const [validationResult, setValidationResult] = useState<{
     success: boolean;
@@ -137,7 +139,13 @@ export function UploadView({ onProcessFile }: UploadViewProps) {
       />
 
       {/* Header */}
-      <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl">
+      <div
+        className={
+          isAesthetic
+            ? 'aesthetic-card border p-6 rounded-2xl backdrop-blur-md shadow-xl'
+            : 'bg-slate-900/90 border border-slate-800 p-6 rounded-2xl'
+        }
+      >
         <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2.5">
           <UploadCloud className="w-6 h-6 text-indigo-400" />
           <span>Subir y Clasificar Estimate Cisco CCW</span>
@@ -148,7 +156,13 @@ export function UploadView({ onProcessFile }: UploadViewProps) {
       </div>
 
       {/* Nomenclature Guide */}
-      <div className="bg-indigo-950/30 border border-indigo-500/30 p-5 rounded-2xl space-y-3">
+      <div
+        className={
+          isAesthetic
+            ? 'aesthetic-card bg-indigo-950/20 border border-indigo-500/30 p-5 rounded-2xl space-y-3 backdrop-blur-md shadow-xl'
+            : 'bg-indigo-950/30 border border-indigo-500/30 p-5 rounded-2xl space-y-3'
+        }
+      >
         <div className="flex items-center space-x-2 text-indigo-400 font-bold text-xs uppercase tracking-wider">
           <Info className="w-4 h-4" />
           <span>Nomenclatura Estandarizada para Almacenamiento Automático</span>
@@ -167,9 +181,19 @@ export function UploadView({ onProcessFile }: UploadViewProps) {
       {/* Drop / Upload Zone */}
       <div
         onClick={handleSelectFileDesktop}
-        className="bg-slate-900/60 border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-3xl p-10 text-center transition-all cursor-pointer group hover:bg-indigo-950/10 shadow-xl"
+        className={
+          isAesthetic
+            ? 'aesthetic-card border-2 border-dashed border-indigo-500/40 hover:border-indigo-400 rounded-3xl p-10 text-center transition-all duration-300 cursor-pointer group hover:bg-indigo-950/20 shadow-2xl backdrop-blur-xl hover:shadow-indigo-500/20'
+            : 'bg-slate-900/60 border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-3xl p-10 text-center transition-all cursor-pointer group hover:bg-indigo-950/10 shadow-xl'
+        }
       >
-        <div className="w-16 h-16 rounded-2xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center mx-auto mb-4 border border-indigo-500/30 group-hover:scale-105 transition-transform">
+        <div
+          className={
+            isAesthetic
+              ? 'w-16 h-16 rounded-2xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center mx-auto mb-4 border border-indigo-500/40 group-hover:scale-110 group-hover:-translate-y-2 transition-all duration-300 shadow-lg shadow-indigo-600/30'
+              : 'w-16 h-16 rounded-2xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center mx-auto mb-4 border border-indigo-500/30 group-hover:scale-105 transition-transform'
+          }
+        >
           <UploadCloud className="w-8 h-8" />
         </div>
 

@@ -6,12 +6,14 @@ import React, { useState } from 'react';
 import { QuoteParameters } from '../core/types';
 import { calculateLineItemCosts, formatLeadTime } from '../core/calculations';
 import { Calculator, ArrowRight, ShieldCheck, Sparkles, CheckCircle2 } from 'lucide-react';
+import { useUiExperience } from '../core/themeEngine';
 
 interface QuickCalculatorProps {
   params: QuoteParameters;
 }
 
 export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ params }) => {
+  const { isAesthetic } = useUiExperience();
   const [partNumber, setPartNumber] = useState('MR46-HW');
   const [description, setDescription] = useState('Cisco Meraki MR46 Cloud Managed AP');
   const [netPrice, setNetPrice] = useState<number>(1250.0);
@@ -32,7 +34,13 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ params }) => {
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6 text-slate-200">
+    <div
+      className={
+        isAesthetic
+          ? 'aesthetic-card rounded-2xl p-6 shadow-2xl space-y-6 text-slate-200 border backdrop-blur-md transition-all duration-300'
+          : 'bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6 text-slate-200'
+      }
+    >
       <div className="flex items-center space-x-3 border-b border-slate-800 pb-4">
         <div className="p-2.5 bg-indigo-950 text-indigo-400 rounded-xl border border-indigo-500/30">
           <Calculator className="w-5 h-5" />
@@ -164,6 +172,31 @@ export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ params }) => {
               </div>
             </div>
           </div>
+
+          {/* Visual Profit Gauge (Modo Aesthetic) */}
+          {isAesthetic && (
+            <div className="p-3.5 rounded-xl bg-slate-950/90 border border-indigo-500/30 space-y-2">
+              <div className="flex items-center justify-between text-[11px] font-bold">
+                <span className="text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Tacómetro de Margen Intcomex</span>
+                </span>
+                <span className="font-mono text-emerald-400 font-extrabold">{params.margenPct}% Margen</span>
+              </div>
+              <div className="w-full bg-slate-900 rounded-full h-3 p-0.5 border border-slate-800 overflow-hidden relative">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-cyan-400 to-emerald-400 shadow-lg shadow-emerald-500/40 transition-all duration-500"
+                  style={{ width: `${Math.min(100, Math.max(5, (params.margenPct / 20) * 100))}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[9px] font-mono text-slate-500 px-0.5">
+                <span>0% Min</span>
+                <span>5% Target Estándar</span>
+                <span>10% Alto</span>
+                <span>20%+ Max</span>
+              </div>
+            </div>
+          )}
 
           {/* Final Price Block */}
           <div className="p-4 rounded-xl bg-gradient-to-r from-indigo-950/80 to-slate-900 border border-indigo-500/40 flex items-center justify-between">

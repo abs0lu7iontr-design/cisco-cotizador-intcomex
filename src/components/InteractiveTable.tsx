@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 
 import { MobileEstimateCardList } from './mobile/MobileEstimateCardList';
+import { useUiExperience } from '../core/themeEngine';
 
 export type InteractiveTableFilterType = 'all' | 'intangible' | 'tangible' | 'arancel';
 
@@ -185,6 +186,7 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
   onSetRowRule,
   onToggleRowRule,
 }) => {
+  const { isAesthetic, config: studioConfig } = useUiExperience();
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<InteractiveTableFilterType>('all');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -418,7 +420,11 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
 
   return (
     <div
-      className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden space-y-4 relative focus:outline-none"
+      className={
+        isAesthetic
+          ? 'aesthetic-card rounded-2xl shadow-2xl overflow-hidden space-y-4 relative focus:outline-none border backdrop-blur-md transition-all duration-300'
+          : 'bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden space-y-4 relative focus:outline-none'
+      }
       tabIndex={0}
       onKeyDown={handleTableKeyDown}
     >
@@ -645,7 +651,7 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
         }
         className="hidden md:block overflow-x-auto"
       >
-        <table className="w-full text-left border-collapse text-xs">
+        <table className={`w-full text-left border-collapse text-xs ${isAesthetic ? `density-${studioConfig.density}` : ''}`}>
           <thead className={virtualWindow.isVirtualized ? 'sticky top-0 z-10' : undefined}>
             <tr className="bg-slate-950 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
               <th className="p-3 text-center w-14">Línea</th>
@@ -704,6 +710,8 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                       title="Haz clic derecho para elegir: Hardware / Intangible / Arancel"
                       aria-selected={isSelected}
                       className={`transition-colors cursor-pointer select-none ${
+                        isAesthetic ? 'table-row-spotlight ' : ''
+                      }${
                         isSelected ? 'ring-1 ring-inset ring-indigo-500/70 bg-indigo-950/25 ' : ''
                       }${
                         item.isIntangible
@@ -814,7 +822,7 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                       <td className="p-3 text-center">
                         <button
                           onClick={(e) => handleRowContextMenu(e, item)}
-                          className={`text-[9px] font-bold px-2 py-0.5 rounded-full border cursor-pointer transition-transform hover:scale-105 ${
+                          className={`text-[9px] font-bold px-2.5 py-0.5 rounded-full border cursor-pointer transition-transform hover:scale-105 inline-flex items-center gap-1.5 ${
                             item.isIntangible
                               ? 'bg-amber-950 text-amber-300 border-amber-600/40'
                               : item.llevaArancel
@@ -822,7 +830,18 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                               : 'bg-indigo-950 text-indigo-300 border-indigo-600/40'
                           }`}
                         >
-                          {item.isIntangible ? 'INTANGIBLE' : item.llevaArancel ? 'ARANCEL (=)' : 'HARDWARE'}
+                          {isAesthetic && (
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                                item.isIntangible
+                                  ? 'bg-amber-400'
+                                  : item.llevaArancel
+                                  ? 'bg-purple-400'
+                                  : 'bg-emerald-400'
+                              }`}
+                            />
+                          )}
+                          <span>{item.isIntangible ? 'INTANGIBLE' : item.llevaArancel ? 'ARANCEL (=)' : 'HARDWARE'}</span>
                         </button>
                       </td>
                       <td className="p-3 text-center text-[11px] text-slate-400 whitespace-nowrap">

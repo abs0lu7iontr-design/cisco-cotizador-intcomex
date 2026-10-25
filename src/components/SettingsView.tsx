@@ -27,7 +27,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import { APP_THEMES, getSavedThemeId } from '../core/themeEngine';
+import { APP_THEMES, getSavedThemeId, useUiExperience } from '../core/themeEngine';
 import { useAppTheme } from '../context/ThemeContext';
 import { DsvPartnerUploader } from '../modules/dsv/components/DsvPartnerUploader';
 import {
@@ -46,6 +46,7 @@ import { VERSION_HISTORY } from '../core/versionHistory';
 
 interface SettingsViewProps {
   onOpenThemes?: () => void;
+  onOpenLiveStudio?: () => void;
   onOpenRules?: () => void;
   onOpenSharedSku?: () => void;
   onOpenFastTrack?: () => void;
@@ -53,11 +54,13 @@ interface SettingsViewProps {
 
 export function SettingsView({
   onOpenThemes,
+  onOpenLiveStudio,
   onOpenRules,
   onOpenSharedSku,
   onOpenFastTrack,
 }: SettingsViewProps) {
   const { theme, toggleTheme } = useAppTheme();
+  const { mode: uiMode, changeMode: changeUiMode, isAesthetic } = useUiExperience();
   const [supabaseUrl, setSupabaseUrl] = useState('');
   const [supabaseKey, setSupabaseKey] = useState('');
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -404,6 +407,65 @@ export function SettingsView({
               <span>Explorar Paletas</span>
             </button>
           )}
+        </div>
+
+        {/* Dual UI Experience Mode: Clásica vs Ultra-Moderna / Aesthetic */}
+        <div className="flex items-center justify-between p-4 rounded-xl bg-slate-950 border border-indigo-500/20 flex-wrap gap-4">
+          <div className="max-w-md">
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-white">Experiencia de Vista</span>
+              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                isAesthetic
+                  ? 'bg-purple-950 text-purple-300 border-purple-500/40'
+                  : 'bg-slate-800 text-slate-300 border-slate-700'
+              }`}>
+                {isAesthetic ? '✨ Modo Aesthetic Activo' : '🏛️ Modo Clásico Activo'}
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-400 block mt-1">
+              {isAesthetic
+                ? 'Vista ultra-moderna con efectos de cristal acrílico, malla ambiental, badges micro-LED y estudio de personalización en caliente.'
+                : 'Vista corporativa tradicional probada de alto contraste con distribución compacta de elementos.'}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center p-0.5 bg-slate-900 rounded-xl border border-slate-800">
+              <button
+                type="button"
+                onClick={() => changeUiMode('classic')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  !isAesthetic
+                    ? 'bg-slate-800 text-white shadow border border-slate-700'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                🏛️ Vista Clásica
+              </button>
+              <button
+                type="button"
+                onClick={() => changeUiMode('aesthetic')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  isAesthetic
+                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow ring-1 ring-indigo-400/50'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                ✨ Vista Aesthetic
+              </button>
+            </div>
+
+            {isAesthetic && onOpenLiveStudio && (
+              <button
+                type="button"
+                onClick={onOpenLiveStudio}
+                className="px-3 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/50 text-purple-300 hover:text-white text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 shadow"
+              >
+                <Palette className="w-3.5 h-3.5 text-purple-400" />
+                <span>Custom en Caliente</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* HUD Mode Switcher */}

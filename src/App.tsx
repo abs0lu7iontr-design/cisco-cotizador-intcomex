@@ -46,6 +46,8 @@ import { UserManagementView } from './components/UserManagementView';
 import { AuditLogsView } from './components/AuditLogsView';
 import { SettingsView } from './components/SettingsView';
 import { ThemeSelectorModal } from './components/ThemeSelectorModal';
+import { AmbientMeshGlow } from './components/AmbientMeshGlow';
+import { LiveStudioModal } from './components/LiveStudioModal';
 import { DsvView } from './modules/dsv';
 import { ConfiguriatorView } from './modules/configuriator';
 import { FastTrackAdminModal, FastTrackOpportunityModal } from './modules/fasttrack';
@@ -203,6 +205,7 @@ function AppContent() {
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
+  const [isLiveStudioOpen, setIsLiveStudioOpen] = useState(false);
   const [isBoModalOpen, setIsBoModalOpen] = useState(false);
   const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
 
@@ -365,7 +368,10 @@ function AppContent() {
   const { partner: defaultPartner, client: defaultClient, model: defaultModel } = getPartnerClientDefaults();
 
   return (
-    <div className="flex h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
+    <div className="flex h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden relative">
+      {/* Ambient Mesh Glow Effect (Active in Aesthetic Mode) */}
+      <AmbientMeshGlow />
+
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -399,6 +405,12 @@ function AppContent() {
       <ThemeSelectorModal
         isOpen={isThemeModalOpen}
         onClose={() => setIsThemeModalOpen(false)}
+      />
+
+      {/* Live Custom Studio Modal (Aesthetic Mode Real-time Customization) */}
+      <LiveStudioModal
+        isOpen={isLiveStudioOpen}
+        onClose={() => setIsLiveStudioOpen(false)}
       />
 
       {/* Shared SKU Rules Manager Modal (Cloud & Local) */}
@@ -610,6 +622,7 @@ function AppContent() {
           isProcessing={isProcessing}
           hasData={Boolean(processedResult)}
           fileName={currentFileName}
+          onOpenLiveStudio={() => setIsLiveStudioOpen(true)}
         />
 
         {/* Floating Cloud Toast Notification */}
@@ -746,6 +759,7 @@ function AppContent() {
             >
               <SettingsView
                 onOpenThemes={() => setIsThemeModalOpen(true)}
+                onOpenLiveStudio={() => setIsLiveStudioOpen(true)}
                 onOpenRules={() => setIsRulesModalOpen(true)}
                 onOpenSharedSku={() => setIsSharedSkuManagerOpen(true)}
                 onOpenFastTrack={() => setIsFastTrackAdminModalOpen(true)}
