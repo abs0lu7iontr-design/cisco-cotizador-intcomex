@@ -22,6 +22,8 @@ import {
   Sparkles,
   Palette,
   ClipboardPaste,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { getFormattedAppVersion } from '../core/appVersion';
@@ -53,6 +55,8 @@ interface NavbarProps {
   fileName?: string;
   onOpenLiveStudio?: () => void;
   onOpenQuickIngest?: () => void;
+  isClientMode?: boolean;
+  onToggleClientMode?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -81,6 +85,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   fileName,
   onOpenLiveStudio,
   onOpenQuickIngest,
+  isClientMode = false,
+  onToggleClientMode,
 }) => {
   const { mode, changeMode, isAesthetic } = useUiExperience();
 
@@ -197,6 +203,36 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Center / Right Section: Dual View Switcher (Clásica vs Aesthetic) & Actions */}
         <div className="flex items-center flex-wrap gap-2">
+          {/* Client Mode Privacy Toggle */}
+          {onToggleClientMode && (
+            <button
+              id="btn-client-mode"
+              type="button"
+              onClick={onToggleClientMode}
+              className={`inline-flex items-center space-x-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border transition-all cursor-pointer ${
+                isClientMode
+                  ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500 shadow-md shadow-emerald-500/20'
+                  : 'bg-slate-950/80 text-slate-400 hover:text-white border-slate-800 hover:border-slate-700'
+              }`}
+              title={
+                isClientMode
+                  ? 'Modo Cliente activo: Los costos y márgenes están ocultos. Clic para volver a Modo PM'
+                  : 'Activar Modo Cliente: Oculta costos de compra y márgenes para reuniones o proyección en vivo'
+              }
+            >
+              {isClientMode ? (
+                <>
+                  <EyeOff className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Modo Cliente</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="hidden sm:inline">Modo Cliente</span>
+                </>
+              )}
+            </button>
+          )}
           {/* Dual-View Mode Switcher: Clásica vs Aesthetic */}
           <div className="flex items-center p-0.5 bg-slate-950/80 rounded-2xl border border-slate-800 shadow-inner">
             <button

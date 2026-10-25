@@ -1,9 +1,14 @@
 // ============================================================================
-// CISCO AUTOMATED v2.1 - ESTIMATE & BO EMAIL CLIPBOARD HELPER (OUTLOOK / GMAIL)
-// Unifies rich HTML + plain-text clipboard copying with verified fallbacks
+// CISCO AUTOMATED v2.7 - ESTIMATE & BO EMAIL CLIPBOARD HELPER (OUTLOOK / GMAIL)
+// Unifies rich HTML + plain-text clipboard copying with customizable PM signatures
 // ============================================================================
 
 import { ProcessedEstimateResult, EstimateHeaderInfo } from './types';
+import {
+  EmailSignatureProfile,
+  DEFAULT_EMAIL_SIGNATURE,
+  getSavedEmailSignature,
+} from './emailSignatureProfile';
 
 export type ClipboardCopyMode = 'rich' | 'plain' | 'none';
 
@@ -16,11 +21,6 @@ export interface ClipboardCopyDetailedResult {
 
 /**
  * Unifies rich HTML + plain-text clipboard copying across Quote Summary, BO, and Deal Reminders.
- * 1. Tries modern ClipboardItem ('text/html' + 'text/plain') -> mode: 'rich'
- * 2. Tries legacy copy event + document.execCommand('copy') verifying boolean result -> mode: 'rich'
- * 3. Tries navigator.clipboard.writeText(plainText) -> mode: 'plain'
- * 4. Tries legacy textarea + document.execCommand('copy') verifying boolean result -> mode: 'plain'
- * Always cleans up temporary DOM elements and listeners in `finally`.
  */
 export async function copyHtmlAndTextToClipboard(
   htmlContent: string,
@@ -79,26 +79,28 @@ export async function copyHtmlAndTextToClipboard(
         tempContainer.innerHTML = htmlContent;
         document.body.appendChild(tempContainer);
 
-        if (typeof window !== 'undefined' && typeof window.getSelection === 'function' && typeof document.createRange === 'function') {
-          const range = document.createRange();
-          range.selectNodeContents(tempContainer);
-          const selection = window.getSelection();
-          selection?.removeAllRanges();
-          selection?.addRange(range);
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(tempContainer);
+        if (selection) {
+          selection.removeAllRanges();
+          selection.addRange(range);
         }
       }
 
       document.addEventListener('copy', listener);
-      const execOk = Boolean(document.execCommand('copy'));
-      if (execOk && (intercepted || tempContainer !== null)) {
+      const successful = document.execCommand('copy');
+      document.removeEventListener('copy', listener);
+
+      if (successful || intercepted) {
         return {
           success: true,
           mode: 'rich',
-          message: 'Copia enriquecida (modo compatible HTML) realizada con éxito.',
+          message: 'Copia enriquecida (vía eventos HTML) completada con éxito.',
         };
       }
-      if (!execOk && !lastError) {
-        lastError = 'document.execCommand("copy") devolvió false.';
+      if (!lastError) {
+        lastError = 'document.execCommand("copy") devolvió false sin interceptar datos.';
       }
     } catch (err: unknown) {
       lastError = err instanceof Error ? err.message : String(err);
@@ -106,28 +108,17 @@ export async function copyHtmlAndTextToClipboard(
       if (listener) {
         try {
           document.removeEventListener('copy', listener);
-        } catch {
-          // Ignore listener cleanup errors
-        }
-      }
-      if (typeof window !== 'undefined' && typeof window.getSelection === 'function') {
-        try {
-          window.getSelection()?.removeAllRanges();
-        } catch {
-          // Ignore selection cleanup errors
-        }
+        } catch {}
       }
       if (tempContainer && tempContainer.parentNode) {
         try {
           tempContainer.parentNode.removeChild(tempContainer);
-        } catch {
-          // Ignore DOM removal errors
-        }
+        } catch {}
       }
     }
   }
 
-  // 3. Plain-text fallback via navigator.clipboard.writeText
+  // 3. Modern writeText fallback
   if (
     typeof navigator !== 'undefined' &&
     navigator.clipboard &&
@@ -138,33 +129,31 @@ export async function copyHtmlAndTextToClipboard(
       return {
         success: true,
         mode: 'plain',
-        message: 'Copia en texto plano completada (formato enriquecido HTML no disponible en este navegador).',
+        message: 'Copia en texto plano completada (formato HTML no soportado por el navegador).',
       };
     } catch (err: unknown) {
       lastError = err instanceof Error ? err.message : String(err);
     }
   }
 
-  // 4. Plain-text fallback via temporary textarea + verified execCommand('copy')
-  if (
-    typeof document !== 'undefined' &&
-    document.body &&
-    typeof document.execCommand === 'function'
-  ) {
+  // 4. Legacy textarea fallback
+  if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
     let textarea: HTMLTextAreaElement | null = null;
     try {
       textarea = document.createElement('textarea');
       textarea.value = plainText;
-      textarea.setAttribute('readonly', 'true');
+      textarea.setAttribute('readonly', '');
       textarea.style.position = 'fixed';
       textarea.style.left = '-9999px';
       textarea.style.top = '0';
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
+      textarea.style.opacity = '0';
 
-      const execPlainOk = Boolean(document.execCommand('copy'));
-      if (execPlainOk) {
+      document.body.appendChild(textarea);
+      textarea.select();
+      textarea.setSelectionRange(0, textarea.value.length);
+
+      const successful = document.execCommand('copy');
+      if (successful) {
         return {
           success: true,
           mode: 'plain',
@@ -180,9 +169,7 @@ export async function copyHtmlAndTextToClipboard(
       if (textarea && textarea.parentNode) {
         try {
           textarea.parentNode.removeChild(textarea);
-        } catch {
-          // Ignore DOM removal errors
-        }
+        } catch {}
       }
     }
   }
@@ -196,18 +183,13 @@ export async function copyHtmlAndTextToClipboard(
 }
 
 /**
- * Obtiene el saludo dinámico según la hora local del sistema:
- * - Antes de las 12:00 hrs -> "Buenos días"
- * - Desde las 12:00 hrs en adelante -> "Buenas tardes"
+ * Obtiene el saludo dinámico según la hora local del sistema.
  */
 export function getTimeBasedGreeting(date: Date = new Date()): string {
   const hour = date.getHours();
   return hour < 12 ? 'Buenos días' : 'Buenas tardes';
 }
 
-/**
- * Formatea un número a formato monetario USD con 2 decimales ($ 1,234.56)
- */
 function formatUsdCurrency(val: number): string {
   return Number(val || 0).toLocaleString('en-US', {
     style: 'currency',
@@ -218,26 +200,27 @@ function formatUsdCurrency(val: number): string {
 }
 
 /**
- * Genera la plantilla HTML corporativa con estilos inline garantizados
- * para máxima compatibilidad con Microsoft Outlook (Desktop / Web), Gmail y Teams.
+ * Genera la plantilla HTML corporativa con estilos inline garantizados para Outlook.
  */
 export function generateEstimateEmailHtml(
   data: ProcessedEstimateResult,
   detectedPartner?: string,
-  targetDate?: Date
+  targetDate?: Date,
+  signatureProfile?: EmailSignatureProfile
 ): string {
   const greeting = getTimeBasedGreeting(targetDate);
   const header = (data.headerInfo || {}) as Partial<EstimateHeaderInfo>;
   const partnerName = detectedPartner || header.customerName || 'Partner';
   const clientName = header.companyName || header.endUser || 'Cliente Final';
   const dealId = header.dealId || 'N/A';
-  const estimateId = header.estimateId || header.quoteName || 'N/A';
+  const estimateId = header.quoteName || header.estimateId || 'N/A';
+
+  const sig = signatureProfile || DEFAULT_EMAIL_SIGNATURE;
 
   const today = targetDate || new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   const fechaStr = `${pad(today.getDate())}/${pad(today.getMonth() + 1)}/${today.getFullYear()}`;
 
-  // Filtrar líneas válidas (excluyendo filas informativas puras sin precio)
   const activeItems = (data.items || []).filter(
     (item) => !item.isInfoRow && (item.precioVentaExtendido > 0 || item.precioVentaUnitario > 0 || item.qty > 0)
   );
@@ -265,6 +248,10 @@ export function generateEstimateEmailHtml(
         <td style="border: 1px solid #cbd5e1; padding: 7px 10px; text-align: right; font-weight: bold; color: #0f172a; white-space: nowrap;">${formatUsdCurrency(item.precioVentaExtendido)}</td>
       </tr>`;
     })
+    .join('');
+
+  const termsHtml = (sig.commercialTerms || DEFAULT_EMAIL_SIGNATURE.commercialTerms)
+    .map((t) => `<li>${t}</li>`)
     .join('');
 
   return `
@@ -332,38 +319,48 @@ export function generateEstimateEmailHtml(
   <div style="background-color: #f8fafc; border-left: 4px solid #4338ca; padding: 10px 14px; margin-bottom: 20px; font-size: 9pt; color: #475569;">
     <strong style="color: #1e293b; display: block; margin-bottom: 4px;">Condiciones Comerciales Estándar:</strong>
     <ul style="margin: 0; padding-left: 18px; line-height: 1.5;">
-      <li>Valores unitarios y totales expresados en <strong>Dólares Americanos (USD)</strong>, valores <strong>Netos</strong> (no incluyen IVA).</li>
-      <li>Precios calculados con internación y arancel aduanero chileno según aplique por SKU.</li>
-      <li>Cotización sujeta a disponibilidad de stock y vigencia oficial en Cisco Commerce Workspace (CCW).</li>
-      <li>Validez de la oferta: 30 días calendario desde su fecha de emisión.</li>
+      ${termsHtml}
     </ul>
   </div>
 
-  <p style="margin: 0 0 4px 0;">Quedamos atentos a sus comentarios para coordinar la generación de la orden respectiva.</p>
-  <br/>
-  <p style="margin: 0; color: #334155; font-size: 10.5pt;">
-    Saludos cordiales,<br/>
-    <strong style="color: #0f172a; font-size: 11pt;">Equipo Cisco &bull; Intcomex Chile</strong><br/>
-    <span style="font-size: 9pt; color: #64748b;">Distribuidor Mayorista Autorizado Cisco</span>
-  </p>
+  <p style="margin: 0 0 16px 0;">Quedamos atentos a sus comentarios para coordinar la generación de la orden respectiva.</p>
+
+  <!-- Firma Personalizada del PM -->
+  <table style="border-collapse: collapse; font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 10pt; color: #334155; margin-top: 10px;">
+    <tr>
+      <td style="padding-right: 15px; border-right: 2px solid #4338ca; vertical-align: top;">
+        <strong style="color: #0f172a; font-size: 11.5pt; display: block;">${sig.senderName}</strong>
+        <span style="color: #4338ca; font-weight: bold; font-size: 9.5pt; display: block;">${sig.jobTitle}</span>
+        <span style="color: #64748b; font-size: 9pt; display: block;">Intcomex Chile &bull; Cisco Division</span>
+      </td>
+      <td style="padding-left: 15px; vertical-align: top; font-size: 9pt; color: #475569;">
+        ${sig.phone ? `<span>📞 ${sig.phone}</span><br/>` : ''}
+        ${sig.email ? `<span>✉️ <a href="mailto:${sig.email}" style="color: #4338ca; text-decoration: none;">${sig.email}</a></span><br/>` : ''}
+        <span style="color: #94a3b8; font-size: 8.5pt;">${sig.disclaimerText || DEFAULT_EMAIL_SIGNATURE.disclaimerText}</span>
+      </td>
+    </tr>
+  </table>
 </div>
 `;
 }
 
 /**
- * Genera el texto plano en formato tabulado (fallback)
+ * Genera el texto plano en formato tabulado (fallback).
  */
 export function generateEstimatePlainText(
   data: ProcessedEstimateResult,
   detectedPartner?: string,
-  targetDate?: Date
+  targetDate?: Date,
+  signatureProfile?: EmailSignatureProfile
 ): string {
   const greeting = getTimeBasedGreeting(targetDate);
   const header = (data.headerInfo || {}) as Partial<EstimateHeaderInfo>;
   const partnerName = detectedPartner || header.customerName || 'Partner';
   const clientName = header.companyName || header.endUser || 'Cliente Final';
   const dealId = header.dealId || 'N/A';
-  const estimateId = header.estimateId || header.quoteName || 'N/A';
+  const estimateId = header.quoteName || header.estimateId || 'N/A';
+
+  const sig = signatureProfile || DEFAULT_EMAIL_SIGNATURE;
 
   const activeItems = (data.items || []).filter(
     (item) => !item.isInfoRow && (item.precioVentaExtendido > 0 || item.precioVentaUnitario > 0 || item.qty > 0)
@@ -381,6 +378,10 @@ export function generateEstimatePlainText(
     )
     .join('\n');
 
+  const termsText = (sig.commercialTerms || DEFAULT_EMAIL_SIGNATURE.commercialTerms)
+    .map((t) => `- ${t}`)
+    .join('\n');
+
   return `${greeting},
 
 Junto con saludar, comparto el resumen oficial de cotización comercial Cisco (Intcomex Chile):
@@ -395,31 +396,33 @@ ${linesText}
 TOTAL NETO COTIZADO (${totalQty} unidades): ${formatUsdCurrency(totalNeto)} USD
 
 Condiciones Comerciales:
-- Precios en Dólares Americanos (USD), valores netos sin IVA.
-- Incluye internación y aranceles según corresponda.
-- Sujeto a vigencia de precios Cisco CCW.
-- Validez de la oferta: 30 días calendario.
+${termsText}
 
 Saludos cordiales,
-Equipo Cisco • Intcomex Chile
+${sig.senderName}
+${sig.jobTitle}
+${sig.phone ? `Tel: ${sig.phone}` : ''}
+${sig.email ? `Email: ${sig.email}` : ''}
+${sig.disclaimerText || DEFAULT_EMAIL_SIGNATURE.disclaimerText}
 `;
 }
 
 /**
- * Copia el resumen de cotización al portapapeles devolviendo el detalle del modo de copia ('rich' | 'plain' | 'none').
+ * Copia el resumen de cotización al portapapeles con la firma personalizada activa.
  */
 export async function copyEstimateEmailSummaryWithDetail(
   data: ProcessedEstimateResult,
-  detectedPartner?: string
+  detectedPartner?: string,
+  customSignature?: EmailSignatureProfile
 ): Promise<ClipboardCopyDetailedResult> {
-  const htmlContent = generateEstimateEmailHtml(data, detectedPartner);
-  const plainText = generateEstimatePlainText(data, detectedPartner);
+  const sig = customSignature || (await getSavedEmailSignature());
+  const htmlContent = generateEstimateEmailHtml(data, detectedPartner, new Date(), sig);
+  const plainText = generateEstimatePlainText(data, detectedPartner, new Date(), sig);
   return copyHtmlAndTextToClipboard(htmlContent, plainText);
 }
 
 /**
- * Copia el HTML con formato directamente al portapapeles con compatibilidad dual
- * (HTML enriquecido para Outlook/Gmail y Texto Plano como fallback).
+ * Copia el HTML con formato directamente al portapapeles con soporte dual.
  */
 export async function copyEstimateEmailSummaryToClipboard(
   data: ProcessedEstimateResult,

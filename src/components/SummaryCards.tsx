@@ -34,6 +34,9 @@ import {
 } from 'lucide-react';
 import { AuditReport } from '../modules/mining';
 import { useUiExperience } from '../core/themeEngine';
+import { useCiscoAutomatedStore } from '../core/store';
+import { categorizeEstimateItems } from '../modules/estimate';
+import { Cpu, ShieldCheck } from 'lucide-react';
 
 interface SummaryCardsProps {
   data: ProcessedEstimateResult;
@@ -49,6 +52,8 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
   onOpenMiningAudit,
 }) => {
   const { isAesthetic } = useUiExperience();
+  const { isClientMode } = useCiscoAutomatedStore();
+  const categories = React.useMemo(() => categorizeEstimateItems(data.items || []), [data.items]);
   const [currency, setCurrency] = useState<CurrencyCode>(() => {
     try {
       const saved = localStorage.getItem('cisco_selected_currency');
@@ -310,6 +315,82 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
       )}
 
       <div id="summary-kpis" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {isClientMode ? (
+          <>
+            {/* CLIENT MODE - KPI 1: Hardware & Infrastructure */}
+            <div className={isAesthetic ? 'aesthetic-card rounded-2xl p-4 shadow-xl space-y-2 border relative overflow-hidden backdrop-blur-md' : 'bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2'}>
+              <div className="flex items-center justify-between text-teal-400 text-[11px] font-bold uppercase tracking-wider">
+                <span>Infraestructura &amp; Hardware</span>
+                <div className="p-1.5 rounded-lg bg-teal-500/10 text-teal-400 border border-teal-500/20">
+                  <Cpu className="w-4 h-4" />
+                </div>
+              </div>
+              <div>
+                <span className="text-xl font-black font-mono text-white tracking-tight">
+                  {formatCurrency(categories.hardwareTotal)}
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-500">
+                {categories.hardwareCount} ítems tangibles (Switches, APs, Fuentes)
+              </p>
+            </div>
+
+            {/* CLIENT MODE - KPI 2: Software & Cloud */}
+            <div className={isAesthetic ? 'aesthetic-card rounded-2xl p-4 shadow-xl space-y-2 border relative overflow-hidden backdrop-blur-md' : 'bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2'}>
+              <div className="flex items-center justify-between text-indigo-400 text-[11px] font-bold uppercase tracking-wider">
+                <span>Software &amp; Licencias Cloud</span>
+                <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+              </div>
+              <div>
+                <span className="text-xl font-black font-mono text-indigo-300 tracking-tight">
+                  {formatCurrency(categories.softwareTotal)}
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-500">
+                {categories.softwareCount} suscripciones Cisco DNA / Meraki Cloud
+              </p>
+            </div>
+
+            {/* CLIENT MODE - KPI 3: Services & SmartNet */}
+            <div className={isAesthetic ? 'aesthetic-card rounded-2xl p-4 shadow-xl space-y-2 border relative overflow-hidden backdrop-blur-md' : 'bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2'}>
+              <div className="flex items-center justify-between text-amber-400 text-[11px] font-bold uppercase tracking-wider">
+                <span>Soporte SmartNet (SNT)</span>
+                <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+              </div>
+              <div>
+                <span className="text-xl font-black font-mono text-amber-300 tracking-tight">
+                  {formatCurrency(categories.servicesTotal)}
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-500">
+                {categories.servicesCount} contratos de soporte técnico Cisco
+              </p>
+            </div>
+
+            {/* CLIENT MODE - KPI 4: Total Sugerido Solución */}
+            <div className={isAesthetic ? 'aesthetic-card bg-gradient-to-br from-indigo-950/70 via-slate-900/90 to-slate-900/90 border border-indigo-500/40 rounded-2xl p-4 shadow-xl space-y-2 relative overflow-hidden backdrop-blur-md' : 'bg-gradient-to-br from-indigo-950/80 to-slate-900 border border-indigo-500/40 rounded-2xl p-4 shadow-md space-y-2'}>
+              <div className="flex items-center justify-between text-indigo-300 text-[11px] font-bold uppercase tracking-wider">
+                <span>Total Solución Sugerido</span>
+                <div className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg border border-emerald-500/30">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+              </div>
+              <div>
+                <span className="text-xl font-black font-mono text-emerald-400 tracking-tight">
+                  {formatCurrency(data.calculatedProductTotal)}
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400">
+                Valor total neto (no incluye IVA 19%)
+              </p>
+            </div>
+          </>
+        ) : (
+          <>
         {/* KPI 1: Base Cisco Net Cost / COGS */}
         <div
           className={
@@ -426,6 +507,9 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             {totalItemsCount} unidades totales {ftCount > 0 ? `(${ftCount} con promo Fast Track)` : ''}
           </p>
         </div>
+
+          </>
+        )}
 
       {/* Mining Audit Executive Banner */}
       {miningAudit && miningAudit.overallStatus !== 'NO_RULES' && onOpenMiningAudit && (

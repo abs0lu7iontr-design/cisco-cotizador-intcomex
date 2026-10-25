@@ -15,11 +15,26 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.7.0',
+    date: '2026-10-25',
+    commit: 'feat-client-presentation-pptx-signature-indexeddb-sync',
+    title: 'Modo Proyección al Cliente, Presentaciones PPTX, Firmas Outlook, IndexedDB y Sync Offline',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Modo Presentación al Cliente: Botón [👁️ Modo Cliente] para ocultar al instante costos y márgenes en reuniones en vivo.',
+      'Generador PowerPoint (.pptx): Exportación 1-clic de diapositivas 16:9 con desglose en 3 pilares y matriz de equipos.',
+      'Gestor de Firmas y Plantillas Outlook: Personalización de remitente y términos comerciales para copiado rápido de cotizaciones.',
+      'Almacenamiento IndexedDB: Migración desde localStorage con base de datos estructurada y soporte de gran capacidad.',
+      'Cola de Sincronización Silenciosa Offline: Encolamiento y vaciado automático de cotizaciones en Firebase Firestore ante caídas de red.',
+    ],
+  },
+  {
     version: '2.6.2',
     date: '2026-10-25',
     commit: 'refactor-remove-keyboard-shortcuts-and-spotlight',
     title: 'Remoción de Atajos de Teclado y Paleta de Comandos Spotlight por Preferencia Comercial',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Eliminación total de atajos de teclado globales (Ctrl+K, Ctrl+U, Ctrl+D) y atajos de tabla (H, I, A, ?, flechas) para priorizar el uso nativo sin interferencias con el navegador.',

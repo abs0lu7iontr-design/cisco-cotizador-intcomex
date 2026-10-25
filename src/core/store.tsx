@@ -15,6 +15,7 @@ import {
 } from './types';
 import { parseEstimateWorkbook } from './excelEngine';
 import { recalculateEstimateResult } from './calculations';
+import { enqueueOfflineAction, initOfflineSyncListeners } from './storage/offlineSyncQueue';
 import { resolveEffectiveQuoteRates } from './exportUtils';
 import {
   auditEstimateWithFastTrack,
@@ -116,6 +117,9 @@ export interface CiscoAutomatedState {
   errorMessage: string | null;
   activeQuoterTab: 'excel' | 'table' | 'calculator';
   isSidebarOpen: boolean;
+  isClientMode: boolean;
+  setIsClientMode: React.Dispatch<React.SetStateAction<boolean>>;
+  toggleClientMode: () => void;
 
   // Action Dispatchers
   setCurrentUser: (user: UserSession | null) => void;
@@ -201,6 +205,28 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
   // 1. Dominio de Sesión y Navegación
   const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
   const [currentView, setCurrentView] = useState<NavViewId>('dashboard');
+  const [isClientMode, setIsClientMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('cisco_client_presentation_mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleClientMode = useCallback(() => {
+    setIsClientMode((prev) => !prev);
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('cisco_client_presentation_mode', String(isClientMode));
+    } catch {}
+  }, [isClientMode]);
+
+  useEffect(() => {
+    const unsub = initOfflineSyncListeners();
+    return unsub;
+  }, []);
 
   // 2. Dominio de Parámetros Comerciales (v2.1 defaults)
   const [params, setParams] = useState<QuoteParameters>(DEFAULT_PARAMS);
@@ -947,6 +973,21 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       };
 
       const res = await saveEstimateToCloud(cloudPayload);
+      if (
+        !res.success &&
+        typeof navigator !== 'undefined' &&
+        (!navigator.onLine ||
+          res.error?.includes('network') ||
+          res.error?.includes('offline') ||
+          res.error?.includes('unavailable'))
+      ) {
+        await enqueueOfflineAction('save_estimate', cloudPayload);
+        return {
+          success: true,
+          error:
+            '📡 Modo Offline: Sin conexión a internet. La cotización se encoló localmente y se sincronizará automáticamente al reconectar.',
+        };
+      }
       if (res.success) {
         setEstimateVersionNumber(resolvedVersionNum);
         setEstimateVersionTag(resolvedVersionTag);
@@ -1180,6 +1221,9 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       loadCloudEstimateIntoStore,
       saveCurrentEstimateToCloud,
       logout,
+      isClientMode,
+      setIsClientMode,
+      toggleClientMode,
     }),
     [
       currentUser,
@@ -1230,6 +1274,9 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       loadCloudEstimateIntoStore,
       saveCurrentEstimateToCloud,
       logout,
+      isClientMode,
+      setIsClientMode,
+      toggleClientMode,
     ]
   );
 

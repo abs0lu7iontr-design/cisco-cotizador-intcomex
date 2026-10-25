@@ -6,6 +6,27 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.7.0] - 2026-10-25
+### 🌟 Agregado (Modo Proyección al Cliente, Generador PowerPoint .pptx, Firmas Outlook, IndexedDB y Sincronización Offline)
+- **Modo Proyección / Presentación al Cliente ("Privacy Mode" en 1 Clic):**
+  - Botón interactivo `[ 👁️ Modo Cliente ]` en la barra de navegación superior y en configuración para alternar al instante la interfaz para reuniones presenciales o llamadas por Teams/Zoom compartiendo pantalla con el cliente final.
+  - Ocultamiento estricto de columnas de costos de compra (`Net Cisco U`, `Internación`, `Arancel` y `Costo Total U`), así como de los porcentajes de margen interno en toda la tabla interactiva y en las tarjetas KPI resumen.
+  - Despliegue de un banner informativo amigable en la tabla confirmando la protección activa de márgenes de distribución.
+- **Generador de Presentación Diapositiva PowerPoint Nativo (.pptx):**
+  - Botón `[📊 PPTX Slide]` en el modal de descarga (`DownloadModal`) que genera y descarga al instante una presentación editable en PowerPoint (.pptx) en formato 16:9 widescreen estándar OpenXML mediante `JSZip` sin requerir dependencias pesadas.
+  - Incluye: Diapositiva de Portada Corporativa Intcomex Cisco con datos del Deal y cliente, Diapositiva de Desglose en 3 Pilares Tecnológicos (Hardware, Software Cloud, Soporte SmartNet) con porcentajes y montos, y Diapositiva con Matriz Detallada de Equipos.
+- **Gestor de Firmas y Plantillas de Correo para Outlook:**
+  - Nuevo módulo interactivo `EmailSignatureSettingsModal` accesible desde la configuración y directamente desde el modal de descarga mediante el enlace `[⚙️ Configurar Firma Outlook]`.
+  - Permite configurar nombre del Product Manager / Preventa, cargo, teléfono, anexo, email corporativo, unidad de negocios y condiciones comerciales personalizadas (validez de oferta, tipo de cambio, condiciones de pago, tiempo de entrega).
+  - Integración dinámica con el copiado rápido al portapapeles en HTML enriquecido y texto plano para Outlook y correo corporativo.
+- **Migración de Almacenamiento Local de localStorage a IndexedDB (`CiscoAutomatedDB`):**
+  - Módulo `indexedDbStorage` con base de datos IndexedDB estructurada en object stores (`keyval`, `estimates`, `row_notes`, `offline_queue`), superando el límite de 5 MB de localStorage.
+  - Soporte asíncrono robusto con fallback automático a `localStorage` y memoria interna (`inMemoryFallback`) garantizando compatibilidad total en entornos de pruebas Node.js y navegadores antiguos.
+  - Migración de las notas internas colaborativas por fila (`rowNotes`) hacia almacenamiento persistente en IndexedDB.
+- **Cola de Sincronización Silenciosa Offline para Firestore (`offlineSyncQueue`):**
+  - Sistema de resguardo resiliente que detecta pérdida de conexión a internet o fallos transitorios en Firebase Firestore al guardar cotizaciones.
+  - Encola automáticamente las peticiones de guardado con reintentos programados y vaciado automático de la cola en segundo plano apenas el navegador detecta el evento `window.ononline`.
+
 ## [v2.6.2] - 2026-10-25
 ### 🗑️ Eliminado (Remoción de Atajos de Teclado y Paleta Spotlight a Petición de Usuario)
 - **Eliminación de Atajos Globales y de Tabla:** Remoción completa de los atajos de teclado globales (`Ctrl+K`, `Ctrl+U`, `Ctrl+D`), atajos de reasignación en tabla (`H`, `I`, `A`, `?`, `↑ / ↓`) y depuración de componentes modales asociados (`CommandPaletteModal` y `KeyboardShortcutsModal`).

@@ -33,6 +33,9 @@ import {
 
 import { MobileEstimateCardList } from './mobile/MobileEstimateCardList';
 import { useUiExperience } from '../core/themeEngine';
+import { useCiscoAutomatedStore } from '../core/store';
+import { idbGet, idbSet, STORES } from '../core/storage/indexedDbStorage';
+import { EyeOff } from 'lucide-react';
 import { validateCiscoBom } from '../core/bomValidator';
 import { BomValidatorModal } from './BomValidatorModal';
 
@@ -193,6 +196,7 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
   onToggleRowRule,
 }) => {
   const { isAesthetic, config: studioConfig } = useUiExperience();
+  const { isClientMode, toggleClientMode } = useCiscoAutomatedStore();
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<InteractiveTableFilterType>('all');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -225,6 +229,15 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
     }
   });
 
+  useEffect(() => {
+    const key = `cisco_pm_row_notes_${data?.fileName || 'current'}`;
+    idbGet<Record<number, string>>(STORES.ROW_NOTES, key).then((saved) => {
+      if (saved && Object.keys(saved).length > 0) {
+        setRowNotes(saved);
+      }
+    });
+  }, [data?.fileName]);
+
   const bomReport = useMemo(() => {
     return validateCiscoBom(data?.items || []);
   }, [data?.items]);
@@ -237,8 +250,10 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
       delete updated[rowIdx];
     }
     setRowNotes(updated);
+    const key = `cisco_pm_row_notes_${data?.fileName || 'current'}`;
+    idbSet(STORES.ROW_NOTES, key, updated);
     try {
-      localStorage.setItem(`cisco_pm_row_notes_${data?.fileName || 'current'}`, JSON.stringify(updated));
+      localStorage.setItem(key, JSON.stringify(updated));
     } catch {}
     setEditingNoteItem(null);
     setToastMessage('Nota guardada correctamente.');
@@ -411,6 +426,25 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
           : 'bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden space-y-4 relative focus:outline-none'
       }
     >
+      {/* Client Mode Privacy Notification Banner */}
+      {isClientMode && (
+        <div className="px-4 py-2.5 bg-emerald-950/60 border-b border-emerald-500/40 text-emerald-300 text-xs font-bold flex flex-wrap items-center justify-between gap-2 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <EyeOff className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>
+              <strong>Modo Presentación al Cliente Activo:</strong> Precios de costo neto Cisco, internación y aranceles ocultos para reunión o proyección en vivo.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={toggleClientMode}
+            className="px-2.5 py-1 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white text-[10px] font-bold transition-colors cursor-pointer shadow"
+          >
+            Volver a Modo Interno (PM)
+          </button>
+        </div>
+      )}
+
       {/* Toast Notification */}
       {toastMessage && (
         <div
@@ -655,10 +689,10 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
               <th className="p-3">Part Number</th>
               <th className="p-3">Descripción</th>
               <th className="p-3 text-center w-14">Cant.</th>
-              <th className="p-3 text-right">Net Cisco (U)</th>
-              <th className="p-3 text-right">Internación</th>
-              <th className="p-3 text-right">Arancel</th>
-              <th className="p-3 text-right">Costo Total (U)</th>
+              {!isClientMode && <th className="p-3 text-right">Net Cisco (U)</th>}
+              {!isClientMode && <th className="p-3 text-right">Internación</th>}
+              {!isClientMode && <th className="p-3 text-right">Arancel</th>}
+              {!isClientMode && <th className="p-3 text-right">Costo Total (U)</th>}
               <th className="p-3 text-right font-bold text-indigo-300 bg-indigo-950/20">PV Unitario</th>
               <th className="p-3 text-right font-bold text-emerald-400 bg-emerald-950/20">PV Extendido</th>
               <th className="p-3 text-center">Tipo / Regla</th>
@@ -668,7 +702,7 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
           <tbody className="divide-y divide-slate-800/60 font-sans">
             {filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={12} className="p-8 text-center text-slate-500 text-xs">
+                <td colSpan={isClientMode ? 8 : 12} className="p-8 text-center text-slate-500 text-xs">
                   No se encontraron ítems que coincidan con la búsqueda.
                 </td>
               </tr>
@@ -676,7 +710,7 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
               <>
                 {virtualWindow.topPaddingPx > 0 && (
                   <tr aria-hidden="true" style={{ height: `${virtualWindow.topPaddingPx}px` }}>
-                    <td colSpan={12} className="p-0 border-0" />
+                    <td colSpan={isClientMode ? 8 : 12} className="p-0 border-0" />
                   </tr>
                 )}
                 {visibleItems.map((item) => {
@@ -801,36 +835,44 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                       <td className="p-3 text-center font-bold text-slate-200">
                         {item.qty}
                       </td>
-                      <td className="p-3 text-right font-mono text-slate-300">
-                        {formatCurrency(item.netCiscoUnit)}
-                      </td>
-                      <td className="p-3 text-right font-mono text-slate-400">
-                        {item.isIntangible ? (
-                          <span className="text-slate-600">-</span>
-                        ) : (
-                          <span
-                            className={item.isCustomParamApplied ? "text-indigo-300 font-semibold" : ""}
-                            title={item.isCustomParamApplied ? `Internación custom del bloque: ${item.effectiveInternacionPct}%` : undefined}
-                          >
-                            {formatCurrency(item.costoInternacion)}
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-3 text-right font-mono text-slate-400">
-                        {item.llevaArancel ? (
-                          <span
-                            className="text-purple-400 font-bold"
-                            title={item.isCustomParamApplied ? `Arancel del bloque: ${item.effectiveArancelPct}%` : undefined}
-                          >
-                            {formatCurrency(item.costoArancel)}
-                          </span>
-                        ) : (
-                          <span className="text-slate-600">-</span>
-                        )}
-                      </td>
-                      <td className="p-3 text-right font-mono text-slate-200 font-semibold">
-                        {formatCurrency(item.costoTotalUnitario)}
-                      </td>
+                      {!isClientMode && (
+                        <td className="p-3 text-right font-mono text-slate-300">
+                          {formatCurrency(item.netCiscoUnit)}
+                        </td>
+                      )}
+                      {!isClientMode && (
+                        <td className="p-3 text-right font-mono text-slate-400">
+                          {item.isIntangible ? (
+                            <span className="text-slate-600">-</span>
+                          ) : (
+                            <span
+                              className={item.isCustomParamApplied ? "text-indigo-300 font-semibold" : ""}
+                              title={item.isCustomParamApplied ? `Internación custom del bloque: ${item.effectiveInternacionPct}%` : undefined}
+                            >
+                              {formatCurrency(item.costoInternacion)}
+                            </span>
+                          )}
+                        </td>
+                      )}
+                      {!isClientMode && (
+                        <td className="p-3 text-right font-mono text-slate-400">
+                          {item.llevaArancel ? (
+                            <span
+                              className="text-purple-400 font-bold"
+                              title={item.isCustomParamApplied ? `Arancel del bloque: ${item.effectiveArancelPct}%` : undefined}
+                            >
+                              {formatCurrency(item.costoArancel)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-600">-</span>
+                          )}
+                        </td>
+                      )}
+                      {!isClientMode && (
+                        <td className="p-3 text-right font-mono text-slate-200 font-semibold">
+                          {formatCurrency(item.costoTotalUnitario)}
+                        </td>
+                      )}
                       <td
                         className={`p-3 text-right font-mono font-bold text-indigo-300 bg-indigo-950/20 ${
                           item.isCustomParamApplied ? "ring-1 ring-inset ring-indigo-500/40" : ""
@@ -880,7 +922,7 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                 })}
                 {virtualWindow.bottomPaddingPx > 0 && (
                   <tr aria-hidden="true" style={{ height: `${virtualWindow.bottomPaddingPx}px` }}>
-                    <td colSpan={12} className="p-0 border-0" />
+                    <td colSpan={isClientMode ? 8 : 12} className="p-0 border-0" />
                   </tr>
                 )}
               </>

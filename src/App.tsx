@@ -128,6 +128,8 @@ function AppContent() {
     miningFastTrackWarningData,
     isMiningFastTrackWarningModalOpen,
     setIsMiningFastTrackWarningModalOpen,
+    isClientMode,
+    toggleClientMode,
   } = useCiscoAutomatedStore();
 
   // Initialize theme on application mount
@@ -635,6 +637,8 @@ function AppContent() {
           fileName={currentFileName}
           onOpenLiveStudio={() => setIsLiveStudioOpen(true)}
           onOpenQuickIngest={() => setIsQuickIngestOpen(true)}
+          isClientMode={isClientMode}
+          onToggleClientMode={toggleClientMode}
         />
 
         {/* Floating Cloud Toast Notification */}
