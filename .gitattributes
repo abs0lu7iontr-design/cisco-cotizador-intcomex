@@ -1,0 +1,32 @@
+# ============================================================================
+# Git Attributes - Line Endings & Binary Integrity
+# ============================================================================
+
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# Explicit text files
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.sql text eol=lf
+*.py text eol=lf
+
+# Binary files - preserve raw bytes without corruption
+*.exe binary
+*.dll binary
+*.zip binary
+*.jar binary
+*.gif binary
+*.png binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.pdf binary
+*.docx binary
+*.xlsx binary

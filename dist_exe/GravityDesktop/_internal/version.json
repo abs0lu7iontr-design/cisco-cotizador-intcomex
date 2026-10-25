@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
   "version": "2.4.6",
-  "git_commit": "c59bcbc",
+  "git_commit": "95e2b2b",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-25T02:08:04.401Z",
-  "release_notes": "feat(branding): implement automatic seasonal logo switcher for december christmas",
+  "build_timestamp": "2026-10-25T02:48:33.962Z",
+  "release_notes": "feat(branding): replace halloween and christmas logos with ultra-lightweight versions",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

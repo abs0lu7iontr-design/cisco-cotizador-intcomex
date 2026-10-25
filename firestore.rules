@@ -55,15 +55,21 @@ rules_version = '2';
 //   - overrides: map
 //
 // Collection 3: users/{userId}
-//   - username: string (required)
-//   - full_name: string
-//   - email: string
-//   - role: string ('admin' | 'pm' | 'user' | 'viewer')
-//   - password_hash: string (SHA-256 salted hash)
-//   - is_active: number (1 or 0)
-//   - created_at: string (ISO 8601)
-//   - last_login: string (optional)
-//   - updated_at: string (optional)
+//   - id: string (optional, matches document ID)
+//   - username: string (required, 1-100 chars, lowercase, matches userId)
+//   - full_name: string (optional, <= 200 chars)
+//   - email: string (optional, <= 200 chars)
+//   - role: string ('admin' | 'pm' | 'user' | 'viewer' | 'preventa' | 'standard')
+//   - password_hash: string (required, 64-hex SHA-256 salted hash)
+//   - is_active: number (required, 1 = active, 0 = disabled)
+//   - created_at: string (optional, ISO 8601, <= 100 chars)
+//   - updated_at: string (optional, ISO 8601, <= 100 chars)
+//   - last_login: string (optional, ISO 8601, <= 100 chars)
+//   Hardening & Immutability Rules:
+//     - Physical delete is strictly forbidden (allow delete: if false;)
+//     - userId MUST match request.resource.data.username.lower()
+//     - Strict schema: data.keys().hasOnly(['id', 'username', 'full_name', 'email', 'role', 'password_hash', 'is_active', 'created_at', 'updated_at', 'last_login'])
+//     - Root 'admin' protection: username cannot change, is_active MUST be 1, role MUST be 'admin'
 //
 // Collection 4: shared_sku_rules/{skuId}
 //   - sku: string (required)
@@ -224,12 +230,30 @@ service cloud.firestore {
         (!('dealId' in data) || (data.dealId is string && data.dealId.size() <= 500));
     }
 
-    function isValidUser(data) {
+    function isValidUser(data, userId) {
       return isValidPayloadSize(data) &&
+        data.keys().hasOnly(['id', 'username', 'full_name', 'email', 'role', 'password_hash', 'is_active', 'created_at', 'updated_at', 'last_login']) &&
         'username' in data &&
         data.username is string &&
-        data.username.size() > 0 &&
-        data.username.size() <= 200;
+        data.username.size() >= 1 &&
+        data.username.size() <= 100 &&
+        data.username.lower() == userId &&
+        'role' in data &&
+        data.role is string &&
+        data.role in ['admin', 'pm', 'user', 'viewer', 'preventa', 'standard'] &&
+        'is_active' in data &&
+        data.is_active is int &&
+        data.is_active in [0, 1] &&
+        'password_hash' in data &&
+        data.password_hash is string &&
+        data.password_hash.matches('^[0-9a-f]{64}$') &&
+        (!('id' in data) || (data.id is string && data.id.size() <= 100)) &&
+        (!('full_name' in data) || (data.full_name is string && data.full_name.size() <= 200)) &&
+        (!('email' in data) || (data.email is string && data.email.size() <= 200)) &&
+        (!('created_at' in data) || (data.created_at is string && data.created_at.size() <= 100)) &&
+        (!('updated_at' in data) || (data.updated_at is string && data.updated_at.size() <= 100)) &&
+        (!('last_login' in data) || (data.last_login is string && data.last_login.size() <= 100)) &&
+        (userId != 'admin' || (data.role == 'admin' && data.is_active == 1));
     }
 
     function isValidSharedSkuRule(data) {
@@ -340,9 +364,8 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /users/{userId} {
       allow read: if true;
-      allow create, update: if isValidUser(request.resource.data) &&
-        (isAdmin() || !isAuthenticated());
-      allow delete: if isAdmin() || !isAuthenticated();
+      allow create, update: if isValidUser(request.resource.data, userId);
+      allow delete: if false;
     }
 
     // ------------------------------------------------------------------------

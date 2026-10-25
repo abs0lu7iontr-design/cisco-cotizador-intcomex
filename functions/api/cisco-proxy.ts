@@ -27,13 +27,13 @@ export const onRequestPost: PagesFunction = async (context) => {
     const action = body?.action || 'token';
 
     const env = (context.env || {}) as Record<string, string | undefined>;
-    const clientId = (body?.clientId || env.VITE_CISCO_CLIENT_ID || '').trim();
+    const clientId = (body?.clientId || env.CISCO_CLIENT_ID || env.VITE_CISCO_CLIENT_ID || '').trim();
     const clientSecret = (
       body?.clientSecret ||
-      env.VITE_CISCO_CLIENT_SECRET ||
+      env.CISCO_CLIENT_SECRET || env.VITE_CISCO_CLIENT_SECRET ||
       ''
     ).trim();
-    const authUrl = (body?.authUrl || env.VITE_CISCO_AUTH_URL || DEFAULT_AUTH_URL).trim();
+    const authUrl = (body?.authUrl || env.CISCO_AUTH_URL || env.VITE_CISCO_AUTH_URL || DEFAULT_AUTH_URL).trim();
 
         if (!clientId || !clientSecret) {
       return new Response(
