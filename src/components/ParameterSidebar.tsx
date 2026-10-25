@@ -547,6 +547,23 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
                 Margen comercial aplicado sobre el costo unitario total.
               </p>
             </div>
+
+            {/* Financial Safety Guardrail Alert (< 4%) */}
+            {(params.margenPct < 4.0 || (!isOnlyLicensing && params.internacionPct < 4.0)) && (
+              <div className="p-3 bg-amber-950/40 border border-amber-500/50 rounded-xl text-xs space-y-1 text-amber-200 animate-pulse">
+                <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>Guardarraíl de Seguridad Financiera</span>
+                </div>
+                <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                  {params.margenPct < 4.0 && `• Margen (${params.margenPct.toFixed(1)}%) inferior al 4.0% mínimo corporativo.`}
+                  {!isOnlyLicensing && params.internacionPct < 4.0 && ` • Internación (${params.internacionPct.toFixed(1)}%) inferior al 4.0% mínimo para hardware.`}
+                </p>
+                <span className="text-[10px] text-amber-400/80 block font-semibold">
+                  ⚠️ Se requerirá confirmación explícita antes de exportar o descargar el archivo.
+                </span>
+              </div>
+            )}
           </div>
 
           {/* PERFIL DE PARÁMETROS PARTNER / GLOBAL EN LA NUBE */}

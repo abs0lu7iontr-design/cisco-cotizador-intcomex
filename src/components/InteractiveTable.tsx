@@ -25,10 +25,18 @@ import {
   Tag,
   Save,
   Layers,
+  MessageSquare,
+  ShieldAlert,
+  HelpCircle,
+  X,
+  FileEdit,
 } from 'lucide-react';
 
 import { MobileEstimateCardList } from './mobile/MobileEstimateCardList';
 import { useUiExperience } from '../core/themeEngine';
+import { validateCiscoBom } from '../core/bomValidator';
+import { BomValidatorModal } from './BomValidatorModal';
+import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 
 export type InteractiveTableFilterType = 'all' | 'intangible' | 'tangible' | 'arancel';
 
@@ -207,6 +215,39 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
     });
   }, []);
 
+  const [isBomModalOpen, setIsBomModalOpen] = useState(false);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [editingNoteItem, setEditingNoteItem] = useState<EstimateLineItem | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
+  const [rowNotes, setRowNotes] = useState<Record<number, string>>(() => {
+    try {
+      const saved = localStorage.getItem(`cisco_pm_row_notes_${data?.fileName || 'current'}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const bomReport = useMemo(() => {
+    return validateCiscoBom(data?.items || []);
+  }, [data?.items]);
+
+  const saveRowNote = (rowIdx: number, note: string) => {
+    const updated = { ...rowNotes };
+    if (note.trim()) {
+      updated[rowIdx] = note.trim();
+    } else {
+      delete updated[rowIdx];
+    }
+    setRowNotes(updated);
+    try {
+      localStorage.setItem(`cisco_pm_row_notes_${data?.fileName || 'current'}`, JSON.stringify(updated));
+    } catch {}
+    setEditingNoteItem(null);
+    setToastMessage('Nota guardada correctamente.');
+    setTimeout(() => setToastMessage(null), 2500);
+  };
+
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
     x: 0,
@@ -372,9 +413,33 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
           const y = rect ? rect.top + 120 : 200;
           openContextMenuAtPosition(x, y, activeItem);
         }
+      } else if (e.key === '?') {
+        e.preventDefault();
+        setIsShortcutsModalOpen(true);
+      } else if (currentIdx >= 0) {
+        const activeItem = filteredItems[currentIdx];
+        if (activeItem && !activeItem.isInfoRow) {
+          const lower = e.key.toLowerCase();
+          if (lower === 'h') {
+            e.preventDefault();
+            if (onSetRowRule) onSetRowRule(activeItem.rowIdx, 'equipo', activeItem.partNumber);
+            setToastMessage(`SKU ${activeItem.partNumber} → Hardware (+${params.internacionPct}%)`);
+            setTimeout(() => setToastMessage(null), 2000);
+          } else if (lower === 'i') {
+            e.preventDefault();
+            if (onSetRowRule) onSetRowRule(activeItem.rowIdx, 'intangible', activeItem.partNumber);
+            setToastMessage(`SKU ${activeItem.partNumber} → Intangible (0% Int/Ar)`);
+            setTimeout(() => setToastMessage(null), 2000);
+          } else if (lower === 'a') {
+            e.preventDefault();
+            if (onSetRowRule) onSetRowRule(activeItem.rowIdx, 'arancel', activeItem.partNumber);
+            setToastMessage(`SKU ${activeItem.partNumber} → Arancel (=) (+${params.arancelPct}%)`);
+            setTimeout(() => setToastMessage(null), 2000);
+          }
+        }
       }
     },
-    [filteredItems, selectedRowIdx, ensureFilterIndexVisible, openContextMenuAtPosition]
+    [filteredItems, selectedRowIdx, ensureFilterIndexVisible, openContextMenuAtPosition, onSetRowRule, params]
   );
 
   const handleSelectRule = (rule: OverrideRuleType) => {
@@ -600,6 +665,29 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
           >
             Arancel ({categoryCounts.arancel})
           </button>
+
+          {/* Predictive BOM Validator Pill */}
+          {bomReport.hasIssues && (
+            <button
+              type="button"
+              onClick={() => setIsBomModalOpen(true)}
+              className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-sm animate-pulse"
+              title="Auditoría de preventa de compatibilidad y licencias Cisco"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+              <span>Auditoría BOM ({bomReport.totalIssuesCount})</span>
+            </button>
+          )}
+
+          {/* Keyboard Shortcuts Trigger */}
+          <button
+            type="button"
+            onClick={() => setIsShortcutsModalOpen(true)}
+            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            title="Ver atajos de teclado (o presiona ?)"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
@@ -743,6 +831,23 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                       >
                         <div className="flex items-center space-x-1.5">
                           <span>{item.partNumber}</span>
+                          {/* PM Sticky Note Trigger */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingNoteItem(item);
+                              setEditingNoteText(rowNotes[item.rowIdx] || '');
+                            }}
+                            className={`p-1 rounded-md transition-colors cursor-pointer ${
+                              rowNotes[item.rowIdx]
+                                ? 'text-amber-400 bg-amber-500/20 hover:bg-amber-500/30 ring-1 ring-amber-500/40'
+                                : 'text-slate-600 hover:text-slate-300 hover:bg-slate-800'
+                            }`}
+                            title={rowNotes[item.rowIdx] ? `Nota PM: ${rowNotes[item.rowIdx]}` : 'Agregar nota interna para este ítem'}
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                          </button>
                           {item.isFastTrackPromo && (
                             <span
                               className="inline-flex items-center px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-600/50"
@@ -753,6 +858,20 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                             </span>
                           )}
                         </div>
+                        {rowNotes[item.rowIdx] && (
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingNoteItem(item);
+                              setEditingNoteText(rowNotes[item.rowIdx] || '');
+                            }}
+                            className="text-[10px] text-amber-300 bg-amber-950/50 border border-amber-600/30 rounded px-1.5 py-0.5 mt-1 font-sans flex items-center gap-1 max-w-xs cursor-pointer hover:bg-amber-950/80 transition-colors"
+                            title="Haz clic para editar la nota"
+                          >
+                            <MessageSquare className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                            <span className="truncate">{rowNotes[item.rowIdx]}</span>
+                          </div>
+                        )}
                         {!isMain && (
                           <div className="text-[10px] text-slate-500 font-sans flex items-center gap-1 mt-0.5">
                             <span>↳ Hereda de {item.inheritedFromMotherLine || getMotherLineKey(item.lineNumber)}</span>
@@ -860,6 +979,79 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
           </tbody>
         </table>
       </div>
+
+      {/* PM Row Sticky Note Modal */}
+      {editingNoteItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                  <MessageSquare className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-white">Nota Interna de Preventa</h4>
+                  <span className="font-mono text-[10px] text-indigo-300">
+                    Línea {editingNoteItem.lineNumber} &bull; {editingNoteItem.partNumber}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingNoteItem(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <textarea
+              rows={3}
+              value={editingNoteText}
+              onChange={(e) => setEditingNoteText(e.target.value)}
+              placeholder="Escribe una observación, acuerdo comercial con Cisco o recordatorio de entrega..."
+              className="w-full bg-slate-950 border border-slate-700 rounded-2xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 font-sans"
+            />
+            <div className="flex items-center justify-between pt-1">
+              <button
+                type="button"
+                onClick={() => saveRowNote(editingNoteItem.rowIdx, '')}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-700 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Eliminar Nota
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingNoteItem(null)}
+                  className="px-3 py-1.5 rounded-xl text-slate-400 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => saveRowNote(editingNoteItem.rowIdx, editingNoteText)}
+                  className="px-4 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-md shadow-amber-600/30 transition-all cursor-pointer"
+                >
+                  Guardar Nota
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bom Validator Modal */}
+      <BomValidatorModal
+        isOpen={isBomModalOpen}
+        onClose={() => setIsBomModalOpen(false)}
+        report={bomReport}
+      />
+
+      {/* Keyboard Shortcuts Modal */}
+      <KeyboardShortcutsModal
+        isOpen={isShortcutsModalOpen}
+        onClose={() => setIsShortcutsModalOpen(false)}
+      />
     </div>
   );
 };

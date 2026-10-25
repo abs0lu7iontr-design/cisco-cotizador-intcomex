@@ -6,6 +6,22 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.6.0] - 2026-10-25
+### 🌟 Agregado (Guardarraíles Financieros 4%, Auditoría Preventiva de BOM, Ingesta Rápida y Productividad PM)
+- **Guardarraíles de Seguridad Financiera (Piso Mínimo 4.0%):** Protección comercial automática para impedir ventas por debajo de margen. Si el margen comercial o la internación de hardware tangible es inferior al 4.0% mínimo, la aplicación despliega alertas visuales en la barra de parámetros (`ParameterSidebar`) y exige confirmación obligatoria con checkbox de autorización de jefatura antes de permitir la descarga o exportación (`DownloadModal`).
+- **Auditor Predictivo de Listas de Materiales Cisco (`validateCiscoBom`):** Escáner heurístico preventivo integrado en la tabla que analiza el BOM y detecta automáticamente:
+  - Switches Catalyst serie 9000 sin licencias de suscripción Cisco DNA requeridas.
+  - Chasis o fuentes de poder sin cable de corriente chileno estándar (`CAB-ETH-CHL`).
+  - Dispositivos Meraki sin licencias de gestión cloud obligatorias (`LIC-`).
+  - Equipos de alto valor sin contratos de soporte SmartNet (`CON-SNT/SNTC`).
+  - Modal interactivo (`BomValidatorModal`) con detalle de números de parte afectados y acciones recomendadas.
+- **Extractor Rápido desde Portapapeles y Texto Plano (`QuickBomIngestModal`):** Permite pegar texto sin formato desde correos o chats para parsear automáticamente Part Numbers, cantidades y precios, calculando totales al vuelo y permitiendo simularlos en 1 clic.
+- **Paleta Global de Comandos Spotlight (`CommandPaletteModal` - Ctrl+K / ⌘+K):** Acceso rápido para ejecutar cualquier acción del sistema (subir archivo, descargar, DSV, conmutar vistas, estudio custom, reglas) y navegar entre vistas sin levantar las manos del teclado.
+- **Atajos de Teclado Profesionales y Guía Interactiva (`KeyboardShortcutsModal`):** Navegación ágil en la tabla con `↑ / ↓`, atajos instantáneos `H` (Hardware), `I` (Intangible), `A` (Arancel `=`), `Ctrl+U`, `Ctrl+D` y apertura de la chuleta de atajos con la tecla `?`.
+- **Notas y Comentarios Internos Colaborativos por Fila ("PM Sticky Notes"):** Icono `💬` en cada ítem de la tabla interactiva para adjuntar observaciones de preventa o acuerdos de descuento con Cisco, con resguardo en memoria local y sin contaminar los artefactos finales del cliente.
+- **Exportador Oficial de Plantilla de Carga Masiva para ERP Intcomex (`erpExportHelper`):** Botón `[📦 Plantilla ERP]` en el modal de descarga que genera un libro Excel estandarizado con códigos de bodega (`E1` vs `ED`), precios unitarios y extendidos netos en USD, clasificaciones contables y datos del Deal.
+- **Lámina de Presentación Comercial Ejecutiva (`ExecutiveSlideModal`):** Generador 1-clic de diapositiva de alta resolución con membrete oficial Intcomex, desglose en 3 pilares (Infraestructura, Software Cloud y Soporte SmartNet), porcentajes del deal y plazos de entrega.
+
 ## [v2.5.0] - 2026-10-25
 ### 🌟 Agregado (Arquitectura Dual de Experiencia: Vista Clásica vs Vista Aesthetic + Estudio Custom en Caliente)
 - **Sistema Dual de Vistas Conmutable en 1 Clic:** Interruptor interactivo en la barra de navegación superior y en Configuración (`[ 🏛️ Vista Clásica | ✨ Vista Aesthetic ]`) que permite alternar instantáneamente entre la experiencia corporativa tradicional y la nueva experiencia visual de última generación sin tocar ningún cálculo matemático o dato de cotización.

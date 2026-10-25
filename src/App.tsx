@@ -48,6 +48,8 @@ import { SettingsView } from './components/SettingsView';
 import { ThemeSelectorModal } from './components/ThemeSelectorModal';
 import { AmbientMeshGlow } from './components/AmbientMeshGlow';
 import { LiveStudioModal } from './components/LiveStudioModal';
+import { CommandPaletteModal } from './components/CommandPaletteModal';
+import { QuickBomIngestModal } from './components/QuickBomIngestModal';
 import { DsvView } from './modules/dsv';
 import { ConfiguriatorView } from './modules/configuriator';
 import { FastTrackAdminModal, FastTrackOpportunityModal } from './modules/fasttrack';
@@ -206,6 +208,8 @@ function AppContent() {
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
   const [isLiveStudioOpen, setIsLiveStudioOpen] = useState(false);
+  const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
+  const [isQuickIngestOpen, setIsQuickIngestOpen] = useState(false);
   const [isBoModalOpen, setIsBoModalOpen] = useState(false);
   const [isDiffModalOpen, setIsDiffModalOpen] = useState(false);
 
@@ -335,6 +339,30 @@ function AppContent() {
     }
   };
 
+  // Global Keyboard Shortcuts (Ctrl+K, Ctrl+U, Ctrl+D)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+K or Cmd+K: Open Spotlight Command Palette
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsSpotlightOpen((prev) => !prev);
+      }
+      // Ctrl+U: Open Upload file dialog
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'u') {
+        e.preventDefault();
+        handleUploadClick();
+      }
+      // Ctrl+D: Open Download modal (if has data)
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && Boolean(processedResult)) {
+        e.preventDefault();
+        setIsDownloadModalOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [processedResult]);
+
   // Parse partner, client and model from filename or header info
   const getPartnerClientDefaults = () => {
     let partner = 'Intcomex';
@@ -411,6 +439,28 @@ function AppContent() {
       <LiveStudioModal
         isOpen={isLiveStudioOpen}
         onClose={() => setIsLiveStudioOpen(false)}
+      />
+
+      {/* Global Spotlight / Command Palette Modal (Ctrl+K) */}
+      <CommandPaletteModal
+        isOpen={isSpotlightOpen}
+        onClose={() => setIsSpotlightOpen(false)}
+        onUploadClick={handleUploadClick}
+        onDownloadClick={() => setIsDownloadModalOpen(true)}
+        onDsvClick={handleDsvClick}
+        onOpenRules={() => setIsRulesModalOpen(true)}
+        onOpenLiveStudio={() => setIsLiveStudioOpen(true)}
+        onNavigateView={(v) => setCurrentView(v as any)}
+        hasData={Boolean(processedResult)}
+      />
+
+      {/* Quick BOM Ingest Modal (Clipboard & Raw Text Parser) */}
+      <QuickBomIngestModal
+        isOpen={isQuickIngestOpen}
+        onClose={() => setIsQuickIngestOpen(false)}
+        onLoadIntoQuickCalc={(item) => {
+          setCurrentView('quoter');
+        }}
       />
 
       {/* Shared SKU Rules Manager Modal (Cloud & Local) */}
@@ -623,6 +673,8 @@ function AppContent() {
           hasData={Boolean(processedResult)}
           fileName={currentFileName}
           onOpenLiveStudio={() => setIsLiveStudioOpen(true)}
+          onOpenSpotlight={() => setIsSpotlightOpen(true)}
+          onOpenQuickIngest={() => setIsQuickIngestOpen(true)}
         />
 
         {/* Floating Cloud Toast Notification */}

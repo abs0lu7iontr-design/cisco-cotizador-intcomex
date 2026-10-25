@@ -15,11 +15,29 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.6.0',
+    date: '2026-10-25',
+    commit: 'feat-financial-guardrails-and-pm-productivity',
+    title: 'Guardarraíles Financieros 4%, Auditoría Preventiva de BOM, Ingesta Rápida y Productividad PM',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Guardarraíles de Seguridad Financiera (Piso Mínimo 4.0%): Alerta automática en barra lateral y bloqueo preventivo con confirmación obligatoria de jefatura en descargas si el margen comercial o internación cae por debajo del 4.0%.',
+      'Auditor Predictivo de Listas de Materiales Cisco (validateCiscoBom): Detección automática en tiempo real de faltantes en el BOM (Catalyst sin DNA, equipos sin cables CAB-ETH-CHL, Meraki sin licencia cloud, y equipos críticos sin SmartNet).',
+      'Extractor Rápido desde Portapapeles (QuickBomIngestModal): Ingesta ultrarrápida de texto plano/correos con detección heurística de Part Numbers, cantidades y precios para simular al instante.',
+      'Paleta Global de Comandos Spotlight (Ctrl+K): Acceso universal a todas las acciones y vistas de la plataforma sin tocar el mouse.',
+      'Atajos de Teclado Profesionales: Navegación de tabla y asignación en 1 toque (H para Hardware, I para Intangibles, A para Arancel =, ? para chuleta interactiva).',
+      'Notas Internas Colaborativas por Fila (PM Sticky Notes): Registro de notas operativas y acuerdos de precio en cada línea con guardado en localStorage sin contaminar la cotización del cliente.',
+      'Exportador Oficial de Plantilla Masiva ERP Intcomex: Generación en 1 clic de libro Excel formateado para carga directa en el ERP corporativo con códigos de bodega (E1/ED).',
+      'Lámina de Presentación Comercial Ejecutiva: Generador instantáneo de slide ejecutiva de alta resolución con los 3 pilares del Deal (Infraestructura, Software y Servicios).'
+    ],
+  },
+  {
     version: '2.5.0',
     date: '2026-10-25',
     commit: 'feat-dual-experience-and-live-studio',
     title: 'Arquitectura Dual de Experiencia: Vista Clásica vs Vista Aesthetic + Estudio Custom en Caliente',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Sistema Dual de Vistas con conmutación en 1 clic: [🏛️ Vista Clásica | ✨ Vista Aesthetic] en la barra de navegación y en Configuración, sin alterar fórmulas ni datos.',

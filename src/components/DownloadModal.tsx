@@ -26,8 +26,12 @@ import {
   Check,
   Printer,
   Sparkles,
+  Package,
+  Presentation,
 } from 'lucide-react';
 import { generateOptimizedWorkbook, synthesizeOfficialEstimateWorkbook } from '../core/excelEngine';
+import { generateErpTemplateWorkbook } from '../core/erpExportHelper';
+import { ExecutiveSlideModal } from './ExecutiveSlideModal';
 import { QuoteParameters, OverrideRuleType, EstimateHeaderInfo } from '../core/types';
 import { getMotherLineKey } from '../core/calculations';
 import { generateQuotationFileName, resolveEffectiveQuoteRates } from '../core/exportUtils';
@@ -167,6 +171,12 @@ export function DownloadModal({
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Financial Safety Guardrails (< 4% margin or internacion)
+  const isGuardrailTriggered =
+    params.margenPct < 4.0 || (!isOnlyLicensing && params.internacionPct < 4.0);
+  const [guardrailConfirmed, setGuardrailConfirmed] = useState(false);
+  const [isSlideModalOpen, setIsSlideModalOpen] = useState(false);
+
   // Solution summary analysis
   const activeItems = processedResult?.items || [];
   const solutionSummary = categorizeEstimateItems(
@@ -209,6 +219,7 @@ export function DownloadModal({
       setShowPreview(false);
       setIsRestricted(false);
       setCloudSaveNote(null);
+      setGuardrailConfirmed(false);
       const initialPartner = defaultPartner || headerInfo?.companyName || 'Intcomex';
       const initialClient = defaultClient || headerInfo?.customerName || 'Cliente Final';
       const initialModel = defaultModel || 'Cisco';
@@ -467,6 +478,28 @@ export function DownloadModal({
     } catch (err: any) {
       console.error('Error al redactar correo:', err);
       setErrorMessage('Error al preparar el correo: ' + (err?.message || 'Error desconocido'));
+    }
+  };
+
+  // Exportación de Plantilla de Carga para ERP Intcomex
+  const handleDownloadErpTemplate = async () => {
+    if (!processedResult?.items) return;
+    try {
+      setIsSaving(true);
+      const erpBuffer = await generateErpTemplateWorkbook(
+        processedResult.items,
+        processedResult.headerInfo,
+        partnerName.trim() || 'Intcomex',
+        clientName.trim() || 'Cliente Final'
+      );
+      const erpFileName = `Plantilla_ERP_Intcomex_${processedResult.headerInfo?.dealId || 'Deal'}.xlsx`;
+      await browserDownload(erpFileName, erpBuffer);
+      setSaveSuccess({ message: `Plantilla ERP '${erpFileName}' descargada exitosamente.` });
+    } catch (err: any) {
+      console.error('Error generando plantilla ERP:', err);
+      setErrorMessage('No se pudo exportar la plantilla ERP: ' + (err?.message || 'Error desconocido'));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -865,28 +898,78 @@ export function DownloadModal({
                 </div>
               )}
 
+              {/* Financial Safety Guardrail Alert (< 4% margin or internacion) */}
+              {isGuardrailTriggered && (
+                <div className="p-3.5 bg-amber-950/40 border border-amber-500/50 rounded-2xl space-y-2 animate-in fade-in duration-200">
+                  <div className="flex items-center space-x-2 text-amber-300 font-bold text-xs">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Guardarraíl de Seguridad Financiera (Umbral Mínimo 4.0%)</span>
+                  </div>
+                  <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                    {params.margenPct < 4.0 && `• Margen (${params.margenPct.toFixed(1)}%) inferior al 4.0% mínimo corporativo. `}
+                    {!isOnlyLicensing && params.internacionPct < 4.0 && `• Internación (${params.internacionPct.toFixed(1)}%) inferior al 4.0% mínimo para hardware.`}
+                  </p>
+                  <label className="flex items-center space-x-2 pt-1 border-t border-amber-500/30 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={guardrailConfirmed}
+                      onChange={(e) => setGuardrailConfirmed(e.target.checked)}
+                      className="rounded border-amber-500 text-amber-500 focus:ring-0 cursor-pointer"
+                    />
+                    <span className="text-[11px] font-bold text-amber-300">
+                      Confirmo que esta tasa inferior al 4.0% cuenta con aprobación formal de jefatura.
+                    </span>
+                  </label>
+                </div>
+              )}
+
               {/* Action Buttons Toolbar */}
               <div className="pt-2 border-t border-slate-800 space-y-2">
-                {/* Secondary Action Row: Email Partner + PDF */}
-                <div className="grid grid-cols-2 gap-2">
+                {/* Secondary Action Row: Email Partner + PDF + ERP + Slide */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {/* Idea 3: Redactar Correo al Partner en Outlook */}
                   <button
                     type="button"
                     onClick={handleEmailPartner}
-                    className="px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-indigo-300 font-bold text-[10px] border border-indigo-500/40 hover:border-indigo-500 flex items-center justify-center space-x-1.5 cursor-pointer transition-all shadow-sm"
+                    className="px-2.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-indigo-300 font-bold text-[10px] border border-indigo-500/40 hover:border-indigo-500 flex items-center justify-center space-x-1.5 cursor-pointer transition-all shadow-sm"
+                    title="Generar correo con tablas formateadas para Microsoft Outlook"
                   >
                     <Mail className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                    <span>Redactar Correo (Outlook)</span>
+                    <span>Correo Outlook</span>
                   </button>
 
                   {/* Idea 2: Descargar PDF Comercial */}
                   <button
                     type="button"
                     onClick={handleDownloadPdf}
-                    className="px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-rose-300 font-bold text-[10px] border border-rose-500/40 hover:border-rose-500 flex items-center justify-center space-x-1.5 cursor-pointer transition-all shadow-sm"
+                    className="px-2.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-rose-300 font-bold text-[10px] border border-rose-500/40 hover:border-rose-500 flex items-center justify-center space-x-1.5 cursor-pointer transition-all shadow-sm"
+                    title="Exportar propuesta comercial con membrete Intcomex en PDF"
                   >
                     <Printer className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                    <span>Descargar PDF Comercial</span>
+                    <span>PDF Comercial</span>
+                  </button>
+
+                  {/* Idea 9: Plantilla ERP Intcomex */}
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={handleDownloadErpTemplate}
+                    className="px-2.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-cyan-300 font-bold text-[10px] border border-cyan-500/40 hover:border-cyan-500 flex items-center justify-center space-x-1.5 cursor-pointer transition-all shadow-sm disabled:opacity-50"
+                    title="Exportar archivo Excel formateado para carga masiva en ERP Intcomex"
+                  >
+                    <Package className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                    <span>Plantilla ERP</span>
+                  </button>
+
+                  {/* Idea 10: Lámina Resumen Ejecutivo */}
+                  <button
+                    type="button"
+                    onClick={() => setIsSlideModalOpen(true)}
+                    className="px-2.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-amber-300 font-bold text-[10px] border border-amber-500/40 hover:border-amber-500 flex items-center justify-center space-x-1.5 cursor-pointer transition-all shadow-sm"
+                    title="Ver lámina de presentación ejecutiva de alta resolución"
+                  >
+                    <Presentation className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>Lámina Slide</span>
                   </button>
                 </div>
 
@@ -913,9 +996,18 @@ export function DownloadModal({
 
                   <button
                     type="button"
-                    disabled={isSaving}
+                    disabled={isSaving || (isGuardrailTriggered && !guardrailConfirmed)}
                     onClick={handleSave}
-                    className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold shadow-lg shadow-emerald-600/30 cursor-pointer disabled:opacity-50 flex items-center space-x-1.5 transition-all"
+                    className={`px-4 py-2 rounded-lg text-white text-[10px] font-bold shadow-lg transition-all flex items-center space-x-1.5 ${
+                      isGuardrailTriggered && !guardrailConfirmed
+                        ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
+                        : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30 cursor-pointer'
+                    }`}
+                    title={
+                      isGuardrailTriggered && !guardrailConfirmed
+                        ? 'Confirma la autorización de jefatura para exportar con margen/internación inferior a 4.0%'
+                        : 'Exportar y descargar archivo Excel modificado'
+                    }
                   >
                     <Download className="w-3.5 h-3.5" />
                     <span>{isSaving ? 'Exportando y Guardando...' : 'Descargar Excel (.xlsx)'}</span>
@@ -926,6 +1018,18 @@ export function DownloadModal({
           )}
         </div>
       </div>
+
+      {/* Executive Summary Slide Deck Modal */}
+      {processedResult && (
+        <ExecutiveSlideModal
+          isOpen={isSlideModalOpen}
+          onClose={() => setIsSlideModalOpen(false)}
+          result={processedResult}
+          params={params}
+          partnerName={partnerName}
+          clientName={clientName}
+        />
+      )}
     </div>
   );
 }

@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.5.0",
-  "git_commit": "9d9930c",
+  "version": "2.6.0",
+  "git_commit": "9281c62",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-25T20:49:47.472Z",
-  "release_notes": "feat(ui): implement dual classic vs aesthetic view with live custom studio",
+  "build_timestamp": "2026-10-25T21:48:35.961Z",
+  "release_notes": "feat(v2.5.0): update version, changelog, in-app version history and permanent rule in memory",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"
