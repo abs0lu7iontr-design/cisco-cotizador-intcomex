@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Share2, Download, FileCheck, Check, Sparkles } from 'lucide-react';
 import { shareQuote, ShareQuoteData } from '../../utils/mobileShareHelper';
+import { useCiscoAutomatedStore } from '../../core/store';
 
 interface MobileStickyBarProps {
   clientName?: string;
@@ -28,6 +29,7 @@ export const MobileStickyBar: React.FC<MobileStickyBarProps> = ({
   formatCurrency,
 }) => {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const { isClientMode } = useCiscoAutomatedStore();
 
   const handleShare = async () => {
     const data: ShareQuoteData = {
@@ -67,7 +69,7 @@ export const MobileStickyBar: React.FC<MobileStickyBarProps> = ({
             <span className="font-mono font-black text-emerald-400 text-sm">
               {formatCurrency(totalUsd)}
             </span>
-            {marginPct !== undefined && (
+            {marginPct !== undefined && !isClientMode && (
               <span className="text-[10px] font-mono text-slate-400 font-bold">
                 ({marginPct}%)
               </span>

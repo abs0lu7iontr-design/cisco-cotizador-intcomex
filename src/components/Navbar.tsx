@@ -292,7 +292,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               )}
 
-              {onToggleParamSidebar && (
+              {onToggleParamSidebar && !isClientMode && (
                 <button
                   onClick={onToggleParamSidebar}
                   className={`inline-flex items-center space-x-1.5 text-xs font-semibold px-3 py-2 rounded-xl border transition-colors cursor-pointer ${
@@ -307,7 +307,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               )}
 
-              {miningAuditReport && miningAuditReport.overallStatus !== 'NO_RULES' && onMiningAuditClick && (
+              {miningAuditReport && miningAuditReport.overallStatus !== 'NO_RULES' && onMiningAuditClick && !isClientMode && (
                 <button
                   id="btn-mining-audit"
                   onClick={onMiningAuditClick}

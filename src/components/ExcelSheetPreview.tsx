@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { INTCOMEX_LOGO_DATA_URI, CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { APP_DISPLAY_NAME, getFormattedAppVersion } from '../core/appVersion';
+import { useCiscoAutomatedStore } from '../core/store';
 
 interface ExcelSheetPreviewProps {
   data?: ProcessedEstimateResult | null;
@@ -59,6 +60,8 @@ export const ExcelSheetPreview: React.FC<ExcelSheetPreviewProps> = ({
   onToggleIntangible,
 }) => {
   const [showRecalculated, setShowRecalculated] = useState<boolean>(true);
+  const { isClientMode } = useCiscoAutomatedStore();
+  const effectiveShowRecalculated = isClientMode ? true : showRecalculated;
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [currency, setCurrency] = useState<CurrencyCode>(() => getSavedFrontendCurrency());
   const [rates, setRates] = useState<CurrencyConversionRates>(() =>
@@ -287,29 +290,36 @@ export const ExcelSheetPreview: React.FC<ExcelSheetPreviewProps> = ({
         </div>
 
         {/* Toggle Mode Button */}
-        <div className="flex items-center space-x-2 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
-          <button
-            onClick={() => setShowRecalculated(true)}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer flex items-center space-x-1.5 ${
-              showRecalculated
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Versión con Margen {params.margenPct}%</span>
-          </button>
-          <button
-            onClick={() => setShowRecalculated(false)}
-            className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-              !showRecalculated
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <span>Cisco CCW Original</span>
-          </button>
-        </div>
+        {!isClientMode ? (
+          <div className="flex items-center space-x-2 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+            <button
+              onClick={() => setShowRecalculated(true)}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer flex items-center space-x-1.5 ${
+                showRecalculated
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Versión con Margen {params.margenPct}%</span>
+            </button>
+            <button
+              onClick={() => setShowRecalculated(false)}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                !showRecalculated
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <span>Cisco CCW Original</span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/70 border border-emerald-500/40 text-emerald-300 font-bold text-xs shadow-sm">
+            <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Propuesta Comercial Oficial (Precios PVP)</span>
+          </div>
+        )}
       </div>
 
       {/* Sheet Simulation Container */}
@@ -370,10 +380,10 @@ export const ExcelSheetPreview: React.FC<ExcelSheetPreviewProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-sans">
               {data.items.map((item) => {
-                const unitPrice = showRecalculated
+                const unitPrice = effectiveShowRecalculated
                   ? item.precioVentaUnitario
                   : item.netCiscoUnit;
-                const extPrice = showRecalculated
+                const extPrice = effectiveShowRecalculated
                   ? item.precioVentaExtendido
                   : item.netCiscoUnit * item.qty;
 
@@ -421,7 +431,7 @@ export const ExcelSheetPreview: React.FC<ExcelSheetPreviewProps> = ({
                             INTANGIBLE
                           </span>
                         )}
-                        {item.llevaArancel && (
+                        {item.llevaArancel && !isClientMode && (
                           <span className="text-[9px] px-2 py-0.5 rounded-full bg-purple-950 text-purple-300 font-bold border border-purple-600/40">
                             ARANCEL 6%
                           </span>
@@ -461,7 +471,7 @@ export const ExcelSheetPreview: React.FC<ExcelSheetPreviewProps> = ({
                 </td>
                 <td colSpan={2} className="p-4 text-right font-mono text-emerald-400 text-lg font-black">
                   {formatCurrency(
-                    showRecalculated ? data.calculatedProductTotal : data.originalProductTotal
+                    effectiveShowRecalculated ? data.calculatedProductTotal : data.originalProductTotal
                   )}
                 </td>
               </tr>

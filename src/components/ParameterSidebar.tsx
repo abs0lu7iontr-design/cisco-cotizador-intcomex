@@ -50,6 +50,7 @@ import {
   isProfileActive,
 } from '../modules/cloud';
 import { APP_DISPLAY_NAME, getFormattedAppVersion } from '../core/appVersion';
+import { useCiscoAutomatedStore } from '../core/store';
 
 interface ParameterSidebarProps {
   params: QuoteParameters;
@@ -93,6 +94,7 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
   onProfileUpdated,
 }) => {
   const notifyChange = onChange || onChangeParams;
+  const { isClientMode } = useCiscoAutomatedStore();
 
   // Active Parameter Mode: 'standard' vs 'custom_lines'
   const activeMode: PricingParameterMode = params.parameterMode || 'standard';
@@ -358,6 +360,10 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
+
+  if (isClientMode) {
+    return null;
+  }
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-5 text-slate-200">

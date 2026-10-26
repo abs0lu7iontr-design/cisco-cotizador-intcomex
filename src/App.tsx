@@ -70,6 +70,7 @@ import {
   RefreshCw,
   GitCompare,
   Zap,
+  EyeOff,
 } from 'lucide-react';
 
 function AppContent() {
@@ -137,6 +138,13 @@ function AppContent() {
     const savedTheme = getSavedThemeId();
     applyTheme(savedTheme);
   }, []);
+
+  // Switch to safe client-facing tab if in Client Presentation Mode
+  useEffect(() => {
+    if (isClientMode && activeQuoterTab === 'calculator') {
+      setActiveQuoterTab('excel');
+    }
+  }, [isClientMode, activeQuoterTab, setActiveQuoterTab]);
 
   // 30-minute Inactivity Monitor & Auto-Logout Security Layer
   const { showWarning, secondsRemaining, stayActive } = useSessionInactivity({
@@ -821,8 +829,8 @@ function AppContent() {
 
                   {/* Main Grid: Parameters Sidebar + Quoter Views */}
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                    {/* Collapsible Parameter Sidebar */}
-                    {isParamSidebarOpen && (
+                    {/* Collapsible Parameter Sidebar - Hidden strictly when in Client Presentation Mode */}
+                    {isParamSidebarOpen && !isClientMode && (
                       <div className="lg:col-span-3">
                         <ParameterSidebar
                           params={params}
@@ -837,10 +845,10 @@ function AppContent() {
                       </div>
                     )}
 
-                    {/* Quoter Content Tabs (Expands to 12 cols when parameter sidebar is closed) */}
-                    <div className={isParamSidebarOpen ? 'lg:col-span-9' : 'lg:col-span-12'}>
+                    {/* Quoter Content Tabs (Expands to 12 cols when parameter sidebar is closed or in client mode) */}
+                    <div className={(isParamSidebarOpen && !isClientMode) ? 'lg:col-span-9' : 'lg:col-span-12'}>
                       {/* Fast Track Opportunity Alert Banner */}
-                      {pendingFastTrackAudit?.hasOpportunity && (
+                      {pendingFastTrackAudit?.hasOpportunity && !isClientMode && (
                         <div className="mb-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-xs animate-fade-in">
                           <div className="flex items-center space-x-2.5">
                             <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
@@ -891,29 +899,33 @@ function AppContent() {
                             <span>Tabla Interactiva con Reglas</span>
                           </button>
 
-                          <button
-                            onClick={() => setActiveQuoterTab('calculator')}
-                            className={`flex items-center space-x-2 px-4 py-2 rounded-xl transition-all cursor-pointer ${
-                              activeQuoterTab === 'calculator'
-                                ? 'bg-indigo-600 text-white shadow-md'
-                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                            }`}
-                          >
-                            <Calculator className="w-4 h-4" />
-                            <span>Calculadora Rápida</span>
-                          </button>
+                          {!isClientMode && (
+                            <>
+                              <button
+                                onClick={() => setActiveQuoterTab('calculator')}
+                                className={`flex items-center space-x-2 px-4 py-2 rounded-xl transition-all cursor-pointer ${
+                                  activeQuoterTab === 'calculator'
+                                    ? 'bg-indigo-600 text-white shadow-md'
+                                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                }`}
+                              >
+                                <Calculator className="w-4 h-4" />
+                                <span>Calculadora Rápida</span>
+                              </button>
 
-                          <button
-                            onClick={() => setIsDiffModalOpen(true)}
-                            className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-slate-400 hover:text-indigo-300 hover:bg-slate-800 transition-all cursor-pointer border border-transparent hover:border-indigo-500/30"
-                            title="Comparar versión actual con costo base o snapshot guardado"
-                          >
-                            <GitCompare className="w-4 h-4 text-indigo-400" />
-                            <span>Comparar Diff</span>
-                          </button>
+                              <button
+                                onClick={() => setIsDiffModalOpen(true)}
+                                className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-slate-400 hover:text-indigo-300 hover:bg-slate-800 transition-all cursor-pointer border border-transparent hover:border-indigo-500/30"
+                                title="Comparar versión actual con costo base o snapshot guardado"
+                              >
+                                <GitCompare className="w-4 h-4 text-indigo-400" />
+                                <span>Comparar Diff</span>
+                              </button>
+                            </>
+                          )}
                         </div>
 
-                        {!isParamSidebarOpen && (
+                        {!isParamSidebarOpen && !isClientMode && (
                           <button
                             onClick={() => setIsParamSidebarOpen(true)}
                             className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700 text-[11px] font-semibold flex items-center space-x-1.5 cursor-pointer"
@@ -921,6 +933,13 @@ function AppContent() {
                             <Sliders className="w-3.5 h-3.5" />
                             <span>Mostrar Parámetros (7%, 6%, 5%)</span>
                           </button>
+                        )}
+
+                        {isClientMode && (
+                          <div className="px-3 py-1.5 rounded-xl bg-emerald-950/70 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold flex items-center space-x-1.5 shadow-sm">
+                            <EyeOff className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Modo Presentación al Cliente (Márgenes Ocultos)</span>
+                          </div>
                         )}
                       </div>
 

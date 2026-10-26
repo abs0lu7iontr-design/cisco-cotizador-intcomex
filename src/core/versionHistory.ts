@@ -15,11 +15,25 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.7.1',
+    date: '2026-10-25',
+    commit: 'fix-client-mode-hide-parameter-sidebar-and-controls',
+    title: 'Blindaje Total de Confidencialidad en Modo Cliente y Ocultamiento de Parámetros CCW',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Ocultamiento automático del panel de Parámetros CCW (internación, arancel, margen y Goal Seek) al activar el Modo Cliente.',
+      'Expansión dinámica de la vista principal a 12 columnas (pantalla completa) para presentaciones ejecutivas limpias.',
+      'Bloqueo de acceso al costo neto Cisco en la Vista Hoja Excel CCW y reemplazo de toggles por indicador de PVP oficial.',
+      'Ocultamiento del botón de Parámetros en Navbar y protección de márgenes en la barra móvil.',
+    ],
+  },
+  {
     version: '2.7.0',
     date: '2026-10-25',
     commit: 'feat-client-presentation-pptx-signature-indexeddb-sync',
     title: 'Modo Proyección al Cliente, Presentaciones PPTX, Firmas Outlook, IndexedDB y Sync Offline',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Modo Presentación al Cliente: Botón [👁️ Modo Cliente] para ocultar al instante costos y márgenes en reuniones en vivo.',

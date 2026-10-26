@@ -6,6 +6,15 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.7.1] - 2026-10-25
+### 🩹 Corregido (Blindaje Total de Confidencialidad en Modo Cliente y Ocultamiento de Parámetros CCW)
+- **Ocultamiento de Parámetros CCW en Modo Cliente:** En el modo de presentación al cliente (`isClientMode`), el panel lateral izquierdo de parámetros (`ParameterSidebar` con internación, arancel, margen y Goal Seek) se oculta de forma obligatoria y la vista del cotizador se expande a pantalla completa (12 columnas), blindando la privacidad de las fórmulas comerciales frente a clientes finales.
+- **Depuración de Controles en Barra Superior:** Se oculta el botón `[ Parámetros ]` y las alertas de auditoría minera/Fast Track en `Navbar.tsx` mientras el Modo Cliente se encuentre activo.
+- **Protección en Vista Hoja Excel CCW (`ExcelSheetPreview`):** Se sustituye el selector de versiones que mostraba *"Versión con Margen 5%"* y *"Cisco CCW Original"* por un badge corporativo de *"Propuesta Comercial Oficial (Precios PVP)"*, bloqueando el acceso al costo neto base de Cisco y forzando siempre el despliegue de precios de venta finales.
+- **Ocultamiento de Arancel en Tabla Excel:** La etiqueta `ARANCEL 6%` se oculta en la vista previa Excel cuando se activa el Modo Cliente.
+- **Barra de Navegación Móvil:** Se protege el indicador de margen en `MobileStickyBar` para no revelar porcentajes de ROS en dispositivos móviles o pantallas reducidas.
+- **Certificación de Reglas de Hooks:** Adaptación de las reglas de Hooks en `ParameterSidebar` certificadas al 100% por React Doctor (`✔ No issues found!`).
+
 ## [v2.7.0] - 2026-10-25
 ### 🌟 Agregado (Modo Proyección al Cliente, Generador PowerPoint .pptx, Firmas Outlook, IndexedDB y Sincronización Offline)
 - **Modo Proyección / Presentación al Cliente ("Privacy Mode" en 1 Clic):**
