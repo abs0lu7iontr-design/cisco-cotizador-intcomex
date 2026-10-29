@@ -20,12 +20,11 @@ export const DEFAULT_EMAIL_SIGNATURE: EmailSignatureProfile = {
   jobTitle: 'Product Management Cisco',
   phone: '+56 2 2490 5000',
   email: 'cisco@intcomex.com',
-  greetingTemplate: 'Estimado(a) Partner / Cliente,\nJunto con saludar, comparto el resumen oficial de cotización comercial Cisco (Intcomex Chile):',
+  greetingTemplate: 'Estimados,\nBuenos días/tardes, adjunto cotización solicitada.',
   commercialTerms: [
-    'Valores unitarios y totales expresados en Dólares Americanos (USD), valores Netos (no incluyen IVA 19%).',
-    'Precios calculados con internación y arancel aduanero chileno según aplique por SKU.',
-    'Cotización sujeta a disponibilidad de stock y vigencia oficial en Cisco Commerce Workspace (CCW).',
-    'Validez de la oferta: 30 días calendario desde su fecha de emisión.',
+    'Validez de la Oferta: Esta cotización tiene una validez de 14 días corridos a contar de su fecha de emisión.',
+    'Plazo de entrega: El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden.',
+    'Validación Técnica y Responsabilidad: La presente cotización constituye una propuesta referencial de preventa basada en los requerimientos informados. Es responsabilidad exclusiva del Partner revisar y validar técnicamente la compatibilidad, completitud y exactitud de todos los números de parte (BOM) y licenciamiento antes de formalizar la orden de compra. Intcomex no asumirá costos ni mermas derivados de omisiones o inconsistencias en compras de productos a pedido no validadas previamente por el Partner.',
   ],
   disclaimerText: 'Distribuidor Mayorista Autorizado Cisco • Intcomex Chile • Av. El Retiro 1255, Renca, Santiago',
 };

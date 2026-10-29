@@ -15,11 +15,25 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.7.4',
+    date: '2026-10-29',
+    commit: 'fix-email-copy-compact-greeting-conditions-format',
+    title: 'Redacción Dinámica, Condiciones Oficiales y Diseño Compacto en Copiar para Correo Outlook',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Saludo inicial ejecutivo dinámico por hora: "Estimados, Buenos días/tardes, adjunto cotización solicitada."',
+      'Simplificación de la fila total a "Total Price" suprimiendo el contador de unidades.',
+      'Incorporación de las 3 condiciones oficiales de Estimate (Validez 14 días en rojo, Plazo y Validación Técnica) en cursiva y letra compacta.',
+      'Compactación del ancho y paddings para un pegado perfectamente alineado y no desbordado en Outlook.',
+    ],
+  },
+  {
     version: '2.7.3',
     date: '2026-10-28',
     commit: 'fix-erp-bodega-e1-ed-and-clean-estimate-email-copy',
     title: 'Regla Logística de Bodegas E1/ED en Carga ERP y Formato Oficial Estimate Customizado para Correo',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Asignación estricta de Bodega en Carga ERP: E1 cuando hay Hardware físico (incluyendo licencias/servicios asociados) y ED solo para órdenes 100% intangibles.',

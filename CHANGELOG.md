@@ -6,6 +6,20 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.7.4] - 2026-10-29
+### 🩹 Corregido (Redacción Dinámica, Condiciones Oficiales y Diseño Compacto en Copiar para Correo Outlook)
+- **Saludo Dinámico y Apertura Ejecutiva:**
+  - Se actualizó el saludo inicial a `"Estimados,\nBuenos días/tardes, adjunto cotización solicitada."`, evaluando dinámicamente según la hora del sistema (`Buenos días` < 12:00 / `Buenas tardes` >= 12:00).
+- **Simplificación de Etiqueta Total:**
+  - Se eliminó el contador de unidades `(x unidades)` y la palabra "Net", mostrando limpiamente `"Total Price: $XX.XX USD"`.
+- **Condiciones Comerciales Oficiales del Estimate:**
+  - Se incorporaron las 3 cláusulas oficiales con formato estilizado en cursiva y texto compacto (8.5pt):
+    - **Validez de la Oferta:** *Esta cotización tiene una validez de* **14 días corridos** *(destacado en rojo)* *a contar de su fecha de emisión.*
+    - **Plazo de entrega:** *El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden.*
+    - **Validación Técnica y Responsabilidad:** *La presente cotización constituye una propuesta referencial de preventa basada en los requerimientos informados. Es responsabilidad exclusiva del Partner revisar y validar técnicamente la compatibilidad, completitud y exactitud de todos los números de parte (BOM) y licenciamiento antes de formalizar la orden de compra. Intcomex no asumirá costos ni mermas derivados de omisiones o inconsistencias en compras de productos a pedido no validadas previamente por el Partner.*
+- **Diseño Compacto y Cohesivo para Outlook:**
+  - Se redujo el ancho máximo del contenedor de 960px a 760px y los paddings de celdas de 7px a 5px, logrando una densidad visual perfecta que no se desborda horizontalmente al pegarse en Outlook.
+
 ## [v2.7.3] - 2026-10-28
 ### 🩹 Corregido (Regla Logística de Bodegas E1/ED en Carga ERP y Formato Oficial Estimate Customizado para Correo)
 - **Regla Logística Oficial Intcomex para Bodega en Carga ERP (`erpExportHelper.ts`):**

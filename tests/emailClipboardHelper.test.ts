@@ -95,7 +95,8 @@ const mockEstimate: ProcessedEstimateResult = {
 const fixedMorning = new Date(2026, 9, 5, 9, 30, 0);
 const htmlMorning = generateEstimateEmailHtml(mockEstimate, 'Sonda Chile', fixedMorning);
 
-assert.ok(htmlMorning.includes('Buenos días,'), 'HTML matutino debe contener "Buenos días,"');
+assert.ok(htmlMorning.includes('Estimados,'), 'HTML debe contener "Estimados,"');
+assert.ok(htmlMorning.includes('Buenos días, adjunto cotización solicitada.'), 'HTML matutino debe contener "Buenos días, adjunto cotización solicitada."');
 assert.ok(htmlMorning.includes('Price Estimate'), 'HTML debe incluir título Price Estimate');
 assert.ok(htmlMorning.includes('INTCOMEX CHILE SA'), 'HTML debe incluir encabezado INTCOMEX CHILE SA');
 assert.ok(htmlMorning.includes('DEAL-998877'), 'HTML debe incluir Deal ID');
@@ -104,14 +105,20 @@ assert.ok(htmlMorning.includes('Sonda Chile'), 'HTML debe incluir Reseller/Partn
 assert.ok(htmlMorning.includes('Banco Santander'), 'HTML debe incluir Cliente Final');
 assert.ok(htmlMorning.includes('C9300-48P-A'), 'HTML debe listar el part number');
 assert.ok(htmlMorning.includes('Lead Time'), 'HTML debe incluir columna Lead Time del estimate customizado');
+assert.ok(htmlMorning.includes('Total Price:'), 'HTML debe mostrar etiqueta "Total Price:"');
+assert.ok(!htmlMorning.includes('unidades):'), 'HTML no debe mostrar contador de unidades en el total');
 assert.ok(htmlMorning.includes('$12,500.00 USD'), 'HTML debe mostrar total neto cotizado');
 assert.ok(htmlMorning.includes('Price Estimate for planning and information purposes only'), 'HTML debe incluir disclaimer oficial Cisco');
+assert.ok(htmlMorning.includes('Validez de la Oferta:'), 'HTML debe incluir Validez de la Oferta');
+assert.ok(htmlMorning.includes('14 días corridos'), 'HTML debe incluir 14 días corridos');
+assert.ok(htmlMorning.includes('Plazo de entrega:'), 'HTML debe incluir Plazo de entrega');
+assert.ok(htmlMorning.includes('Validación Técnica y Responsabilidad:'), 'HTML debe incluir Validación Técnica y Responsabilidad');
 assert.ok(!htmlMorning.includes('(Arancel 6%)'), 'HTML no debe exponer etiquetas internas de arancel');
 assert.ok(!htmlMorning.includes('(Licencia)'), 'HTML no debe exponer etiquetas internas de licencia');
 
 const fixedAfternoon = new Date(2026, 9, 5, 14, 15, 0);
 const htmlAfternoon = generateEstimateEmailHtml(mockEstimate, 'Sonda Chile', fixedAfternoon);
-assert.ok(htmlAfternoon.includes('Buenas tardes,'), 'HTML vespertino debe contener "Buenas tardes,"');
+assert.ok(htmlAfternoon.includes('Buenas tardes, adjunto cotización solicitada.'), 'HTML vespertino debe contener "Buenas tardes, adjunto cotización solicitada."');
 
 console.log('✅ Plantilla HTML con compatibilidad Outlook verificada exitosamente.');
 
@@ -121,12 +128,19 @@ console.log('✅ Plantilla HTML con compatibilidad Outlook verificada exitosamen
 console.log('\n--- 3. Validación de Fallback en Texto Plano ---');
 
 const plainText = generateEstimatePlainText(mockEstimate, 'Sonda Chile', fixedMorning);
-assert.ok(plainText.includes('Buenos días,'), 'Texto plano matutino debe comenzar con "Buenos días,"');
+assert.ok(plainText.includes('Estimados,'), 'Texto plano debe comenzar con "Estimados,"');
+assert.ok(plainText.includes('Buenos días, adjunto cotización solicitada.'), 'Texto plano matutino debe contener "Buenos días, adjunto cotización solicitada."');
 assert.ok(plainText.includes('Price Estimate - INTCOMEX CHILE SA'), 'Texto plano debe incluir encabezado oficial');
 assert.ok(plainText.includes('DEAL-998877'), 'Texto plano debe incluir Deal ID');
 assert.ok(plainText.includes('C9300-48P-A'), 'Texto plano debe incluir SKU');
+assert.ok(plainText.includes('Total Price:'), 'Texto plano debe incluir "Total Price:"');
+assert.ok(!plainText.includes('unidades):'), 'Texto plano no debe incluir contador de unidades');
 assert.ok(plainText.includes('$12,500.00 USD'), 'Texto plano debe incluir monto total');
 assert.ok(plainText.includes('Lead Time'), 'Texto plano debe incluir columna Lead Time');
+assert.ok(plainText.includes('Validez de la Oferta:'), 'Texto plano debe incluir Validez de la Oferta');
+assert.ok(plainText.includes('14 días corridos'), 'Texto plano debe incluir 14 días corridos');
+assert.ok(plainText.includes('Plazo de entrega:'), 'Texto plano debe incluir Plazo de entrega');
+assert.ok(plainText.includes('Validación Técnica y Responsabilidad:'), 'Texto plano debe incluir Validación Técnica');
 assert.ok(!plainText.includes('(Arancel 6%)'), 'Texto plano no debe incluir etiquetas internas');
 
 console.log('✅ Fallback de texto plano verificado exitosamente.');

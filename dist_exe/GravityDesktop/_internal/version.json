@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.7.3",
-  "git_commit": "3ea7eb1",
+  "version": "2.7.4",
+  "git_commit": "c4fc11b",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-29T02:27:44.332Z",
-  "release_notes": "fix(v2.7.2): repair openxml presentation structure for powerpoint office compatibility",
+  "build_timestamp": "2026-10-29T03:12:30.601Z",
+  "release_notes": "fix(v2.7.3): unify erp warehouse logic e1-ed and modernize email copy to custom estimate layout",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"
