@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.7.1",
-  "git_commit": "ac645bf",
+  "version": "2.7.2",
+  "git_commit": "5c762f3",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-26T00:23:03.380Z",
-  "release_notes": "feat(v2.7.0): client presentation mode, pptx generator, email signature manager, indexeddb storage, and offline sync queue",
+  "build_timestamp": "2026-10-29T01:30:35.452Z",
+  "release_notes": "fix(v2.7.1): hide ccw parameter sidebar, tools and tabs in client presentation mode",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

@@ -6,6 +6,17 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.7.2] - 2026-10-28
+### 🩹 Corregido (Compatibilidad Total OpenXML en Generador PowerPoint .pptx para Microsoft Office)
+- **Reparación de Esquema y Contenedor OpenXML (.pptx):** Se resolvió de raíz la falla por la cual Microsoft PowerPoint indicaba *"no se puede reproducir / archivo dañado o ilegible" (HRESULT 0x80070570)* al abrir las presentaciones descargadas.
+- **Plantilla Certificada Base64 de Alta Fidelidad:** Integración en `src/core/pptxTemplateBase64.ts` del paquete nativo validado de Office con temas (`ppt/theme/theme1.xml`), estilos de tabla (`ppt/tableStyles.xml`), propiedades de presentación (`ppt/presProps.xml`) y relaciones bidireccionales completas (`slideMaster` y `slideLayout`).
+- **Normalización de Entidades y Geometrías DrawingML:**
+  - Sustitución estricta de la entidad HTML no declarada `&bull;` por la entidad numérica XML estándar `&#8226;` en todas las diapositivas.
+  - Corrección de etiquetas de cierre en el árbol de formas de diapositivas 2 y 3.
+  - Asignación obligatoria de geometría predefinida (`<a:prstGeom prst="rect">`) en los bloques de texto de cabecera y títulos.
+  - Inclusión del mapeo de color maestro obligatorio (`<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>`) en el esquema de cada diapositiva.
+- **Validación Automatizada con Microsoft PowerPoint COM:** Verificación rigurosa mediante pruebas automáticas con la instancia nativa instalada de PowerPoint abriendo exitosamente el archivo generado (`SUCCESS: PowerPoint opened file! Slide count: 3`).
+
 ## [v2.7.1] - 2026-10-25
 ### 🩹 Corregido (Blindaje Total de Confidencialidad en Modo Cliente y Ocultamiento de Parámetros CCW)
 - **Ocultamiento de Parámetros CCW en Modo Cliente:** En el modo de presentación al cliente (`isClientMode`), el panel lateral izquierdo de parámetros (`ParameterSidebar` con internación, arancel, margen y Goal Seek) se oculta de forma obligatoria y la vista del cotizador se expande a pantalla completa (12 columnas), blindando la privacidad de las fórmulas comerciales frente a clientes finales.

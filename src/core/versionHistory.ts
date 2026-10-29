@@ -15,11 +15,25 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.7.2',
+    date: '2026-10-28',
+    commit: 'fix-openxml-presentation-powerpoint-office-compatibility',
+    title: 'Compatibilidad Total OpenXML en Generador PowerPoint .pptx para Microsoft Office',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Reparación del paquete OpenXML (.pptx) para eliminar errores de archivo dañado al abrir en Microsoft PowerPoint.',
+      'Integración de plantilla certificada nativa base64 con temas, estilos de tabla y relaciones completas.',
+      'Normalización de entidades XML estándar (reemplazo de &bull; por &#8226;) y geometrías DrawingML.',
+      'Verificación automatizada con Microsoft PowerPoint COM en entorno Windows asegurando apertura limpia.',
+    ],
+  },
+  {
     version: '2.7.1',
     date: '2026-10-25',
     commit: 'fix-client-mode-hide-parameter-sidebar-and-controls',
     title: 'Blindaje Total de Confidencialidad en Modo Cliente y Ocultamiento de Parámetros CCW',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Ocultamiento automático del panel de Parámetros CCW (internación, arancel, margen y Goal Seek) al activar el Modo Cliente.',
