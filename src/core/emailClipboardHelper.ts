@@ -199,6 +199,47 @@ function formatUsdCurrency(val: number): string {
   });
 }
 
+/**
+ * Extrae el nombre del Partner y Cliente Final a partir de la convención de nombres:
+ * [partner]_[clientefinal]_[resto...].xlsx
+ * Si el nombre no cumple ese patrón o la primera parte es genérica ("estimate", "cisco", etc.),
+ * recurre a los valores de respaldo de la cotización.
+ */
+export function extractPartnerAndClientFromFilename(
+  filename?: string,
+  fallbackPartner?: string,
+  fallbackClient?: string
+): { partnerName: string; clientName: string } {
+  let partnerName = '';
+  let clientName = '';
+
+  if (filename) {
+    const baseName = filename.split(/[\\/]/).pop() || filename;
+    const clean = baseName.replace(/\.[^/.]+$/, '').trim();
+    const parts = clean.split('_').map((p) => p.trim()).filter(Boolean);
+
+    const isGeneric = (str: string) => /^(estimate|cotizacion|cisco|deal|bom|\d+)$/i.test(str);
+
+    if (parts.length >= 2 && !isGeneric(parts[0])) {
+      partnerName = parts[0];
+      if (!isGeneric(parts[1])) {
+        clientName = parts[1];
+      }
+    } else if (parts.length === 1 && !isGeneric(parts[0])) {
+      partnerName = parts[0];
+    }
+  }
+
+  if (!partnerName) {
+    partnerName = fallbackPartner || 'Intcomex Partner';
+  }
+  if (!clientName) {
+    clientName = fallbackClient || 'Cliente Final';
+  }
+
+  return { partnerName, clientName };
+}
+
 export interface EstimateEmailOptions {
   includeSignature?: boolean;
 }
@@ -218,8 +259,11 @@ export function generateEstimateEmailHtml(
 ): string {
   const greeting = getTimeBasedGreeting(targetDate);
   const header = (data.headerInfo || {}) as Partial<EstimateHeaderInfo>;
-  const partnerName = detectedPartner || header.customerName || 'Intcomex Partner';
-  const clientName = header.companyName || header.endUser || 'Cliente Final';
+  const { partnerName, clientName } = extractPartnerAndClientFromFilename(
+    data.fileName,
+    detectedPartner || header.customerName || header.companyName,
+    header.companyName || header.endUser
+  );
   const dealId = header.dealId || 'N/A';
   const estimateId = header.quoteName || header.estimateId || 'N/A';
 
@@ -232,7 +276,6 @@ export function generateEstimateEmailHtml(
   );
 
   const totalNeto = data.calculatedProductTotal || data.financialSummary?.totalVentaUSD || 0;
-  const totalQty = activeItems.reduce((acc, it) => acc + (Number(it.qty) || 0), 0);
 
   const rowsHtml = activeItems
     .map((item, idx) => {
@@ -247,13 +290,13 @@ export function generateEstimateEmailHtml(
 
       return `
       <tr style="background-color: ${bg}; font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 9pt; color: #1e293b;">
-        <td style="border: 1px solid #cbd5e1; padding: 5px 4px; text-align: center; color: #64748b; font-size: 8.5pt;">${item.lineNumber || String(idx + 1)}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 5px 8px; font-weight: bold; color: #0f172a; font-family: Consolas, 'Courier New', monospace; ${indent}">${item.partNumber}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 5px 8px; text-align: left; ${indent}">${cleanDesc}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 5px 4px; text-align: center; color: #4338ca; font-size: 8pt; font-weight: 600; white-space: nowrap;">${leadTime}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 5px 4px; text-align: center; font-weight: bold;">${item.qty}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 5px 8px; text-align: right; white-space: nowrap;">${formatUsdCurrency(item.precioVentaUnitario)}</td>
-        <td style="border: 1px solid #cbd5e1; padding: 5px 8px; text-align: right; font-weight: bold; color: #0f172a; white-space: nowrap;">${formatUsdCurrency(item.precioVentaExtendido)}</td>
+        <td width="36" style="border: 1px solid #cbd5e1; padding: 5px 3px; width: 36px; text-align: center; color: #64748b; font-size: 8.5pt;">${item.lineNumber || String(idx + 1)}</td>
+        <td width="135" style="border: 1px solid #cbd5e1; padding: 5px 8px; width: 135px; font-weight: bold; color: #0f172a; font-family: Consolas, 'Courier New', monospace; word-wrap: break-word; ${indent}">${item.partNumber}</td>
+        <td width="245" style="border: 1px solid #cbd5e1; padding: 5px 8px; width: 245px; text-align: left; word-wrap: break-word; overflow-wrap: break-word; ${indent}">${cleanDesc}</td>
+        <td width="84" style="border: 1px solid #cbd5e1; padding: 5px 4px; width: 84px; text-align: center; color: #4338ca; font-size: 8pt; font-weight: 600; white-space: nowrap;">${leadTime}</td>
+        <td width="35" style="border: 1px solid #cbd5e1; padding: 5px 3px; width: 35px; text-align: center; font-weight: bold;">${item.qty}</td>
+        <td width="95" style="border: 1px solid #cbd5e1; padding: 5px 8px; width: 95px; text-align: right; white-space: nowrap;">${formatUsdCurrency(item.precioVentaUnitario)}</td>
+        <td width="100" style="border: 1px solid #cbd5e1; padding: 5px 8px; width: 100px; text-align: right; font-weight: bold; color: #0f172a; white-space: nowrap;">${formatUsdCurrency(item.precioVentaExtendido)}</td>
       </tr>`;
     })
     .join('');
@@ -263,9 +306,9 @@ export function generateEstimateEmailHtml(
   if (options?.includeSignature && signatureProfile) {
     signatureBlock = `
   <!-- Firma Personalizada del PM -->
-  <table style="border-collapse: collapse; font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 9.5pt; color: #334155; margin-top: 14px;">
+  <table width="730" border="0" cellpadding="0" cellspacing="0" style="width: 730px; max-width: 730px; border-collapse: collapse; font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 9.5pt; color: #334155; margin-top: 14px;">
     <tr>
-      <td style="padding-right: 12px; border-right: 2px solid #4338ca; vertical-align: top;">
+      <td style="padding-right: 12px; border-right: 2px solid #4338ca; vertical-align: top; width: 240px;">
         <strong style="color: #0f172a; font-size: 10.5pt; display: block;">${signatureProfile.senderName}</strong>
         <span style="color: #4338ca; font-weight: bold; font-size: 9pt; display: block;">${signatureProfile.jobTitle}</span>
         <span style="color: #64748b; font-size: 8.5pt; display: block;">Intcomex Chile &bull; Cisco Division</span>
@@ -280,83 +323,98 @@ export function generateEstimateEmailHtml(
   }
 
   return `
-<div style="font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 10.5pt; color: #1e293b; line-height: 1.45; max-width: 760px;">
-  <p style="margin: 0 0 4px 0; font-size: 11pt; color: #1e293b;">Estimados,</p>
-  <p style="margin: 0 0 14px 0; font-size: 11pt; color: #1e293b;">${greeting}, adjunto cotización solicitada.</p>
+<table width="730" border="0" cellpadding="0" cellspacing="0" style="width: 730px; max-width: 730px; border-collapse: collapse; margin: 0; padding: 0; font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 10.5pt; color: #1e293b; line-height: 1.45;">
+  <tr>
+    <td style="padding: 0; margin: 0;">
+      <p style="margin: 0 0 4px 0; font-size: 11pt; color: #1e293b;">Estimados,</p>
+      <p style="margin: 0 0 14px 0; font-size: 11pt; color: #1e293b;">${greeting}, adjunto cotización solicitada.</p>
 
-  <!-- Encabezado Oficial Price Estimate Cisco CCW -->
-  <table style="border-collapse: collapse; width: 100%; margin-bottom: 6px; background-color: #f8fafc; border-radius: 6px; border: 1px solid #cbd5e1; font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 9pt;">
-    <tr>
-      <td style="padding: 8px 12px; width: 55%; vertical-align: top;">
-        <div style="font-size: 12pt; font-weight: bold; color: #0f172a; margin-bottom: 1px;">Price Estimate</div>
-        <div style="font-size: 9pt; font-weight: bold; color: #64748b; text-transform: uppercase;">INTCOMEX CHILE SA</div>
-        <div style="font-size: 8.5pt; color: #475569; margin-top: 3px;"><strong>Partner:</strong> ${partnerName} &bull; <strong>Cliente Final:</strong> ${clientName}</div>
-      </td>
-      <td style="padding: 8px 12px; width: 45%; vertical-align: top; text-align: right;">
-        <span style="color: #64748b; font-size: 8pt; text-transform: uppercase; font-weight: bold; display: block;">Datos de Cotización</span>
-        <div style="margin-top: 2px;">
-          <span style="color: #64748b; font-size: 8.5pt;">Estimate ID:</span> <strong style="color: #4338ca; font-family: Consolas, monospace; font-size: 9.5pt;">${estimateId}${data.versionTag ? ` (${data.versionTag})` : ''}</strong>
-        </div>
-        <div>
-          <span style="color: #64748b; font-size: 8.5pt;">Deal ID:</span> <strong style="color: #0f172a; font-family: Consolas, monospace; font-size: 9.5pt;">${dealId}</strong>
-        </div>
-        <div>
-          <span style="color: #64748b; font-size: 8.5pt;">Fecha / Date:</span> <span style="color: #334155; font-size: 8.5pt;">${fechaStr}</span>
-        </div>
-      </td>
-    </tr>
-  </table>
+      <!-- Encabezado Oficial Price Estimate Cisco CCW -->
+      <table width="730" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse; width: 730px; max-width: 730px; margin-bottom: 6px; background-color: #f8fafc; border-radius: 6px; border: 1px solid #cbd5e1; font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 9pt;">
+        <tr>
+          <td width="420" style="padding: 8px 12px; width: 420px; vertical-align: top;">
+            <div style="font-size: 12pt; font-weight: bold; color: #0f172a; margin-bottom: 1px;">Price Estimate</div>
+            <div style="font-size: 9pt; font-weight: bold; color: #64748b; text-transform: uppercase;">INTCOMEX CHILE SA</div>
+            <div style="font-size: 8.5pt; color: #475569; margin-top: 3px;"><strong>Partner:</strong> ${partnerName} &bull; <strong>Cliente Final:</strong> ${clientName}</div>
+          </td>
+          <td width="310" style="padding: 8px 12px; width: 310px; vertical-align: top; text-align: right;">
+            <span style="color: #64748b; font-size: 8pt; text-transform: uppercase; font-weight: bold; display: block;">Datos de Cotización</span>
+            <div style="margin-top: 2px;">
+              <span style="color: #64748b; font-size: 8.5pt;">Estimate ID:</span> <strong style="color: #4338ca; font-family: Consolas, monospace; font-size: 9.5pt;">${estimateId}${data.versionTag ? ` (${data.versionTag})` : ''}</strong>
+            </div>
+            <div>
+              <span style="color: #64748b; font-size: 8.5pt;">Deal ID:</span> <strong style="color: #0f172a; font-family: Consolas, monospace; font-size: 9.5pt;">${dealId}</strong>
+            </div>
+            <div>
+              <span style="color: #64748b; font-size: 8.5pt;">Fecha / Date:</span> <span style="color: #334155; font-size: 8.5pt;">${fechaStr}</span>
+            </div>
+          </td>
+        </tr>
+      </table>
 
-  <!-- Cisco Official Red Notice Banner -->
-  <div style="background-color: #fff1f2; border: 1px solid #fecdd3; border-radius: 4px; padding: 5px 10px; margin-bottom: 5px; font-size: 8pt; font-weight: bold; color: #be123c; text-align: center;">
-    Price Estimate for planning and information purposes only and is not a binding offer from Cisco.
-  </div>
+      <!-- Cisco Official Red Notice Banner -->
+      <table width="730" border="0" cellpadding="0" cellspacing="0" style="width: 730px; max-width: 730px; margin-bottom: 4px;">
+        <tr>
+          <td style="background-color: #fff1f2; border: 1px solid #fecdd3; border-radius: 4px; padding: 5px 10px; font-size: 8pt; font-weight: bold; color: #be123c; text-align: center;">
+            Price Estimate for planning and information purposes only and is not a binding offer from Cisco.
+          </td>
+        </tr>
+        <tr>
+          <td style="text-align: right; padding-top: 4px; font-size: 8pt; font-style: italic; color: #64748b;">
+            All prices are shown in USD
+          </td>
+        </tr>
+      </table>
 
-  <div style="text-align: right; margin-bottom: 5px; font-size: 8pt; font-style: italic; color: #64748b;">
-    All prices are shown in USD
-  </div>
+      <!-- Tabla Oficial 7 Columnas del Estimate Customizado (Diseño Fijo Compacto 730px) -->
+      <table width="730" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse; width: 730px; max-width: 730px; table-layout: fixed; border: 1px solid #cbd5e1; margin-bottom: 10px; font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 9pt;">
+        <thead>
+          <tr style="background-color: #0f172a; color: #ffffff; text-align: center; font-weight: bold; font-size: 8.5pt;">
+            <th width="36" style="border: 1px solid #0f172a; padding: 6px 3px; width: 36px; text-align: center;">Line</th>
+            <th width="135" style="border: 1px solid #0f172a; padding: 6px 8px; width: 135px; text-align: left;">Part Number</th>
+            <th width="245" style="border: 1px solid #0f172a; padding: 6px 8px; width: 245px; text-align: left;">Description</th>
+            <th width="84" style="border: 1px solid #0f172a; padding: 6px 4px; width: 84px; text-align: center;">Lead Time</th>
+            <th width="35" style="border: 1px solid #0f172a; padding: 6px 3px; width: 35px; text-align: center;">Qty</th>
+            <th width="95" style="border: 1px solid #0f172a; padding: 6px 8px; width: 95px; text-align: right;">Unit Net Price</th>
+            <th width="100" style="border: 1px solid #0f172a; padding: 6px 8px; width: 100px; text-align: right;">Extended Net Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+          <!-- Fila de Total General -->
+          <tr style="background-color: #f1f5f9; font-weight: bold; border-top: 2px solid #0f172a;">
+            <td colspan="5" width="535" style="border: 1px solid #cbd5e1; padding: 7px 10px; width: 535px; text-align: right; font-size: 9.5pt; font-weight: bold; color: #0f172a;">
+              Total Price:
+            </td>
+            <td colspan="2" width="195" style="border: 1px solid #cbd5e1; padding: 7px 10px; width: 195px; text-align: right; font-size: 10.5pt; font-weight: bold; color: #0f172a; white-space: nowrap;">
+              ${formatUsdCurrency(totalNeto)} USD
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-  <!-- Tabla Oficial 7 Columnas del Estimate Customizado (Diseño Compacto y Elegante) -->
-  <table style="border-collapse: collapse; width: 100%; border: 1px solid #cbd5e1; margin-bottom: 10px; font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 9pt;">
-    <thead>
-      <tr style="background-color: #0f172a; color: #ffffff; text-align: center; font-weight: bold; font-size: 8.5pt;">
-        <th style="border: 1px solid #0f172a; padding: 6px 4px; width: 38px;">Line</th>
-        <th style="border: 1px solid #0f172a; padding: 6px 8px; width: 135px; text-align: left;">Part Number</th>
-        <th style="border: 1px solid #0f172a; padding: 6px 8px; text-align: left;">Description</th>
-        <th style="border: 1px solid #0f172a; padding: 6px 4px; width: 85px;">Lead Time</th>
-        <th style="border: 1px solid #0f172a; padding: 6px 4px; width: 38px;">Qty</th>
-        <th style="border: 1px solid #0f172a; padding: 6px 8px; width: 95px; text-align: right;">Unit Net Price</th>
-        <th style="border: 1px solid #0f172a; padding: 6px 8px; width: 105px; text-align: right;">Extended Net Price</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${rowsHtml}
-      <!-- Fila de Total General -->
-      <tr style="background-color: #f1f5f9; font-weight: bold; border-top: 2px solid #0f172a;">
-        <td colspan="5" style="border: 1px solid #cbd5e1; padding: 7px 10px; text-align: right; font-size: 9.5pt; font-weight: bold; color: #0f172a;">
-          Total Price:
-        </td>
-        <td colspan="2" style="border: 1px solid #cbd5e1; padding: 7px 10px; text-align: right; font-size: 10.5pt; font-weight: bold; color: #0f172a; white-space: nowrap;">
-          ${formatUsdCurrency(totalNeto)} USD
-        </td>
-      </tr>
-    </tbody>
-  </table>
-
-  <!-- Condiciones Comerciales Oficiales del Estimate (Formato Compacto en Cursiva) -->
-  <div style="margin-top: 10px; font-size: 8.5pt; color: #475569; line-height: 1.45; font-family: Calibri, 'Segoe UI', Arial, sans-serif;">
-    <p style="margin: 0 0 5px 0;">
-      <strong style="color: #1e293b;">Validez de la Oferta:</strong> <span style="font-style: italic;">Esta cotización tiene una validez de <strong style="color: #b91c1c; font-style: normal;">14 días corridos</strong> a contar de su fecha de emisión.</span>
-    </p>
-    <p style="margin: 0 0 5px 0;">
-      <strong style="color: #1e293b;">Plazo de entrega:</strong> <span style="font-style: italic;">El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden.</span>
-    </p>
-    <p style="margin: 0 0 6px 0;">
-      <strong style="color: #1e293b;">Validación Técnica y Responsabilidad:</strong> <span style="font-style: italic;">La presente cotización constituye una propuesta referencial de preventa basada en los requerimientos informados. Es responsabilidad exclusiva del Partner revisar y validar técnicamente la compatibilidad, completitud y exactitud de todos los números de parte (BOM) y licenciamiento antes de formalizar la orden de compra. Intcomex no asumirá costos ni mermas derivados de omisiones o inconsistencias en compras de productos a pedido no validadas previamente por el Partner.</span>
-    </p>
-  </div>
-  ${signatureBlock}
-</div>
+      <!-- Condiciones Comerciales Oficiales del Estimate (Formato Compacto en Cursiva) -->
+      <table width="730" border="0" cellpadding="0" cellspacing="0" style="width: 730px; max-width: 730px; margin-top: 8px; font-size: 8.5pt; color: #475569; line-height: 1.45; font-family: Calibri, 'Segoe UI', Arial, sans-serif;">
+        <tr>
+          <td style="padding-bottom: 5px;">
+            <strong style="color: #1e293b;">Validez de la Oferta:</strong> <span style="font-style: italic;">Esta cotización tiene una validez de <strong style="color: #b91c1c; font-style: normal;">14 días corridos</strong> a contar de su fecha de emisión.</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding-bottom: 5px;">
+            <strong style="color: #1e293b;">Plazo de entrega:</strong> <span style="font-style: italic;">El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden.</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding-bottom: 6px;">
+            <strong style="color: #1e293b;">Validación Técnica y Responsabilidad:</strong> <span style="font-style: italic;">La presente cotización constituye una propuesta referencial de preventa basada en los requerimientos informados. Es responsabilidad exclusiva del Partner revisar y validar técnicamente la compatibilidad, completitud y exactitud de todos los números de parte (BOM) y licenciamiento antes de formalizar la orden de compra. Intcomex no asumirá costos ni mermas derivados de omisiones o inconsistencias en compras de productos a pedido no validadas previamente por el Partner.</span>
+          </td>
+        </tr>
+      </table>
+      ${signatureBlock}
+    </td>
+  </tr>
+</table>
 `;
 }
 
@@ -373,8 +431,11 @@ export function generateEstimatePlainText(
 ): string {
   const greeting = getTimeBasedGreeting(targetDate);
   const header = (data.headerInfo || {}) as Partial<EstimateHeaderInfo>;
-  const partnerName = detectedPartner || header.customerName || 'Intcomex Partner';
-  const clientName = header.companyName || header.endUser || 'Cliente Final';
+  const { partnerName, clientName } = extractPartnerAndClientFromFilename(
+    data.fileName,
+    detectedPartner || header.customerName || header.companyName,
+    header.companyName || header.endUser
+  );
   const dealId = header.dealId || 'N/A';
   const estimateId = header.quoteName || header.estimateId || 'N/A';
 

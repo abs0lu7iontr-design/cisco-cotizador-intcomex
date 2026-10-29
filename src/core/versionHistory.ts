@@ -15,11 +15,25 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.7.5',
+    date: '2026-10-29',
+    commit: 'fix-table-fixed-layout-and-filename-partner-client-extract',
+    title: 'Ancho Fijo Estricto en Tabla para Outlook y Extracción de Partner/Cliente por Nombre de Archivo',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Eliminación del desborde horizontal de la columna Description en Outlook mediante contenedor de 730px fijos y table-layout fixed.',
+      'Asignación explícita de anchos por columna en píxeles y atributos nativos HTML para el motor Word MSO.',
+      'Extracción automática de Partner y Cliente Final según convención de archivo [partner]_[clientefinal]_[resto].xlsx.',
+      'Sustitución de cuentas internas CCW por los nombres reales de preventa identificados en el archivo.',
+    ],
+  },
+  {
     version: '2.7.4',
     date: '2026-10-29',
     commit: 'fix-email-copy-compact-greeting-conditions-format',
     title: 'Redacción Dinámica, Condiciones Oficiales y Diseño Compacto en Copiar para Correo Outlook',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Saludo inicial ejecutivo dinámico por hora: "Estimados, Buenos días/tardes, adjunto cotización solicitada."',

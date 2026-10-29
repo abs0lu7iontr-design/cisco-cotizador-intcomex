@@ -6,6 +6,15 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.7.5] - 2026-10-29
+### 🩹 Corregido (Ancho Fijo Estricto en Tabla para Outlook y Extracción de Partner/Cliente por Nombre de Archivo)
+- **Eliminación del Desborde Horizontal en la Columna de Descripción:**
+  - Se resolvió la causa por la cual la columna *Description* se expandía excesivamente al pegar en Microsoft Outlook: Outlook (motor Word MSO) omite `max-width` en etiquetas `<div>`, estirando las tablas al 100% del monitor y acumulando todo el exceso de ancho en la columna sin ancho fijo.
+  - Se blindó la plantilla envolviéndola en una estructura `<table width="730">` con `table-layout: fixed;`, definiendo anchos en píxeles y atributos nativos `width` para cada una de las 7 columnas (`Line`: 36px, `Part Number`: 135px, `Description`: 245px con `word-wrap`, `Lead Time`: 84px, `Qty`: 35px, `Unit Net Price`: 95px, `Extended Net Price`: 100px), bloqueando la tabla a 730px fijos sin importar el tamaño de pantalla del monitor.
+- **Extracción Automática de Partner y Cliente Final por Convención de Archivo:**
+  - Se implementó `extractPartnerAndClientFromFilename` siguiendo la convención corporativa `[partner]_[clientefinal]_[resto].xlsx`.
+  - La primera sección antes del guion bajo (`_`) se asigna al **Partner** y la segunda sección al **Cliente Final**, sustituyendo los códigos de cuentas internas de Cisco CCW (como `besalco!.9` o `Bash`) por los nombres reales de preventa identificados en el archivo.
+
 ## [v2.7.4] - 2026-10-29
 ### 🩹 Corregido (Redacción Dinámica, Condiciones Oficiales y Diseño Compacto en Copiar para Correo Outlook)
 - **Saludo Dinámico y Apertura Ejecutiva:**

@@ -8,10 +8,30 @@ import {
   generateEstimateEmailHtml,
   generateEstimatePlainText,
   copyEstimateEmailSummaryToClipboard,
+  extractPartnerAndClientFromFilename,
 } from '../src/core/emailClipboardHelper';
 import { ProcessedEstimateResult } from '../src/core/types';
 
 console.log('🧪 INICIANDO SUITE DE PRUEBAS DEL RESUMEN PARA CORREO Y SALUDO DINÁMICO (CISCO AUTOMATED v2.7)...\n');
+
+// ----------------------------------------------------------------------------
+// Test 0: Extracción de Partner y Cliente Final según convención partner_clientefinal
+// ----------------------------------------------------------------------------
+console.log('--- 0. Validación de Extracción de Partner y Cliente Final por Nombre de Archivo ---');
+
+const testFile1 = extractPartnerAndClientFromFilename('sittco_cayo_CB200_C9300L_E.xlsx');
+assert.strictEqual(testFile1.partnerName, 'sittco', 'Partner debe ser sittco');
+assert.strictEqual(testFile1.clientName, 'cayo', 'Cliente final debe ser cayo');
+
+const testFile2 = extractPartnerAndClientFromFilename('besalco_bash.xlsx');
+assert.strictEqual(testFile2.partnerName, 'besalco', 'Partner debe ser besalco');
+assert.strictEqual(testFile2.clientName, 'bash', 'Cliente final debe ser bash');
+
+const testFile3 = extractPartnerAndClientFromFilename('Estimate_OE169047114NP.xlsx', 'Sonda', 'Santander');
+assert.strictEqual(testFile3.partnerName, 'Sonda', 'Estimate genérico debe recurrir a fallback partner');
+assert.strictEqual(testFile3.clientName, 'Santander', 'Estimate genérico debe recurrir a fallback cliente');
+
+console.log('✅ Extracción de Partner y Cliente Final validada correctamente.');
 
 // ----------------------------------------------------------------------------
 // Test 1: Saludo dinámico según la hora (Buenos días < 12:00 vs Buenas tardes >= 12:00)
@@ -101,8 +121,11 @@ assert.ok(htmlMorning.includes('Price Estimate'), 'HTML debe incluir título Pri
 assert.ok(htmlMorning.includes('INTCOMEX CHILE SA'), 'HTML debe incluir encabezado INTCOMEX CHILE SA');
 assert.ok(htmlMorning.includes('DEAL-998877'), 'HTML debe incluir Deal ID');
 assert.ok(htmlMorning.includes('OE169047114NP (v1)'), 'HTML debe incluir Estimate ID con tag de versión (v1)');
-assert.ok(htmlMorning.includes('Sonda Chile'), 'HTML debe incluir Reseller/Partner');
-assert.ok(htmlMorning.includes('Banco Santander'), 'HTML debe incluir Cliente Final');
+assert.ok(htmlMorning.includes('Sonda'), 'HTML debe incluir Reseller/Partner extraído del nombre de archivo');
+assert.ok(htmlMorning.includes('Santander'), 'HTML debe incluir Cliente Final extraído del nombre de archivo');
+assert.ok(htmlMorning.includes('width="730"'), 'HTML debe fijar tabla a 730px para Outlook');
+assert.ok(htmlMorning.includes('table-layout: fixed'), 'HTML debe fijar table-layout fixed para que Description no se desborde');
+assert.ok(htmlMorning.includes('width="245"'), 'HTML debe fijar ancho de columna Description');
 assert.ok(htmlMorning.includes('C9300-48P-A'), 'HTML debe listar el part number');
 assert.ok(htmlMorning.includes('Lead Time'), 'HTML debe incluir columna Lead Time del estimate customizado');
 assert.ok(htmlMorning.includes('Total Price:'), 'HTML debe mostrar etiqueta "Total Price:"');

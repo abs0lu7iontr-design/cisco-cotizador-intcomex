@@ -8,7 +8,8 @@
 
 | Versión | Commit Principal | Fecha / Periodo | Hitos y Cambios Arquitectónicos Principales | Estado |
 |---|---|---|---|---|
-| **v2.7.4** | `fix-email-copy-compact-greeting-conditions-format` | Octubre 2026 | **Redacción Dinámica, Condiciones Oficiales y Diseño Compacto en Correo Outlook:** Saludo dinámico según horario, Total Price sin conteo de unidades, 3 condiciones oficiales en cursiva y ancho compactado a 760px. | **VIGENTE / PRODUCCIÓN** |
+| **v2.7.5** | `fix-table-fixed-layout-and-filename-partner-client-extract` | Octubre 2026 | **Ancho Fijo Estricto en Tabla para Outlook y Extracción Partner/Cliente:** Bloqueo de 730px fijos con table-layout fixed para eliminar desborde de Description, y extracción automática de partner_clientefinal. | **VIGENTE / PRODUCCIÓN** |
+| **v2.7.4** | `fix-email-copy-compact-greeting-conditions-format` | Octubre 2026 | **Redacción Dinámica, Condiciones Oficiales y Diseño Compacto en Correo Outlook:** Saludo dinámico según horario, Total Price sin conteo de unidades, 3 condiciones oficiales en cursiva y ancho compactado a 760px. | Estable |
 | **v2.7.3** | `fix-erp-bodega-e1-ed-and-clean-estimate-email-copy` | Octubre 2026 | **Regla Logística Bodegas E1/ED ERP & Formato Oficial Estimate para Correo:** Asignación uniforme a E1 ante presencia de hardware, y ED para 100% intangibles. Copiado para correo con 7 columnas oficiales CCW sin etiquetas internas ni firma forzada. | Estable |
 | **v2.7.2** | `fix-openxml-presentation-powerpoint-office-compatibility` | Octubre 2026 | **Compatibilidad Total PPTX en Microsoft Office:** Corrección OpenXML, XML DrawingML y validación COM en Windows. | Estable |
 | **v2.7.1** | `fix-client-mode-hide-parameter-sidebar-and-controls` | Octubre 2026 | **Blindaje Confidencialidad Modo Cliente:** Ocultamiento automático de parámetros CCW y costos netos. | Estable |
