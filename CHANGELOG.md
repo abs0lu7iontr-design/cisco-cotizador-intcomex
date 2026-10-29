@@ -6,6 +6,19 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.7.3] - 2026-10-28
+### 🩹 Corregido (Regla Logística de Bodegas E1/ED en Carga ERP y Formato Oficial Estimate Customizado para Correo)
+- **Regla Logística Oficial Intcomex para Bodega en Carga ERP (`erpExportHelper.ts`):**
+  - Se corrigió la asignación de bodega en la pestaña *"Carga ERP Intcomex"* del archivo Excel para cumplir la regla operacional:
+    - Si la cotización contiene al menos un ítem de Hardware tangible, **TODAS** las líneas (hardware, licencias asociadas y servicios SmartNet) se asignan a Bodega **`E1`** (Bodega Física / Despacho), eliminando la fragmentación con líneas en ED.
+    - Si la cotización contiene **EXCLUSIVAMENTE** productos intangibles (solo suscripciones de software/licencias SaaS, solo soporte SmartNet `CON-`/`SVS-`/`CX-`, o ambos sin ningún equipo físico), **TODAS** las líneas se asignan a Bodega **`ED`** (Entrega Digital).
+- **Modernización y Depuración de "Copiar para Correo" (`emailClipboardHelper.ts`):**
+  - **Eliminación de Etiquetas Internas:** Se eliminaron las etiquetas de clasificación interna como `(Licencia)` y `(Arancel 6%)` de la columna de descripción; las descripciones ahora se copian con la redacción oficial y limpia de Cisco CCW.
+  - **Adopción del Formato Oficial Estimate Customizado:** La tabla HTML y texto plano ahora reflejan la estructura corporativa oficial de 7 columnas (`Line`, `Part Number`, `Description`, `Lead Time`, `Qty`, `Unit Net Price`, `Extended Net Price`).
+  - **Avisos Oficiales Cisco:** Se integró el banner de aviso oficial Cisco CCW (*"Price Estimate for planning and information purposes only and is not a binding offer from Cisco."*) e indicación de moneda (*"All prices are shown in USD"*).
+  - **Eliminación de Condiciones Comerciales Estáticas:** Se removió el cuadro obsoleto de viñetas de 4 puntos (*"Condiciones Comerciales Estándar"*).
+  - **Omisión de Firma Personal por Defecto:** Se deshabilitó el anexo forzado de la firma al final del correo copiado, permitiendo que los usuarios de Outlook utilicen fluidamente su firma nativa ya configurada en su cliente de correo sin duplicidades.
+
 ## [v2.7.2] - 2026-10-28
 ### 🩹 Corregido (Compatibilidad Total OpenXML en Generador PowerPoint .pptx para Microsoft Office)
 - **Reparación de Esquema y Contenedor OpenXML (.pptx):** Se resolvió de raíz la falla por la cual Microsoft PowerPoint indicaba *"no se puede reproducir / archivo dañado o ilegible" (HRESULT 0x80070570)* al abrir las presentaciones descargadas.

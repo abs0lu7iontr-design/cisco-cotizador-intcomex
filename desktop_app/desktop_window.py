@@ -372,7 +372,7 @@ class DesktopBridge:
                     pass
         return {
             "name": "cisco-automated",
-            "version": "2.7.2",
+            "version": "2.7.3",
             "git_commit": "12379f3",
             "git_branch": "develop",
             "build_timestamp": "2026-10-15T00:00:00.000Z",
@@ -388,7 +388,7 @@ class DesktopBridge:
         Compares git_commit, build_timestamp, and version.
         """
         local_meta = self._get_local_version_metadata()
-        current_version = local_meta.get("version", "2.7.2")
+        current_version = local_meta.get("version", "2.7.3")
         current_commit = str(local_meta.get("git_commit", "12379f3"))
         current_timestamp = str(local_meta.get("build_timestamp", ""))
 

@@ -180,15 +180,18 @@ async function runTests() {
     disclaimerText: 'Intcomex Chile S.A. • Distribuidor Oficial Cisco',
   };
 
-  const htmlOutput = generateEstimateEmailHtml(dummyEstimate, 'Canal Demo', new Date(), customSig);
-  assert.ok(htmlOutput.includes('María González'), 'HTML must include custom sender name');
-  assert.ok(htmlOutput.includes('Senior Cisco Solutions Architect'), 'HTML must include custom job title');
-  assert.ok(htmlOutput.includes('mgonzalez@intcomex.com'), 'HTML must include custom email link');
-  assert.ok(htmlOutput.includes('Plazo de entrega estimado: 4 a 6 semanas'), 'HTML must include custom terms');
+  const htmlOutput = generateEstimateEmailHtml(dummyEstimate, 'Canal Demo', new Date(), customSig, { includeSignature: true });
+  assert.ok(htmlOutput.includes('María González'), 'HTML must include custom sender name when requested');
+  assert.ok(htmlOutput.includes('Senior Cisco Solutions Architect'), 'HTML must include custom job title when requested');
+  assert.ok(htmlOutput.includes('mgonzalez@intcomex.com'), 'HTML must include custom email link when requested');
 
-  const plainOutput = generateEstimatePlainText(dummyEstimate, 'Canal Demo', new Date(), customSig);
-  assert.ok(plainOutput.includes('María González'), 'Plain text must include custom sender name');
-  assert.ok(plainOutput.includes('+56 9 8765 4321'), 'Plain text must include custom phone');
+  // Verify that by default (for Outlook copy button), signature is omitted as requested
+  const defaultOutput = generateEstimateEmailHtml(dummyEstimate, 'Canal Demo', new Date());
+  assert.ok(!defaultOutput.includes('María González'), 'Default HTML must omit signature to let Outlook use native signature');
+
+  const plainOutput = generateEstimatePlainText(dummyEstimate, 'Canal Demo', new Date(), customSig, { includeSignature: true });
+  assert.ok(plainOutput.includes('María González'), 'Plain text must include custom sender name when requested');
+  assert.ok(plainOutput.includes('+56 9 8765 4321'), 'Plain text must include custom phone when requested');
   console.log('  ✅ Gestor de Firmas y Plantillas de Correo Outlook genera plantillas personalizadas.');
 
   // 5. Test Client Presentation Mode Validation

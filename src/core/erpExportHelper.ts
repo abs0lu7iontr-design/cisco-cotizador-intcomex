@@ -57,6 +57,22 @@ export async function generateErpTemplateWorkbook(
 
   const dealId = headerInfo?.dealId || 'N/A';
 
+  // Regla Logística Oficial Intcomex para Asignación de Bodega en Carga ERP:
+  // - Si la cotización contiene al menos 1 ítem de Hardware tangible -> TODO el pedido se asigna a Bodega 'E1'
+  //   (el hardware y sus licencias/servicios asociados viajan juntos en la misma orden para despacho físico).
+  // - Si la cotización contiene EXCLUSIVAMENTE ítems intangibles (solo licencias, solo servicios SmartNet,
+  //   o ambos combinados sin ningún hardware físico) -> se asigna a Bodega 'ED' (Entrega Digital).
+  const hasHardware = items.some((it) => {
+    if (it.isInfoRow || (Number(it.qty) || 0) <= 0) return false;
+    const isService =
+      it.partNumber.startsWith('CON-') ||
+      it.partNumber.startsWith('SVS-') ||
+      it.partNumber.startsWith('CX-');
+    return !it.isIntangible && !isService;
+  });
+
+  const effectiveBodega: 'E1' | 'ED' = hasHardware ? 'E1' : 'ED';
+
   // Add items
   items.forEach((item) => {
     if (item.isInfoRow) return;
@@ -71,13 +87,12 @@ export async function generateErpTemplateWorkbook(
       : isIntangible
       ? 'Licencia / SaaS'
       : 'Hardware';
-    const bodega = isIntangible || isService ? 'ED' : 'E1';
 
     const row = worksheet.addRow({
       line: item.lineNumber,
       partNumber: item.partNumber,
       description: item.description,
-      bodega,
+      bodega: effectiveBodega,
       qty: item.qty,
       cogs: item.netCiscoUnit,
       priceUnit: item.precioVentaUnitario,

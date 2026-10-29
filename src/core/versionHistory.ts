@@ -15,11 +15,25 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.7.3',
+    date: '2026-10-28',
+    commit: 'fix-erp-bodega-e1-ed-and-clean-estimate-email-copy',
+    title: 'Regla Logística de Bodegas E1/ED en Carga ERP y Formato Oficial Estimate Customizado para Correo',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Asignación estricta de Bodega en Carga ERP: E1 cuando hay Hardware físico (incluyendo licencias/servicios asociados) y ED solo para órdenes 100% intangibles.',
+      'Eliminación de etiquetas internas (Licencia / Arancel 6%) en las descripciones del resumen para correo.',
+      'Adaptación visual del copiado para correo a la plantilla oficial del Estimate Customizado de 7 columnas con disclaimers oficiales de Cisco.',
+      'Remoción del bloque rígido de condiciones comerciales y omisión de firma por defecto para respetar la firma nativa de Outlook.',
+    ],
+  },
+  {
     version: '2.7.2',
     date: '2026-10-28',
     commit: 'fix-openxml-presentation-powerpoint-office-compatibility',
     title: 'Compatibilidad Total OpenXML en Generador PowerPoint .pptx para Microsoft Office',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Reparación del paquete OpenXML (.pptx) para eliminar errores de archivo dañado al abrir en Microsoft PowerPoint.',

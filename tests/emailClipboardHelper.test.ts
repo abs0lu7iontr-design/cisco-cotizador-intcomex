@@ -1,5 +1,5 @@
 // ============================================================================
-// CISCO AUTOMATED v2.1 - OUTLOOK EMAIL SUMMARY & GREETING TEST SUITE
+// CISCO AUTOMATED v2.1/v2.7 - OUTLOOK EMAIL SUMMARY & GREETING TEST SUITE
 // ============================================================================
 
 import assert from 'node:assert';
@@ -11,7 +11,7 @@ import {
 } from '../src/core/emailClipboardHelper';
 import { ProcessedEstimateResult } from '../src/core/types';
 
-console.log('🧪 INICIANDO SUITE DE PRUEBAS DEL RESUMEN PARA CORREO Y SALUDO DINÁMICO (CISCO AUTOMATED v2.1)...\n');
+console.log('🧪 INICIANDO SUITE DE PRUEBAS DEL RESUMEN PARA CORREO Y SALUDO DINÁMICO (CISCO AUTOMATED v2.7)...\n');
 
 // ----------------------------------------------------------------------------
 // Test 1: Saludo dinámico según la hora (Buenos días < 12:00 vs Buenas tardes >= 12:00)
@@ -38,7 +38,7 @@ assert.ok(
 console.log('✅ Saludo dinámico por horario verificado correctamente (Buenos días < 12:00 / Buenas tardes >= 12:00).');
 
 // ----------------------------------------------------------------------------
-// Test 2: Generación de Plantilla HTML Oficial para Outlook / Gmail
+// Test 2: Generación de Plantilla HTML Oficial para Outlook / Gmail (Estimate Customizado)
 // ----------------------------------------------------------------------------
 console.log('\n--- 2. Validación de Plantilla HTML para Outlook ---');
 
@@ -96,14 +96,18 @@ const fixedMorning = new Date(2026, 9, 5, 9, 30, 0);
 const htmlMorning = generateEstimateEmailHtml(mockEstimate, 'Sonda Chile', fixedMorning);
 
 assert.ok(htmlMorning.includes('Buenos días,'), 'HTML matutino debe contener "Buenos días,"');
+assert.ok(htmlMorning.includes('Price Estimate'), 'HTML debe incluir título Price Estimate');
+assert.ok(htmlMorning.includes('INTCOMEX CHILE SA'), 'HTML debe incluir encabezado INTCOMEX CHILE SA');
 assert.ok(htmlMorning.includes('DEAL-998877'), 'HTML debe incluir Deal ID');
 assert.ok(htmlMorning.includes('OE169047114NP (v1)'), 'HTML debe incluir Estimate ID con tag de versión (v1)');
 assert.ok(htmlMorning.includes('Sonda Chile'), 'HTML debe incluir Reseller/Partner');
 assert.ok(htmlMorning.includes('Banco Santander'), 'HTML debe incluir Cliente Final');
 assert.ok(htmlMorning.includes('C9300-48P-A'), 'HTML debe listar el part number');
+assert.ok(htmlMorning.includes('Lead Time'), 'HTML debe incluir columna Lead Time del estimate customizado');
 assert.ok(htmlMorning.includes('$12,500.00 USD'), 'HTML debe mostrar total neto cotizado');
-assert.ok(htmlMorning.includes('Validez de la oferta: 30 días'), 'HTML debe incluir condiciones comerciales');
-assert.ok(htmlMorning.includes('Distribuidor Mayorista Autorizado Cisco'), 'HTML debe incluir firma de Intcomex Chile');
+assert.ok(htmlMorning.includes('Price Estimate for planning and information purposes only'), 'HTML debe incluir disclaimer oficial Cisco');
+assert.ok(!htmlMorning.includes('(Arancel 6%)'), 'HTML no debe exponer etiquetas internas de arancel');
+assert.ok(!htmlMorning.includes('(Licencia)'), 'HTML no debe exponer etiquetas internas de licencia');
 
 const fixedAfternoon = new Date(2026, 9, 5, 14, 15, 0);
 const htmlAfternoon = generateEstimateEmailHtml(mockEstimate, 'Sonda Chile', fixedAfternoon);
@@ -118,10 +122,12 @@ console.log('\n--- 3. Validación de Fallback en Texto Plano ---');
 
 const plainText = generateEstimatePlainText(mockEstimate, 'Sonda Chile', fixedMorning);
 assert.ok(plainText.includes('Buenos días,'), 'Texto plano matutino debe comenzar con "Buenos días,"');
-assert.ok(plainText.includes('Deal ID: DEAL-998877 | Estimate ID: OE169047114NP (v1)'), 'Texto plano debe incluir encabezado estructurado');
+assert.ok(plainText.includes('Price Estimate - INTCOMEX CHILE SA'), 'Texto plano debe incluir encabezado oficial');
+assert.ok(plainText.includes('DEAL-998877'), 'Texto plano debe incluir Deal ID');
 assert.ok(plainText.includes('C9300-48P-A'), 'Texto plano debe incluir SKU');
 assert.ok(plainText.includes('$12,500.00 USD'), 'Texto plano debe incluir monto total');
-assert.ok(plainText.includes('Equipo Cisco • Intcomex Chile'), 'Texto plano debe incluir pie de firma');
+assert.ok(plainText.includes('Lead Time'), 'Texto plano debe incluir columna Lead Time');
+assert.ok(!plainText.includes('(Arancel 6%)'), 'Texto plano no debe incluir etiquetas internas');
 
 console.log('✅ Fallback de texto plano verificado exitosamente.');
 
