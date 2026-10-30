@@ -6,6 +6,17 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.7.6] - 2026-10-30
+### 🩹 Corregido (Extracción de Rango de Fechas Celda A3 en Fast Track, Persistencia en IndexedDB y Compatibilidad Chrome)
+- **Reparación del Parser de Rango de Fechas en Celda A3 (`fastTrackParser.ts`):**
+  - Se resolvió la falla crítica por la cual cadenas como `Eligible from Oct 25th 2026- Jan 23rd 2027` se truncaban debido a una clase de caracteres que capturaba letras como separador (la "t" de "Oct"), ignorando la fecha de término (`Jan 23rd 2027`) y cayendo en fallback a `23-01-2026` (marcando erróneamente el catálogo como OBSOLETO).
+  - Se introdujo `parseFastTrackDateRange` con reconocimiento determinista de meses en inglés y español, infiriendo saltos de año y extrayendo con precisión `validFrom` (25-10-2026) y `validUntil` (23-01-2027).
+- **Persistencia Transaccional en IndexedDB y Compatibilidad con Google Chrome (`fastTrackDb.ts` y `FastTrackAdminModal.tsx`):**
+  - `setFastTrackValidUntil` ahora es asíncrono y persiste de inmediato en el almacén `METADATA_STORE_NAME` de IndexedDB con clave `ACTIVE_LOCAL_META_KEY`, además de `localStorage` y memoria, impidiendo que `refreshData()` revierta el cambio.
+  - Formato local `YYYY-MM-DD` para `<input type="date">` evitando desfases de huso horario UTC (Chile UTC-3/UTC-4).
+  - Compatibilidad nativa con Google Chrome mediante `style={{ colorScheme: 'dark' }}` y clase `[color-scheme:dark]`.
+  - Botones de acción rápida `+90d` (extensión de 1 trimestre) y `+30d` (1 mes) para ajustar la vigencia en 1 solo clic con feedback visual instantáneo.
+
 ## [v2.7.5] - 2026-10-29
 ### 🩹 Corregido (Ancho Fijo Estricto en Tabla para Outlook y Extracción de Partner/Cliente por Nombre de Archivo)
 - **Eliminación del Desborde Horizontal en la Columna de Descripción:**

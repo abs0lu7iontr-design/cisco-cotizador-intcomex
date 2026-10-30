@@ -275,12 +275,16 @@ function mirrorMetadataToLocalStorage(meta: FastTrackLocalCatalogMetadata): void
 /**
  * Calcula el estado de vencimiento del catálogo actual.
  */
-export function getFastTrackExpirationStatus(validUntilTimestamp?: number | null) {
+export function getFastTrackExpirationStatus(validUntilTimestamp?: number | null, validFromTimestamp?: number | null) {
   let validUntil: number | null = null;
   let validFrom: number | null = null;
 
   if (validUntilTimestamp !== undefined) {
     validUntil = validUntilTimestamp;
+    validFrom =
+      validFromTimestamp !== undefined
+        ? validFromTimestamp
+        : (memoryCatalogMeta?.validFrom ?? null);
   } else if (memoryCatalogMeta) {
     validUntil = memoryCatalogMeta.validUntil;
     validFrom = memoryCatalogMeta.validFrom;
@@ -338,7 +342,7 @@ export function getFastTrackExpirationStatus(validUntilTimestamp?: number | null
 /**
  * Guarda o actualiza la fecha de vigencia del catálogo.
  */
-export function setFastTrackValidUntil(timestamp: number | null): void {
+export async function setFastTrackValidUntil(timestamp: number | null): Promise<void> {
   if (memoryCatalogMeta) {
     memoryCatalogMeta = { ...memoryCatalogMeta, validUntil: timestamp };
   }
@@ -349,6 +353,58 @@ export function setFastTrackValidUntil(timestamp: number | null): void {
       localStorage.setItem(STORAGE_KEY_VALID_UNTIL, String(timestamp));
     }
   } catch (_) {}
+
+  try {
+    const db = await openFastTrackDb();
+    if (db && db.objectStoreNames.contains(METADATA_STORE_NAME)) {
+      await new Promise<void>((resolve) => {
+        const tx = db.transaction([METADATA_STORE_NAME], 'readwrite');
+        const store = tx.objectStore(METADATA_STORE_NAME);
+        const req = store.get(ACTIVE_LOCAL_META_KEY);
+        req.onsuccess = () => {
+          let currentMeta = (req.result as FastTrackLocalCatalogMetadata) || memoryCatalogMeta;
+          if (currentMeta) {
+            currentMeta = { ...currentMeta, validUntil: timestamp };
+            memoryCatalogMeta = currentMeta;
+            store.put(currentMeta);
+          } else {
+            const fallbackMeta: FastTrackLocalCatalogMetadata = {
+              key: ACTIVE_LOCAL_META_KEY,
+              generationId: 'local_custom_' + Date.now(),
+              schemaVersion: FAST_TRACK_SCHEMA_VERSION,
+              fileName:
+                (typeof localStorage !== 'undefined'
+                  ? localStorage.getItem(STORAGE_KEY_FILENAME)
+                  : '') || 'fast_track_custom.xlsx',
+              updatedAt: Date.now(),
+              validUntil: timestamp,
+              validFrom:
+                typeof localStorage !== 'undefined' && localStorage.getItem(STORAGE_KEY_VALID_FROM)
+                  ? Number(localStorage.getItem(STORAGE_KEY_VALID_FROM))
+                  : null,
+              promotionCode:
+                (typeof localStorage !== 'undefined'
+                  ? localStorage.getItem(STORAGE_KEY_PROMO_CODE)
+                  : '') || '',
+              promotionTitle:
+                (typeof localStorage !== 'undefined'
+                  ? localStorage.getItem(STORAGE_KEY_PROMO_TITLE)
+                  : '') || '',
+              totalSkus: memoryCatalogMap.size,
+              canonicalChecksum: '',
+            };
+            memoryCatalogMeta = fallbackMeta;
+            store.put(fallbackMeta);
+          }
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+        tx.onabort = () => resolve();
+      });
+    }
+  } catch (err) {
+    console.warn('Error persistiendo vigencia Fast Track en IndexedDB:', err);
+  }
 }
 
 /**
@@ -1479,7 +1535,7 @@ export async function getFastTrackStats(): Promise<FastTrackDbStats> {
     } catch (_) {}
   }
 
-  const expStatus = getFastTrackExpirationStatus(unifiedMeta?.validUntil);
+  const expStatus = getFastTrackExpirationStatus(unifiedMeta?.validUntil, unifiedMeta?.validFrom);
 
   return {
     isEnabled,

@@ -296,9 +296,49 @@ export function FastTrackAdminModal({
 
   const handleValidUntilChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    const timestamp = val ? new Date(val + 'T23:59:59').getTime() : null;
-    setFastTrackValidUntil(timestamp);
+    if (!val) {
+      await setFastTrackValidUntil(null);
+      await refreshData();
+      setFeedbackMessage({
+        type: 'warning',
+        text: '⚠️ Vigencia eliminada (sin fecha de expiración configurada).',
+      });
+      return;
+    }
+    const [y, m, d] = val.split('-').map(Number);
+    if (!y || !m || !d) return;
+    const localDate = new Date(y, m - 1, d, 23, 59, 59);
+    const timestamp = localDate.getTime();
+    await setFastTrackValidUntil(timestamp);
     await refreshData();
+    setFeedbackMessage({
+      type: 'success',
+      text: `📅 Vigencia del catálogo actualizada al ${String(d).padStart(2, '0')}-${String(m).padStart(2, '0')}-${y}.`,
+    });
+  };
+
+  const handleQuickExtendDays = async (days: number) => {
+    const baseTime = stats.validUntil && stats.validUntil > Date.now() ? stats.validUntil : Date.now();
+    const newTarget = new Date(baseTime);
+    newTarget.setDate(newTarget.getDate() + days);
+    newTarget.setHours(23, 59, 59, 999);
+    const timestamp = newTarget.getTime();
+    await setFastTrackValidUntil(timestamp);
+    await refreshData();
+    setFeedbackMessage({
+      type: 'success',
+      text: `📅 Vigencia extendida (+${days} días) hasta el ${newTarget.toLocaleDateString('es-CL')}.`,
+    });
+  };
+
+  const formatInputDate = (timestamp: number | null | undefined): string => {
+    if (!timestamp) return '';
+    const d = new Date(timestamp);
+    if (isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   };
 
   const filteredPreview = previewItems.filter(
@@ -506,15 +546,30 @@ export function FastTrackAdminModal({
                 <div className="flex items-center space-x-2">
                   <input
                     type="date"
-                    value={
-                      stats.validUntil
-                        ? new Date(stats.validUntil).toISOString().split('T')[0]
-                        : ''
-                    }
+                    value={formatInputDate(stats.validUntil)}
                     onChange={handleValidUntilChange}
-                    className="bg-slate-900 border border-slate-700 text-xs px-2.5 py-1 rounded-xl text-slate-200 font-mono focus:border-indigo-500 outline-none"
-                    title="Modificar fecha de expiración del catálogo"
+                    style={{ colorScheme: 'dark' }}
+                    className="bg-slate-900 border border-slate-700 text-xs px-2.5 py-1 rounded-xl text-slate-200 font-mono focus:border-indigo-500 outline-none cursor-pointer [color-scheme:dark]"
+                    title="Modificar fecha de expiración del catálogo Fast Track (compatible con Google Chrome)"
                   />
+                  <div className="flex items-center space-x-1">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickExtendDays(90)}
+                      title="Extender vigencia por 1 trimestre (+90 días)"
+                      className="px-2 py-1 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/50 text-[10px] font-bold transition-all cursor-pointer"
+                    >
+                      +90d
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickExtendDays(30)}
+                      title="Extender vigencia por 1 mes (+30 días)"
+                      className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[10px] font-bold transition-all cursor-pointer"
+                    >
+                      +30d
+                    </button>
+                  </div>
                 </div>
                 <div className="text-[11px] text-slate-400 mt-1">
                   {stats.isExpired ? (

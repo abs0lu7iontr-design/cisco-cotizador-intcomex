@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.7.5",
-  "git_commit": "be8dce7",
+  "version": "2.7.6",
+  "git_commit": "fcd0e76",
   "git_branch": "develop",
-  "build_timestamp": "2026-10-29T03:35:31.262Z",
-  "release_notes": "fix(v2.7.4): streamline email copy layout with time-based greeting, compact width and official conditions",
+  "build_timestamp": "2026-10-30T03:28:54.253Z",
+  "release_notes": "fix(v2.7.5): lock email table to 730px fixed layout and extract partner and client from filename",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

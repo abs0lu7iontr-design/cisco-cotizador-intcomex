@@ -15,11 +15,26 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.7.6',
+    date: '2026-10-30',
+    commit: 'fix-fast-track-cell-a3-date-range-and-chrome-indexeddb-persistence',
+    title: 'Extracción de Fechas Celda A3 en Fast Track, Persistencia en IndexedDB y Compatibilidad Chrome',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Extracción exacta de fecha de vigencia desde celda A3 (ej: Oct 25th 2026 - Jan 23rd 2027 a 23-01-2027).',
+      'Eliminación de falso positivo de catálogo Fast Track obsoleto por año incorrecto.',
+      'Persistencia transaccional de fecha de vigencia manual en IndexedDB (fast_track_metadata).',
+      'Formateo en hora local y soporte de tema oscuro color-scheme para date picker en Google Chrome.',
+      'Botones de extensión rápida de vigencia en 1 clic (+90 días y +30 días).',
+    ],
+  },
+  {
     version: '2.7.5',
     date: '2026-10-29',
     commit: 'fix-table-fixed-layout-and-filename-partner-client-extract',
     title: 'Ancho Fijo Estricto en Tabla para Outlook y Extracción de Partner/Cliente por Nombre de Archivo',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Eliminación del desborde horizontal de la columna Description en Outlook mediante contenedor de 730px fijos y table-layout fixed.',

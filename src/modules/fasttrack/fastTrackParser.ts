@@ -71,13 +71,25 @@ function parsePriceNumber(val: any): number {
 
 function parseDateSegment(dateText: string, fallbackYear?: number): number | null {
   if (!dateText) return null;
-  const clean = dateText.replace(/(\d+)(st|nd|rd|th)/gi, '$1').trim();
+  const clean = dateText.replace(/(?<=\d)(?:st|nd|rd|th)/gi, '').trim();
   const parts = clean.split(/[\s,/-]+/).filter(Boolean);
   if (parts.length < 2) return null;
 
   let day = 1;
   let month = 0;
   let year = fallbackYear || new Date().getFullYear();
+
+  // Si el formato es DD/MM/YYYY o DD-MM-YYYY puramente numérico
+  if (parts.length === 3 && parts.every((p) => /^\d+$/.test(p))) {
+    const p0 = parseInt(parts[0], 10);
+    const p1 = parseInt(parts[1], 10);
+    const p2 = parseInt(parts[2], 10);
+    const y = p2 < 100 ? 2000 + p2 : p2;
+    if (p1 <= 12 && p0 <= 31) {
+      const d = new Date(y, p1 - 1, p0, 23, 59, 59);
+      return isNaN(d.getTime()) ? null : d.getTime();
+    }
+  }
 
   for (const part of parts) {
     const lower = part.toLowerCase();
@@ -99,9 +111,71 @@ function parseDateSegment(dateText: string, fallbackYear?: number): number | nul
   return isNaN(d.getTime()) ? null : d.getTime();
 }
 
+const MONTH_NAMES =
+  'jan(?:uary)?|ene(?:ro)?|feb(?:ruary|rero)?|mar(?:ch|zo)?|apr(?:il)?|abr(?:il)?|may(?:o)?|jun(?:e|io)?|jul(?:y|io)?|aug(?:ust)?|ago(?:sto)?|sep(?:tember)?|set(?:iembre)?|oct(?:ober|ubre)?|nov(?:ember|iembre)?|dec(?:ember)?|dic(?:iembre)?';
+
+/**
+ * Parsea rangos de fechas de Cisco Fast Track como:
+ * "Eligible from Oct 25th 2026- Jan 23rd 2027"
+ * "Eligible from Aug 23rd 2026- Oct 24th 2026"
+ * "Eligible from Oct 25th - Jan 23rd 2027"
+ */
+export function parseFastTrackDateRange(text: string): {
+  validFrom: number | null;
+  validUntil: number | null;
+} | null {
+  if (!text) return null;
+
+    const dateRegex = new RegExp(
+    '(?:(' +
+      MONTH_NAMES +
+      ')\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:[\\s,]+(\\d{4}))?|(\\d{1,2})(?:st|nd|rd|th)?[\\s/-]+(' +
+      MONTH_NAMES +
+      ')(?:[\\s/-]+(\\d{4}))?|(\\d{1,2})[/-](\\d{1,2})[/-](\\d{2,4}))',
+    'gi'
+  );
+
+  const matches = [...text.matchAll(dateRegex)].map((m) => m[0].trim());
+  if (matches.length >= 2) {
+    const rawStart = matches[0];
+    const rawEnd = matches[matches.length - 1];
+
+    const endYearMatch = rawEnd.match(/\b(20\d{2})\b/);
+    const startYearMatch = rawStart.match(/\b(20\d{2})\b/);
+
+    const endYear = endYearMatch ? parseInt(endYearMatch[1], 10) : new Date().getFullYear();
+    let startYear = startYearMatch ? parseInt(startYearMatch[1], 10) : endYear;
+
+    // Si la fecha inicial no especifica año pero la final sí, y el mes inicial > mes final, pertenece al año anterior
+    if (!startYearMatch && endYearMatch) {
+      const startMonthMatch = rawStart.match(new RegExp('(' + MONTH_NAMES + ')', 'i'));
+      const endMonthMatch = rawEnd.match(new RegExp('(' + MONTH_NAMES + ')', 'i'));
+      if (startMonthMatch && endMonthMatch) {
+        const sm = MONTH_MAP[startMonthMatch[1].toLowerCase()];
+        const em = MONTH_MAP[endMonthMatch[1].toLowerCase()];
+        if (sm !== undefined && em !== undefined && sm > em) {
+          startYear = endYear - 1;
+        }
+      }
+    }
+
+    const validUntil = parseDateSegment(rawEnd, endYear);
+    const validFrom = parseDateSegment(rawStart, startYear);
+    return { validFrom, validUntil };
+  } else if (matches.length === 1) {
+    const raw = matches[0];
+    const yearMatch = raw.match(/\b(20\d{2})\b/);
+    const year = yearMatch ? parseInt(yearMatch[1], 10) : new Date().getFullYear();
+    const d = parseDateSegment(raw, year);
+    return { validFrom: null, validUntil: d };
+  }
+
+  return null;
+}
+
 /**
  * Escanea la cabecera exacta de Cisco Fast Track (Filas 1 a 4 / Celda A3)
- * Ejemplo exacto: "Eligible from Aug 23rd 2026- Oct 24th 2026"
+ * Ejemplo exacto: "Eligible from Oct 25th 2026- Jan 23rd 2027"
  * Código de promoción: "Promotion Code: PP-Fast-170729-01820"
  */
 export function scanFastTrackMetadata(rawRows: any[][]): {
@@ -139,21 +213,12 @@ export function scanFastTrackMetadata(rawRows: any[][]): {
         }
       }
 
-      // 3. Rango de Vigencia Exacto (Celda A3: "Eligible from Aug 23rd 2026- Oct 24th 2026")
-      if (text.toUpperCase().includes('ELIGIBLE FROM') || text.toUpperCase().includes('ELIGIBLE')) {
-        const match = text.match(
-          /Eligible\s+(?:from\s+)?([A-Za-z0-9\s,stnrdth]+?)\s*[-–to\s]+\s*([A-Za-z0-9\s,stnrdth]+)/i
-        );
-        if (match) {
-          const rawStart = match[1].trim();
-          const rawEnd = match[2].trim();
-
-          // Extraer año de fin si está presente para pasarlo como fallback al inicio
-          const yearMatch = rawEnd.match(/\b(20\d{2})\b/);
-          const endYear = yearMatch ? parseInt(yearMatch[1], 10) : new Date().getFullYear();
-
-          validUntil = parseDateSegment(rawEnd, endYear);
-          validFrom = parseDateSegment(rawStart, endYear);
+      // 3. Rango de Vigencia Exacto (Celda A3: "Eligible from Oct 25th 2026- Jan 23rd 2027")
+      if (text.toUpperCase().includes('ELIGIBLE')) {
+        const rangeRes = parseFastTrackDateRange(text);
+        if (rangeRes) {
+          if (rangeRes.validFrom !== null) validFrom = rangeRes.validFrom;
+          if (rangeRes.validUntil !== null) validUntil = rangeRes.validUntil;
         }
       }
 
