@@ -53,9 +53,9 @@ console.log('🧪 INICIANDO AUDITORÍA Y QA DE BASES DE DATOS (CISCO AUTOMATED v
 
 // Mock localStorage para Node.js si no existe
 const mockStore: Record<string, string> = {};
-if (typeof globalThis.localStorage === 'undefined') {
-  (globalThis as any).localStorage = {
-    getItem: (k: string) => mockStore[k] || null,
+Object.defineProperty(globalThis, 'localStorage', {
+  value: {
+    getItem: (k: string) => mockStore[k] ?? null,
     setItem: (k: string, v: string) => {
       mockStore[k] = String(v);
     },
@@ -63,10 +63,12 @@ if (typeof globalThis.localStorage === 'undefined') {
       delete mockStore[k];
     },
     clear: () => {
-      Object.keys(mockStore).forEach((k) => delete mockStore[k]);
+      for (const k in mockStore) delete mockStore[k];
     },
-  };
-}
+  },
+  configurable: true,
+  writable: true,
+});
 
 // ----------------------------------------------------------------------------
 // TEST 1: Blindaje de Sanitización Firestore (Eliminación de 'undefined')
@@ -368,3 +370,5 @@ assert.ok(restoreResult.restoredStats.dealReminders >= 1, 'Debe restaurar al men
 console.log('✅ Recuperación de desastres (Disaster Recovery) probada y validada al 100%.');
 
 console.log('\n🎉 ¡TODAS LAS AUDITORÍAS DE BASES DE DATOS Y PRUEBAS QA PASARON CON ÉXITO AL 100%!');
+
+process.exit(0);

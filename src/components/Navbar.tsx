@@ -24,6 +24,7 @@ import {
   ClipboardPaste,
   Eye,
   EyeOff,
+  TrendingUp,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { getFormattedAppVersion } from '../core/appVersion';
@@ -38,6 +39,7 @@ interface NavbarProps {
   isSavingCloud?: boolean;
   onDsvClick?: () => void;
   onBoClick?: () => void;
+  onPipelineClick?: () => void;
   onFastTrackClick?: () => void;
   onMiningAuditClick?: () => void;
   miningAuditReport?: any;
@@ -68,6 +70,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   isSavingCloud = false,
   onDsvClick,
   onBoClick,
+  onPipelineClick,
   onFastTrackClick: _onFastTrackClick,
   onMiningAuditClick,
   miningAuditReport,
@@ -325,6 +328,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {miningAuditReport.sntOpportunityCount > 0 && (
                     <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
                   )}
+                </button>
+              )}
+
+              {onPipelineClick && (
+                <button
+                  id="btn-pipeline"
+                  onClick={onPipelineClick}
+                  disabled={isProcessing}
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-950/20 cursor-pointer"
+                  title="Vincular cotización al Pipeline Comercial de Oportunidades"
+                >
+                  <TrendingUp className="w-4 h-4 text-indigo-400" />
+                  <span>Pipeline</span>
                 </button>
               )}
 

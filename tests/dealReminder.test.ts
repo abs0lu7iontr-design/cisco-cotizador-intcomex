@@ -34,7 +34,7 @@ import {
 } from '../src/modules/bo/dealReminderService';
 import { ProcessedEstimateResult } from '../src/core/types';
 
-function runTests() {
+async function runTests() {
   console.log('🧪 INICIANDO SUITE DE PRUEBAS DE RECORDADOR Y NOTIFICADOR DE DEALS (CISCO AUTOMATED v2.1)...\n');
   let passed = 0;
   let total = 0;
@@ -178,25 +178,25 @@ function runTests() {
 
   // Actualizar estado a Aprobado
   saveLocalDealRemindersCache([sampleDealAm]);
-  updateDealReminderStatus(sampleDealAm.id, 'APPROVED', 'operaciones', 'Aprobado en CCW por Cisco');
+  await updateDealReminderStatus(sampleDealAm.id, 'APPROVED', 'operaciones', 'Aprobado en CCW por Cisco');
   const updatedAfterStatus = getLocalDealRemindersCache().find((d) => d.id === sampleDealAm.id);
   assert(updatedAfterStatus?.status === 'APPROVED', 'Estado actualizado a APPROVED');
   assert((updatedAfterStatus?.history?.length || 0) >= 1, 'Nota registrada en bitácora de historial');
 
   // Registrar copia de recordatorio
-  recordDealReminderSent(sampleDealAm.id, 'pm_cisco');
+  await recordDealReminderSent(sampleDealAm.id, 'pm_cisco');
   const updatedAfterReminder = getLocalDealRemindersCache().find((d) => d.id === sampleDealAm.id);
   assert(updatedAfterReminder?.reminderCount === 1, 'Contador de recordatorios incrementado a 1');
   assert(Boolean(updatedAfterReminder?.lastReminderSentAt), 'Fecha de último recordatorio actualizada');
 
   // Agregar nota personalizada
-  addDealHistoryNote(sampleDealAm.id, 'preventa', 'AM confirmó que responderá en la tarde');
+  await addDealHistoryNote(sampleDealAm.id, 'preventa', 'AM confirmó que responderá en la tarde');
   const updatedAfterNote = getLocalDealRemindersCache().find((d) => d.id === sampleDealAm.id);
   const noteAdded = updatedAfterNote?.history?.find((h) => h.comment.includes('AM confirmó'));
   assert(Boolean(noteAdded), 'Nota de bitácora agregada correctamente');
 
   // Eliminar
-  deleteDealReminder(sampleDealAm.id);
+  await deleteDealReminder(sampleDealAm.id);
   const updatedAfterDelete = getLocalDealRemindersCache().find((d) => d.id === sampleDealAm.id);
   assert(!updatedAfterDelete, 'Deal eliminado exitosamente');
 
@@ -298,14 +298,14 @@ function runTests() {
 
   // Poner el Deal en Snooze y verificar que checkDealPopupDue retorne isDue: false
   saveLocalDealRemindersCache([dealEscalatedYesterday]);
-  snoozeDealReminder(dealEscalatedYesterday.id, snoozeFromMidday.toISOString(), 'pm_test', 'Pospuesto con botón X');
+  await snoozeDealReminder(dealEscalatedYesterday.id, snoozeFromMidday.toISOString(), 'pm_test', 'Pospuesto con botón X');
   const dealAfterSnooze = getLocalDealRemindersCache().find((d) => d.id === dealEscalatedYesterday.id)!;
   assert(Boolean(dealAfterSnooze.snoozedUntil), 'deal.snoozedUntil persistido correctamente');
   const popupWhileSnoozed = checkDealPopupDue(dealAfterSnooze, new Date(nextDayMidday.getTime() + 30 * 60 * 1000));
   assert(!popupWhileSnoozed.isDue, 'Deal en snooze activo NO muestra pop-up');
 
   // Aprobar descuentos y verificar que los pop-ups se DETENGAN DEFINITIVAMENTE
-  markDealDiscountsApproved(dealEscalatedYesterday.id, 'pm_test', 'Descuentos formalmente aprobados por Cisco');
+  await markDealDiscountsApproved(dealEscalatedYesterday.id, 'pm_test', 'Descuentos formalmente aprobados por Cisco');
   const dealAfterApproved = getLocalDealRemindersCache().find((d) => d.id === dealEscalatedYesterday.id)!;
   assert(dealAfterApproved.status === 'APPROVED', 'Estado cambiado a APPROVED');
   assert(Boolean(dealAfterApproved.discountsApprovedAt), 'discountsApprovedAt registrado');
@@ -315,4 +315,9 @@ function runTests() {
   console.log(`\n🎉 ¡TODAS LAS PRUEBAS DE RECORDADOR Y NOTIFICADOR DE DEALS COMPLETADAS AL 100%! (${passed}/${total})`);
 }
 
-runTests();
+runTests().then(() => {
+  process.exit(0);
+}).catch((err) => {
+  console.error('Error fatal en suite de pruebas:', err);
+  process.exit(1);
+});

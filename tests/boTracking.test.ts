@@ -263,4 +263,5 @@ console.log('\n--- 5. Simulación de Transición de Etapa y Guía FedEx ---');
 
   console.log('✅ Transiciones de etapa, actualización de FedEx y bitácora validadas exitosamente.');
   console.log('\n🎉 ¡TODAS LAS PRUEBAS DE SEGUIMIENTO Y CICLO DE VIDA BO PASARON AL 100%!\n');
+  process.exit(0);
 })();

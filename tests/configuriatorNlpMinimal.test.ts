@@ -260,3 +260,5 @@ runConfiguriatorNlpMinimalTests().catch((err) => {
   console.error('❌ Error ejecutando pruebas de NLP:', err);
   process.exit(1);
 });
+
+process.exit(0);

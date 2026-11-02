@@ -15,6 +15,7 @@ import {
   X,
   User,
   Sparkles,
+  TrendingUp,
 } from 'lucide-react';
 import { NavViewId } from '../../core/store';
 import { UserSession } from '../../core/types';
@@ -145,6 +146,20 @@ export const MobileMenuDrawer: React.FC<MobileMenuDrawerProps> = ({
               <div className="flex items-center gap-2.5">
                 <LayoutDashboard className="w-4 h-4 text-indigo-400" />
                 <span>Dashboard Analítico</span>
+              </div>
+            </button>
+
+            <button
+              onClick={() => handleNav('pipeline')}
+              className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-colors cursor-pointer ${
+                currentView === 'pipeline'
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'text-slate-300 hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <TrendingUp className="w-4 h-4 text-emerald-400" />
+                <span>Pipeline Comercial</span>
               </div>
             </button>
 

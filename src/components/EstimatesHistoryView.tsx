@@ -26,6 +26,7 @@ import {
   compareEstimateRecordsDeterministic,
 } from '../modules/cloud';
 import { useCiscoAutomatedStore } from '../core/store';
+import { savePipelineDeal, PipelineDealRecord, MESES_ANO } from '../modules/pipeline';
 import {
   Search,
   RefreshCw,
@@ -576,6 +577,72 @@ export function EstimatesHistoryView() {
       return matchesSearch && matchesMonth && matchesCreator;
     });
   }, [dsvRecords, searchTerm, selectedMonth, selectedCreator, currentUser]);
+
+  const handleSendToPipeline = async (est: CloudEstimateRecord) => {
+    try {
+      const now = new Date();
+      const currentMonth = MESES_ANO[now.getMonth()];
+      const dateFormatted = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`;
+
+      let totalMeraki = 0;
+      let totalServicios = 0;
+      let totalProdSub = 0;
+
+      if (Array.isArray(est.items)) {
+        for (const item of est.items) {
+          const pn = (item.partNumber || '').trim().toUpperCase();
+          const desc = (item.description || '').toLowerCase();
+          const lineExt = Number(item.precioVentaExtendido) || 0;
+          if (/^(?:MR|MS|MX|MV|MT|MG|CW91|LIC-ENT|LIC-SEC|LIC-MR|LIC-MS|LIC-MX)/i.test(pn) || desc.includes('meraki')) {
+            totalMeraki += lineExt;
+          } else if (/^(?:CON-|SVS-|CX-|SNTC)/i.test(pn) || (item.isIntangible && (desc.includes('smartnet') || desc.includes('sntc') || desc.includes('service')))) {
+            totalServicios += lineExt;
+          } else {
+            totalProdSub += lineExt;
+          }
+        }
+      }
+
+      const totalUsd = Number(
+        (totalMeraki + totalServicios + totalProdSub > 0
+          ? totalMeraki + totalServicios + totalProdSub
+          : est.currentAmount || est.financialSummary?.totalCotizadoIntcomex || 0
+        ).toFixed(2)
+      );
+
+      const deal: PipelineDealRecord = {
+        id: `deal_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        fechaLevantamiento: dateFormatted,
+        fechaCotizacion: dateFormatted,
+        marca: 'Cisco',
+        pmResponsable: currentUser?.full_name || 'Raul Cuevas',
+        partner: est.partnerName || 'Partner',
+        ejecutivoPartner: '',
+        endUser: est.clientFinalName || 'Cliente Final',
+        usd: totalUsd,
+        mesCierre: currentMonth,
+        mesFacturacion: '',
+        porcentajeAvance: 30,
+        dealId: est.dealId && est.dealId !== 'NA' ? est.dealId : '',
+        productosSuscripciones: Number(totalProdSub.toFixed(2)),
+        servicios: Number(totalServicios.toFixed(2)),
+        meraki: Number(totalMeraki.toFixed(2)),
+        am: '',
+        grupoVentas: 'Enterprise',
+        notas: `Vinculado desde Historial Estimates #${est.estimateId}`,
+        priceProtectionExpiryDate: '',
+        sourceEstimateId: est.id || est.estimateId,
+        sourceEstimateVersion: 'v0',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      };
+
+      await savePipelineDeal(deal);
+      showToast(`📌 Cotización #${est.estimateId} vinculada al Pipeline Comercial!`, 'success');
+    } catch (err: any) {
+      showToast('Error vinculando cotización al pipeline.', 'error');
+    }
+  };
 
   // Handle Load into Quoter (Requires Access)
   const handleLoadEstimate = (est: CloudEstimateRecord) => {
@@ -1302,6 +1369,14 @@ export function EstimatesHistoryView() {
                                   title="Ver desglose detallado de ítems y reglas"
                                 >
                                   <Eye className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
+                                  onClick={() => handleSendToPipeline(est)}
+                                  className="p-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/50 transition-colors cursor-pointer"
+                                  title="Vincular esta cotización directamente al Pipeline Comercial"
+                                >
+                                  <Layers className="w-3.5 h-3.5" />
                                 </button>
                               </>
                             ) : myRequest?.status === 'pending' ? (

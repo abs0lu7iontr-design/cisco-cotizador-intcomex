@@ -240,7 +240,7 @@ async function runQaFindingsTests() {
   console.log('🎉 ¡TODOS LOS 7 HALLAZGOS QA (QA-01 A QA-07) Y LA FÓRMULA CENTRAL PASARON AL 100%!');
 }
 
-runQaFindingsTests().catch((err) => {
+runQaFindingsTests().then(() => { process.exit(0); }).catch((err) => {
   console.error('❌ Error en suite QA-01 a QA-07:', err);
   process.exit(1);
 });

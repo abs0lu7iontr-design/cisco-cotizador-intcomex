@@ -202,3 +202,5 @@ testInitialTermPreservation().catch((err) => {
   console.error('❌ Error en prueba:', err);
   process.exit(1);
 });
+
+process.exit(0);

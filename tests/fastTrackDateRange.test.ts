@@ -109,3 +109,5 @@ console.log('\n▶ Test 4: scanFastTrackMetadata across raw Excel rows');
 }
 
 console.log('\n🎉 All Fast Track Date Range tests passed successfully!\n');
+
+process.exit(0);

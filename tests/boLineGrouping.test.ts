@@ -218,3 +218,5 @@ assert.ok(textGrouped.includes(`Total General (Todas las Líneas):\t\t\t5\t—\t
 console.log('✅ Texto plano con subtotales, encabezados y OC Partner validado al 100%.');
 
 console.log('\n🎉 ¡TODAS LAS PRUEBAS DE AGRUPACIÓN, ENCABEZADOS Y OC PARTNER BO PASARON CON ÉXITO AL 100%!');
+
+process.exit(0);

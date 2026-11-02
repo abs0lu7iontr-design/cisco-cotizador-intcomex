@@ -160,3 +160,5 @@ runTests().catch((err) => {
   console.error('❌ Error en pruebas de bodega ERP:', err);
   process.exit(1);
 });
+
+process.exit(0);

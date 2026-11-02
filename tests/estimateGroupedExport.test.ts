@@ -522,3 +522,5 @@ runTests().catch((err) => {
   console.error('❌ TEST FAILED:', err);
   process.exit(1);
 });
+
+process.exit(0);

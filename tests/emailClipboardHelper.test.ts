@@ -184,3 +184,5 @@ copyEstimateEmailSummaryToClipboard(mockEstimate, 'Sonda Chile')
     console.error('Error inesperado en portapapeles:', err);
     process.exit(1);
   });
+
+process.exit(0);

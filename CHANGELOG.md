@@ -6,6 +6,27 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.8.0] - 2026-11-02
+### ✨ Añadido (Módulo Completo Pipeline Comercial Cisco con Integración Cruzada CCW y Tablero Kanban)
+- **Nuevo Módulo de Pipeline Comercial Cisco (`src/modules/pipeline/`):**
+  - Implementación integral del Pipeline de Oportunidades y Deals con las 19 columnas de negocio requeridas:
+    *Fecha de Levantamiento*, *Fecha de Cotización*, *Marca*, *PM Responsable*, *Partner/Reseller*, *Ejecutivo Partner*, *End User*, *USD*, *Mes de Cierre*, *Mes de Facturación*, *Porcentaje de Avance* (20%, 30%, 50%, 70%, 100%), *#Registro Oportunidad Marca*, *Productos + Suscripciones*, *Servicios*, *Meraki*, *AM*, *GRUPO DE Ventas*, *Notas* y *Price Protection Expiry Date*.
+  - Precarga automática de 70 oportunidades comerciales reales iniciales por un total de **$21,899,878 USD** distribuidas entre PMs de Intcomex (Raúl Cuevas, Marta Adasme, Johana Valencia, Mauricio Skill).
+- **Integración Cruzada Multi-Módulo (Cross-Module Sync):**
+  - **Cotizador Cisco CCW:** Botón de 1-clic "Vincular a Pipeline" en Navbar y barra de acciones para importar directamente la cotización activa, desglosando automáticamente las partidas en *Hardware/Prod+Sub*, *Servicios SmartNet* (`CON-`, `SVS-`, `CX-`) y *Meraki Cloud* (`MR`, `MS`, `MX`, `LIC-ENT`, `LIC-SEC`).
+  - **Historial de Cotizaciones:** Botón de enlace directo en cada tarjeta de cotización para transferir montos, cliente y partner al Pipeline.
+  - **Transición a Back Order (BO):** Al alcanzar el 100% de avance (Ganado / En Facturación), permite crear la orden BO en 1 clic.
+  - **Price Protection Alerts:** Monitor proactivo de vencimiento de protección de precios Cisco.
+- **Doble Modalidad de Visualización y Operación:**
+  - **Tabla Detallada:** Visualización completa de las 19 columnas con paginación, ordenamiento por columnas, edición en línea, eliminación segura y filtros multicriterio (PM, Grupo de Ventas, Mes de Cierre, Etapa y buscador instantáneo).
+  - **Tablero Kanban Interactivo:** Columnas por avance comercial (20% Levantamiento, 30% Propuesta Oficial CCW, 50% Negociación, 70% Adjudicado / Cierre, 100% Ganado / Facturación) con cambio rápido de etapa en un clic.
+- **Exportación e Importación Oficial Excel:**
+  - Descarga del Pipeline completo a Excel (.xlsx) respetando rigurosamente el formato y orden exacto de las 19 columnas oficiales.
+  - Importador masivo desde archivos Excel con autovalidación de cabeceras y sanitización.
+- **Persistencia Multi-Tier Blindada y Colección Firestore #12:**
+  - Almacenamiento local redundante en IndexedDB (`cisco_pipeline_deals`), LocalStorage Vault y tracking de lápidas (tombstones).
+  - Reglas de seguridad en Cloud Firestore para la colección `cisco_pipeline_deals/{dealId}` implementadas con esquema restrictivo de campos permitidos.
+
 ## [v2.7.6] - 2026-10-30
 ### 🩹 Corregido (Extracción de Rango de Fechas Celda A3 en Fast Track, Persistencia en IndexedDB y Compatibilidad Chrome)
 - **Reparación del Parser de Rango de Fechas en Celda A3 (`fastTrackParser.ts`):**

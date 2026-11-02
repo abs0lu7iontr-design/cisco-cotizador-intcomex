@@ -9,7 +9,7 @@ rules_version = '2';
 // backed by the `users` collection and local failsafe cache rather than
 // Firebase Authentication (`request.auth` is null for standard Web/Desktop
 // client operations). Rules below remove any 30-day Test Mode timestamp
-// expiration, enforce collection-level isolation (11 explicit collections),
+// expiration, enforce collection-level isolation (12 explicit collections),
 // validate payload schemas and field bounds on both create and update,
 // and deny all other paths by default.
 //
@@ -176,6 +176,35 @@ rules_version = '2';
 //   - createdAt: string (ISO 8601)
 //   - updatedAt: string (ISO 8601)
 //
+// Collection 12: cisco_pipeline_deals/{dealId}
+//   - Pipeline Comercial & Oportunidades Cisco Intcomex
+//   - id: string (required, 1-100 chars, matches dealId)
+//   - partner: string (required, 1-200 chars)
+//   - endUser: string (required, 1-200 chars)
+//   - usd: number (required, >= 0)
+//   - porcentajeAvance: number (required, 0-100)
+//   - productosSuscripciones: number (optional, >= 0)
+//   - servicios: number (optional, >= 0)
+//   - meraki: number (optional, >= 0)
+//   - pmResponsable: string (optional, <= 200 chars)
+//   - ejecutivoPartner: string (optional, <= 200 chars)
+//   - mesCierre: string (optional, <= 100 chars)
+//   - mesFacturacion: string (optional, <= 100 chars)
+//   - dealId: string (optional, <= 100 chars)
+//   - am: string (optional, <= 200 chars)
+//   - grupoVentas: string (optional, <= 100 chars)
+//   - notas: string (optional, <= 5000 chars)
+//   - priceProtectionExpiryDate: string (optional, <= 100 chars)
+//   - sourceEstimateId: string (optional, <= 100 chars)
+//   - sourceEstimateVersion: string (optional, <= 100 chars)
+//   - boTrackingId: string (optional, <= 100 chars)
+//   - fechaLevantamiento: string (optional, <= 100 chars)
+//   - fechaCotizacion: string (optional, <= 100 chars)
+//   - marca: string (optional, <= 100 chars)
+//   - createdAt: string (optional, ISO 8601, <= 100 chars)
+//   - updatedAt: string (optional, ISO 8601, <= 100 chars)
+//   - isSeed: bool (optional)
+//
 // ===============================================================
 
 service cloud.firestore {
@@ -329,6 +358,37 @@ service cloud.firestore {
         'priority' in data && data.priority is string && data.priority.size() <= 50;
     }
 
+    function isValidPipelineDeal(data) {
+      return data is map &&
+        isValidPayloadSize(data) &&
+        'id' in data && data.id is string && data.id.size() >= 1 && data.id.size() <= 100 &&
+        'partner' in data && data.partner is string && data.partner.size() >= 1 && data.partner.size() <= 200 &&
+        'endUser' in data && data.endUser is string && data.endUser.size() >= 1 && data.endUser.size() <= 200 &&
+        'usd' in data && data.usd is number && data.usd >= 0 &&
+        'porcentajeAvance' in data && data.porcentajeAvance is number && data.porcentajeAvance >= 0 && data.porcentajeAvance <= 100 &&
+        (!('productosSuscripciones' in data) || (data.productosSuscripciones is number && data.productosSuscripciones >= 0)) &&
+        (!('servicios' in data) || (data.servicios is number && data.servicios >= 0)) &&
+        (!('meraki' in data) || (data.meraki is number && data.meraki >= 0)) &&
+        (!('pmResponsable' in data) || (data.pmResponsable is string && data.pmResponsable.size() <= 200)) &&
+        (!('ejecutivoPartner' in data) || (data.ejecutivoPartner is string && data.ejecutivoPartner.size() <= 200)) &&
+        (!('mesCierre' in data) || (data.mesCierre is string && data.mesCierre.size() <= 100)) &&
+        (!('mesFacturacion' in data) || (data.mesFacturacion is string && data.mesFacturacion.size() <= 100)) &&
+        (!('dealId' in data) || (data.dealId is string && data.dealId.size() <= 100)) &&
+        (!('am' in data) || (data.am is string && data.am.size() <= 200)) &&
+        (!('grupoVentas' in data) || (data.grupoVentas is string && data.grupoVentas.size() <= 100)) &&
+        (!('notas' in data) || (data.notas is string && data.notas.size() <= 5000)) &&
+        (!('priceProtectionExpiryDate' in data) || (data.priceProtectionExpiryDate is string && data.priceProtectionExpiryDate.size() <= 100)) &&
+        (!('sourceEstimateId' in data) || (data.sourceEstimateId is string && data.sourceEstimateId.size() <= 100)) &&
+        (!('sourceEstimateVersion' in data) || (data.sourceEstimateVersion is string && data.sourceEstimateVersion.size() <= 100)) &&
+        (!('boTrackingId' in data) || (data.boTrackingId is string && data.boTrackingId.size() <= 100)) &&
+        (!('fechaLevantamiento' in data) || (data.fechaLevantamiento is string && data.fechaLevantamiento.size() <= 100)) &&
+        (!('fechaCotizacion' in data) || (data.fechaCotizacion is string && data.fechaCotizacion.size() <= 100)) &&
+        (!('marca' in data) || (data.marca is string && data.marca.size() <= 100)) &&
+        (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100)) &&
+        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100)) &&
+        (!('isSeed' in data) || data.isSeed is bool);
+    }
+
     // ------------------------------------------------------------------------
     // 1. COLECCIÓN ESTIMATES (Cotizaciones CCW)
     // ------------------------------------------------------------------------
@@ -437,6 +497,15 @@ service cloud.firestore {
     match /app_feedback_tickets/{ticketId} {
       allow read: if true;
       allow create, update: if isValidFeedbackTicket(request.resource.data);
+      allow delete: if isAdmin() || !isAuthenticated();
+    }
+
+    // ------------------------------------------------------------------------
+    // 12. COLECCIÓN CISCO_PIPELINE_DEALS (Pipeline Comercial & Oportunidades)
+    // ------------------------------------------------------------------------
+    match /cisco_pipeline_deals/{dealId} {
+      allow read: if true;
+      allow create, update: if isValidPipelineDeal(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
 

@@ -103,3 +103,5 @@ assert.strictEqual(isDesktopApp(), false, 'En entorno Node/CLI isDesktopApp debe
 console.log('✅ DesktopBridge verificado correctamente.');
 
 console.log('\n🎉 ¡TODAS LAS PRUEBAS DE DOMINIOS Y MEJORAS COMPLETADAS AL 100%!');
+
+process.exit(0);

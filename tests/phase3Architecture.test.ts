@@ -150,3 +150,5 @@ assert.equal(mockProcessedResult.priorParameters?.margin, 5.0);
 console.log('✅ Estructura de Round-trip en ProcessedEstimateResult validada');
 
 console.log('\n🎉 ¡TODAS LAS PRUEBAS DE ARQUITECTURA FASE 3 COMPLETADAS AL 100%!');
+
+process.exit(0);

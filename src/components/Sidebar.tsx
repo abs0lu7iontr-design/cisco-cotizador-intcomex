@@ -25,6 +25,7 @@ import {
   Zap,
   Building2,
   ChevronDown,
+  TrendingUp,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { NavViewId } from '../core/store';
@@ -72,6 +73,12 @@ export function Sidebar({
       label: 'Cotizador Cisco CCW',
       icon: Calculator,
       highlight: true,
+      section: 'main',
+    },
+    {
+      id: 'pipeline' as NavViewId,
+      label: 'Pipeline Comercial',
+      icon: TrendingUp,
       section: 'main',
     },
     {

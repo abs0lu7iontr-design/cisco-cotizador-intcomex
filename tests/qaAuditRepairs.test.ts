@@ -162,3 +162,5 @@ assert.ok(sampleCsv.content.startsWith('\uFEFF'), 'CSV debe comenzar con BOM UTF
 console.log('✅ Exportación CSV compatible con Excel para caracteres latinos (ñ, tildes) verificado.\n');
 
 console.log('🎉 ¡TODAS LAS PRUEBAS DE AUDITORÍA Y QA PASARON EXITOSAMENTE AL 100%!');
+
+process.exit(0);

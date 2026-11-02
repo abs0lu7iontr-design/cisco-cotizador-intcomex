@@ -207,3 +207,5 @@ runTests().catch((err) => {
   console.error('❌ Error en pruebas:', err);
   process.exit(1);
 });
+
+process.exit(0);

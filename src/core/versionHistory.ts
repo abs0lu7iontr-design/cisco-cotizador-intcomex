@@ -15,11 +15,26 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.8.0',
+    date: '2026-11-02',
+    commit: 'feat-pipeline-comercial-cisco-cross-module-kanban-and-excel',
+    title: 'Módulo Pipeline Comercial Cisco con Integración Cruzada CCW y Tablero Kanban',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Nuevo módulo de Pipeline Comercial con 19 columnas de negocio y precarga de 70 oportunidades reales ($21.899.878 USD).',
+      'Integración cruzada con Cotizador CCW: importación en 1 clic con desglose automático en Hardware, Servicios SmartNet y Meraki.',
+      'Conexión con Historial de Estimates y transición automática a Back Order (BO) al alcanzar el 100% de avance.',
+      'Doble modalidad de trabajo: Tabla Detallada con filtros multicriterio y Tablero Kanban ágil por etapas de venta.',
+      'Exportación e importación oficial en formato Excel (.xlsx) y persistencia segura en IndexedDB y Firestore (Colección #12).',
+    ],
+  },
+  {
     version: '2.7.6',
     date: '2026-10-30',
     commit: 'fix-fast-track-cell-a3-date-range-and-chrome-indexeddb-persistence',
     title: 'Extracción de Fechas Celda A3 en Fast Track, Persistencia en IndexedDB y Compatibilidad Chrome',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Extracción exacta de fecha de vigencia desde celda A3 (ej: Oct 25th 2026 - Jan 23rd 2027 a 23-01-2027).',

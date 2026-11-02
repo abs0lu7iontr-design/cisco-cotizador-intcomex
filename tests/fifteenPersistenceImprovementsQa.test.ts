@@ -1388,7 +1388,7 @@ async function runAll() {
   console.log('=== ALL 15 PERSISTENCE, DATABASE & QA IMPROVEMENTS VERIFIED SUCCESSFULLY ===');
 }
 
-runAll().catch((err) => {
+runAll().then(() => { process.exit(0); }).catch((err) => {
   console.error('15 Persistence Improvements QA failed:', err);
   process.exit(1);
 });

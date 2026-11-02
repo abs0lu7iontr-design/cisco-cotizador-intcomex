@@ -194,3 +194,5 @@ function runGoldenTemplateTests() {
 }
 
 runGoldenTemplateTests();
+
+process.exit(0);

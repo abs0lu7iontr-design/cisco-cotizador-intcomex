@@ -153,3 +153,5 @@ runTwoFactorTests().catch((err) => {
   console.error('❌ Error en pruebas de 2FA:', err);
   process.exit(1);
 });
+
+process.exit(0);

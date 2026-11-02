@@ -235,3 +235,5 @@ assert.strictEqual(resolvedCurrentAmount, 29500.00, 'Registro legado debe resolv
 console.log('✅ Compatibilidad hacia atrás blindada para todos los estimates históricos existentes.\n');
 
 console.log('🎉 ¡TODAS LAS PRUEBAS DE VERSIONADO Y DEDUP PASARON CON ÉXITO AL 100%!');
+
+process.exit(0);

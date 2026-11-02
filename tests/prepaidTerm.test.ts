@@ -114,3 +114,4 @@ function runPrepaidTests() {
 
 runPrepaidTests();
 
+process.exit(0);

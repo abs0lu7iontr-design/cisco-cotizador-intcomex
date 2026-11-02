@@ -211,3 +211,5 @@ assert.ok(!recalculatedLic.fileName.includes('I23'), 'No debe incluir la I de in
 console.log('✅ Solo licencias en modo custom plasma _M8_ sin exponer internación.');
 
 console.log('\n🎉 ¡TODAS LAS PRUEBAS DE NOMENCLATURA CUSTOM PASARON AL 100% CON ÉXITO!');
+
+process.exit(0);

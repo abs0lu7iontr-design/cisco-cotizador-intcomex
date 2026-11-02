@@ -149,6 +149,7 @@ async function runAuditTest() {
 
 runAuditTest().then(() => {
   console.log('\n🎉 ALL FAST TRACK PERSISTENCE & BLINDAJE TESTS PASSED!\n');
+  process.exit(0);
 }).catch((err) => {
   console.error('\n❌ Fast Track Persistence Test Failed:', err);
   process.exit(1);

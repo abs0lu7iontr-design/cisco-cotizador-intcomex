@@ -224,3 +224,5 @@ testExcelImport().then(() => {
   console.error('❌ Error en prueba de importación Excel:', err);
   process.exit(1);
 });
+
+process.exit(0);

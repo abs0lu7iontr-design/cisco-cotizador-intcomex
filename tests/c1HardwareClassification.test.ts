@@ -557,4 +557,4 @@ console.log('✅ safeParseFloat verificado en 15 casos críticos (decimales con 
 
 console.log('\n🎉 ¡TODAS LAS PRUEBAS DE HARDWARE C1, CABLES CAB-X, ACCESORIOS EN LÍNEA MADRE (1.0..∞), TC OFICIAL CHILENO (+10 CLP), SAFEPARSEFLOAT Y BLINDAJE REACT ERROR #185 PASARON EXITOSAMENTE!');
 
-
+process.exit(0);

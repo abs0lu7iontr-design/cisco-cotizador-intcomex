@@ -82,3 +82,5 @@ assert(goalSeekResult.newMargenPct < 5.0, 'El margen debe reducirse para alcanza
 console.log(`✅ Goal Seek con Internación 0%: Internación = ${goalSeekResult.newInternacionPct}%, Margen ajustado = ${goalSeekResult.newMargenPct}%, Total logrado = $${goalSeekResult.achievedTotal}`);
 
 console.log('\n🎉 ¡TODAS LAS PRUEBAS DE QUICK WINS COMPLETADAS AL 100%!');
+
+process.exit(0);

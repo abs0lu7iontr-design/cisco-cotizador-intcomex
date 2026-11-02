@@ -1102,7 +1102,7 @@ finally:
   console.log('\n🎉 ¡LOS 19 ESCENARIOS DE LA MATRIZ QA DE LAS 22 MEJORAS PASARON AL 100%!');
 }
 
-runAllQaScenarios().catch((err) => {
+runAllQaScenarios().then(() => { process.exit(0); }).catch((err) => {
   console.error('❌ Fallo en suite QA de las 22 mejoras:', err);
   process.exit(1);
 });

@@ -58,6 +58,7 @@ import {
 export type NavViewId =
   | 'dashboard'
   | 'quoter'
+  | 'pipeline'
   | 'upload'
   | 'dsv'
   | 'configuriator'

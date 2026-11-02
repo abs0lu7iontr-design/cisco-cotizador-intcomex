@@ -50,6 +50,7 @@ import { AmbientMeshGlow } from './components/AmbientMeshGlow';
 import { LiveStudioModal } from './components/LiveStudioModal';
 import { QuickBomIngestModal } from './components/QuickBomIngestModal';
 import { DsvView } from './modules/dsv';
+import { PipelineView, importEstimateIntoPipeline } from './modules/pipeline';
 import { ConfiguriatorView } from './modules/configuriator';
 import { FastTrackAdminModal, FastTrackOpportunityModal } from './modules/fasttrack';
 import { applyTheme, getSavedThemeId } from './core/themeEngine';
@@ -318,6 +319,22 @@ function AppContent() {
       return;
     }
     fileInputRef.current?.click();
+  };
+
+  const handlePipelineClick = async () => {
+    if (processedResult) {
+      try {
+        await importEstimateIntoPipeline(processedResult, currentUser);
+        setCloudToast({
+          message: `📌 Cotización vinculada al Pipeline Comercial exitosamente (${processedResult.headerInfo?.companyName || 'Partner'}).`,
+          type: 'success',
+        });
+        setTimeout(() => setCloudToast(null), 4000);
+      } catch (err: any) {
+        console.warn('Error vinculando al pipeline:', err);
+      }
+    }
+    setCurrentView('pipeline');
   };
 
   const handleDsvClick = () => {
@@ -633,6 +650,7 @@ function AppContent() {
           isCopiedEmail={isCopiedEmail}
           onDsvClick={handleDsvClick}
           onBoClick={() => setIsBoModalOpen(true)}
+          onPipelineClick={handlePipelineClick}
           onMiningAuditClick={() => setIsMiningAuditModalOpen(true)}
           miningAuditReport={miningAuditData}
           onClearClick={clearEstimate}
@@ -697,6 +715,19 @@ function AppContent() {
                   await processFileBuffer(buf, name);
                   setCurrentView('quoter');
                 }}
+              />
+            </ErrorBoundary>
+          )}
+
+          {currentView === 'pipeline' && (
+            <ErrorBoundary
+              fallbackTitle="Error en Pipeline Comercial"
+              resetKeys={[currentView]}
+              onReturnToSafeView={() => setCurrentView('quoter')}
+            >
+              <PipelineView
+                onOpenQuoter={() => setCurrentView('quoter')}
+                onOpenBoTracking={() => setCurrentView('bo_tracking')}
               />
             </ErrorBoundary>
           )}
