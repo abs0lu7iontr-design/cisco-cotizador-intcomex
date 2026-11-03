@@ -15,11 +15,28 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.9.0',
+    date: '2026-11-03',
+    commit: 'feat-forecast-comercial-36-columns-cross-module-and-reminders',
+    title: 'Módulo Forecast Comercial 36 Columnas, Reconciliación Cruzada Multi-Módulo y Motor de Recordatorios',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Nuevo Módulo de Forecast Comercial idéntico al Excel oficial de Intcomex con las 36 columnas de negocio y precarga de 158 registros reales.',
+      'Reconciliación cruzada automática con CCW Estimates, Back Order Tracking (BO) y Direct Ship Vendor (DSV) con motor estricto anti-duplicación.',
+      'Transformación de Oportunidades del Pipeline Comercial a Forecast en 1 solo clic sin repetir negocios.',
+      'Motor de Recordatorios Comerciales y de Vencimiento: alertas preventivas por expiración de Price Protection, revisión de crédito pendiente y casos operacionales.',
+      'Incorporación de Recordatorios y Alertas al módulo Pipeline Comercial con vista rápida de deals críticos.',
+      'Exportación e Importación de 36 columnas en Excel/CSV y soporte para sincronización mediante URL o texto de Google Sheets.',
+      'Soporte completo en Cloud Firestore (Colección #13: cisco_forecast_records) con Database Armor y bóveda local IndexedDB.',
+    ],
+  },
+  {
     version: '2.8.0',
     date: '2026-11-02',
     commit: 'feat-pipeline-comercial-cisco-cross-module-kanban-and-excel',
     title: 'Módulo Pipeline Comercial Cisco con Integración Cruzada CCW y Tablero Kanban',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Nuevo módulo de Pipeline Comercial con 19 columnas de negocio y precarga de 70 oportunidades reales ($21.899.878 USD).',

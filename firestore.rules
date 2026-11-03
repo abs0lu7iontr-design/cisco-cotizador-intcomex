@@ -1,7 +1,7 @@
 rules_version = '2';
 
 // ===============================================================
-// Assumed Data Model (Cisco Automated v2.1 - Intcomex)
+// Assumed Data Model (Cisco Automated v2.9 - Intcomex)
 // ===============================================================
 //
 // Architectural Note:
@@ -9,7 +9,7 @@ rules_version = '2';
 // backed by the `users` collection and local failsafe cache rather than
 // Firebase Authentication (`request.auth` is null for standard Web/Desktop
 // client operations). Rules below remove any 30-day Test Mode timestamp
-// expiration, enforce collection-level isolation (12 explicit collections),
+// expiration, enforce collection-level isolation (13 explicit collections),
 // validate payload schemas and field bounds on both create and update,
 // and deny all other paths by default.
 //
@@ -205,6 +205,53 @@ rules_version = '2';
 //   - updatedAt: string (optional, ISO 8601, <= 100 chars)
 //   - isSeed: bool (optional)
 //
+// Collection 13: cisco_forecast_records/{recordId}
+//   - Registro y Matriz de Forecast Comercial Oficial Intcomex (36 columnas de negocio)
+//   - id: string (required, 1-100 chars)
+//   - fechaLevantamiento: string (optional, <= 100 chars)
+//   - fechaCotizacion: string (optional, <= 100 chars)
+//   - marca: string (optional, <= 100 chars)
+//   - pmResponsable: string (optional, <= 200 chars)
+//   - partner: string (optional, <= 200 chars)
+//   - ejecutivoPartner: string (optional, <= 200 chars)
+//   - endUser: string (optional, <= 200 chars)
+//   - usdIntcomex: number (optional, >= 0)
+//   - emailEjecutivoPartner: string (optional, <= 200 chars)
+//   - mesFacturacion: string (optional, <= 100 chars)
+//   - emailClienteFinal: string (optional, <= 200 chars)
+//   - detalleProductos: string (optional, <= 2000 chars)
+//   - oc: string (optional, <= 100 chars)
+//   - deal: string (optional, <= 200 chars)
+//   - productos: number (optional, >= 0)
+//   - suscripciones: number (optional, >= 0)
+//   - servicios: number (optional, >= 0)
+//   - meraki: number (optional, >= 0)
+//   - am: string (optional, <= 200 chars)
+//   - grupoVentas: string (optional, <= 100 chars)
+//   - observacion: string (optional, <= 2000 chars)
+//   - dsvSubmission: string (optional, <= 100 chars)
+//   - po: string (optional, <= 100 chars)
+//   - so: string (optional, <= 100 chars)
+//   - submittedDate: string (optional, <= 100 chars)
+//   - clienteCisco: string (optional, <= 100 chars)
+//   - promotionAuthorizationNumber: string (optional, <= 200 chars)
+//   - endCustomerName: string (optional, <= 200 chars)
+//   - endCustomerAddress1: string (optional, <= 500 chars)
+//   - numeroVenta: string (optional, <= 100 chars)
+//   - bodega: string (optional, <= 100 chars)
+//   - caso: string (optional, <= 200 chars)
+//   - priceProtectionExpiryDate: string (optional, <= 100 chars)
+//   - credit: string (optional, <= 100 chars)
+//   - nuevoCaso: string (optional, <= 200 chars)
+//   - confirmacionCredito: string (optional, <= 200 chars)
+//   - createdAt: string (optional, ISO 8601, <= 100 chars)
+//   - updatedAt: string (optional, ISO 8601, <= 100 chars)
+//   - isSeed: bool (optional)
+//   - sourceEstimateId: string (optional, <= 100 chars)
+//   - sourceBoTrackingId: string (optional, <= 100 chars)
+//   - sourceDsvId: string (optional, <= 100 chars)
+//   - sourcePipelineId: string (optional, <= 100 chars)
+//
 // ===============================================================
 
 service cloud.firestore {
@@ -238,7 +285,7 @@ service cloud.firestore {
     }
 
     function isValidPayloadSize(data) {
-      return data is map && data.size() > 0 && data.size() < 50;
+      return data is map && data.size() > 0 && data.size() < 80;
     }
 
     // ===============================================================
@@ -389,6 +436,55 @@ service cloud.firestore {
         (!('isSeed' in data) || data.isSeed is bool);
     }
 
+    function isValidForecastRecord(data) {
+      return data is map &&
+        isValidPayloadSize(data) &&
+        'id' in data && data.id is string && data.id.size() >= 1 && data.id.size() <= 100 &&
+        (!('fechaLevantamiento' in data) || (data.fechaLevantamiento is string && data.fechaLevantamiento.size() <= 100)) &&
+        (!('fechaCotizacion' in data) || (data.fechaCotizacion is string && data.fechaCotizacion.size() <= 100)) &&
+        (!('marca' in data) || (data.marca is string && data.marca.size() <= 100)) &&
+        (!('pmResponsable' in data) || (data.pmResponsable is string && data.pmResponsable.size() <= 200)) &&
+        (!('partner' in data) || (data.partner is string && data.partner.size() <= 200)) &&
+        (!('ejecutivoPartner' in data) || (data.ejecutivoPartner is string && data.ejecutivoPartner.size() <= 200)) &&
+        (!('endUser' in data) || (data.endUser is string && data.endUser.size() <= 200)) &&
+        (!('usdIntcomex' in data) || (data.usdIntcomex is number && data.usdIntcomex >= 0)) &&
+        (!('emailEjecutivoPartner' in data) || (data.emailEjecutivoPartner is string && data.emailEjecutivoPartner.size() <= 200)) &&
+        (!('mesFacturacion' in data) || (data.mesFacturacion is string && data.mesFacturacion.size() <= 100)) &&
+        (!('emailClienteFinal' in data) || (data.emailClienteFinal is string && data.emailClienteFinal.size() <= 200)) &&
+        (!('detalleProductos' in data) || (data.detalleProductos is string && data.detalleProductos.size() <= 2000)) &&
+        (!('oc' in data) || (data.oc is string && data.oc.size() <= 100)) &&
+        (!('deal' in data) || (data.deal is string && data.deal.size() <= 200)) &&
+        (!('productos' in data) || (data.productos is number && data.productos >= 0)) &&
+        (!('suscripciones' in data) || (data.suscripciones is number && data.suscripciones >= 0)) &&
+        (!('servicios' in data) || (data.servicios is number && data.servicios >= 0)) &&
+        (!('meraki' in data) || (data.meraki is number && data.meraki >= 0)) &&
+        (!('am' in data) || (data.am is string && data.am.size() <= 200)) &&
+        (!('grupoVentas' in data) || (data.grupoVentas is string && data.grupoVentas.size() <= 100)) &&
+        (!('observacion' in data) || (data.observacion is string && data.observacion.size() <= 2000)) &&
+        (!('dsvSubmission' in data) || (data.dsvSubmission is string && data.dsvSubmission.size() <= 100)) &&
+        (!('po' in data) || (data.po is string && data.po.size() <= 100)) &&
+        (!('so' in data) || (data.so is string && data.so.size() <= 100)) &&
+        (!('submittedDate' in data) || (data.submittedDate is string && data.submittedDate.size() <= 100)) &&
+        (!('clienteCisco' in data) || (data.clienteCisco is string && data.clienteCisco.size() <= 100)) &&
+        (!('promotionAuthorizationNumber' in data) || (data.promotionAuthorizationNumber is string && data.promotionAuthorizationNumber.size() <= 200)) &&
+        (!('endCustomerName' in data) || (data.endCustomerName is string && data.endCustomerName.size() <= 200)) &&
+        (!('endCustomerAddress1' in data) || (data.endCustomerAddress1 is string && data.endCustomerAddress1.size() <= 500)) &&
+        (!('numeroVenta' in data) || (data.numeroVenta is string && data.numeroVenta.size() <= 100)) &&
+        (!('bodega' in data) || (data.bodega is string && data.bodega.size() <= 100)) &&
+        (!('caso' in data) || (data.caso is string && data.caso.size() <= 200)) &&
+        (!('priceProtectionExpiryDate' in data) || (data.priceProtectionExpiryDate is string && data.priceProtectionExpiryDate.size() <= 100)) &&
+        (!('credit' in data) || (data.credit is string && data.credit.size() <= 100)) &&
+        (!('nuevoCaso' in data) || (data.nuevoCaso is string && data.nuevoCaso.size() <= 200)) &&
+        (!('confirmacionCredito' in data) || (data.confirmacionCredito is string && data.confirmacionCredito.size() <= 200)) &&
+        (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100)) &&
+        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100)) &&
+        (!('isSeed' in data) || data.isSeed is bool) &&
+        (!('sourceEstimateId' in data) || (data.sourceEstimateId is string && data.sourceEstimateId.size() <= 100)) &&
+        (!('sourceBoTrackingId' in data) || (data.sourceBoTrackingId is string && data.sourceBoTrackingId.size() <= 100)) &&
+        (!('sourceDsvId' in data) || (data.sourceDsvId is string && data.sourceDsvId.size() <= 100)) &&
+        (!('sourcePipelineId' in data) || (data.sourcePipelineId is string && data.sourcePipelineId.size() <= 100));
+    }
+
     // ------------------------------------------------------------------------
     // 1. COLECCIÓN ESTIMATES (Cotizaciones CCW)
     // ------------------------------------------------------------------------
@@ -507,6 +603,15 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if isValidPipelineDeal(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
+    }
+
+    // ------------------------------------------------------------------------
+    // 13. COLECCIÓN CISCO_FORECAST_RECORDS (Matriz Comercial Forecast Intcomex)
+    // ------------------------------------------------------------------------
+    match /cisco_forecast_records/{recordId} {
+      allow read: if true;
+      allow create, update: if isValidForecastRecord(request.resource.data);
+      allow delete: if true;
     }
 
     // ------------------------------------------------------------------------

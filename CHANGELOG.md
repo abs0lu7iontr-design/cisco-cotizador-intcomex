@@ -6,6 +6,29 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.9.0] - 2026-11-03
+### ✨ Añadido (Módulo Forecast Comercial 36 Columnas, Reconciliación Cruzada Multi-Módulo y Recordatorios Comerciales)
+- **Nuevo Módulo de Forecast Comercial Intcomex (`src/modules/forecast/`):**
+  - Implementación visual fiel de la planilla Excel corporativa de Intcomex con las **36 columnas oficiales de negocio**:
+    1. *Fecha de Levantamiento*, 2. *Fecha de Cotización*, 3. *Marca* (CISCO), 4. *PM Responsable*, 5. *Partner*, 6. *Ejecutivo Partner*, 7. *End User*, 8. *USD Intcomex*, 9. *e-mail ejecutivo partner*, 10. *Mes de Facturación*, 11. *e-mail cliente final*, 12. *Detalle Productos*, 13. *OC*, 14. *Deal*, 15. *Productos*, 16. *Suscripciones*, 17. *Servicios*, 18. *Meraki*, 19. *AM*, 20. *Grupo de Ventas*, 21. *Observación*, 22. *DSV Submission*, 23. *PO*, 24. *SO*, 25. *Submitted Date*, 26. *# Cliente*, 27. *Promotion Authorization Number*, 28. *End Customer Name*, 29. *End Customer Address1*, 30. *Número de Venta*, 31. *Bodega* (E1/ED), 32. *Caso*, 33. *Price Protection Expiry Date*, 34. *Credit*, 35. *Nuevo Caso*, 36. *Confirmación Crédito*.
+  - Precarga automática de **158 oportunidades reales de Intcomex** en `forecastSeeds.ts` con todos sus datos comerciales, técnicos, logísticos y financieros.
+  - Estilización idéntica a Excel con encabezados verdes (`#92D050`), celdas de alerta amarilla (`#FEF08A` para crédito pendiente y revisiones), celdas de alerta roja para Price Protection vencida, y celdas azules (`#9BC2E6`) para trámites DSV.
+- **Motor de Reconciliación Cruzada Multi-Módulo (CCW + BO + DSV + Pipeline):**
+  - Cruce bidireccional y auto-poblado inteligente de datos desde los módulos de Cotización CCW, Back Order Tracking (BO) y Direct Ship Vendor (DSV).
+  - **Motor Anti-Duplicación en 3 Niveles:** Previene duplicidad cotejando prioritariamente por *Deal ID / Promo Auth*, secundariamente por *Cisco Sales Order (SO) / Intcomex Número de Venta*, y terciariamente por *Partner + Cliente Final* normalizados. Si el negocio ya existe, actualiza los campos faltantes sin generar registros duplicados.
+  - Transformación en 1 clic de **Pipeline Comercial a Forecast** sin duplicar negocios existentes.
+- **Motor de Recordatorios y Alertas Comerciales (Forecast y Pipeline):**
+  - Auditoría proactiva de vencimiento de Price Protection (alerta crítica si ya expiró, advertencia preventiva si vence en <= 7 días).
+  - Detección de estados de crédito pendientes o en revisión (`Pdte`, `En revisión de crédito`).
+  - Seguimiento de tickets y casos operacionales activos (`Caso`, `Nuevo Caso`).
+  - Incorporación de Recordatorios en el módulo **Pipeline Comercial** con drawer interactivo de alertas y botón de filtro rápido "Solo con Alertas".
+- **Exportación e Importación Oficial Excel y Google Sheets:**
+  - Exportador a Excel/CSV con las 36 columnas exactas.
+  - Importador universal con auto-mapeo de columnas para archivos Excel/CSV o enlaces públicos/compartidos de Google Sheets.
+- **Colección Firestore #13 y Bóveda Multi-Tier:**
+  - Reglas de seguridad endurecidas para `cisco_forecast_records/{recordId}` en `firestore.rules`.
+  - Persistencia local multinivel en IndexedDB, LocalStorage Vault y tombstones.
+
 ## [v2.8.0] - 2026-11-02
 ### ✨ Añadido (Módulo Completo Pipeline Comercial Cisco con Integración Cruzada CCW y Tablero Kanban)
 - **Nuevo Módulo de Pipeline Comercial Cisco (`src/modules/pipeline/`):**

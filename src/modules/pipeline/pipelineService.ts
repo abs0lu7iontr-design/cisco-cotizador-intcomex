@@ -7,6 +7,7 @@ import {
   PipelineDealRecord,
   PipelineFilterOptions,
   PipelineStats,
+  PipelineReminderItem,
   MESES_ANO,
 } from './pipelineTypes';
 import { ProcessedEstimateResult, UserSession } from '../../core/types';
@@ -131,8 +132,85 @@ export function filterPipelineDeals(
       if (deal.partner !== options.partner) return false;
     }
 
+    // 8. Filtro solo con Recordatorios
+    if (options.onlyWithReminders) {
+      const reminders = generatePipelineReminders([deal]);
+      if (reminders.length === 0) return false;
+    }
+
     return true;
   });
+}
+
+/**
+ * Genera recordatorios comerciales y de vencimiento para el Pipeline
+ */
+export function generatePipelineReminders(deals: PipelineDealRecord[]): PipelineReminderItem[] {
+  const reminders: PipelineReminderItem[] = [];
+  const now = new Date();
+  const todayMs = now.getTime();
+  const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000;
+
+  deals.forEach((deal) => {
+    // 1. Price Protection Expiration
+    if (deal.priceProtectionExpiryDate) {
+      const expDate = new Date(deal.priceProtectionExpiryDate);
+      if (!isNaN(expDate.getTime())) {
+        const diffMs = expDate.getTime() - todayMs;
+        if (diffMs < 0) {
+          reminders.push({
+            id: `REM-PIPE-EXP-${deal.id}`,
+            dealId: deal.dealId || deal.id,
+            partner: deal.partner,
+            endUser: deal.endUser,
+            usd: deal.usd,
+            porcentajeAvance: deal.porcentajeAvance,
+            type: 'PRICE_PROTECTION_EXPIRED',
+            severity: 'CRITICAL',
+            title: 'Price Protection Expirada',
+            message: `La protección de precios del Deal ${deal.dealId || deal.id} (${deal.partner}) expiró el ${deal.priceProtectionExpiryDate}.`,
+            dueDate: deal.priceProtectionExpiryDate,
+          });
+        } else if (diffMs <= fourteenDaysMs) {
+          const days = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+          reminders.push({
+            id: `REM-PIPE-SOON-${deal.id}`,
+            dealId: deal.dealId || deal.id,
+            partner: deal.partner,
+            endUser: deal.endUser,
+            usd: deal.usd,
+            porcentajeAvance: deal.porcentajeAvance,
+            type: 'PRICE_PROTECTION_SOON',
+            severity: 'WARNING',
+            title: `Price Protection por Expirar (${days}d)`,
+            message: `El Deal ${deal.dealId || deal.id} vence en ${days} días (${deal.priceProtectionExpiryDate}).`,
+            dueDate: deal.priceProtectionExpiryDate,
+          });
+        }
+      }
+    }
+
+    // 2. Urgent Deals in negotiation for current month
+    if ((deal.porcentajeAvance === 50 || deal.porcentajeAvance === 70) && deal.mesCierre) {
+      const currentMonthName = MESES_ANO[now.getMonth()];
+      if (deal.mesCierre.toLowerCase() === currentMonthName.toLowerCase()) {
+        reminders.push({
+          id: `REM-PIPE-CLOSE-${deal.id}`,
+          dealId: deal.dealId || deal.id,
+          partner: deal.partner,
+          endUser: deal.endUser,
+          usd: deal.usd,
+          porcentajeAvance: deal.porcentajeAvance,
+          type: 'CLOSING_MONTH_URGENT',
+          severity: 'INFO',
+          title: `Cierre Programado para ${deal.mesCierre}`,
+          message: `Oportunidad ${deal.partner} - ${deal.endUser} ($${deal.usd.toLocaleString('en-US')}) al ${deal.porcentajeAvance}% de avance programada para cerrar este mes.`,
+        });
+      }
+    }
+  });
+
+  return reminders;
 }
 
 // ----------------------------------------------------------------------------

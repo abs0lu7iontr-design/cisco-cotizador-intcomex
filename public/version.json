@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.8.0",
-  "git_commit": "568a2e1",
+  "version": "2.9.0",
+  "git_commit": "57b6063",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-02T22:37:04.098Z",
-  "release_notes": "fix(v2.7.6): parse fast track cell a3 date range accurately and enable chrome indexeddb validity date persistence",
+  "build_timestamp": "2026-11-03T14:51:47.530Z",
+  "release_notes": "feat(v2.8.0): create pipeline comercial module with 70 initial deals, cross-module ccw integration, kanban and excel export",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

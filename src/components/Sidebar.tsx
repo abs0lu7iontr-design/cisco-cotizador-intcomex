@@ -26,6 +26,7 @@ import {
   Building2,
   ChevronDown,
   TrendingUp,
+  Table,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { NavViewId } from '../core/store';
@@ -79,6 +80,12 @@ export function Sidebar({
       id: 'pipeline' as NavViewId,
       label: 'Pipeline Comercial',
       icon: TrendingUp,
+      section: 'main',
+    },
+    {
+      id: 'forecast' as NavViewId,
+      label: 'Forecast Comercial',
+      icon: Table,
       section: 'main',
     },
     {

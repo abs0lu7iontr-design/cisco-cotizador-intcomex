@@ -25,6 +25,7 @@ import {
   Eye,
   EyeOff,
   TrendingUp,
+  Table,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { getFormattedAppVersion } from '../core/appVersion';
@@ -40,6 +41,7 @@ interface NavbarProps {
   onDsvClick?: () => void;
   onBoClick?: () => void;
   onPipelineClick?: () => void;
+  onForecastClick?: () => void;
   onFastTrackClick?: () => void;
   onMiningAuditClick?: () => void;
   miningAuditReport?: any;
@@ -71,6 +73,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onDsvClick,
   onBoClick,
   onPipelineClick,
+  onForecastClick,
   onFastTrackClick: _onFastTrackClick,
   onMiningAuditClick,
   miningAuditReport,
@@ -341,6 +344,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   <TrendingUp className="w-4 h-4 text-indigo-400" />
                   <span>Pipeline</span>
+                </button>
+              )}
+
+              {onForecastClick && (
+                <button
+                  id="btn-forecast"
+                  onClick={onForecastClick}
+                  disabled={isProcessing}
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-950/20 cursor-pointer"
+                  title="Vincular cotización al Forecast Comercial (36 Columnas)"
+                >
+                  <Table className="w-4 h-4 text-emerald-400" />
+                  <span>Forecast</span>
                 </button>
               )}
 

@@ -47,6 +47,20 @@ export interface PipelineStats {
   dealsPriceProtectionAlertsCount: number;
 }
 
+export interface PipelineReminderItem {
+  id: string;
+  dealId: string;
+  partner: string;
+  endUser: string;
+  usd: number;
+  type: 'PRICE_PROTECTION_EXPIRED' | 'PRICE_PROTECTION_SOON' | 'CLOSING_MONTH_URGENT';
+  severity: 'CRITICAL' | 'WARNING' | 'INFO';
+  title: string;
+  message: string;
+  dueDate?: string;
+  porcentajeAvance: number;
+}
+
 export interface PipelineFilterOptions {
   searchQuery?: string;
   pmResponsable?: string;
@@ -55,6 +69,7 @@ export interface PipelineFilterOptions {
   am?: string;
   porcentajeAvance?: number | 'ALL';
   partner?: string;
+  onlyWithReminders?: boolean;
 }
 
 export const PIPELINE_PM_LIST = [

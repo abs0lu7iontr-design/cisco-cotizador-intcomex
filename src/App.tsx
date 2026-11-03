@@ -51,6 +51,12 @@ import { LiveStudioModal } from './components/LiveStudioModal';
 import { QuickBomIngestModal } from './components/QuickBomIngestModal';
 import { DsvView } from './modules/dsv';
 import { PipelineView, importEstimateIntoPipeline } from './modules/pipeline';
+import {
+  ForecastView,
+  getForecastRecords,
+  crossSyncEstimateToForecast,
+  saveForecastRecord,
+} from './modules/forecast';
 import { ConfiguriatorView } from './modules/configuriator';
 import { FastTrackAdminModal, FastTrackOpportunityModal } from './modules/fasttrack';
 import { applyTheme, getSavedThemeId } from './core/themeEngine';
@@ -335,6 +341,24 @@ function AppContent() {
       }
     }
     setCurrentView('pipeline');
+  };
+
+  const handleForecastClick = async () => {
+    if (processedResult) {
+      try {
+        const existing = await getForecastRecords();
+        const res = crossSyncEstimateToForecast(processedResult, existing);
+        await saveForecastRecord(res.affectedRecord);
+        setCloudToast({
+          message: `📊 Cotización vinculada al Forecast Comercial (${res.affectedRecord.partner} - ${res.affectedRecord.endUser}).`,
+          type: 'success',
+        });
+        setTimeout(() => setCloudToast(null), 4000);
+      } catch (err: any) {
+        console.warn('Error vinculando al forecast:', err);
+      }
+    }
+    setCurrentView('forecast');
   };
 
   const handleDsvClick = () => {
@@ -651,6 +675,7 @@ function AppContent() {
           onDsvClick={handleDsvClick}
           onBoClick={() => setIsBoModalOpen(true)}
           onPipelineClick={handlePipelineClick}
+          onForecastClick={handleForecastClick}
           onMiningAuditClick={() => setIsMiningAuditModalOpen(true)}
           miningAuditReport={miningAuditData}
           onClearClick={clearEstimate}
@@ -729,6 +754,16 @@ function AppContent() {
                 onOpenQuoter={() => setCurrentView('quoter')}
                 onOpenBoTracking={() => setCurrentView('bo_tracking')}
               />
+            </ErrorBoundary>
+          )}
+
+          {currentView === 'forecast' && (
+            <ErrorBoundary
+              fallbackTitle="Error en Forecast Comercial"
+              resetKeys={[currentView]}
+              onReturnToSafeView={() => setCurrentView('quoter')}
+            >
+              <ForecastView />
             </ErrorBoundary>
           )}
 
