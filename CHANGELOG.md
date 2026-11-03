@@ -6,6 +6,20 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.9.1] - 2026-11-03
+### 🔧 Corregido y Optimizado (Recálculo Dinámico de KPIs al Filtrar, Estética Dark Slate en Forecast y Parser Flexible)
+- **Recálculo Dinámico de KPIs al Filtrar en Forecast Comercial (`ForecastView.tsx`):**
+  - Se corrigió el cálculo de las 6 tarjetas de resumen KPI (`Total USD Intcomex`, `Hardware / SaaS`, `Servicios & SmartNet`, `Meraki Cloud`, `Con Sales Order` y `Recordatorios`) para que sumen dinámicamente sobre `filteredRecords` en lugar del catálogo global estático.
+  - Al seleccionar cualquier filtro (por ejemplo *PM Responsable = "Raúl Cuevas"*, *Bodega = "ED"*, *Crédito*, *Grupo de Ventas* o búsqueda de texto), los totales en USD y conteos reflejan instantáneamente el subconjunto activo con indicación de deals filtrados vs total general.
+- **Rediseño Visual Armónico Dark Slate / Cyber Executive (`ForecastView.tsx`):**
+  - Eliminación del bloque blanco brillante (`bg-white`) que desentonaba con el tema oscuro de la plataforma.
+  - Nueva estética ejecutiva con contenedor `bg-slate-900`, cabecera `bg-slate-900` con acento esmeralda, filas cebra `bg-slate-950` / `bg-slate-900/50`, bordes sutiles `border-slate-800/60` y celdas monetarias con tipografía monospace verde esmeralda de alto contraste.
+  - Celdas de alerta estilizadas para modo oscuro: Crédito pendiente en ámbar oscuro (`bg-amber-950/40 text-amber-300`), Price Protection en rojo/ámbar oscuro y fecha DSV en azul petróleo (`bg-sky-950/30 text-sky-300`).
+- **Parser Flexible Universal de Divisas y Números (`parseFlexibleNumber` en `forecastService.ts`):**
+  - Soporte tolerante para formatos mixtos de miles y decimales con puntos y comas: chileno/CLP (`$1.085.000` o `107.849,40`), anglosajón/US (`$1,085,000.00` o `107,849.40`), y cadenas con símbolos de divisa (`$`, `USD`).
+  - Previene que al tipear o pegar montos se corrompan los valores o se interpreten como cero.
+  - Adaptación en `ForecastModal.tsx` de los campos numéricos a entradas de texto con formateo tolerante y previsualización en vivo del monto interpretado en USD (`${val} USD`).
+
 ## [v2.9.0] - 2026-11-03
 ### ✨ Añadido (Módulo Forecast Comercial 36 Columnas, Reconciliación Cruzada Multi-Módulo y Recordatorios Comerciales)
 - **Nuevo Módulo de Forecast Comercial Intcomex (`src/modules/forecast/`):**

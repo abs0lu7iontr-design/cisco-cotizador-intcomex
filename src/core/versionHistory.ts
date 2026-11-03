@@ -15,11 +15,26 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.9.1',
+    date: '2026-11-03',
+    commit: 'fix-kpi-filter-sums-dark-table-and-flexible-currency-parser',
+    title: 'Recálculo Dinámico de KPIs al Filtrar, Estética Dark Slate en Forecast y Parser Flexible de Moneda (. y ,)',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Recálculo dinámico e instantáneo de los 6 KPIs superiores del Forecast (Total USD Intcomex, Hardware/SaaS, Servicios, Meraki, Con Sales Order, Recordatorios) según los filtros aplicados (PM, Bodega, Grupo de Ventas, Crédito o Búsqueda).',
+      'Diseño visual Dark Slate / Cyber Executive para la tabla de Forecast de 36 columnas: eliminación del fondo blanco discordante, reemplazado por contrastes oscuros elegantes, filas cebra suaves y acentos esmeralda/cobre armónicos con la app.',
+      'Parser flexible universal de divisas y números (parseFlexibleNumber): soporte robusto para formatos mixtos con puntos y comas (CLP $1.085.000, US $107,849.40, 107.849,40) evitando truncamiento o valores en cero.',
+      'Soporte en Modal de Forecast para tipeo y pegado fluido de montos en texto libre con previsualización en tiempo real del valor numérico interpretado en USD.',
+      'Indicador contextual de deals filtrados vs total de catálogo en tarjetas KPI y cabecera.',
+    ],
+  },
+  {
     version: '2.9.0',
     date: '2026-11-03',
     commit: 'feat-forecast-comercial-36-columns-cross-module-and-reminders',
     title: 'Módulo Forecast Comercial 36 Columnas, Reconciliación Cruzada Multi-Módulo y Motor de Recordatorios',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Nuevo Módulo de Forecast Comercial idéntico al Excel oficial de Intcomex con las 36 columnas de negocio y precarga de 158 registros reales.',

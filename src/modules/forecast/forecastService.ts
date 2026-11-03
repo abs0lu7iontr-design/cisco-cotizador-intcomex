@@ -20,6 +20,63 @@ import { PipelineDealRecord } from '../pipeline/pipelineTypes';
 // Deduplication & Normalization Match Engine
 // ----------------------------------------------------------------------------
 
+/**
+ * Parsea de manera tolerante números y divisas soportando formatos mixtos:
+ * - Formato chileno / europeo: "1.085.000,50" o "$1.085.000"
+ * - Formato anglosajón / US: "1,085,000.50" o "$107,849.40"
+ * - Formato simple: "107849.40", "107849,40" o "$45.0"
+ */
+export function parseFlexibleNumber(val: any): number {
+  if (typeof val === 'number') {
+    return isNaN(val) ? 0 : val;
+  }
+  if (!val) return 0;
+
+  let str = String(val).trim().replace(/[$£€\sUSD]/gi, '');
+  if (!str) return 0;
+
+  const hasComma = str.includes(',');
+  const hasDot = str.includes('.');
+
+  if (hasComma && hasDot) {
+    const firstComma = str.indexOf(',');
+    const firstDot = str.indexOf('.');
+    if (firstDot < firstComma) {
+      // 1.085.000,50 -> punto miles, coma decimal
+      str = str.replace(/\./g, '').replace(',', '.');
+    } else {
+      // 1,085,000.50 -> coma miles, punto decimal
+      str = str.replace(/,/g, '');
+    }
+  } else if (hasComma && !hasDot) {
+    const parts = str.split(',');
+    if (parts.length > 2) {
+      // Múltiples comas son separadores de miles
+      str = str.replace(/,/g, '');
+    } else if (parts.length === 2) {
+      if (parts[1].length === 3 && parts[0].length <= 3) {
+        str = str.replace(',', '');
+      } else {
+        str = parts[0] + '.' + parts[1];
+      }
+    }
+  } else if (hasDot && !hasComma) {
+    const parts = str.split('.');
+    if (parts.length > 2) {
+      // Múltiples puntos son separadores de miles (formato CLP / Intcomex)
+      str = str.replace(/\./g, '');
+    } else if (parts.length === 2) {
+      // Si la parte derecha tiene 3 dígitos exactos y la izquierda <= 3, ej: 1.085 -> 1085
+      if (parts[1].length === 3 && parts[0].length <= 3) {
+        str = str.replace('.', '');
+      }
+    }
+  }
+
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : Number(num.toFixed(2));
+}
+
 export function normalizeMatchKey(val?: string | null): string {
   if (!val) return '';
   return val
@@ -719,9 +776,7 @@ export function parseCsvToForecastRecords(
 
     const getNum = (key: keyof ForecastRecord): number => {
       const str = getVal(key);
-      const cleaned = str.replace(/[$,]/g, '').trim();
-      const num = parseFloat(cleaned);
-      return isNaN(num) ? 0 : num;
+      return parseFlexibleNumber(str);
     };
 
     const partner = getVal('partner');

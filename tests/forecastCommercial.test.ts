@@ -19,6 +19,7 @@ import {
   generateForecastReminders,
   exportForecastToCsv,
   parseCsvToForecastRecords,
+  parseFlexibleNumber,
 } from '../src/modules/forecast/forecastService';
 import { generatePipelineReminders } from '../src/modules/pipeline/pipelineService';
 import { ProcessedEstimateResult } from '../src/core/types';
@@ -299,6 +300,39 @@ assert.strictEqual(duplicateCount, 5, 'Debe detectar que los 5 registros ya exis
 assert.strictEqual(imported.length, 0, 'No debe importar duplicados');
 
 console.log('  ✅ Exportación e Importación CSV de 36 columnas verificada.');
+
+// ----------------------------------------------------------------------------
+// Test 9: Parser Flexible de Moneda y Números (. y , / CLP & USD)
+// ----------------------------------------------------------------------------
+console.log('▶ Test 9: Parser Flexible de Números y Divisas (parseFlexibleNumber)');
+
+assert.strictEqual(parseFlexibleNumber(1085000), 1085000);
+assert.strictEqual(parseFlexibleNumber('1,085,000'), 1085000);
+assert.strictEqual(parseFlexibleNumber('1.085.000'), 1085000);
+assert.strictEqual(parseFlexibleNumber('$ 1,085,000'), 1085000);
+assert.strictEqual(parseFlexibleNumber('$107,849.40'), 107849.40);
+assert.strictEqual(parseFlexibleNumber('107.849,40 USD'), 107849.40);
+assert.strictEqual(parseFlexibleNumber('45.0'), 45);
+assert.strictEqual(parseFlexibleNumber(''), 0);
+assert.strictEqual(parseFlexibleNumber(null), 0);
+
+console.log('  ✅ Parser flexible tolera formatos mixtos de miles y decimales sin corrupción.');
+
+// ----------------------------------------------------------------------------
+// Test 10: Recálculo Dinámico de KPIs al Aplicar Filtros
+// ----------------------------------------------------------------------------
+console.log('▶ Test 10: Recálculo Dinámico de KPIs al Filtrar (PM, Bodega, etc.)');
+
+const allStats = computeForecastStats(INITIAL_FORECAST_SEEDS);
+const raulRecords = filterForecastRecords(INITIAL_FORECAST_SEEDS, { pmResponsable: 'Raul Cuevas' });
+const raulStats = computeForecastStats(raulRecords);
+
+assert.ok(raulRecords.length > 0 && raulRecords.length < INITIAL_FORECAST_SEEDS.length, 'Debe haber filtrado un subconjunto de Raul Cuevas');
+assert.strictEqual(raulStats.totalRecords, raulRecords.length, 'totalRecords debe ser el número filtrado');
+assert.ok(raulStats.totalUsdIntcomex < allStats.totalUsdIntcomex, 'El monto sumado de Raul Cuevas debe ser menor al total global');
+assert.ok(raulStats.totalUsdIntcomex > 0, 'El monto sumado de Raul Cuevas debe ser mayor a 0');
+
+console.log(`  ✅ KPIs dinámicos verificados: Global=${allStats.totalUsdIntcomex.toLocaleString()} USD (${allStats.totalRecords}) vs Raul Cuevas=${raulStats.totalUsdIntcomex.toLocaleString()} USD (${raulStats.totalRecords}).`);
 
 console.log('\n============================================================');
 console.log('🎉 TODAS LAS PRUEBAS DE FORECAST COMERCIAL (v2.9) PASARON CON ÉXITO!');

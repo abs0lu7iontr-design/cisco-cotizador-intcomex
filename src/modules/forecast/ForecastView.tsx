@@ -115,15 +115,15 @@ export function ForecastView() {
     loadRecords();
   }, []);
 
-  // Compute Stats & Reminders
-  const stats = useMemo(() => computeForecastStats(records), [records]);
-  const reminders = useMemo(() => generateForecastReminders(records), [records]);
-
-  // Filtered records
+  // Filtered records based on active user filters
   const filteredRecords = useMemo(
     () => filterForecastRecords(records, filters),
     [records, filters]
   );
+
+  // Compute dynamic Stats & Reminders based on filteredRecords so every filter updates all sums
+  const stats = useMemo(() => computeForecastStats(filteredRecords), [filteredRecords]);
+  const reminders = useMemo(() => generateForecastReminders(filteredRecords), [filteredRecords]);
 
   // Handlers
   const handleOpenCreate = () => {
@@ -269,8 +269,10 @@ export function ForecastView() {
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                   36 Columnas Oficiales
                 </span>
-                <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-                  {records.length} Deals
+                <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                  {filteredRecords.length === records.length
+                    ? `${records.length} Deals`
+                    : `${filteredRecords.length} de ${records.length} Deals`}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
@@ -361,7 +363,11 @@ export function ForecastView() {
             <div className="text-lg font-bold text-emerald-400 mt-0.5 truncate">
               ${stats.totalUsdIntcomex.toLocaleString('en-US', { maximumFractionDigits: 0 })}
             </div>
-            <span className="text-[10px] text-slate-500">{stats.totalRecords} oportunidades</span>
+            <span className="text-[10px] text-slate-400">
+              {filteredRecords.length === records.length
+                ? `${stats.totalRecords} oportunidades`
+                : `${filteredRecords.length} de ${records.length} filtradas`}
+            </span>
           </div>
 
           <div className="bg-slate-950/60 border border-slate-800 rounded-lg p-3">
@@ -507,48 +513,59 @@ export function ForecastView() {
         </div>
       </div>
 
-      {/* Main Table Container matching Excel Styles */}
+      {/* Main Table Container with Dark Slate / Cyber Aesthetic */}
       <div className="flex-1 overflow-auto bg-slate-950 p-4">
-        <div className="inline-block min-w-full align-middle border border-slate-700/80 rounded-xl overflow-hidden shadow-2xl bg-white text-slate-900">
+        <div className="inline-block min-w-full align-middle border border-slate-800 rounded-xl overflow-hidden shadow-2xl bg-slate-900 text-slate-200">
           <table className="w-full text-left text-[11px] border-collapse font-sans">
-            {/* Table Headers matching Excel classes (.xl81, .xl87, .xl93 with #92D050) */}
-            <thead className="sticky top-0 z-20 shadow-md">
-              <tr className="bg-[#92D050] text-slate-900 font-bold border-b-2 border-slate-800 uppercase tracking-wider text-[10px]">
+            {/* Table Headers */}
+            <thead className="sticky top-0 z-20 shadow-lg bg-slate-900 border-b-2 border-emerald-500/40">
+              <tr className="uppercase tracking-wider text-[10px]">
                 {/* Actions Header */}
-                <th className="sticky left-0 z-30 bg-[#92D050] px-3 py-2.5 text-center border-r border-slate-600/40 w-16">
+                <th className="sticky left-0 z-30 bg-slate-900 px-3 py-2.5 text-center border-r border-slate-800 text-emerald-400 font-bold w-16">
                   Acción
                 </th>
 
                 {/* ID Sticky Header */}
-                <th className="sticky left-16 z-30 bg-[#92D050] px-3 py-2.5 border-r border-slate-600/40 w-24">
+                <th className="sticky left-16 z-30 bg-slate-900 px-3 py-2.5 border-r border-slate-800 text-emerald-400 font-bold w-24">
                   ID
                 </th>
 
                 {/* 36 Official Columns */}
-                {FORECAST_36_COLUMNS.map((col) => (
-                  <th
-                    key={col.key}
-                    className={`px-3 py-2.5 border-r border-slate-600/40 whitespace-nowrap text-slate-950 font-bold text-center ${col.minWidth} ${
-                      col.colIndex === 25 ? 'bg-[#9BC2E6]' : ''
-                    }`}
-                  >
-                    <div className="flex flex-col items-center">
-                      <span className="text-[9px] opacity-75 font-mono">Col {col.colIndex}</span>
-                      <span>{col.label}</span>
-                    </div>
-                  </th>
-                ))}
+                {FORECAST_36_COLUMNS.map((col) => {
+                  const isSubmitted = col.colIndex === 25;
+                  return (
+                    <th
+                      key={col.key}
+                      className={`px-3 py-2 border-r border-slate-800 whitespace-nowrap font-bold text-center ${col.minWidth} ${
+                        isSubmitted
+                          ? 'bg-sky-950/80 text-sky-300 border-r border-sky-800/60'
+                          : 'bg-slate-900 text-slate-200'
+                      }`}
+                    >
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span
+                          className={`text-[9px] font-mono ${
+                            isSubmitted ? 'text-sky-400' : 'text-emerald-400/80'
+                          }`}
+                        >
+                          Col {col.colIndex}
+                        </span>
+                        <span className="text-[11px] font-semibold tracking-tight">{col.label}</span>
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
 
-            {/* Table Body with Excel Zebra Striping and Alert Cell Highlights */}
-            <tbody className="divide-y divide-slate-200 bg-white">
+            {/* Table Body with Dark Slate Zebra Striping and Alert Highlights */}
+            <tbody className="divide-y divide-slate-800/60 bg-slate-950">
               {filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={38} className="py-12 text-center text-slate-500 bg-slate-50">
+                  <td colSpan={38} className="py-16 text-center text-slate-400 bg-slate-950">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <AlertTriangle className="w-8 h-8 text-amber-500" />
-                      <p className="font-semibold text-slate-700">No se encontraron registros de Forecast</p>
+                      <p className="font-semibold text-slate-200 text-sm">No se encontraron registros de Forecast</p>
                       <p className="text-xs text-slate-500">
                         Ajusta los filtros o haz clic en "Cruzar con Módulos" para auto-cargar datos desde CCW o BO.
                       </p>
@@ -570,28 +587,28 @@ export function ForecastView() {
                     <tr
                       key={r.id}
                       onClick={() => handleOpenEdit(r)}
-                      className={`cursor-pointer transition-colors hover:bg-emerald-50/80 ${
-                        isEven ? 'bg-white' : 'bg-slate-50/60'
-                      }`}
+                      className={`cursor-pointer transition-colors ${
+                        isEven ? 'bg-slate-950' : 'bg-slate-900/50'
+                      } hover:bg-emerald-950/25`}
                     >
                       {/* Actions Sticky Column */}
                       <td
                         onClick={(e) => e.stopPropagation()}
-                        className={`sticky left-0 z-10 px-2 py-1.5 text-center border-r border-slate-300 w-16 ${
-                          isEven ? 'bg-white' : 'bg-slate-50'
+                        className={`sticky left-0 z-10 px-2 py-1.5 text-center border-r border-slate-800 w-16 ${
+                          isEven ? 'bg-slate-950' : 'bg-slate-900'
                         }`}
                       >
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => handleOpenEdit(r)}
-                            className="p-1 rounded text-slate-600 hover:text-emerald-700 hover:bg-emerald-100"
+                            className="p-1 rounded text-slate-400 hover:text-emerald-400 hover:bg-emerald-950/40 transition-colors"
                             title="Editar registro"
                           >
                             <Edit className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={(e) => handleDeleteRecord(r.id, e)}
-                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                            className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors"
                             title="Eliminar registro"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -601,14 +618,17 @@ export function ForecastView() {
 
                       {/* ID Sticky Column */}
                       <td
-                        className={`sticky left-16 z-10 px-3 py-1.5 font-mono font-semibold text-slate-700 border-r border-slate-300 w-24 ${
-                          isEven ? 'bg-white' : 'bg-slate-50'
+                        className={`sticky left-16 z-10 px-3 py-1.5 font-mono text-xs font-semibold border-r border-slate-800 w-24 ${
+                          isEven ? 'bg-slate-950' : 'bg-slate-900'
                         }`}
                       >
                         <div className="flex items-center gap-1.5">
-                          <span>{r.id}</span>
+                          <span className="text-emerald-400/90">{r.id}</span>
                           {(hasPriceProtectionExpiry || isCreditPending || hasOpenCase) && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Tiene alertas activas" />
+                            <span
+                              className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"
+                              title="Tiene alertas activas (Price Protection, Crédito o Caso)"
+                            />
                           )}
                         </div>
                       </td>
@@ -617,45 +637,60 @@ export function ForecastView() {
                       {FORECAST_36_COLUMNS.map((col) => {
                         const val = r[col.key];
 
-                        // Style modifiers based on Excel classes
-                        let cellClass = 'px-3 py-1.5 border-r border-slate-200 text-slate-800 whitespace-nowrap ';
+                        // Base cell class
+                        let cellClass =
+                          'px-3 py-1.5 border-r border-slate-800/60 text-slate-300 whitespace-nowrap text-xs font-sans ';
 
                         if (col.align === 'right') cellClass += 'text-right ';
                         else if (col.align === 'center') cellClass += 'text-center ';
                         else cellClass += 'text-left ';
 
-                        // Highlight Col 34 (Credit) if pending (yellow / .xl85)
+                        // Highlight Col 34 (Credit) if pending
                         if (col.key === 'credit' && isCreditPending) {
-                          cellClass += 'bg-yellow-200 font-semibold text-yellow-900 ';
+                          cellClass += 'bg-amber-950/40 text-amber-300 font-semibold border-r border-amber-600/30 ';
                         }
 
                         // Highlight Col 33 (Price Protection Expiry Date)
                         if (col.key === 'priceProtectionExpiryDate' && r.priceProtectionExpiryDate) {
-                          cellClass += 'bg-amber-100 font-medium text-amber-900 ';
+                          cellClass += 'bg-amber-950/30 text-amber-300 font-mono font-medium border-r border-amber-700/30 ';
                         }
 
-                        // Highlight Col 25 (Submitted Date) matching .xl113 (#9BC2E6 light blue)
+                        // Highlight Col 25 (Submitted Date)
                         if (col.key === 'submittedDate' && r.submittedDate) {
-                          cellClass += 'bg-[#9BC2E6]/40 font-medium ';
+                          cellClass += 'bg-sky-950/30 text-sky-300 font-mono border-r border-sky-800/30 ';
                         }
 
                         // Highlight Col 31 (Bodega)
                         if (col.key === 'bodega') {
-                          cellClass += r.bodega === 'ED' ? 'text-purple-700 font-semibold ' : 'text-slate-800 font-medium ';
+                          cellClass +=
+                            r.bodega === 'ED'
+                              ? 'text-purple-300 font-semibold '
+                              : 'text-slate-300 ';
                         }
 
                         // Highlight Money columns
                         if (col.isMoney && typeof val === 'number') {
                           return (
-                            <td key={col.key} className={cellClass}>
-                              {val > 0 ? `$${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                            <td key={col.key} className={`${cellClass} font-mono text-emerald-400 font-medium`}>
+                              {val > 0 ? (
+                                `$${val.toLocaleString('en-US', {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}`
+                              ) : (
+                                <span className="text-slate-600">-</span>
+                              )}
                             </td>
                           );
                         }
 
                         return (
                           <td key={col.key} className={cellClass}>
-                            {val !== undefined && val !== null && String(val).trim() !== '' ? String(val) : '-'}
+                            {val !== undefined && val !== null && String(val).trim() !== '' ? (
+                              String(val)
+                            ) : (
+                              <span className="text-slate-600">-</span>
+                            )}
                           </td>
                         );
                       })}

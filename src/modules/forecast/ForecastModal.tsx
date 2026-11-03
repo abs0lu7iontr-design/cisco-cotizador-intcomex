@@ -26,6 +26,7 @@ import {
   FORECAST_BODEGA_OPTIONS,
   FORECAST_CREDIT_STATUSES,
 } from './forecastTypes';
+import { parseFlexibleNumber } from './forecastService';
 
 interface ForecastModalProps {
   isOpen: boolean;
@@ -45,6 +46,7 @@ export function ForecastModal({
   mode = 'create',
 }: ForecastModalProps) {
   const [formData, setFormData] = useState<Partial<ForecastRecord>>({});
+  const [moneyInputs, setMoneyInputs] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState<ModalTab>('comercial');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -54,7 +56,7 @@ export function ForecastModal({
       const now = new Date();
       const defaultDate = `${String(now.getDate()).padStart(2, '0')}-${String(now.getMonth() + 1).padStart(2, '0')}-${now.getFullYear()}`;
 
-      setFormData({
+      const rec = {
         id: initialRecord?.id || `FC-${Date.now().toString().slice(-4)}`,
         fechaLevantamiento: initialRecord?.fechaLevantamiento || defaultDate,
         fechaCotizacion: initialRecord?.fechaCotizacion || defaultDate,
@@ -94,6 +96,15 @@ export function ForecastModal({
         confirmacionCredito: initialRecord?.confirmacionCredito || '',
         createdAt: initialRecord?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+      };
+
+      setFormData(rec);
+      setMoneyInputs({
+        usdIntcomex: rec.usdIntcomex ? String(rec.usdIntcomex) : '',
+        productos: rec.productos ? String(rec.productos) : '',
+        suscripciones: rec.suscripciones ? String(rec.suscripciones) : '',
+        servicios: rec.servicios ? String(rec.servicios) : '',
+        meraki: rec.meraki ? String(rec.meraki) : '',
       });
       setActiveTab('comercial');
       setValidationError(null);
@@ -109,13 +120,21 @@ export function ForecastModal({
     }));
   };
 
+  const handleMoneyChange = (field: keyof ForecastRecord, rawText: string) => {
+    setMoneyInputs((prev) => ({ ...prev, [field]: rawText }));
+    const parsed = parseFlexibleNumber(rawText);
+    setFormData((prev) => ({ ...prev, [field]: parsed }));
+  };
+
   const handleSumTotals = () => {
     const sum =
       (formData.productos || 0) +
       (formData.suscripciones || 0) +
       (formData.servicios || 0) +
       (formData.meraki || 0);
-    handleChange('usdIntcomex', sum);
+    const rounded = Number(sum.toFixed(2));
+    handleChange('usdIntcomex', rounded);
+    setMoneyInputs((prev) => ({ ...prev, usdIntcomex: String(rounded) }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -437,16 +456,27 @@ export function ForecastModal({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    8. USD Intcomex (Monto Total)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.usdIntcomex || 0}
-                    onChange={(e) => handleChange('usdIntcomex', parseFloat(e.target.value) || 0)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-slate-300">
+                      8. USD Intcomex (Monto Total)
+                    </label>
+                    <span className="text-[11px] font-mono font-semibold text-emerald-400">
+                      ${(formData.usdIntcomex || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-slate-500 font-mono">$</span>
+                    <input
+                      type="text"
+                      value={moneyInputs['usdIntcomex'] ?? (formData.usdIntcomex != null ? String(formData.usdIntcomex) : '')}
+                      onChange={(e) => handleMoneyChange('usdIntcomex', e.target.value)}
+                      placeholder="Ej. 107,849.40 o 107.849,40"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-7 pr-3 py-2 text-sm text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    Acepta formato con puntos o comas (ej. $1.085.000 o 107,849.40)
+                  </span>
                 </div>
 
                 <div>
@@ -463,55 +493,87 @@ export function ForecastModal({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    15. Productos (Hardware / SaaS)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.productos || 0}
-                    onChange={(e) => handleChange('productos', parseFloat(e.target.value) || 0)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-slate-300">
+                      15. Productos (Hardware / SaaS)
+                    </label>
+                    <span className="text-[11px] font-mono font-semibold text-emerald-400">
+                      ${(formData.productos || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-slate-500 font-mono">$</span>
+                    <input
+                      type="text"
+                      value={moneyInputs['productos'] ?? (formData.productos != null ? String(formData.productos) : '')}
+                      onChange={(e) => handleMoneyChange('productos', e.target.value)}
+                      placeholder="Ej. 250,000.00 o 250.000"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-7 pr-3 py-2 text-sm text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    16. Suscripciones
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.suscripciones || 0}
-                    onChange={(e) => handleChange('suscripciones', parseFloat(e.target.value) || 0)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-slate-300">
+                      16. Suscripciones
+                    </label>
+                    <span className="text-[11px] font-mono font-semibold text-emerald-400">
+                      ${(formData.suscripciones || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-slate-500 font-mono">$</span>
+                    <input
+                      type="text"
+                      value={moneyInputs['suscripciones'] ?? (formData.suscripciones != null ? String(formData.suscripciones) : '')}
+                      onChange={(e) => handleMoneyChange('suscripciones', e.target.value)}
+                      placeholder="Ej. 45,000.00"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-7 pr-3 py-2 text-sm text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    17. Servicios (SmartNet / CX)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.servicios || 0}
-                    onChange={(e) => handleChange('servicios', parseFloat(e.target.value) || 0)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-slate-300">
+                      17. Servicios (SmartNet / CX)
+                    </label>
+                    <span className="text-[11px] font-mono font-semibold text-emerald-400">
+                      ${(formData.servicios || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-slate-500 font-mono">$</span>
+                    <input
+                      type="text"
+                      value={moneyInputs['servicios'] ?? (formData.servicios != null ? String(formData.servicios) : '')}
+                      onChange={(e) => handleMoneyChange('servicios', e.target.value)}
+                      placeholder="Ej. 190,000.00"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-7 pr-3 py-2 text-sm text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    18. Meraki Cloud
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.meraki || 0}
-                    onChange={(e) => handleChange('meraki', parseFloat(e.target.value) || 0)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-medium text-slate-300">
+                      18. Meraki Cloud
+                    </label>
+                    <span className="text-[11px] font-mono font-semibold text-emerald-400">
+                      ${(formData.meraki || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-slate-500 font-mono">$</span>
+                    <input
+                      type="text"
+                      value={moneyInputs['meraki'] ?? (formData.meraki != null ? String(formData.meraki) : '')}
+                      onChange={(e) => handleMoneyChange('meraki', e.target.value)}
+                      placeholder="Ej. 12,500.00"
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-7 pr-3 py-2 text-sm text-slate-100 font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
