@@ -23,6 +23,7 @@ import {
   PIPELINE_STAGE_OPTIONS,
   MESES_ANO,
 } from './pipelineTypes';
+import { parseFlexibleNumber } from '../forecast/forecastService';
 
 interface PipelineDealModalProps {
   isOpen: boolean;
@@ -40,6 +41,7 @@ export function PipelineDealModal({
   mode = 'create',
 }: PipelineDealModalProps) {
   const [formData, setFormData] = useState<Partial<PipelineDealRecord>>({});
+  const [moneyInputs, setMoneyInputs] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -49,7 +51,7 @@ export function PipelineDealModal({
       const defaultDate = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()}`;
       const defaultMonth = MESES_ANO[now.getMonth()];
 
-      setFormData({
+      const initialRec: Partial<PipelineDealRecord> = {
         id: initialDeal?.id || `deal_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         fechaLevantamiento: initialDeal?.fechaLevantamiento || defaultDate,
         fechaCotizacion: initialDeal?.fechaCotizacion || defaultDate,
@@ -74,6 +76,14 @@ export function PipelineDealModal({
         sourceEstimateVersion: initialDeal?.sourceEstimateVersion,
         createdAt: initialDeal?.createdAt || now.toISOString(),
         updatedAt: now.toISOString(),
+      };
+
+      setFormData(initialRec);
+      setMoneyInputs({
+        usd: initialRec.usd != null && initialRec.usd > 0 ? String(initialRec.usd) : '',
+        productosSuscripciones: initialRec.productosSuscripciones != null && initialRec.productosSuscripciones > 0 ? String(initialRec.productosSuscripciones) : '',
+        servicios: initialRec.servicios != null && initialRec.servicios > 0 ? String(initialRec.servicios) : '',
+        meraki: initialRec.meraki != null && initialRec.meraki > 0 ? String(initialRec.meraki) : '',
       });
       setValidationError(null);
     }
@@ -85,21 +95,28 @@ export function PipelineDealModal({
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleNumberChange = (field: keyof PipelineDealRecord, value: string) => {
-    const cleaned = value.replace(/[$€£,\s]/g, '');
-    const num = parseFloat(cleaned);
-    setFormData((prev) => ({ ...prev, [field]: isNaN(num) ? 0 : num }));
+  const handleMoneyChange = (field: keyof PipelineDealRecord, rawText: string) => {
+    setMoneyInputs((prev) => ({ ...prev, [field]: rawText }));
+    const parsed = parseFlexibleNumber(rawText);
+    setFormData((prev) => ({ ...prev, [field]: parsed }));
+  };
+
+  const handleAutoSumBreakdown = () => {
+    const prod = parseFlexibleNumber(formData.productosSuscripciones);
+    const serv = parseFlexibleNumber(formData.servicios);
+    const meraki = parseFlexibleNumber(formData.meraki);
+    const sum = Number((prod + serv + meraki).toFixed(2));
+    handleChange('usd', sum);
+    setMoneyInputs((prev) => ({ ...prev, usd: String(sum) }));
   };
 
   const handleAutoDistributeToProd = () => {
-    const total = Number(formData.usd) || 0;
-    const serv = Number(formData.servicios) || 0;
-    const meraki = Number(formData.meraki) || 0;
-    const diff = Math.max(0, total - (serv + meraki));
-    setFormData((prev) => ({
-      ...prev,
-      productosSuscripciones: Number(diff.toFixed(2)),
-    }));
+    const total = parseFlexibleNumber(formData.usd);
+    const serv = parseFlexibleNumber(formData.servicios);
+    const meraki = parseFlexibleNumber(formData.meraki);
+    const diff = Math.max(0, Number((total - (serv + meraki)).toFixed(2)));
+    handleChange('productosSuscripciones', diff);
+    setMoneyInputs((prev) => ({ ...prev, productosSuscripciones: String(diff) }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -262,17 +279,21 @@ export function PipelineDealModal({
           {/* Fila 3: Total USD, % Avance, Mes de Cierre, Mes de Facturación */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-slate-950 border border-slate-800/80">
             <div>
-              <label className="block text-[11px] font-bold text-amber-400 uppercase tracking-wider mb-1.5">
-                Monto Total USD *
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[11px] font-bold text-amber-400 uppercase tracking-wider">
+                  Monto Total USD *
+                </label>
+                <span className="text-[10px] font-mono font-bold text-amber-300">
+                  ${(formData.usd || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
               <div className="relative">
                 <DollarSign className="w-4 h-4 text-amber-500 absolute left-3 top-2.5" />
                 <input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={formData.usd || ''}
-                  onChange={(e) => handleNumberChange('usd', e.target.value)}
+                  type="text"
+                  placeholder="ej. 107,849.40 o 107.849,40"
+                  value={moneyInputs['usd'] ?? (formData.usd != null && formData.usd > 0 ? String(formData.usd) : '')}
+                  onChange={(e) => handleMoneyChange('usd', e.target.value)}
                   className="w-full bg-slate-900 border border-amber-500/30 rounded-xl pl-9 pr-3 py-2 text-xs font-mono font-bold text-white focus:border-amber-500 outline-none"
                   required
                 />
@@ -331,53 +352,80 @@ export function PipelineDealModal({
 
           {/* Fila 4: Desglose Tecnológico (Productos + Suscripciones, Servicios, Meraki) */}
           <div className="p-4 rounded-2xl bg-indigo-950/20 border border-indigo-500/20 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider">
                 Desglose Tecnológico de la Oportunidad
               </span>
-              <button
-                type="button"
-                onClick={handleAutoDistributeToProd}
-                className="text-[11px] text-indigo-400 hover:text-indigo-200 flex items-center space-x-1 cursor-pointer transition-colors"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Asignar remanente a Productos</span>
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleAutoSumBreakdown}
+                  className="text-[11px] text-emerald-400 hover:text-emerald-200 flex items-center space-x-1 cursor-pointer transition-colors"
+                  title="Sumar Prod+Sub + Servicios + Meraki y fijarlo como Monto Total USD"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Auto-sumar a Monto Total USD</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAutoDistributeToProd}
+                  className="text-[11px] text-indigo-400 hover:text-indigo-200 flex items-center space-x-1 cursor-pointer transition-colors"
+                  title="Asignar la diferencia (Total USD - Servicios - Meraki) a Productos"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Asignar remanente a Productos</span>
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                  📦 Productos + Suscripciones (USD)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-semibold text-slate-400">
+                    📦 Productos + Suscripciones (USD)
+                  </label>
+                  <span className="text-[10px] font-mono font-bold text-sky-400">
+                    ${(formData.productosSuscripciones || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
                 <input
-                  type="number"
-                  step="0.01"
-                  value={formData.productosSuscripciones || ''}
-                  onChange={(e) => handleNumberChange('productosSuscripciones', e.target.value)}
+                  type="text"
+                  placeholder="0.00"
+                  value={moneyInputs['productosSuscripciones'] ?? (formData.productosSuscripciones != null && formData.productosSuscripciones > 0 ? String(formData.productosSuscripciones) : '')}
+                  onChange={(e) => handleMoneyChange('productosSuscripciones', e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs font-mono text-white focus:border-indigo-500 outline-none"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                  🛠️ Servicios SmartNet (USD)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-semibold text-slate-400">
+                    🛠️ Servicios SmartNet (USD)
+                  </label>
+                  <span className="text-[10px] font-mono font-bold text-purple-400">
+                    ${(formData.servicios || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
                 <input
-                  type="number"
-                  step="0.01"
-                  value={formData.servicios || ''}
-                  onChange={(e) => handleNumberChange('servicios', e.target.value)}
+                  type="text"
+                  placeholder="0.00"
+                  value={moneyInputs['servicios'] ?? (formData.servicios != null && formData.servicios > 0 ? String(formData.servicios) : '')}
+                  onChange={(e) => handleMoneyChange('servicios', e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs font-mono text-white focus:border-indigo-500 outline-none"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-slate-400 mb-1">
-                  🌐 Meraki Cloud (USD)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-semibold text-slate-400">
+                    🌐 Meraki Cloud (USD)
+                  </label>
+                  <span className="text-[10px] font-mono font-bold text-emerald-400">
+                    ${(formData.meraki || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
                 <input
-                  type="number"
-                  step="0.01"
-                  value={formData.meraki || ''}
-                  onChange={(e) => handleNumberChange('meraki', e.target.value)}
+                  type="text"
+                  placeholder="0.00"
+                  value={moneyInputs['meraki'] ?? (formData.meraki != null && formData.meraki > 0 ? String(formData.meraki) : '')}
+                  onChange={(e) => handleMoneyChange('meraki', e.target.value)}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs font-mono text-white focus:border-indigo-500 outline-none"
                 />
               </div>

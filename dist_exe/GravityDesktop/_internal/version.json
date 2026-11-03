@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.9.1",
-  "git_commit": "b0267f2",
+  "version": "2.9.2",
+  "git_commit": "08bbe06",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-03T16:08:06.802Z",
-  "release_notes": "feat(v2.9.0): agregar modulo forecast comercial 36 columnas, conciliacion cruzada, recordatorios en pipeline y forecast",
+  "build_timestamp": "2026-11-03T18:21:13.848Z",
+  "release_notes": "fix(v2.9.1): dynamic kpi sum on filter, dark theme table aesthetic, and flexible dot-comma currency parsing",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

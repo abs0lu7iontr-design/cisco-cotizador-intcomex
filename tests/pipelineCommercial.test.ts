@@ -243,5 +243,64 @@ assert.deepStrictEqual(PIPELINE_EXCEL_HEADERS, [
 ]);
 console.log('  ✅ Encabezados de exportación Excel idénticos a la estructura requerida.');
 
+// ----------------------------------------------------------------------------
+// Test 6: Recálculo Dinámico de Estadísticas al Filtrar (PM, Grupo, Mes, etc.)
+// ----------------------------------------------------------------------------
+console.log('\n▶ Test 6: Recálculo Dinámico de Estadísticas al Filtrar');
+const globalStats = calculatePipelineStats(PIPELINE_INITIAL_SEEDS);
+const raulDealsFiltered = filterPipelineDeals(PIPELINE_INITIAL_SEEDS, { pmResponsable: 'Raul Cuevas' });
+const raulStats = calculatePipelineStats(raulDealsFiltered);
+
+assert.ok(raulDealsFiltered.length > 0 && raulDealsFiltered.length < PIPELINE_INITIAL_SEEDS.length);
+assert.strictEqual(raulStats.totalDeals, raulDealsFiltered.length, 'totalDeals debe ser el subconjunto filtrado');
+assert.ok(raulStats.totalUsd < globalStats.totalUsd, 'El total USD filtrado debe ser menor al global');
+assert.ok(raulStats.totalUsd > 0, 'El total USD filtrado debe ser mayor a 0');
+assert.ok(raulStats.forecastPonderadoUsd < globalStats.forecastPonderadoUsd, 'El forecast ponderado filtrado debe ser menor al global');
+
+console.log(`  ✅ Estadísticas dinámicas verificadas: Global=${globalStats.totalUsd.toLocaleString()} USD (${globalStats.totalDeals}) vs Raul Cuevas=${raulStats.totalUsd.toLocaleString()} USD (${raulStats.totalDeals}).`);
+
+// ----------------------------------------------------------------------------
+// Test 7: Tolerancia a Formatos de Moneda (. y , / CLP & USD) y Fallback de Suma
+// ----------------------------------------------------------------------------
+console.log('\n▶ Test 7: Tolerancia a Formatos de Moneda (. y ,) y Fallback de Desglose');
+
+const mockDealsMixedFormats: PipelineDealRecord[] = [
+  {
+    ...PIPELINE_INITIAL_SEEDS[0],
+    id: 'deal_fmt_1',
+    usd: ('$ 1,085,000' as any),
+    porcentajeAvance: 20,
+    productosSuscripciones: ('1,085,000' as any),
+    servicios: 0,
+    meraki: 0,
+  },
+  {
+    ...PIPELINE_INITIAL_SEEDS[1],
+    id: 'deal_fmt_2',
+    usd: ('107.849,40' as any),
+    porcentajeAvance: 30,
+    productosSuscripciones: ('100.000,00' as any),
+    servicios: ('7.849,40' as any),
+    meraki: 0,
+  },
+  {
+    ...PIPELINE_INITIAL_SEEDS[2],
+    id: 'deal_fmt_3',
+    usd: 0, // Fallback: debe auto-sumar el desglose tecnológico
+    porcentajeAvance: 50,
+    productosSuscripciones: 50000,
+    servicios: 25000,
+    meraki: 25000,
+  },
+];
+
+const mixedStats = calculatePipelineStats(mockDealsMixedFormats);
+assert.strictEqual(mixedStats.totalDeals, 3);
+// 1085000 + 107849.40 + 100000 = 1292849.40
+assert.strictEqual(mixedStats.totalUsd, 1292849.40, `Suma esperada 1292849.40, obtenida ${mixedStats.totalUsd}`);
+assert.strictEqual(mixedStats.totalMeraki, 25000);
+assert.strictEqual(mixedStats.totalServicios, 32849.40);
+console.log(`  ✅ Parser y suma flexible verificada: Total USD = $${mixedStats.totalUsd.toLocaleString()} USD.`);
+
 console.log('\n🎉 ¡TODAS LAS PRUEBAS DEL PIPELINE COMERCIAL COMPLETADAS AL 100% CON ÉXITO!\n');
 process.exit(0);

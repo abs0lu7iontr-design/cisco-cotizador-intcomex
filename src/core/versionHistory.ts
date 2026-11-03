@@ -15,11 +15,26 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.9.2',
+    date: '2026-11-03',
+    commit: 'fix-pipeline-filter-sums-and-currency-parsing',
+    title: 'Recálculo Dinámico de KPIs al Filtrar en Pipeline, Parser Flexible de Moneda y Pie de Tabla con Totales',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Recálculo dinámico e instantáneo de los 5 KPIs del Pipeline Comercial (Total Pipeline, Forecast Ponderado, Prod.+Suscripciones, Servicios/Meraki y Cerrados) según los filtros activos (PM Responsable, Grupo de Ventas, Mes de Cierre, Etapa de Avance o Búsqueda).',
+      'Integración del parser flexible de divisas (parseFlexibleNumber) en Pipeline: soporte para cifras con puntos y comas ($1.085.000, 107.849,40, US $107,849.40) sin truncamiento ni corrupción en cero.',
+      'Mejora del Modal de Pipeline con campos de texto tolerantes, previsualización en vivo del valor interpretado en USD y botón de auto-suma del desglose tecnológico hacia el Monto Total USD.',
+      'Nuevo pie de tabla (tfoot) en el Pipeline con sumas automáticas de las columnas Monto USD, Prod+Sub, Servicios y Meraki de las filas filtradas.',
+      'Suma protegida en columnas del Tablero Kanban contra concatenación de cadenas o valores nulos.',
+    ],
+  },
+  {
     version: '2.9.1',
     date: '2026-11-03',
     commit: 'fix-kpi-filter-sums-dark-table-and-flexible-currency-parser',
     title: 'Recálculo Dinámico de KPIs al Filtrar, Estética Dark Slate en Forecast y Parser Flexible de Moneda (. y ,)',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Recálculo dinámico e instantáneo de los 6 KPIs superiores del Forecast (Total USD Intcomex, Hardware/SaaS, Servicios, Meraki, Con Sales Order, Recordatorios) según los filtros aplicados (PM, Bodega, Grupo de Ventas, Crédito o Búsqueda).',

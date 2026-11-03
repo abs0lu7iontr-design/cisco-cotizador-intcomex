@@ -12,6 +12,7 @@ import {
 } from './pipelineTypes';
 import { ProcessedEstimateResult, UserSession } from '../../core/types';
 import { savePipelineDeal, getPipelineDeals } from './pipelineStorage';
+import { parseFlexibleNumber } from '../forecast/forecastService';
 
 // ----------------------------------------------------------------------------
 // 1. Estadísticas y Agregaciones de Negocio
@@ -33,11 +34,15 @@ export function calculatePipelineStats(deals: PipelineDealRecord[]): PipelineSta
   const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
 
   for (const deal of deals) {
-    const usd = Number(deal.usd) || 0;
-    const avance = Number(deal.porcentajeAvance) || 0;
-    const prodSub = Number(deal.productosSuscripciones) || 0;
-    const serv = Number(deal.servicios) || 0;
-    const meraki = Number(deal.meraki) || 0;
+    const rawUsd = parseFlexibleNumber(deal.usd);
+    const avance = parseFlexibleNumber(deal.porcentajeAvance);
+    const prodSub = parseFlexibleNumber(deal.productosSuscripciones);
+    const serv = parseFlexibleNumber(deal.servicios);
+    const meraki = parseFlexibleNumber(deal.meraki);
+
+    // Fallback de suma consistente: si usd está vacío/cero pero hay desglose tecnológico
+    const breakdownSum = Number((prodSub + serv + meraki).toFixed(2));
+    const usd = rawUsd > 0 ? rawUsd : breakdownSum;
 
     totalUsd += usd;
     forecastPonderadoUsd += usd * (avance / 100);
@@ -460,11 +465,7 @@ export async function importPipelineFromExcel(arrayBuffer: ArrayBuffer): Promise
   if (!rawRows || rawRows.length < 2) throw new Error('El archivo Excel está vacío o no contiene filas de datos.');
 
   const parseNum = (val: any): number => {
-    if (typeof val === 'number') return isNaN(val) ? 0 : val;
-    if (!val) return 0;
-    const str = String(val).replace(/[$€£,\s]/g, '').trim();
-    const n = parseFloat(str);
-    return isNaN(n) ? 0 : n;
+    return parseFlexibleNumber(val);
   };
 
   const parsePct = (val: any): number => {

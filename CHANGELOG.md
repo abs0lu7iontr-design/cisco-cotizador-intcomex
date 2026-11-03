@@ -6,6 +6,22 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.9.2] - 2026-11-03
+### 🔧 Corregido y Optimizado (Recálculo Dinámico de KPIs al Filtrar en Pipeline, Parser Flexible y Totales en Tabla)
+- **Recálculo Dinámico de Métricas y KPIs al Filtrar en Pipeline (`PipelineView.tsx`):**
+  - Se corrigió la llamada a `calculatePipelineStats` y `generatePipelineReminders` para operar dinámicamente sobre `filteredDeals` en lugar del catálogo global.
+  - Al filtrar por PM (ej. Raúl Cuevas, Marta Adasme), Grupo de Ventas (Enterprise, Top Volume), Mes de Cierre, Etapa (% de avance) o término de búsqueda, las 5 tarjetas de KPI reflejan de inmediato el subconjunto con indicación del total filtrado (`${filteredDeals.length} de ${deals.length}`).
+- **Parser Flexible de Divisas y Formatos Mixtos en Pipeline (`pipelineService.ts`):**
+  - Integración de `parseFlexibleNumber` en `calculatePipelineStats` y `parseExcelToPipelineDeals`.
+  - Soporte para montos con puntos y comas indistintos (`$1.085.000`, `107.849,40`, `107,849.40`), evitando que valores numéricos válidos queden truncados a 1 o evaluados como 0.
+- **Nuevo Pie de Tabla con Totales Filtrados (`PipelineView.tsx`):**
+  - Incorporación de fila `tfoot` con las sumas agregadas de las columnas clave: *Monto USD*, *Prod + Sub*, *Servicios* y *Meraki*, cuadrando exactamente con las tarjetas superiores.
+- **Mejora Integral en Modal de Oportunidades (`PipelineDealModal.tsx`):**
+  - Campos de monto adaptados a texto con previsualización en vivo: `Interpretado: $X.XX USD`.
+  - Nuevo botón `"Auto-sumar a Monto Total USD"` que totaliza automáticamente `Prod+Sub + Servicios + Meraki` hacia el campo Monto Total USD.
+- **Blindaje en Tablero Kanban (`PipelineView.tsx`):**
+  - Suma de columnas protegida con `parseFlexibleNumber` para evitar concatenaciones de texto o valores `NaN`.
+
 ## [v2.9.1] - 2026-11-03
 ### 🔧 Corregido y Optimizado (Recálculo Dinámico de KPIs al Filtrar, Estética Dark Slate en Forecast y Parser Flexible)
 - **Recálculo Dinámico de KPIs al Filtrar en Forecast Comercial (`ForecastView.tsx`):**

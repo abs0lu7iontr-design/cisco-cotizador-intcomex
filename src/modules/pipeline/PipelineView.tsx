@@ -55,6 +55,7 @@ import {
   importEstimateIntoPipeline,
   generatePipelineReminders,
 } from './pipelineService';
+import { parseFlexibleNumber } from '../forecast/forecastService';
 import { PipelineDealModal } from './PipelineDealModal';
 import { useCiscoAutomatedStore } from '../../core/store';
 
@@ -115,13 +116,14 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
     return filterPipelineDeals(deals, filters);
   }, [deals, filters]);
 
+  // Recálculo dinámico sobre filteredDeals para que cualquier filtro recalcule sumas y KPIs
   const stats = useMemo(() => {
-    return calculatePipelineStats(deals);
-  }, [deals]);
+    return calculatePipelineStats(filteredDeals);
+  }, [filteredDeals]);
 
   const reminders = useMemo(() => {
-    return generatePipelineReminders(deals);
-  }, [deals]);
+    return generatePipelineReminders(filteredDeals);
+  }, [filteredDeals]);
 
   // Lista única de Partners y AMs para los filtros
   const uniquePartners = useMemo(() => {
@@ -283,7 +285,9 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
                 Pipeline Comercial & Oportunidades Cisco
               </h1>
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
-                {stats.totalDeals} Deals
+                {filteredDeals.length === deals.length
+                  ? `${deals.length} Deals`
+                  : `${filteredDeals.length} de ${deals.length} Deals`}
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
@@ -413,7 +417,9 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
               {formatCurrency(stats.totalUsd)}
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              {stats.totalDeals} oportunidades en seguimiento
+              {filteredDeals.length === deals.length
+                ? `${stats.totalDeals} oportunidades en seguimiento`
+                : `${filteredDeals.length} de ${deals.length} oportunidades filtradas`}
             </p>
           </div>
           <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
@@ -679,7 +685,7 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 overflow-x-auto pb-4">
           {[20, 30, 50, 70, 100].map((stage) => {
             const stageDeals = filteredDeals.filter((d) => d.porcentajeAvance === stage);
-            const stageTotal = stageDeals.reduce((sum, d) => sum + (d.usd || 0), 0);
+            const stageTotal = stageDeals.reduce((sum, d) => sum + parseFlexibleNumber(d.usd), 0);
             const stageMeta = PIPELINE_STAGE_OPTIONS.find((s) => s.value === stage);
 
             return (
@@ -917,6 +923,29 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
                   );
                 })}
               </tbody>
+              {filteredDeals.length > 0 && (
+                <tfoot className="border-t-2 border-slate-700 bg-slate-950/95 font-bold">
+                  <tr className="text-xs">
+                    <td colSpan={6} className="py-3.5 px-4 text-slate-300 uppercase tracking-wider text-[11px] font-bold">
+                      Totales ({filteredDeals.length === deals.length ? `${deals.length} deals` : `${filteredDeals.length} de ${deals.length} filtrados`}):
+                    </td>
+                    <td className="py-3.5 px-3 text-right font-mono font-black text-amber-400 text-sm">
+                      {formatCurrency(stats.totalUsd)}
+                    </td>
+                    <td colSpan={3}></td>
+                    <td className="py-3.5 px-3 text-right font-mono text-slate-300 font-bold">
+                      {formatCurrency(stats.totalProductosSuscripciones)}
+                    </td>
+                    <td className="py-3.5 px-3 text-right font-mono text-purple-300 font-bold">
+                      {formatCurrency(stats.totalServicios)}
+                    </td>
+                    <td className="py-3.5 px-3 text-right font-mono text-emerald-300 font-bold">
+                      {formatCurrency(stats.totalMeraki)}
+                    </td>
+                    <td colSpan={5}></td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
 
