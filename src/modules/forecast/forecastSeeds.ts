@@ -274,7 +274,7 @@ export const INITIAL_FORECAST_SEEDS: ForecastRecord[] = [
     "detalleProductos": "ORD-2804072, ORD-2825742, CMG-1462358",
     "oc": "",
     "deal": "84313867",
-    "productos": 955,
+    "productos": 10120,
     "suscripciones": 0,
     "servicios": 0,
     "meraki": 0,

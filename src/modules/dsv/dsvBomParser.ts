@@ -43,6 +43,18 @@ export function sanitizeTrim(val: any): string {
   return String(val).trim();
 }
 
+export function normalizeLineNumber(value: any): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) {
+    return `${value}.0`;
+  }
+  const clean = String(value).trim().replace(/,/g, '.');
+  if (/^\d+$/.test(clean)) {
+    return `${clean}.0`;
+  }
+  return clean;
+}
+
 export function parseUniversalNumber(val: any): number {
   if (val === null || val === undefined) return 0;
   if (typeof val === 'number') return isNaN(val) ? 0 : val;
@@ -236,7 +248,7 @@ export async function parseRawDealBom(
     if (!row || row.length === 0) continue;
 
     const skuStr = sanitizeTrim(row[colSku]);
-    const lineStr = sanitizeTrim(row[colLine]);
+    const lineStr = normalizeLineNumber(row[colLine]);
 
     const skuUpper = skuStr.toUpperCase();
     const lineUpper = lineStr.toUpperCase();

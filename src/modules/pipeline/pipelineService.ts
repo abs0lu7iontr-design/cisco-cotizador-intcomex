@@ -12,7 +12,7 @@ import {
 } from './pipelineTypes';
 import { ProcessedEstimateResult, UserSession } from '../../core/types';
 import { savePipelineDeal, getPipelineDeals } from './pipelineStorage';
-import { parseFlexibleNumber } from '../forecast/forecastService';
+import { parseFlexibleNumber, parseFlexibleDate } from '../forecast/forecastService';
 
 // ----------------------------------------------------------------------------
 // 1. Estadísticas y Agregaciones de Negocio
@@ -60,8 +60,9 @@ export function calculatePipelineStats(deals: PipelineDealRecord[]): PipelineSta
 
     // Comprobar alertas de Price Protection
     if (deal.priceProtectionExpiryDate) {
-      const expTimestamp = new Date(deal.priceProtectionExpiryDate).getTime();
-      if (!isNaN(expTimestamp)) {
+      const expDate = parseFlexibleDate(deal.priceProtectionExpiryDate);
+      if (expDate) {
+        const expTimestamp = expDate.getTime();
         if (expTimestamp - now <= thirtyDaysMs) {
           dealsPriceProtectionAlertsCount++;
         }
@@ -159,8 +160,8 @@ export function generatePipelineReminders(deals: PipelineDealRecord[]): Pipeline
   deals.forEach((deal) => {
     // 1. Price Protection Expiration
     if (deal.priceProtectionExpiryDate) {
-      const expDate = new Date(deal.priceProtectionExpiryDate);
-      if (!isNaN(expDate.getTime())) {
+      const expDate = parseFlexibleDate(deal.priceProtectionExpiryDate);
+      if (expDate) {
         const diffMs = expDate.getTime() - todayMs;
         if (diffMs < 0) {
           reminders.push({

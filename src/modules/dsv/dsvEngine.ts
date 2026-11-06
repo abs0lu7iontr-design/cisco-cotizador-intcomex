@@ -3,7 +3,7 @@
 // ============================================================================
 
 import ExcelJS from 'exceljs';
-import { RawBomItem, RawBomParsedResult, sanitizeTrim } from './dsvBomParser';
+import { RawBomItem, RawBomParsedResult, sanitizeTrim, normalizeLineNumber } from './dsvBomParser';
 import { DsvModalFormData, Dsv48LineItem, DsvTransformationSummary, SkuCategoryType } from './types';
 import { isCiscoLicenseSku, isCiscoServiceSku } from '../../core/ciscoTaxonomy';
 import { resolveDsvRowPrices, DsvBomRowRaw } from './dsvSubscriptionResolver';
@@ -327,7 +327,7 @@ export function transformRawBomToDsv(
       status: 'NEW',                                      // A (1)
       distributorToResellerSalesOrderDate: dsvDate,       // B (2)
       distributorSalesOrderNumber: cleanSo,               // C (3) - 9 dígitos numéricos
-      soLineNum: sanitizeTrim(item.lineNumber),          // D (4) - SO Line Number (Order Line Item Number)
+      soLineNum: normalizeLineNumber(item.lineNumber),          // D (4) - SO Line Number (Order Line Item Number)
       ciscoStandardPartNumber: sanitizeTrim(item.ciscoSku), // E (5)
       startDate: '',                                      // F (6) [ANCHO 5]
       endDate: '',                                        // G (7) [ANCHO 5]

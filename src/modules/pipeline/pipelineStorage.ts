@@ -97,6 +97,14 @@ function writeLocalDeals(deals: PipelineDealRecord[], projectScope?: string): vo
 // Public Storage API
 // ----------------------------------------------------------------------------
 
+function sanitizeDealForCloud(deal: PipelineDealRecord): PipelineDealRecord {
+  return {
+    ...deal,
+    partner: (deal.partner || '').trim() || '-',
+    endUser: (deal.endUser || '').trim() || '-',
+  };
+}
+
 /**
  * Obtiene todas las oportunidades del pipeline desde memoria o almacenamiento local blindado.
  * Si es la primera vez que se ejecuta, auto-hidrata con las 70 oportunidades oficiales iniciales.
@@ -151,12 +159,12 @@ export async function savePipelineDeal(deal: PipelineDealRecord): Promise<Pipeli
   // Sincronización transparente con Firestore Cloud (No bloqueante si no hay conexión)
   try {
     const instance = getFirestoreInstance();
-  const firestoreDb = instance && instance.isReady ? instance.db : null;
+    const firestoreDb = instance && instance.isReady ? instance.db : null;
     if (firestoreDb) {
       await withTimeout(
         setDoc(
           doc(firestoreDb, PIPELINE_COLLECTION, deal.id),
-          sanitizeForFirestore(updatedDeal),
+          sanitizeForFirestore(sanitizeDealForCloud(updatedDeal)),
           { merge: true }
         ),
         4000
@@ -219,7 +227,7 @@ export async function syncPipelineWithCloud(): Promise<{ count: number; source: 
       // Si la nube está vacía pero local tiene datos, subirlos en lote
       if (localDeals.length > 0) {
         for (const deal of localDeals.slice(0, 50)) {
-          await setDoc(doc(firestoreDb, PIPELINE_COLLECTION, deal.id), sanitizeForFirestore(deal), { merge: true }).catch(() => {});
+          await setDoc(doc(firestoreDb, PIPELINE_COLLECTION, deal.id), sanitizeForFirestore(sanitizeDealForCloud(deal)), { merge: true }).catch(() => {});
         }
       }
       return { count: localDeals.length, source: 'local' };

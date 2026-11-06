@@ -15,11 +15,28 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.9.3',
+    date: '2026-11-06',
+    commit: 'fix-db-integrity-cloud-sync-and-dsv-hierarchy',
+    title: 'Integridad en Bases de Datos Pipeline & Forecast, Sincronización Nube Bidireccional y Blindaje Jerárquico DSV',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Blindaje y saneamiento de Base de Datos Pipeline para Cloud Firestore: corrección de registros semilla deal_seed_059 y deal_seed_067 con endUser en blanco que violaban las reglas de seguridad de Firestore (size() >= 1).',
+      'Función sanitizeDealForCloud en pipelineStorage: asegura que cualquier oportunidad con campos vacíos de partner o endUser se transforme automáticamente con "-" antes de viajar a Firestore.',
+      'Corrección contable en deal_seed_062 (SupplyLine - Anglo American): alineación de productosSuscripciones a $220,000 USD para cuadrar con el total del negocio.',
+      'Activación de recordatorios de Price Protection en Pipeline: integración de parseFlexibleDate para admitir fechas con formato DD-MM-YYYY y DD/MM/YYYY con guiones, activando alertas y conteos en KPIs.',
+      'Sincronización bidireccional con Cloud Firestore en Forecast Comercial: nueva función syncForecastWithCloud reconciliando por updatedAt y lápidas tombstones, con nuevo botón "Nube" en la barra de herramientas de ForecastView.',
+      'Corrección de subtotales en registro FC-0007 de Forecast: productos alineado a $10,120 USD para consistencia contable.',
+      'Blindaje de líneas jerárquicas en DSV (dsvBomParser y dsvEngine): normalización estricta de líneas enteras a "1.0", "2.0", preservando sublíneas como "1.1.0", "1.0.10", "2.1.0", "2.3.1" sin degradación.',
+    ],
+  },
+  {
     version: '2.9.2',
     date: '2026-11-03',
     commit: 'fix-pipeline-filter-sums-and-currency-parsing',
     title: 'Recálculo Dinámico de KPIs al Filtrar en Pipeline, Parser Flexible de Moneda y Pie de Tabla con Totales',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Recálculo dinámico e instantáneo de los 5 KPIs del Pipeline Comercial (Total Pipeline, Forecast Ponderado, Prod.+Suscripciones, Servicios/Meraki y Cerrados) según los filtros activos (PM Responsable, Grupo de Ventas, Mes de Cierre, Etapa de Avance o Búsqueda).',

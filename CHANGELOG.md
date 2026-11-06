@@ -6,6 +6,22 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.9.3] - 2026-11-06
+### 🔧 Corregido, Optimizado y Mejorado (Integridad en Bases de Datos Pipeline & Forecast, Sincronización Nube Bidireccional y Blindaje Jerárquico DSV)
+- **Blindaje y Saneamiento de Base de Datos Pipeline para Cloud Firestore (`pipelineSeeds.ts` & `pipelineStorage.ts`):**
+  - Corrección de registros semilla `deal_seed_059` y `deal_seed_067` que contenían `endUser: ""` (cadena vacía), lo que provocaba rechazo por las reglas de seguridad de Firestore (`size() >= 1`). Se asignó el valor predeterminado `"-"` y se normalizaron los meses de cierre (`"Octubre"`, `"Julio"`).
+  - Implementación de `sanitizeDealForCloud` en `pipelineStorage.ts` para garantizar que cualquier oportunidad creada con `endUser` o `partner` en blanco sea saneada automáticamente a `"-"` antes de enviarse a Firestore.
+  - Corrección contable en `deal_seed_062` (*SupplyLine - Anglo American*), nivelando `productosSuscripciones` a $220,000 USD para cuadrar exactamente con el monto total del negocio ($220,000 USD).
+- **Activación de Recordatorios de Price Protection con Formato Flexible en Pipeline (`pipelineService.ts`):**
+  - Se reemplazó el constructor nativo `new Date()` por `parseFlexibleDate` en `calculatePipelineStats` y `generatePipelineReminders`.
+  - Ahora reconoce y calcula correctamente fechas en formato chileno/europeo (`DD-MM-YYYY` o `DD/MM/YYYY`) con guiones y barras, evitando el error `Invalid Date` y activando las alertas de vencimiento en las tarjetas KPI y panel lateral.
+- **Sincronización Bidireccional Nube Firestore en Forecast Comercial (`forecastStorage.ts` & `ForecastView.tsx`):**
+  - Nueva función `syncForecastWithCloud()` con reconciliación bidireccional basada en `updatedAt` y registro de lápidas (tombstones) para borrados seguros.
+  - Nuevo botón **"Nube"** en la barra de herramientas de `ForecastView.tsx` con spinner de carga y feedback emergente para sincronizar la matriz con Cloud Firestore en 1 clic.
+  - Corrección de subtotales en registro semilla `FC-0007` (*Blacknet S.A. - Tarapaca Small*), alineando `productos: 10120` con `usdIntcomex: 10120`.
+- **Blindaje de Líneas Jerárquicas en Exportación DSV (`dsvBomParser.ts` & `dsvEngine.ts`):**
+  - Incorporación de `normalizeLineNumber` para asegurar que las líneas enteras (`1`, `2`, `3`) se formateen estrictamente como `"1.0"`, `"2.0"`, `"3.0"` en la columna D (*SO Line Number*), mientras que líneas compuestas como `"1.1.0"`, `"1.0.10"`, `"2.1.0"`, `"2.3.1"` se preservan íntegras sin degradación.
+
 ## [v2.9.2] - 2026-11-03
 ### 🔧 Corregido y Optimizado (Recálculo Dinámico de KPIs al Filtrar en Pipeline, Parser Flexible y Totales en Tabla)
 - **Recálculo Dinámico de Métricas y KPIs al Filtrar en Pipeline (`PipelineView.tsx`):**

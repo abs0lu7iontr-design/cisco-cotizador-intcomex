@@ -242,3 +242,67 @@ export async function resetForecastToSeeds(): Promise<ForecastRecord[]> {
   writeLocalRecords(fresh, projectScope);
   return fresh;
 }
+
+/**
+ * Sincroniza bidireccionalmente el Forecast con Firestore Cloud reconciliando por `updatedAt`.
+ */
+export async function syncForecastWithCloud(): Promise<{ count: number; source: 'cloud' | 'local' }> {
+  const projectScope = getActiveProjectScopeKey();
+  const localRecords = await getForecastRecords();
+  const stones = getTombstones(projectScope);
+
+  const instance = getFirestoreInstance();
+  const firestoreDb = instance && instance.isReady ? instance.db : null;
+  if (!firestoreDb) {
+    return { count: localRecords.length, source: 'local' };
+  }
+
+  try {
+    const q = query(collection(firestoreDb, FORECAST_COLLECTION), orderBy('updatedAt', 'desc'));
+    const snap = await withTimeout(getDocs(q), 6000);
+
+    if (snap.empty) {
+      // Si la nube está vacía pero local tiene datos, subirlos en lote
+      if (localRecords.length > 0) {
+        for (const rec of localRecords.slice(0, 50)) {
+          await setDoc(doc(firestoreDb, FORECAST_COLLECTION, rec.id), sanitizeForFirestore(rec), { merge: true }).catch(() => {});
+        }
+      }
+      return { count: localRecords.length, source: 'local' };
+    }
+
+    const cloudRecordsMap = new Map<string, ForecastRecord>();
+    snap.forEach((d) => {
+      const data = d.data() as ForecastRecord;
+      if (data && data.id && !stones.has(data.id)) {
+        cloudRecordsMap.set(data.id, data);
+      }
+    });
+
+    const mergedMap = new Map<string, ForecastRecord>(cloudRecordsMap);
+
+    for (const local of localRecords) {
+      if (stones.has(local.id)) continue;
+      const cloud = mergedMap.get(local.id);
+      if (!cloud) {
+        mergedMap.set(local.id, local);
+      } else {
+        const localTime = new Date(local.updatedAt || local.createdAt).getTime();
+        const cloudTime = new Date(cloud.updatedAt || cloud.createdAt).getTime();
+        if (localTime > cloudTime) {
+          mergedMap.set(local.id, local);
+        }
+      }
+    }
+
+    const mergedList = Array.from(mergedMap.values()).sort(
+      (a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
+    );
+
+    writeLocalRecords(mergedList, projectScope);
+    return { count: mergedList.length, source: 'cloud' };
+  } catch (err) {
+    console.warn('[ForecastStorage] Fallback a datos locales tras error de sincronización nube:', err);
+    return { count: localRecords.length, source: 'local' };
+  }
+}

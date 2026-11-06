@@ -48,6 +48,7 @@ import {
   bulkSaveForecastRecords,
   deleteForecastRecord,
   resetForecastToSeeds,
+  syncForecastWithCloud,
 } from './forecastStorage';
 import {
   computeForecastStats,
@@ -92,6 +93,7 @@ export function ForecastView() {
   // Cross Sync Drawer / Modal State
   const [isCrossSyncModalOpen, setIsCrossSyncModalOpen] = useState(false);
   const [crossSyncStatus, setCrossSyncStatus] = useState<string | null>(null);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
 
   // Google Sheet / CSV Import Modal State
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -214,6 +216,24 @@ export function ForecastView() {
     }
   };
 
+  // Cloud Firestore Sync (Bidirectional pull + push)
+  const handleCloudSync = async () => {
+    try {
+      setIsSyncingCloud(true);
+      setCrossSyncStatus('Sincronizando matriz Forecast con Cloud Firestore...');
+      const res = await syncForecastWithCloud();
+      await loadRecords();
+      setCrossSyncStatus(
+        `¡Sincronización Cloud completada! ${res.count} oportunidades consolidadas desde ${res.source === 'cloud' ? 'la Nube' : 'el almacenamiento local'}.`
+      );
+      setTimeout(() => setCrossSyncStatus(null), 5000);
+    } catch (err: any) {
+      setCrossSyncStatus(`Error en sincronización Cloud: ${err.message || 'Error de conexión'}`);
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
   // Export to CSV matching 36 columns
   const handleExportCsv = () => {
     const csv = exportForecastToCsv(filteredRecords);
@@ -296,6 +316,17 @@ export function ForecastView() {
                   {reminders.length}
                 </span>
               )}
+            </button>
+
+            {/* Cloud Firestore Sync */}
+            <button
+              onClick={handleCloudSync}
+              disabled={isSyncingCloud}
+              className="px-3 py-2 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/30 text-xs font-medium text-sky-300 flex items-center gap-2 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+              title="Sincronizar matriz Forecast con Cloud Firestore"
+            >
+              <RefreshCw className={`w-4 h-4 text-sky-400 ${isSyncingCloud ? 'animate-spin' : ''}`} />
+              <span>Nube</span>
             </button>
 
             {/* Cross-Sync Multi-Module */}

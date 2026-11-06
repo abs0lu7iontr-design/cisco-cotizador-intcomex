@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.9.2",
-  "git_commit": "08bbe06",
+  "version": "2.9.3",
+  "git_commit": "b58b20b",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-03T18:21:13.848Z",
-  "release_notes": "fix(v2.9.1): dynamic kpi sum on filter, dark theme table aesthetic, and flexible dot-comma currency parsing",
+  "build_timestamp": "2026-11-06T16:25:26.166Z",
+  "release_notes": "fix(v2.9.2): dynamic kpi recalculation on pipeline filters, robust currency parsing, auto-sum and table footer",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

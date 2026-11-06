@@ -588,7 +588,7 @@ export function convertPipelineDealsToForecast(
 // Reminders & Expiration Engine
 // ----------------------------------------------------------------------------
 
-function parseFlexibleDate(dateStr?: string): Date | null {
+export function parseFlexibleDate(dateStr?: string): Date | null {
   if (!dateStr) return null;
   const trimmed = dateStr.trim();
   // Formato DD-MM-YYYY o DD/MM/YYYY
