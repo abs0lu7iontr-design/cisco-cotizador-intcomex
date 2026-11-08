@@ -6,6 +6,30 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.9.4] - 2026-11-08
+### 🚀 Añadido, Optimizado y Blindado (Motor Anti-Duplicación Multi-Vectorial y Carga Masiva Excel para Pipeline y Forecast)
+- **Motor Anti-Duplicación Multi-Vectorial en Pipeline Comercial (`pipelineService.ts`):**
+  - Implementación de `findMatchingPipelineDeal` con jerarquía de 4 vectores:
+    1. *Vector 1 (Primario):* Cisco CCW Deal ID oficial (# Registro de Oportunidad Marca) limpio de prefijos `#` y espacios.
+    2. *Vector 2:* Estimate ID oficial proveniente del módulo Cotizador.
+    3. *Vector 3 (Huella Compuesta):* Coincidencia de Partner + End User + Monto USD (dentro de tolerancia de $10 USD o ±2%).
+    4. *Vector 4 (Temporal):* Coincidencia de Partner + End User + Mes de Cierre / Fecha de Cotización.
+  - Protección de múltiples proyectos para un mismo cliente: Previene que diferentes negocios de un mismo cliente (por ejemplo Comtec Global con Chubb) colapsen erróneamente en un solo registro.
+  - Reconciliación Inteligente en Carga Excel (`importPipelineFromExcel`): Al re-subir planillas, las oportunidades existentes se enriquecen in-situ con nuevos datos (notas, fechas, Price Protection) sin crear filas duplicadas.
+- **Motor Anti-Duplicación Multi-Vectorial y Carga Excel en Forecast Comercial (`forecastService.ts`):**
+  - Expansión de `findMatchingForecastRecord` con 5 vectores jerárquicos:
+    1. *Vector 1:* Cisco CCW Deal ID o Promotion Authorization Number.
+    2. *Vector 2:* Cisco Sales Order (SO) o Intcomex Número de Venta (NV).
+    3. *Vector 3:* Purchase Order (PO) o Número de Orden de Compra (OC) validado con el Partner.
+    4. *Vector 4:* Estimate ID (`sourceEstimateId`).
+    5. *Vector 5 (Huella Compuesta):* Partner + End User + Monto USD (±2% o $10 USD) o Mes de Facturación.
+  - Nueva función `importForecastFromExcel` que procesa archivos `.xlsx`, `.xls` o `.csv`, mapea dinámicamente las 36 columnas oficiales y ejecuta reconciliación inteligente sin duplicar.
+- **Experiencia de Usuario y Modales de Importación (`PipelineView.tsx` & `ForecastView.tsx`):**
+  - En `ForecastView.tsx`: Nueva zona interactiva para arrastrar o seleccionar archivos Excel (`.xlsx`, `.xls`, `.csv`) con un solo clic, junto con la opción de pegar URL de Google Sheets o texto CSV.
+  - Reportes de importación detallados en ambas interfaces, informando con precisión cuántas oportunidades nuevas fueron creadas y cuántas existentes fueron enriquecidas/actualizadas sin duplicar.
+- **Suite de Pruebas de Integración y Anti-Duplicación (`tests/pipelineCommercial.test.ts` & `tests/forecastCommercial.test.ts`):**
+  - Pruebas automatizadas (Test 8 en Pipeline y Test 11 en Forecast) que verifican la jerarquía multi-vectorial, la no-colisión de deals para el mismo cliente y la idempotencia en cargas Excel. 100% de 24 suites de pruebas pasando con éxito.
+
 ## [v2.9.3] - 2026-11-06
 ### 🔧 Corregido, Optimizado y Mejorado (Integridad en Bases de Datos Pipeline & Forecast, Sincronización Nube Bidireccional y Blindaje Jerárquico DSV)
 - **Blindaje y Saneamiento de Base de Datos Pipeline para Cloud Firestore (`pipelineSeeds.ts` & `pipelineStorage.ts`):**

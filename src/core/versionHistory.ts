@@ -15,11 +15,28 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.9.4',
+    date: '2026-11-08',
+    commit: 'feat-multi-vector-deduplication-and-excel-import',
+    title: 'Motor Anti-Duplicación Multi-Vectorial y Carga Masiva Excel para Pipeline y Forecast',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Motor Anti-Duplicación Multi-Vectorial en Pipeline Comercial (findMatchingPipelineDeal): jerarquía de 4 vectores (Deal ID oficial Cisco, Estimate ID, Huella Compuesta Partner+EndUser+USD ±2%, y Mes/Fecha) que reconcilia oportunidades existentes sin duplicarlas.',
+      'Protección de múltiples proyectos para un mismo cliente: previene que diferentes oportunidades de un mismo cliente (ej. Comtec Global con Chubb) colapsen indebidamente.',
+      'Reconciliación Inteligente en Carga Excel de Pipeline (importPipelineFromExcel): al importar planillas actualizadas, los registros existentes se enriquecen con notas, fechas y Price Protection sin crear filas duplicadas.',
+      'Motor Anti-Duplicación Multi-Vectorial en Forecast Comercial (findMatchingForecastRecord): jerarquía de 5 vectores (Deal ID/Promo Auth, Cisco SO / Intcomex NV, PO/OC validado por Partner, Estimate ID, y Huella Compuesta Partner+EndUser+USD ±2%).',
+      'Carga e importación masiva de archivos Excel en Forecast (importForecastFromExcel): soporte nativo para archivos .xlsx, .xls y .csv con mapeo inteligente de las 36 columnas oficiales y enriquecimiento in-situ.',
+      'Nueva zona de arrastre y selección de archivos Excel en el modal de Forecast junto a la sincronización con Google Sheets/CSV, con reportes precisos de oportunidades nuevas creadas vs registros actualizados.',
+      'Blindaje verificado al 100% en las suites automatizadas de pruebas con 24 suites ejecutadas exitosamente.',
+    ],
+  },
+  {
     version: '2.9.3',
     date: '2026-11-06',
     commit: 'fix-db-integrity-cloud-sync-and-dsv-hierarchy',
     title: 'Integridad en Bases de Datos Pipeline & Forecast, Sincronización Nube Bidireccional y Blindaje Jerárquico DSV',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Blindaje y saneamiento de Base de Datos Pipeline para Cloud Firestore: corrección de registros semilla deal_seed_059 y deal_seed_067 con endUser en blanco que violaban las reglas de seguridad de Firestore (size() >= 1).',

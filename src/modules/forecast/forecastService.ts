@@ -4,6 +4,7 @@
 // Motor anti-duplicación estricto, Recordatorios y Sincronización Google Sheets
 // ============================================================================
 
+import * as XLSX from 'xlsx';
 import {
   ForecastRecord,
   ForecastStats,
@@ -95,13 +96,19 @@ export interface MatchCandidate {
   oc?: string;
   partner?: string;
   endUser?: string;
+  usd?: number;
+  mesFacturacion?: string;
+  fechaCotizacion?: string;
+  sourceEstimateId?: string;
 }
 
 /**
- * Busca un registro coincidente en el Forecast con estrategia de 3 niveles jerárquicos:
- * 1. Coincidencia exacta por Deal ID / Promotion Authorization Number (si no es 'NA', vacío o genérico)
- * 2. Coincidencia exacta por Cisco SO o Intcomex Número de Venta
- * 3. Coincidencia por Partner + End User normalizados
+ * Motor Anti-Duplicación Multi-Vectorial para Forecast Comercial:
+ * 1. Coincidencia exacta por Deal ID / Promotion Authorization Number (Cisco CCW)
+ * 2. Coincidencia exacta por Cisco SO (Sales Order) o Intcomex Número de Venta (NV)
+ * 3. Coincidencia por PO / OC cuando el Partner coincide
+ * 4. Coincidencia por sourceEstimateId
+ * 5. Coincidencia por Partner + End User + Monto USD (dentro de tolerancia de $10 o ±2%) o Mes de Facturación
  */
 export function findMatchingForecastRecord(
   records: ForecastRecord[],
@@ -109,21 +116,24 @@ export function findMatchingForecastRecord(
 ): ForecastRecord | undefined {
   if (!candidate) return undefined;
 
-  // Nivel 1: Deal ID / Promo Auth
-  const cleanDeal = candidate.dealId?.trim();
-  if (cleanDeal && cleanDeal !== 'NA' && cleanDeal !== 'N/A' && cleanDeal.length >= 4) {
-    const match = records.find(
-      (r) =>
-        r.deal?.trim().toLowerCase() === cleanDeal.toLowerCase() ||
-        r.promotionAuthorizationNumber?.trim().toLowerCase() === cleanDeal.toLowerCase()
-    );
+  // Vector 1: Deal ID / Promotion Authorization Number oficial
+  const cleanDeal = candidate.dealId?.trim().replace(/^[#\s]+/, '');
+  if (cleanDeal && cleanDeal !== 'NA' && cleanDeal !== 'N/A' && cleanDeal !== '-' && cleanDeal.length >= 4) {
+    const match = records.find((r) => {
+      const rDeal = r.deal?.trim().replace(/^[#\s]+/, '');
+      const rPromo = r.promotionAuthorizationNumber?.trim().replace(/^[#\s]+/, '');
+      return (
+        (rDeal && rDeal.toLowerCase() === cleanDeal.toLowerCase()) ||
+        (rPromo && rPromo.toLowerCase() === cleanDeal.toLowerCase())
+      );
+    });
     if (match) return match;
   }
 
-  // Nivel 2: SO (Sales Order Cisco) o Número de Venta Intcomex
-  const cleanSo = candidate.so?.trim();
-  if (cleanSo && cleanSo !== 'NA' && cleanSo.length >= 5) {
-    const match = records.find((r) => r.so?.trim() === cleanSo);
+  // Vector 2: Cisco SO (Sales Order) o Intcomex Número de Venta (NV)
+  const cleanSo = candidate.so?.trim().replace(/^[#\s]+/, '');
+  if (cleanSo && cleanSo !== 'NA' && cleanSo !== 'N/A' && cleanSo !== '-' && cleanSo.length >= 5) {
+    const match = records.find((r) => r.so?.trim().replace(/^[#\s]+/, '') === cleanSo);
     if (match) return match;
   }
 
@@ -133,20 +143,72 @@ export function findMatchingForecastRecord(
     if (match) return match;
   }
 
-  // Nivel 3: Partner + End User
+  // Vector 3: PO (Purchase Order) u OC (Orden de Compra) con Partner coincidente
+  const cleanPo = candidate.po?.trim();
+  const cleanOc = candidate.oc?.trim();
   const normPartner = normalizeMatchKey(candidate.partner);
-  const normEndUser = normalizeMatchKey(candidate.endUser);
-  if (normPartner && normEndUser && normEndUser !== 'na') {
+  if ((cleanPo && cleanPo.length >= 4) || (cleanOc && cleanOc.length >= 4)) {
     const match = records.find((r) => {
       const rPartner = normalizeMatchKey(r.partner);
-      const rEndUser = normalizeMatchKey(r.endUser || r.endCustomerName);
-      if (!rPartner || !rEndUser) return false;
-      return (
-        (rPartner.includes(normPartner) || normPartner.includes(rPartner)) &&
-        (rEndUser.includes(normEndUser) || normEndUser.includes(rEndUser))
-      );
+      const partnerMatches = !normPartner || !rPartner || rPartner.includes(normPartner) || normPartner.includes(rPartner);
+      if (!partnerMatches) return false;
+      return (cleanPo && r.po?.trim() === cleanPo) || (cleanOc && r.oc?.trim() === cleanOc);
     });
     if (match) return match;
+  }
+
+  // Vector 4: Estimate ID
+  if (candidate.sourceEstimateId && candidate.sourceEstimateId.trim().length >= 4) {
+    const cleanEst = candidate.sourceEstimateId.trim().toLowerCase();
+    const match = records.find(
+      (r) => r.sourceEstimateId && r.sourceEstimateId.trim().toLowerCase() === cleanEst
+    );
+    if (match) return match;
+  }
+
+  // Vector 5: Composite Partner + End User + Monto / Mes
+  const normEndUser = normalizeMatchKey(candidate.endUser);
+  if (normPartner && normEndUser && normEndUser !== 'na' && normEndUser !== '-') {
+    const candidateUsd = typeof candidate.usd === 'number' ? candidate.usd : 0;
+    const candidateMes = (candidate.mesFacturacion || '').trim().toLowerCase();
+    const candidateFecha = (candidate.fechaCotizacion || '').trim();
+
+    for (const r of records) {
+      const rPartner = normalizeMatchKey(r.partner);
+      const rEndUser = normalizeMatchKey(r.endUser || r.endCustomerName);
+      if (!rPartner || !rEndUser) continue;
+
+      const partnerMatches = rPartner.includes(normPartner) || normPartner.includes(rPartner);
+      const endUserMatches = rEndUser.includes(normEndUser) || normEndUser.includes(rEndUser);
+
+      if (partnerMatches && endUserMatches) {
+        // Sub-criterio A: Monto coincidente (±2% o 10 USD)
+        if (candidateUsd > 0 && r.usdIntcomex > 0) {
+          const diff = Math.abs(r.usdIntcomex - candidateUsd);
+          const pctDiff = diff / Math.max(r.usdIntcomex, candidateUsd);
+          if (diff <= 10 || pctDiff <= 0.02) {
+            return r;
+          }
+        }
+
+        // Sub-criterio B: Mes de Facturación coincidente
+        if (candidateMes && r.mesFacturacion && r.mesFacturacion.trim().toLowerCase() === candidateMes) {
+          if (candidateUsd === 0 || r.usdIntcomex === 0 || Math.abs(r.usdIntcomex - candidateUsd) / Math.max(r.usdIntcomex, candidateUsd) <= 0.15) {
+            return r;
+          }
+        }
+
+        // Sub-criterio C: Fecha de Cotización idéntica
+        if (candidateFecha && r.fechaCotizacion && r.fechaCotizacion.trim() === candidateFecha) {
+          return r;
+        }
+
+        // Sub-criterio D: Fallback cuando no se suministraron montos ni fechas discriminatorias
+        if (candidateUsd === 0 && !candidateMes && !candidateFecha) {
+          return r;
+        }
+      }
+    }
   }
 
   return undefined;
@@ -784,19 +846,38 @@ export function parseCsvToForecastRecords(
     const deal = getVal('deal');
     const so = getVal('so');
     const nv = getVal('numeroVenta');
+    const po = getVal('po');
+    const oc = getVal('oc');
+    const usd = getNum('usdIntcomex');
+    const mesFact = getVal('mesFacturacion');
+    const fechaCot = getVal('fechaCotizacion');
 
-    if (!partner && !deal && !so) continue;
+    if (!partner && !deal && !so && usd === 0) continue;
 
-    // Deduplication check against existing
+    // Deduplication check against existing pool
     const existingMatch = findMatchingForecastRecord([...existingRecords, ...imported], {
       dealId: deal,
       so,
       numeroVenta: nv,
+      po,
+      oc,
       partner,
       endUser,
+      usd,
+      mesFacturacion: mesFact,
+      fechaCotizacion: fechaCot,
     });
 
     if (existingMatch) {
+      // Reconciliación Inteligente: enriquecer registro existente
+      existingMatch.deal = deal || existingMatch.deal;
+      existingMatch.so = so || existingMatch.so;
+      existingMatch.po = po || existingMatch.po;
+      existingMatch.oc = oc || existingMatch.oc;
+      existingMatch.numeroVenta = nv || existingMatch.numeroVenta;
+      existingMatch.usdIntcomex = usd > 0 ? usd : existingMatch.usdIntcomex;
+      existingMatch.mesFacturacion = mesFact || existingMatch.mesFacturacion;
+      existingMatch.updatedAt = nowIso;
       duplicateCount++;
       continue;
     }
@@ -811,12 +892,12 @@ export function parseCsvToForecastRecords(
       partner,
       ejecutivoPartner: getVal('ejecutivoPartner'),
       endUser,
-      usdIntcomex: getNum('usdIntcomex'),
+      usdIntcomex: usd,
       emailEjecutivoPartner: getVal('emailEjecutivoPartner'),
-      mesFacturacion: getVal('mesFacturacion'),
+      mesFacturacion: mesFact,
       emailClienteFinal: getVal('emailClienteFinal'),
       detalleProductos: getVal('detalleProductos'),
-      oc: getVal('oc'),
+      oc,
       deal,
       productos: getNum('productos'),
       suscripciones: getNum('suscripciones'),
@@ -826,7 +907,7 @@ export function parseCsvToForecastRecords(
       grupoVentas: getVal('grupoVentas', 'Top Volume'),
       observacion: getVal('observacion'),
       dsvSubmission: getVal('dsvSubmission'),
-      po: getVal('po'),
+      po,
       so,
       submittedDate: getVal('submittedDate'),
       clienteCisco: getVal('clienteCisco'),
@@ -848,6 +929,181 @@ export function parseCsvToForecastRecords(
   }
 
   return { imported, duplicateCount, errors };
+}
+
+/**
+ * Parsea un archivo Excel (.xlsx / .xls) o CSV en formato Forecast Intcomex (36 columnas)
+ * e importa/reconcilia los registros aplicando el Motor Anti-Duplicación Multi-Vectorial.
+ */
+export async function importForecastFromExcel(
+  arrayBuffer: ArrayBuffer,
+  existingRecords: ForecastRecord[]
+): Promise<{
+  imported: ForecastRecord[];
+  addedCount: number;
+  updatedCount: number;
+  duplicatesSkipped: number;
+}> {
+  const wb = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws) throw new Error('El archivo Excel no contiene ninguna hoja válida.');
+
+  const rawRows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  if (!rawRows || rawRows.length < 2) throw new Error('El archivo no contiene filas de datos.');
+
+  const cleanStr = (val: any): string => (val === null || val === undefined ? '' : String(val).trim());
+  const parseNum = (val: any): number => parseFlexibleNumber(val);
+
+  // 1. Identificar fila de encabezados y mapear columnas
+  let headerRowIdx = 0;
+  const colMap: Record<string, number> = {};
+
+  for (let r = 0; r < Math.min(rawRows.length, 6); r++) {
+    const row = rawRows[r].map((c) => cleanStr(c).toLowerCase());
+    const matchCount = FORECAST_36_COLUMNS.filter((col) =>
+      row.some((tok) => tok.includes(col.label.toLowerCase()) || col.label.toLowerCase().includes(tok))
+    ).length;
+
+    if (matchCount >= 3) {
+      headerRowIdx = r;
+      FORECAST_36_COLUMNS.forEach((col) => {
+        const idx = row.findIndex((tok) => tok.includes(col.label.toLowerCase()) || col.label.toLowerCase().includes(tok));
+        if (idx >= 0) colMap[col.key] = idx;
+      });
+      break;
+    }
+  }
+
+  const getCol = (row: any[], key: keyof ForecastRecord, fallbackIdx: number): string => {
+    const idx = colMap[key] !== undefined ? colMap[key] : fallbackIdx;
+    return cleanStr(row[idx]);
+  };
+
+  const getNumCol = (row: any[], key: keyof ForecastRecord, fallbackIdx: number): number => {
+    const str = getCol(row, key, fallbackIdx);
+    return parseNum(str);
+  };
+
+  const pool = [...existingRecords];
+  let addedCount = 0;
+  let updatedCount = 0;
+  const nowIso = new Date().toISOString();
+  const dataRows = rawRows.slice(headerRowIdx + 1);
+
+  for (let i = 0; i < dataRows.length; i++) {
+    const row = dataRows[i];
+    if (!row || row.every((c: any) => !cleanStr(c))) continue;
+
+    const partner = getCol(row, 'partner', 4);
+    const endUser = getCol(row, 'endUser', 6);
+    const deal = getCol(row, 'deal', 13);
+    const so = getCol(row, 'so', 23);
+    const po = getCol(row, 'po', 22);
+    const oc = getCol(row, 'oc', 12);
+    const nv = getCol(row, 'numeroVenta', 29);
+    const usd = getNumCol(row, 'usdIntcomex', 7);
+    const mesFact = getCol(row, 'mesFacturacion', 9);
+    const fechaCot = getCol(row, 'fechaCotizacion', 1);
+
+    if (!partner && !deal && !so && usd === 0) continue;
+
+    // Motor Anti-Duplicación Multi-Vectorial
+    const match = findMatchingForecastRecord(pool, {
+      dealId: deal,
+      so,
+      numeroVenta: nv,
+      po,
+      oc,
+      partner,
+      endUser,
+      usd,
+      mesFacturacion: mesFact,
+      fechaCotizacion: fechaCot,
+    });
+
+    if (match) {
+      const idx = pool.findIndex((r) => r.id === match.id);
+      if (idx >= 0) {
+        const cur = pool[idx];
+        pool[idx] = {
+          ...cur,
+          deal: deal || cur.deal,
+          so: so || cur.so,
+          po: po || cur.po,
+          oc: oc || cur.oc,
+          numeroVenta: nv || cur.numeroVenta,
+          usdIntcomex: usd > 0 ? usd : cur.usdIntcomex,
+          mesFacturacion: mesFact || cur.mesFacturacion,
+          pmResponsable: getCol(row, 'pmResponsable', 3) || cur.pmResponsable,
+          ejecutivoPartner: getCol(row, 'ejecutivoPartner', 5) || cur.ejecutivoPartner,
+          productos: getNumCol(row, 'productos', 14) || cur.productos,
+          suscripciones: getNumCol(row, 'suscripciones', 15) || cur.suscripciones,
+          servicios: getNumCol(row, 'servicios', 16) || cur.servicios,
+          meraki: getNumCol(row, 'meraki', 17) || cur.meraki,
+          am: getCol(row, 'am', 18) || cur.am,
+          grupoVentas: getCol(row, 'grupoVentas', 19) || cur.grupoVentas,
+          bodega: getCol(row, 'bodega', 30) || cur.bodega,
+          credit: getCol(row, 'credit', 33) || cur.credit,
+          observacion: getCol(row, 'observacion', 20) || cur.observacion,
+          updatedAt: nowIso,
+        };
+        updatedCount++;
+      }
+    } else {
+      const newId = `FC-${String(pool.length + 1).padStart(4, '0')}`;
+      const newRec: ForecastRecord = {
+        id: newId,
+        fechaLevantamiento: getCol(row, 'fechaLevantamiento', 0) || fechaCot,
+        fechaCotizacion: fechaCot || getCol(row, 'fechaLevantamiento', 0),
+        marca: getCol(row, 'marca', 2) || 'CISCO',
+        pmResponsable: getCol(row, 'pmResponsable', 3) || 'Raul Cuevas',
+        partner,
+        ejecutivoPartner: getCol(row, 'ejecutivoPartner', 5),
+        endUser,
+        usdIntcomex: usd,
+        emailEjecutivoPartner: getCol(row, 'emailEjecutivoPartner', 8),
+        mesFacturacion: mesFact,
+        emailClienteFinal: getCol(row, 'emailClienteFinal', 10),
+        detalleProductos: getCol(row, 'detalleProductos', 11),
+        oc,
+        deal,
+        productos: getNumCol(row, 'productos', 14),
+        suscripciones: getNumCol(row, 'suscripciones', 15),
+        servicios: getNumCol(row, 'servicios', 16),
+        meraki: getNumCol(row, 'meraki', 17),
+        am: getCol(row, 'am', 18),
+        grupoVentas: getCol(row, 'grupoVentas', 19) || 'Top Volume',
+        observacion: getCol(row, 'observacion', 20),
+        dsvSubmission: getCol(row, 'dsvSubmission', 21),
+        po,
+        so,
+        submittedDate: getCol(row, 'submittedDate', 24),
+        clienteCisco: getCol(row, 'clienteCisco', 25),
+        promotionAuthorizationNumber: getCol(row, 'promotionAuthorizationNumber', 26),
+        endCustomerName: getCol(row, 'endCustomerName', 27) || endUser,
+        endCustomerAddress1: getCol(row, 'endCustomerAddress1', 28),
+        numeroVenta: nv,
+        bodega: getCol(row, 'bodega', 30) || 'E1',
+        caso: getCol(row, 'caso', 31),
+        priceProtectionExpiryDate: getCol(row, 'priceProtectionExpiryDate', 32),
+        credit: getCol(row, 'credit', 33) || 'Aprobado',
+        nuevoCaso: getCol(row, 'nuevoCaso', 34),
+        confirmacionCredito: getCol(row, 'confirmacionCredito', 35),
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+
+      pool.push(newRec);
+      addedCount++;
+    }
+  }
+
+  return {
+    imported: pool,
+    addedCount,
+    updatedCount,
+    duplicatesSkipped: updatedCount,
+  };
 }
 
 /**

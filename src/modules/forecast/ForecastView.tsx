@@ -4,7 +4,7 @@
 // Motor Anti-Duplicación, Recordatorios Comerciales y Sincronización Google Sheets
 // ============================================================================
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   TrendingUp,
   Plus,
@@ -61,6 +61,7 @@ import {
   exportForecastToCsv,
   parseCsvToForecastRecords,
   importFromGoogleSheetsCsv,
+  importForecastFromExcel,
 } from './forecastService';
 import { ForecastModal } from './ForecastModal';
 import { useCiscoAutomatedStore } from '../../core/store';
@@ -99,6 +100,7 @@ export function ForecastView() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importInput, setImportInput] = useState('');
   const [importFeedback, setImportFeedback] = useState<{ count: number; duplicates: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load records
   const loadRecords = async () => {
@@ -258,15 +260,46 @@ export function ForecastView() {
         setRecords(merged);
       }
       setImportFeedback({ count: res.count, duplicates: res.duplicatesSkipped });
-      if (res.count > 0) {
+      if (res.count > 0 || res.duplicatesSkipped > 0) {
         setTimeout(() => {
           setIsImportModalOpen(false);
           setImportInput('');
           setImportFeedback(null);
-        }, 1500);
+        }, 2000);
       }
     } catch (err: any) {
       alert(`Error importando: ${err.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Excel / CSV file upload with intelligent multi-vector anti-duplication
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsLoading(true);
+      const buffer = await file.arrayBuffer();
+      const res = await importForecastFromExcel(buffer, records);
+      const saved = await bulkSaveForecastRecords(res.imported);
+      setRecords(saved);
+      setImportFeedback({
+        count: res.addedCount,
+        duplicates: res.updatedCount,
+      });
+      if (res.addedCount > 0 || res.updatedCount > 0) {
+        setTimeout(() => {
+          setIsImportModalOpen(false);
+          setImportFeedback(null);
+        }, 2200);
+      }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (err: any) {
+      alert(`Error procesando archivo Excel: ${err?.message || err}`);
     } finally {
       setIsLoading(false);
     }
@@ -340,14 +373,14 @@ export function ForecastView() {
               <span>Cruzar con Módulos</span>
             </button>
 
-            {/* Google Sheets / CSV Import */}
+            {/* Excel / Google Sheets / CSV Import */}
             <button
               onClick={() => setIsImportModalOpen(true)}
               className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 flex items-center gap-2 transition-all shadow-sm"
-              title="Importar desde Google Sheets o CSV"
+              title="Importar desde Excel (.xlsx, .xls) o Google Sheets/CSV con motor anti-duplicación"
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-              <span>Google Sheet / CSV</span>
+              <span>Importar Excel / Sheets</span>
             </button>
 
             {/* Export CSV */}
@@ -844,26 +877,53 @@ export function ForecastView() {
         </div>
       )}
 
-      {/* Google Sheet / CSV Import Modal */}
+      {/* Google Sheet / CSV / Excel Import Modal */}
       {isImportModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-lg w-full p-6 text-slate-100 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
-                <h3 className="font-bold text-base text-white">Importar Google Sheet o CSV</h3>
+                <h3 className="font-bold text-base text-white">Importar Forecast (Excel / Google Sheets / CSV)</h3>
               </div>
               <button onClick={() => setIsImportModalOpen(false)} className="text-slate-400 hover:text-white">
                 ✕
               </button>
             </div>
 
+            {/* Direct Excel File Upload Area */}
+            <div
+              className="border-2 border-dashed border-emerald-500/40 hover:border-emerald-500/80 bg-emerald-500/5 hover:bg-emerald-500/10 rounded-xl p-5 text-center transition-all cursor-pointer group"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx, .xls, .csv"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <Upload className="w-8 h-8 text-emerald-400 mx-auto mb-2 group-hover:scale-110 transition-transform" />
+              <div className="text-xs font-semibold text-emerald-300">
+                Haz clic aquí para cargar archivo Excel (.xlsx, .xls, .csv)
+              </div>
+              <div className="text-[11px] text-slate-400 mt-1">
+                Motor con detección inteligente de 36 columnas y anti-duplicación multi-vectorial
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 my-2 text-xs text-slate-500 font-medium">
+              <div className="h-px bg-slate-800 flex-1" />
+              <span>O sincronizar por Google Sheets / Texto</span>
+              <div className="h-px bg-slate-800 flex-1" />
+            </div>
+
             <p className="text-xs text-slate-400">
-              Pega la URL pública de un Google Sheet publicado en la web (Archivo &rarr; Compartir &rarr; Publicar en la web como CSV) o pega directamente las filas copiadas de Excel/Google Sheet.
+              Pega la URL pública de un Google Sheet publicado en la web (Archivo &rarr; Compartir &rarr; Publicar como CSV) o pega directamente las filas copiadas de Excel/Google Sheet.
             </p>
 
             <textarea
-              rows={5}
+              rows={4}
               value={importInput}
               onChange={(e) => setImportInput(e.target.value)}
               placeholder="https://docs.google.com/spreadsheets/d/... o pega texto CSV/TSV aquí"
@@ -872,9 +932,9 @@ export function ForecastView() {
 
             {importFeedback && (
               <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4" />
+                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
                 <span>
-                  ¡Importación finalizada! Se agregaron {importFeedback.count} registros nuevos. ({importFeedback.duplicates} duplicados omitidos automáticamente).
+                  ¡Importación finalizada sin duplicar! Se agregaron {importFeedback.count} oportunidades nuevas y se enriquecieron {importFeedback.duplicates} registros existentes.
                 </span>
               </div>
             )}
@@ -894,7 +954,7 @@ export function ForecastView() {
                 className="px-4 py-2 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold flex items-center gap-2"
               >
                 <Upload className="w-3.5 h-3.5" />
-                <span>{isLoading ? 'Importando...' : 'Procesar e Importar'}</span>
+                <span>{isLoading ? 'Importando...' : 'Importar Sheets/Texto'}</span>
               </button>
             </div>
           </div>

@@ -200,7 +200,7 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
       await loadDeals(true);
       setFeedback({
         type: 'success',
-        text: `Importación completada con éxito: ${res.importedCount} oportunidades cargadas.`,
+        text: `¡Importación completada sin duplicar! ${res.addedCount} oportunidades nuevas creadas, ${res.updatedCount} existentes actualizadas.`,
       });
     } catch (err: any) {
       setFeedback({ type: 'error', text: `Error al importar archivo: ${err?.message || err}` });

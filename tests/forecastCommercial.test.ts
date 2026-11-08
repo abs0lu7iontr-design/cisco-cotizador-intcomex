@@ -19,8 +19,10 @@ import {
   generateForecastReminders,
   exportForecastToCsv,
   parseCsvToForecastRecords,
+  importForecastFromExcel,
   parseFlexibleNumber,
 } from '../src/modules/forecast/forecastService';
+import * as XLSX from 'xlsx';
 import { generatePipelineReminders } from '../src/modules/pipeline/pipelineService';
 import { ProcessedEstimateResult } from '../src/core/types';
 import { BoOrderTrackingRecord } from '../src/modules/bo/boTrackingTypes';
@@ -333,6 +335,140 @@ assert.ok(raulStats.totalUsdIntcomex < allStats.totalUsdIntcomex, 'El monto suma
 assert.ok(raulStats.totalUsdIntcomex > 0, 'El monto sumado de Raul Cuevas debe ser mayor a 0');
 
 console.log(`  ✅ KPIs dinámicos verificados: Global=${allStats.totalUsdIntcomex.toLocaleString()} USD (${allStats.totalRecords}) vs Raul Cuevas=${raulStats.totalUsdIntcomex.toLocaleString()} USD (${raulStats.totalRecords}).`);
+
+// ----------------------------------------------------------------------------
+// Test 11: Motor Anti-Duplicación Multi-Vectorial y Carga Excel en Forecast
+// ----------------------------------------------------------------------------
+console.log('\n▶ Test 11: Motor Anti-Duplicación Multi-Vectorial (findMatchingForecastRecord & importForecastFromExcel)');
+
+// 11.1: Coincidencia por Cisco SO
+const matchSoRecord = findMatchingForecastRecord(INITIAL_FORECAST_SEEDS, {
+  so: '  #120636454  ',
+  partner: 'Otro Partner Inventado',
+});
+assert.ok(matchSoRecord, 'Debe coincidir por Cisco SO');
+assert.strictEqual(matchSoRecord?.id, 'FC-0002');
+
+// 11.2: Coincidencia por Purchase Order (PO) / OC
+const seedsWithPo: ForecastRecord[] = [
+  ...INITIAL_FORECAST_SEEDS,
+  {
+    ...INITIAL_FORECAST_SEEDS[0],
+    id: 'FC-9999',
+    po: 'PO-CLIENT-7788',
+    partner: 'Claro Chile',
+    endUser: 'Entel',
+  },
+];
+const matchPoRecord = findMatchingForecastRecord(seedsWithPo, {
+  po: 'PO-CLIENT-7788',
+  partner: 'Claro Chile',
+});
+assert.ok(matchPoRecord, 'Debe coincidir por PO + Partner');
+assert.strictEqual(matchPoRecord?.id, 'FC-9999');
+
+// 11.3: Coincidencia por Huella Compuesta Partner + EndUser + Monto USD (±2%)
+const matchCompositeForecast = findMatchingForecastRecord(INITIAL_FORECAST_SEEDS, {
+  partner: 'Advisers TIC',
+  endUser: 'SAESA',
+  usd: 11249, // Original es 11248.41
+});
+assert.ok(matchCompositeForecast, 'Debe coincidir por huella compuesta Partner + EndUser + USD ±2%');
+assert.strictEqual(matchCompositeForecast?.id, 'FC-0002');
+
+// 11.4: Importación Excel sin duplicar
+const forecastExcelRows = [
+  FORECAST_36_COLUMNS.map((c) => c.label),
+  // Fila duplicada existente (FC-0002 SAESA / Deal 84365221) pero con nuevo número de venta
+  [
+    '22-10-2026',
+    '22-10-2026',
+    'CISCO',
+    'Raul Cuevas',
+    'Advisers TIC',
+    'Nelson Martinez',
+    'SAESA',
+    '11,248.41',
+    'nelson@advisers.cl',
+    '31-12-2026',
+    'saesa@saesa.cl',
+    'Switching Catalyst',
+    'OC-SAESA-11',
+    '84365221',
+    '10,000',
+    '0',
+    '1,248.41',
+    '0',
+    'J. Galloni',
+    'Top Volume',
+    'Actualización vía Excel',
+    'DSV-OK',
+    'PO-9911',
+    '120636454',
+    '2026-10-22',
+    'SAESA SPA',
+    '84365221',
+    'SAESA',
+    'Av. Los Conquistadores',
+    '55554444', // Nuevo NV
+    'E1',
+    'CAS-1122',
+    '2026-12-31',
+    'Aprobado',
+    'NC-99',
+    'Aprobado',
+  ],
+  // Fila 100% nueva
+  [
+    '01-11-2026',
+    '01-11-2026',
+    'CISCO',
+    'Raul Cuevas',
+    'Partner Inédito SpA',
+    'Maria Lopez',
+    'Banco Nuevo',
+    '50,000.00',
+    'maria@inedito.cl',
+    '15-12-2026',
+    'banco@nuevo.cl',
+    'Meraki MR',
+    'OC-BN-01',
+    '99887766',
+    '40,000',
+    '0',
+    '0',
+    '10,000',
+    'AM Gomez',
+    'Corporate',
+    'Deal nuevo cargado por Excel',
+    '',
+    '',
+    '',
+    '',
+    'Banco Nuevo',
+    '99887766',
+    'Banco Nuevo',
+    'Av. Providencia 1234',
+    '',
+    'E1',
+    '',
+    '',
+    'Aprobado',
+    '',
+    '',
+  ],
+];
+
+const wbFc = XLSX.utils.book_new();
+const wsFc = XLSX.utils.aoa_to_sheet(forecastExcelRows);
+XLSX.utils.book_append_sheet(wbFc, wsFc, 'Forecast');
+const fcBuffer = XLSX.write(wbFc, { type: 'array', bookType: 'xlsx' });
+
+const fcRes = await importForecastFromExcel(fcBuffer, INITIAL_FORECAST_SEEDS.slice(0, 10));
+assert.strictEqual(fcRes.addedCount, 1, 'Debe haber agregado solo 1 deal nuevo');
+assert.strictEqual(fcRes.updatedCount, 1, 'Debe haber actualizado 1 deal existente sin duplicar');
+
+console.log('  ✅ Carga e Importación Excel en Forecast con motor Anti-Duplicación validada exitosamente.');
 
 console.log('\n============================================================');
 console.log('🎉 TODAS LAS PRUEBAS DE FORECAST COMERCIAL (v2.9) PASARON CON ÉXITO!');

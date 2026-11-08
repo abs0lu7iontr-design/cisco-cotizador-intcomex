@@ -12,7 +12,7 @@ import {
 } from './pipelineTypes';
 import { ProcessedEstimateResult, UserSession } from '../../core/types';
 import { savePipelineDeal, getPipelineDeals } from './pipelineStorage';
-import { parseFlexibleNumber, parseFlexibleDate } from '../forecast/forecastService';
+import { parseFlexibleNumber, parseFlexibleDate, normalizeMatchKey } from '../forecast/forecastService';
 
 // ----------------------------------------------------------------------------
 // 1. Estadísticas y Agregaciones de Negocio
@@ -220,8 +220,100 @@ export function generatePipelineReminders(deals: PipelineDealRecord[]): Pipeline
 }
 
 // ----------------------------------------------------------------------------
-// 3. Cruce de Datos con Cotizador Cisco CCW & Historial Estimates
+// 3. Cruce de Datos con Cotizador Cisco CCW & Motor Anti-Duplicación
 // ----------------------------------------------------------------------------
+
+export interface PipelineMatchCandidate {
+  dealId?: string;
+  sourceEstimateId?: string;
+  partner?: string;
+  endUser?: string;
+  usd?: number;
+  mesCierre?: string;
+  fechaCotizacion?: string;
+}
+
+/**
+ * Motor Anti-Duplicación Multi-Vectorial para el Pipeline Comercial:
+ * - Vector 1: Deal ID oficial Cisco CCW (# Registro Oportunidad Marca) limpio y normalizado.
+ * - Vector 2: Estimate ID si provienen de cotizaciones del cotizador.
+ * - Vector 3: Composite Partner + End User + Monto USD (dentro de tolerancia de $10 o ±2%).
+ * - Vector 4: Composite Partner + End User + Mes de Cierre / Fecha de Cotización.
+ */
+export function findMatchingPipelineDeal(
+  deals: PipelineDealRecord[],
+  candidate: PipelineMatchCandidate
+): PipelineDealRecord | undefined {
+  if (!candidate) return undefined;
+
+  // Vector 1: Deal ID oficial de Cisco
+  const cleanDeal = candidate.dealId?.trim().replace(/^[#\s]+/, '');
+  if (cleanDeal && cleanDeal !== 'NA' && cleanDeal !== 'N/A' && cleanDeal !== '-' && cleanDeal.length >= 4) {
+    const match = deals.find((d) => {
+      const dClean = d.dealId?.trim().replace(/^[#\s]+/, '');
+      return dClean && dClean.toLowerCase() === cleanDeal.toLowerCase();
+    });
+    if (match) return match;
+  }
+
+  // Vector 2: Estimate ID
+  if (candidate.sourceEstimateId && candidate.sourceEstimateId.trim().length >= 4) {
+    const cleanEst = candidate.sourceEstimateId.trim().toLowerCase();
+    const match = deals.find(
+      (d) => d.sourceEstimateId && d.sourceEstimateId.trim().toLowerCase() === cleanEst
+    );
+    if (match) return match;
+  }
+
+  // Vector 3 & 4: Composite Fingerprint (Partner + End User + Monto / Mes)
+  const normPartner = normalizeMatchKey(candidate.partner);
+  const normEndUser = normalizeMatchKey(candidate.endUser);
+
+  if (normPartner && normEndUser && normEndUser !== 'na' && normEndUser !== '-') {
+    const candidateUsd = typeof candidate.usd === 'number' ? candidate.usd : 0;
+    const candidateMes = (candidate.mesCierre || '').trim().toLowerCase();
+    const candidateFecha = (candidate.fechaCotizacion || '').trim();
+
+    for (const d of deals) {
+      const dPartner = normalizeMatchKey(d.partner);
+      const dEndUser = normalizeMatchKey(d.endUser);
+      if (!dPartner || !dEndUser) continue;
+
+      const partnerMatches = dPartner.includes(normPartner) || normPartner.includes(dPartner);
+      const endUserMatches = dEndUser.includes(normEndUser) || normEndUser.includes(dEndUser);
+
+      if (partnerMatches && endUserMatches) {
+        // Sub-vector A: Monto USD coincidente (tolerancia de 2% o 10 USD)
+        if (candidateUsd > 0 && d.usd > 0) {
+          const diff = Math.abs(d.usd - candidateUsd);
+          const pctDiff = diff / Math.max(d.usd, candidateUsd);
+          if (diff <= 10 || pctDiff <= 0.02) {
+            return d;
+          }
+        }
+
+        // Sub-vector B: Mismo Mes de Cierre (con monto dentro del 15% o 0)
+        if (candidateMes && d.mesCierre && d.mesCierre.trim().toLowerCase() === candidateMes) {
+          if (candidateUsd === 0 || d.usd === 0 || Math.abs(d.usd - candidateUsd) / Math.max(d.usd, candidateUsd) <= 0.15) {
+            return d;
+          }
+        }
+
+        // Sub-vector C: Misma Fecha de Cotización
+        if (candidateFecha && d.fechaCotizacion && d.fechaCotizacion.trim() === candidateFecha) {
+          return d;
+        }
+
+        // Sub-vector D: Fallback cuando no se suministraron montos ni fechas discriminatorias
+        if (candidateUsd === 0 && !candidateMes && !candidateFecha) {
+          return d;
+        }
+      }
+    }
+  }
+
+  return undefined;
+}
 
 const MERAKI_PREFIX_REGEX = /^(?:MR|MS|MX|MV|MT|MG|CW91|LIC-ENT|LIC-SEC|LIC-MR|LIC-MS|LIC-MX)/i;
 const SMARTNET_PREFIX_REGEX = /^(?:CON-|SVS-|CX-|SNTC)/i;
@@ -319,12 +411,14 @@ export async function importEstimateIntoPipeline(
   const existingDeals = await getPipelineDeals();
   const extracted = extractPipelineDealFromEstimate(estimate, currentUser);
 
-  // Buscar coincidencia previa por dealId o sourceEstimateId
-  let match = existingDeals.find(
-    (d) =>
-      (extracted.dealId && d.dealId && d.dealId === extracted.dealId) ||
-      (d.sourceEstimateId && d.sourceEstimateId === extracted.sourceEstimateId)
-  );
+  // Buscar coincidencia previa mediante el Motor Anti-Duplicación Multi-Vectorial
+  let match = findMatchingPipelineDeal(existingDeals, {
+    dealId: extracted.dealId,
+    sourceEstimateId: extracted.sourceEstimateId,
+    partner: extracted.partner,
+    endUser: extracted.endUser,
+    usd: extracted.usd,
+  });
 
   if (match) {
     const updated: PipelineDealRecord = {
@@ -455,9 +549,17 @@ export async function exportPipelineToExcel(deals: PipelineDealRecord[], filenam
 }
 
 /**
- * Parsea un archivo Excel subido por el usuario e importa las oportunidades al store.
+ * Parsea un archivo Excel subido por el usuario e importa/reconcilia las oportunidades al store
+ * aplicando el Motor Anti-Duplicación Multi-Vectorial (Deal ID, Estimate ID, Composite Partner+Cliente+Monto).
  */
-export async function importPipelineFromExcel(arrayBuffer: ArrayBuffer): Promise<{ importedCount: number; deals: PipelineDealRecord[] }> {
+export async function importPipelineFromExcel(
+  arrayBuffer: ArrayBuffer
+): Promise<{
+  importedCount: number;
+  addedCount: number;
+  updatedCount: number;
+  deals: PipelineDealRecord[];
+}> {
   const wb = XLSX.read(new Uint8Array(arrayBuffer), { type: 'array' });
   const ws = wb.Sheets[wb.SheetNames[0]];
   if (!ws) throw new Error('El archivo Excel no contiene ninguna hoja válida.');
@@ -484,75 +586,162 @@ export async function importPipelineFromExcel(arrayBuffer: ArrayBuffer): Promise
     return String(val).trim();
   };
 
-  // Encontrar fila de encabezados
+  // 1. Detección Inteligente de Fila de Encabezados y Mapeo Dinámico de Columnas
   let headerRowIdx = 0;
-  for (let r = 0; r < Math.min(rawRows.length, 5); r++) {
-    const rowStr = rawRows[r].map(cleanStr).join(' ').toLowerCase();
-    if (rowStr.includes('levantamiento') || rowStr.includes('cotizacion') || rowStr.includes('partner') || rowStr.includes('usd')) {
+  const colMap: Record<string, number> = {};
+
+  for (let r = 0; r < Math.min(rawRows.length, 6); r++) {
+    const row = rawRows[r].map((c) => cleanStr(c).toLowerCase());
+    const hasLev = row.some((c) => c.includes('levantamiento'));
+    const hasPart = row.some((c) => c.includes('partner') || c.includes('reseller'));
+    const hasUsd = row.some((c) => c.includes('usd') || c.includes('monto'));
+
+    if ((hasLev && hasPart) || (hasPart && hasUsd)) {
       headerRowIdx = r;
+      row.forEach((headerText, colIdx) => {
+        if (headerText.includes('levantamiento')) colMap['fechaLevantamiento'] = colIdx;
+        else if (headerText.includes('cotizacion') || headerText.includes('cotización')) colMap['fechaCotizacion'] = colIdx;
+        else if (headerText.includes('marca')) colMap['marca'] = colIdx;
+        else if (headerText.includes('pm') || headerText.includes('responsable')) colMap['pmResponsable'] = colIdx;
+        else if (headerText.includes('ejecutivo') && headerText.includes('partner')) colMap['ejecutivoPartner'] = colIdx;
+        else if (headerText.includes('partner') || headerText.includes('reseller')) colMap['partner'] = colIdx;
+        else if (headerText.includes('end user') || headerText.includes('cliente') || headerText.includes('usuario')) colMap['endUser'] = colIdx;
+        else if (headerText.includes('usd') || headerText.includes('monto')) colMap['usd'] = colIdx;
+        else if (headerText.includes('cierre')) colMap['mesCierre'] = colIdx;
+        else if (headerText.includes('facturacion') || headerText.includes('facturación')) colMap['mesFacturacion'] = colIdx;
+        else if (headerText.includes('avance') || headerText.includes('%') || headerText.includes('porcentaje')) colMap['porcentajeAvance'] = colIdx;
+        else if (headerText.includes('registro') || headerText.includes('deal') || headerText.includes('oportunidad')) colMap['dealId'] = colIdx;
+        else if (headerText.includes('producto') || headerText.includes('suscrip')) colMap['productosSuscripciones'] = colIdx;
+        else if (headerText.includes('servicio') || headerText.includes('smartnet')) colMap['servicios'] = colIdx;
+        else if (headerText.includes('meraki')) colMap['meraki'] = colIdx;
+        else if (headerText.includes('am') || headerText.includes('account')) colMap['am'] = colIdx;
+        else if (headerText.includes('grupo') || headerText.includes('ventas')) colMap['grupoVentas'] = colIdx;
+        else if (headerText.includes('nota') || headerText.includes('observ')) colMap['notas'] = colIdx;
+        else if (headerText.includes('price') || headerText.includes('protection') || headerText.includes('expiry')) colMap['priceProtectionExpiryDate'] = colIdx;
+      });
       break;
     }
   }
 
-  const dataRows = rawRows.slice(headerRowIdx + 1);
-  const parsedDeals: PipelineDealRecord[] = [];
+  const getCol = (row: any[], key: string, fallbackIdx: number): any => {
+    const idx = colMap[key] !== undefined ? colMap[key] : fallbackIdx;
+    return row[idx];
+  };
+
+  const existingDeals = await getPipelineDeals();
+  const currentPool: PipelineDealRecord[] = [...existingDeals];
+  let addedCount = 0;
+  let updatedCount = 0;
   const now = new Date().toISOString();
+
+  const dataRows = rawRows.slice(headerRowIdx + 1);
 
   for (let i = 0; i < dataRows.length; i++) {
     const row = dataRows[i];
     if (!row || row.every((c: any) => !cleanStr(c))) continue;
 
-    const fechaLev = cleanStr(row[0]);
-    const fechaCot = cleanStr(row[1]);
-    const marca = cleanStr(row[2]) || 'Cisco';
-    const pm = cleanStr(row[3]);
-    const partner = cleanStr(row[4]);
-    const ejecutivoPartner = cleanStr(row[5]);
-    const endUser = cleanStr(row[6]);
-    const usd = parseNum(row[7]);
-    const mesCierre = cleanStr(row[8]);
-    const mesFact = cleanStr(row[9]);
-    const avance = parsePct(row[10]);
-    const dealId = cleanStr(row[11]);
-    const prodSub = parseNum(row[12]);
-    const servicios = parseNum(row[13]);
-    const meraki = parseNum(row[14]);
-    const am = cleanStr(row[15]);
-    const grupoVentas = cleanStr(row[16]) || 'Enterprise';
-    const notas = cleanStr(row[17]);
-    const priceProt = cleanStr(row[18]);
+    const fechaLev = cleanStr(getCol(row, 'fechaLevantamiento', 0));
+    const fechaCot = cleanStr(getCol(row, 'fechaCotizacion', 1));
+    const marca = cleanStr(getCol(row, 'marca', 2)) || 'Cisco';
+    const pm = cleanStr(getCol(row, 'pmResponsable', 3));
+    const partner = cleanStr(getCol(row, 'partner', 4));
+    const ejecutivoPartner = cleanStr(getCol(row, 'ejecutivoPartner', 5));
+    const endUser = cleanStr(getCol(row, 'endUser', 6)) || '-';
+    const usd = parseNum(getCol(row, 'usd', 7));
+    const mesCierre = cleanStr(getCol(row, 'mesCierre', 8));
+    const mesFact = cleanStr(getCol(row, 'mesFacturacion', 9));
+    const avance = parsePct(getCol(row, 'porcentajeAvance', 10));
+    const dealId = cleanStr(getCol(row, 'dealId', 11));
+    const prodSub = parseNum(getCol(row, 'productosSuscripciones', 12));
+    const servicios = parseNum(getCol(row, 'servicios', 13));
+    const meraki = parseNum(getCol(row, 'meraki', 14));
+    const am = cleanStr(getCol(row, 'am', 15));
+    const grupoVentas = cleanStr(getCol(row, 'grupoVentas', 16)) || 'Enterprise';
+    const notas = cleanStr(getCol(row, 'notas', 17));
+    const priceProt = cleanStr(getCol(row, 'priceProtectionExpiryDate', 18));
 
     // Omitir filas sin datos de partner o monto
-    if (!partner && !endUser && usd === 0) continue;
+    if (!partner && endUser === '-' && usd === 0) continue;
 
-    const deal: PipelineDealRecord = {
-      id: `deal_import_${Date.now()}_${i}`,
-      fechaLevantamiento: fechaLev || fechaCot,
-      fechaCotizacion: fechaCot || fechaLev,
-      marca,
-      pmResponsable: pm,
-      partner,
-      ejecutivoPartner,
-      endUser,
-      usd: usd > 0 ? usd : prodSub + servicios + meraki,
-      mesCierre,
-      mesFacturacion: mesFact,
-      porcentajeAvance: avance,
+    const finalUsd = usd > 0 ? usd : prodSub + servicios + meraki;
+
+    // Motor Anti-Duplicación Multi-Vectorial
+    const match = findMatchingPipelineDeal(currentPool, {
       dealId,
-      productosSuscripciones: prodSub,
-      servicios,
-      meraki,
-      am,
-      grupoVentas,
-      notas,
-      priceProtectionExpiryDate: priceProt,
-      createdAt: now,
-      updatedAt: now,
-    };
+      partner,
+      endUser,
+      usd: finalUsd,
+      mesCierre,
+      fechaCotizacion: fechaCot,
+    });
 
-    await savePipelineDeal(deal);
-    parsedDeals.push(deal);
+    if (match) {
+      // Reconciliación Inteligente: Enriquecer registro existente sin duplicarlo
+      const poolIdx = currentPool.findIndex((d) => d.id === match.id);
+      if (poolIdx >= 0) {
+        const existing = currentPool[poolIdx];
+        const enriched: PipelineDealRecord = {
+          ...existing,
+          dealId: dealId || existing.dealId,
+          fechaCotizacion: fechaCot || existing.fechaCotizacion,
+          fechaLevantamiento: fechaLev || existing.fechaLevantamiento,
+          pmResponsable: pm || existing.pmResponsable,
+          ejecutivoPartner: ejecutivoPartner || existing.ejecutivoPartner,
+          usd: finalUsd > 0 ? finalUsd : existing.usd,
+          porcentajeAvance: avance || existing.porcentajeAvance,
+          mesCierre: mesCierre || existing.mesCierre,
+          mesFacturacion: mesFact || existing.mesFacturacion,
+          productosSuscripciones: prodSub > 0 ? prodSub : existing.productosSuscripciones,
+          servicios: servicios > 0 ? servicios : existing.servicios,
+          meraki: meraki > 0 ? meraki : existing.meraki,
+          am: am || existing.am,
+          grupoVentas: grupoVentas || existing.grupoVentas,
+          notas: notas ? (existing.notas ? `${existing.notas} | ${notas}` : notas) : existing.notas,
+          priceProtectionExpiryDate: priceProt || existing.priceProtectionExpiryDate,
+          updatedAt: now,
+        };
+
+        await savePipelineDeal(enriched);
+        currentPool[poolIdx] = enriched;
+        updatedCount++;
+      }
+    } else {
+      // Nueva Oportunidad
+      const newDeal: PipelineDealRecord = {
+        id: `deal_pipe_${Date.now()}_${i}`,
+        fechaLevantamiento: fechaLev || fechaCot,
+        fechaCotizacion: fechaCot || fechaLev,
+        marca,
+        pmResponsable: pm,
+        partner,
+        ejecutivoPartner,
+        endUser,
+        usd: finalUsd,
+        mesCierre,
+        mesFacturacion: mesFact,
+        porcentajeAvance: avance,
+        dealId,
+        productosSuscripciones: prodSub,
+        servicios,
+        meraki,
+        am,
+        grupoVentas,
+        notas,
+        priceProtectionExpiryDate: priceProt,
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      await savePipelineDeal(newDeal);
+      currentPool.push(newDeal);
+      addedCount++;
+    }
   }
 
-  return { importedCount: parsedDeals.length, deals: parsedDeals };
+  return {
+    importedCount: addedCount + updatedCount,
+    addedCount,
+    updatedCount,
+    deals: currentPool,
+  };
 }

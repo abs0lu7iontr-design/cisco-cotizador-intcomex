@@ -10,8 +10,11 @@ import {
   calculatePipelineStats,
   filterPipelineDeals,
   extractPipelineDealFromEstimate,
+  findMatchingPipelineDeal,
+  importPipelineFromExcel,
   PIPELINE_EXCEL_HEADERS,
 } from '../src/modules/pipeline/pipelineService';
+import * as XLSX from 'xlsx';
 import {
   PipelineDealRecord,
 } from '../src/modules/pipeline/pipelineTypes';
@@ -301,6 +304,135 @@ assert.strictEqual(mixedStats.totalUsd, 1292849.40, `Suma esperada 1292849.40, o
 assert.strictEqual(mixedStats.totalMeraki, 25000);
 assert.strictEqual(mixedStats.totalServicios, 32849.40);
 console.log(`  ✅ Parser y suma flexible verificada: Total USD = $${mixedStats.totalUsd.toLocaleString()} USD.`);
+
+// ----------------------------------------------------------------------------
+// Test 8: Motor Anti-Duplicación Multi-Vectorial y Conciliación Inteligente
+// ----------------------------------------------------------------------------
+console.log('\n▶ Test 8: Motor Anti-Duplicación Multi-Vectorial (findMatchingPipelineDeal)');
+
+// 8.1: Vector 1 - Deal ID oficial Cisco CCW (incluso con espacios o prefijo '#')
+const matchByDealId = findMatchingPipelineDeal(PIPELINE_INITIAL_SEEDS, {
+  dealId: '  #80156257  ',
+  partner: 'Nombre Partner Distinto',
+  endUser: 'Otro Cliente',
+});
+assert.ok(matchByDealId, 'Debe coincidir por Deal ID 80156257');
+assert.strictEqual(matchByDealId?.partner, 'Advisers Tic');
+assert.strictEqual(matchByDealId?.endUser, 'BHP');
+
+// 8.2: Vector 2 - Estimate ID
+const dealsWithEstimate: PipelineDealRecord[] = [
+  ...PIPELINE_INITIAL_SEEDS,
+  {
+    ...PIPELINE_INITIAL_SEEDS[0],
+    id: 'deal_custom_est',
+    sourceEstimateId: 'EST-998877',
+  },
+];
+const matchByEst = findMatchingPipelineDeal(dealsWithEstimate, {
+  sourceEstimateId: 'est-998877',
+});
+assert.ok(matchByEst, 'Debe coincidir por sourceEstimateId');
+assert.strictEqual(matchByEst?.id, 'deal_custom_est');
+
+// 8.3: Vector 3 - Huella Compuesta Partner + End User + Monto USD (±2%)
+const matchByComposite = findMatchingPipelineDeal(PIPELINE_INITIAL_SEEDS, {
+  partner: 'Business Conected S.A.',
+  endUser: 'Maxagro',
+  usd: 107850, // Deal real es 107849 (diferencia de $1 USD)
+});
+assert.ok(matchByComposite, 'Debe coincidir por Partner + EndUser + Monto USD ±2%');
+assert.strictEqual(matchByComposite?.dealId, '84450929');
+
+// 8.4: Protección de Múltiples Negocios para el Mismo Cliente (No colapsar erróneamente)
+// Comtec Global tiene varios negocios con Chubb (ej. 84443241 por $440k vs 85949828 por $78,130)
+const matchChubbSmall = findMatchingPipelineDeal(PIPELINE_INITIAL_SEEDS, {
+  dealId: '85949828',
+  partner: 'Comtec Global',
+  endUser: 'Chubb',
+  usd: 78130,
+});
+assert.strictEqual(matchChubbSmall?.usd, 78130, 'Debe coincidir con el negocio específico de $78,130 y no con el de $440k');
+
+// 8.5: Carga e Importación desde Excel sin Duplicar (importPipelineFromExcel)
+const excelRows = [
+  [
+    'FECHA LEV.',
+    'FECHA COT.',
+    'MARCA',
+    'PM RESP.',
+    'PARTNER / RESELLER',
+    'EJECUTIVO PARTNER',
+    'END USER (CLIENTE FINAL)',
+    'MONTO USD',
+    'MES CIERRE',
+    'MES FACTURACION',
+    '% AVANCE',
+    '# REG. OPORTUNIDAD MARCA',
+    'PROD. + SUSCRIPCIONES',
+    'SERVICIOS',
+    'MERAKI',
+    'AM',
+    'GRUPO DE VENTAS',
+    'NOTAS',
+    'Price Protection Expiry Date',
+  ],
+  // Fila duplicada existente (BHP / Deal 80156257) pero con notas actualizadas
+  [
+    '1/8/2026',
+    '1/8/2026',
+    'Cisco',
+    'Marta Adasme',
+    'Advisers Tic',
+    'Nelson Martinez',
+    'BHP',
+    '1,085,000',
+    'Julio',
+    'Julio',
+    '25%',
+    '80156257',
+    '1,085,000',
+    '0',
+    '0',
+    'J. Galloni',
+    'Enterprise',
+    'Nota de actualización desde Excel',
+    '2026-12-31',
+  ],
+  // Fila totalmente nueva
+  [
+    '2/8/2026',
+    '2/8/2026',
+    'Cisco',
+    'Raul Cuevas',
+    'Partner Inédito SpA',
+    'Pedro Gomez',
+    'Cliente Nuevo Global',
+    '95,000',
+    'Agosto',
+    'Agosto',
+    '40%',
+    '99998888',
+    '75,000',
+    '20,000',
+    '0',
+    'M. Skill',
+    'Corporate',
+    'Oportunidad nueva',
+    '',
+  ],
+];
+
+const wb = XLSX.utils.book_new();
+const ws = XLSX.utils.aoa_to_sheet(excelRows);
+XLSX.utils.book_append_sheet(wb, ws, 'Pipeline');
+const excelBuffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+
+const importResult = await importPipelineFromExcel(excelBuffer);
+assert.strictEqual(importResult.addedCount, 1, 'Debe haber agregado solo 1 oportunidad nueva');
+assert.strictEqual(importResult.updatedCount, 1, 'Debe haber actualizado 1 oportunidad existente sin duplicar');
+
+console.log('  ✅ Motor Anti-Duplicación y reconciliación Excel validado exitosamente en Pipeline.');
 
 console.log('\n🎉 ¡TODAS LAS PRUEBAS DEL PIPELINE COMERCIAL COMPLETADAS AL 100% CON ÉXITO!\n');
 process.exit(0);
