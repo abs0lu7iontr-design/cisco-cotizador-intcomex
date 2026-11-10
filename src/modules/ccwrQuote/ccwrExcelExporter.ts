@@ -15,19 +15,19 @@ import {
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../../lib/intcomexLogoBase64';
 
 export const CCWR_EXPORT_COLUMNS = [
-  { header: 'Número de Producto', key: 'productNumber', minWidth: 18, maxWidth: 32 },
-  { header: 'Descripción del Producto', key: 'productDescription', minWidth: 26, maxWidth: 65 },
-  { header: 'Número de Serie / PAK', key: 'serialNumber', minWidth: 18, maxWidth: 28 },
-  { header: 'Nivel de Servicio', key: 'serviceLevel', minWidth: 15, maxWidth: 24 },
-  { header: 'Descripción del Servicio', key: 'serviceLevelDescription', minWidth: 22, maxWidth: 35 },
-  { header: 'SKU del Servicio', key: 'serviceSku', minWidth: 18, maxWidth: 32 },
-  { header: 'Fecha de Inicio', key: 'startDate', minWidth: 14, maxWidth: 18 },
-  { header: 'Fecha de Término', key: 'endDate', minWidth: 14, maxWidth: 18 },
-  { header: 'Cantidad', key: 'quantity', minWidth: 9, maxWidth: 12 },
-  { header: 'Precio Unitario (USD)', key: 'unitSalePrice', minWidth: 22, maxWidth: 28 },
-  { header: 'ID Cliente Final', key: 'endCustomerId', minWidth: 16, maxWidth: 24 },
-  { header: 'Nombre Cliente Final', key: 'endCustomerName', minWidth: 28, maxWidth: 75 },
-  { header: 'Dirección Cliente Final', key: 'endCustomerAddress', minWidth: 28, maxWidth: 85 },
+  { header: 'Número de Producto', key: 'productNumber', minWidth: 15, maxWidth: 22 },
+  { header: 'Descripción del Producto', key: 'productDescription', minWidth: 22, maxWidth: 38 },
+  { header: 'Número de Serie / PAK', key: 'serialNumber', minWidth: 13, maxWidth: 16 },
+  { header: 'Nivel de Servicio', key: 'serviceLevel', minWidth: 8, maxWidth: 11 },
+  { header: 'Descripción del Servicio', key: 'serviceLevelDescription', minWidth: 12, maxWidth: 16 },
+  { header: 'SKU del Servicio', key: 'serviceSku', minWidth: 16, maxWidth: 20 },
+  { header: 'Fecha de Inicio', key: 'startDate', minWidth: 11, maxWidth: 13 },
+  { header: 'Fecha de Término', key: 'endDate', minWidth: 11, maxWidth: 13 },
+  { header: 'Cantidad', key: 'quantity', minWidth: 7, maxWidth: 9 },
+  { header: 'Precio Unitario (USD)', key: 'unitSalePrice', minWidth: 14, maxWidth: 17 },
+  { header: 'ID Cliente Final', key: 'endCustomerId', minWidth: 11, maxWidth: 14 },
+  { header: 'Nombre Cliente Final', key: 'endCustomerName', minWidth: 20, maxWidth: 50 },
+  { header: 'Dirección Cliente Final', key: 'endCustomerAddress', minWidth: 20, maxWidth: 52 },
 ];
 
 const SPANISH_MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -176,19 +176,22 @@ export async function generateCcwrQuoteExcel(
   row3.getCell(2).value = params.sellerName || 'Mauricio Skill';
   row3.getCell(2).font = regularFont;
 
-  // Celda D3 y E3: Vigencia del Servicio con diseño ejecutivo a juego
-  row3.getCell(4).value = 'Vigencia del Servicio:';
-  row3.getCell(4).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF1E40AF' } };
-  row3.getCell(4).alignment = { vertical: 'middle', horizontal: 'center' };
-  row3.getCell(4).fill = {
+  // Celda C3 y D3 combinadas para "Vigencia del Servicio:" (sin ensanchar innecesariamente la columna 4)
+  worksheet.mergeCells('C3:D3');
+  const vigenciaLabel = worksheet.getCell('C3');
+  vigenciaLabel.value = 'Vigencia del Servicio:';
+  vigenciaLabel.font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF1E40AF' } };
+  vigenciaLabel.alignment = { vertical: 'middle', horizontal: 'center' };
+  vigenciaLabel.fill = {
     type: 'pattern',
     pattern: 'solid',
     fgColor: { argb: 'FFEFF6FF' }, // Soft blue
   };
-  row3.getCell(4).border = {
+  vigenciaLabel.border = {
     top: { style: 'thin', color: { argb: 'FF93C5FD' } },
     bottom: { style: 'thin', color: { argb: 'FF93C5FD' } },
     left: { style: 'thin', color: { argb: 'FF93C5FD' } },
+    right: { style: 'thin', color: { argb: 'FF93C5FD' } },
   };
 
   row3.getCell(5).value = `${durationMonths} Meses`;
@@ -203,6 +206,7 @@ export async function generateCcwrQuoteExcel(
     top: { style: 'thin', color: { argb: 'FF93C5FD' } },
     bottom: { style: 'thin', color: { argb: 'FF93C5FD' } },
     right: { style: 'thin', color: { argb: 'FF93C5FD' } },
+    left: { style: 'thin', color: { argb: 'FF93C5FD' } },
   };
 
   // Fila 4: Empresa (Izquierda) | TOTAL COTIZACIÓN Encabezado (Derecha)
@@ -499,30 +503,32 @@ export async function generateCcwrQuoteExcel(
       if (hVal.length > maxContentLen) maxContentLen = hVal.length;
     }
 
-    // Ancho ajustado con margen de respiro (+ 3.5 caracteres) para garantizar que NUNCA desborde el recuadro
-    let adjustedWidth = maxContentLen + 3.5;
+    // Holgura ceñida y ergonómica (+ 1.5 caracteres) para eliminar espacios muertos excesivos
+    let adjustedWidth = maxContentLen + 1.5;
 
     if (col.key === 'quantity') {
-      adjustedWidth = 10;
+      adjustedWidth = 8;
     } else if (col.key === 'startDate' || col.key === 'endDate') {
-      adjustedWidth = 16;
+      adjustedWidth = 12.5;
     } else if (col.key === 'serviceLevel') {
-      // Col 4 contiene en la cabecera superior "Vigencia del Servicio:" (22 caracteres)
-      adjustedWidth = Math.max(adjustedWidth, 24);
+      adjustedWidth = 9.5;
     } else if (col.key === 'unitSalePrice') {
-      // Encabezado "Precio Unitario (USD)" (21 caracteres)
-      adjustedWidth = Math.max(adjustedWidth, 24);
+      adjustedWidth = 15.5;
     } else if (col.key === 'productNumber') {
-      // Col 1 contiene en la cabecera "Product Manager:" y "Quote CCW-R:"
-      adjustedWidth = Math.max(adjustedWidth, 22);
+      adjustedWidth = Math.max(adjustedWidth, 17);
+    } else if (col.key === 'serialNumber') {
+      adjustedWidth = Math.max(adjustedWidth, 14);
     } else if (col.key === 'productDescription') {
-      // Col 2 contiene en la cabecera "Rosario Norte 615, SANTIAGO" (28 caracteres)
-      adjustedWidth = Math.max(adjustedWidth, 32);
-    } else if (col.key === 'serviceLevelDescription') {
       adjustedWidth = Math.max(adjustedWidth, 26);
+    } else if (col.key === 'serviceLevelDescription') {
+      adjustedWidth = Math.max(adjustedWidth, 13.5);
+    } else if (col.key === 'serviceSku') {
+      adjustedWidth = Math.max(adjustedWidth, 17.5);
+    } else if (col.key === 'endCustomerId') {
+      adjustedWidth = Math.max(adjustedWidth, 12.5);
     }
 
-    // Aplicar minWidth y maxWidth de forma estricta asegurando que no se corte
+    // Limitar estrictamente dentro de los rangos compactos
     adjustedWidth = Math.min(Math.max(adjustedWidth, col.minWidth), col.maxWidth);
 
     worksheet.getColumn(colIndex).width = adjustedWidth;

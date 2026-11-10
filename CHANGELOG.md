@@ -6,6 +6,19 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.10.5] - 2026-11-10
+### 📐 Ergonomía y Visualización (Compactación de Celdas Excel CCW-R y Eliminación de Espacios Muertos)
+- **Eliminación Integral de Espacios Muertos (-40% ancho horizontal total, `ccwrExcelExporter.ts`):**
+  - Rediseño de las 13 columnas para ajustarse de forma ceñida y natural a la longitud real del texto con una holgura limpia de solo 1.5 caracteres, reduciendo el ancho horizontal total de la planilla de 427 a 255 unidades. Esto permite visualizar prácticamente toda la cotización de punta a punta en pantalla sin necesidad de constante scroll horizontal.
+- **Compactación Drástica de Nivel de Servicio (`ccwrExcelExporter.ts`):**
+  - Fusión de celdas C3:D3 en la cabecera ejecutiva para alojar `"Vigencia del Servicio:"`, liberando la Columna 4 para reducirse de 24 a solo **9.5 caracteres**, eliminando el enorme vacío blanco que rodeaba al código `"SNT"`.
+- **Ajuste Ceñido de Descripción del Producto y SKU (`ccwrExcelExporter.ts`):**
+  - Reducción del margen de la descripción de producto a 29.5 caracteres (abrazando el texto como `"Cisco Catalyst 9115AX Series"` de forma ceñida) y SKU a 17.5 caracteres.
+- **Precio Unitario Proporcionado (`ccwrExcelExporter.ts`):**
+  - Columna 10 compactada a 15.5 caracteres, permitiendo que el monto en USD quede equilibrado a la derecha sin la brecha en blanco de 20 caracteres que se apreciaba previamente a su izquierda.
+- **Suite de Pruebas Automatizadas Actualizada (`tests/ccwrCommercial.test.ts`):**
+  - Aserciones de anchos compactos validadas (Col 4 <= 12, Col 5 <= 18, Col 10 <= 18) junto con preservación de cliente y dirección.
+
 ## [v2.10.4] - 2026-11-10
 ### 🔧 Corrección y Ajuste Visual (Blindaje Anti-Desborde de Celdas y Recuadros en Excel CCW-R)
 - **Corrección de Desborde en Dirección Cliente Final (`ccwrExcelExporter.ts`):**

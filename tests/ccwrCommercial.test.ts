@@ -272,7 +272,11 @@ assert.strictEqual(generatedWs.getCell('A7').value, 'Quote CCW-R:', 'La etiqueta
 assert.strictEqual(generatedWs.getCell('B7').value, '452055115');
 
 // Verificar cabecera derecha (Vigencia con diseño y Total Encuadrado)
-assert.strictEqual(generatedWs.getCell('D3').value, 'Vigencia del Servicio:');
+assert.ok(
+  generatedWs.getCell('C3').value === 'Vigencia del Servicio:' ||
+  generatedWs.getCell('D3').value === 'Vigencia del Servicio:',
+  'C3 o D3 debe contener Vigencia del Servicio:'
+);
 assert.strictEqual(generatedWs.getCell('E3').value, '12 Meses');
 assert.strictEqual(generatedWs.getCell('D4').value, 'TOTAL COTIZACIÓN', 'D4 debe contener el encabezado del recuadro TOTAL COTIZACIÓN');
 assert.strictEqual(generatedWs.getCell('D6').value, 'Fecha:', 'D6 debe contener Fecha:');
@@ -283,11 +287,18 @@ assert.strictEqual(headerCell.value, 'Número de Producto');
 const fillObj: any = headerCell.fill;
 assert.ok(fillObj && fillObj.fgColor && (fillObj.fgColor.argb === 'FFD9D9D9' || fillObj.fgColor.theme !== undefined), 'La cabecera de la tabla debe tener fondo plomo');
 
-// Verificar que los anchos de columnas se ajusten al contenido y nunca desborden el recuadro
+// Verificar que los anchos de columnas sean compactos sin espacios muertos y ajustados al contenido
+const col4Width = generatedWs.getColumn(4).width || 0;
+const col5Width = generatedWs.getColumn(5).width || 0;
+const col10Width = generatedWs.getColumn(10).width || 0;
 const col12Width = generatedWs.getColumn(12).width || 0;
 const col13Width = generatedWs.getColumn(13).width || 0;
-assert.ok(col12Width >= 42, `Columna 12 (Nombre Cliente Final) debe ser >= 42 para no desbordar, actual: ${col12Width}`);
-assert.ok(col13Width >= 38, `Columna 13 (Dirección Cliente Final) debe ser >= 38 para no desbordar, actual: ${col13Width}`);
+
+assert.ok(col4Width <= 12, `Columna 4 (Nivel de Servicio) debe ser compacta (<= 12), actual: ${col4Width}`);
+assert.ok(col5Width <= 18, `Columna 5 (Descripción del Servicio) debe ser compacta (<= 18), actual: ${col5Width}`);
+assert.ok(col10Width <= 18, `Columna 10 (Precio Unitario) debe ser compacta (<= 18), actual: ${col10Width}`);
+assert.ok(col12Width >= 40 && col12Width <= 52, `Columna 12 (Nombre Cliente Final) ajustada al contenido, actual: ${col12Width}`);
+assert.ok(col13Width >= 38 && col13Width <= 54, `Columna 13 (Dirección Cliente Final) ajustada al contenido, actual: ${col13Width}`);
 
 // Verificar alineación y justificación en celdas de datos
 const dataRow9 = generatedWs.getRow(9);

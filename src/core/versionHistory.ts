@@ -15,11 +15,26 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.10.5',
+    date: '2026-11-10',
+    commit: 'fix-ccwr-excel-compact-snug-columns-and-zero-dead-space',
+    title: 'Compactación Ergonómica de Celdas Excel CCW-R y Eliminación de Espacios Muertos para Visualización Total',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Eliminación de Espacios Muertos (-40% ancho total): Rediseño de anchos de columna para ceñirse fielmente al largo del contenido con holgura ajustada (+1.5 caracteres), reduciendo el ancho total de 427 a 255 unidades para permitir visualizar toda la cotización en pantalla.',
+      'Compactación de Nivel de Servicio (9.5 de ancho): Fusión de celdas C3:D3 en cabecera para "Vigencia del Servicio:", permitiendo que la columna 4 baje de 24 a 9.5 caracteres, eliminando el gran vacío blanco alrededor de "SNT".',
+      'Ceñido de Descripción del Producto y SKU: Reducción del espacio sobrante en descripciones (29.5) y SKUs (17.5), abrazando el texto sin dejar franjas vacías.',
+      'Precio Unitario Compacto (15.5 de ancho): Ajuste para que montos en USD se sitúen equilibrados a la derecha sin la enorme brecha en blanco a la izquierda.',
+      'Fusión C3:D3 para Vigencia del Servicio: Reubicación armónica del distintivo en la cabecera ejecutiva sin ensanchar columnas de la tabla inferior.',
+    ],
+  },
+  {
     version: '2.10.4',
     date: '2026-11-10',
     commit: 'fix-ccwr-excel-address-box-overflow-and-column-justification',
     title: 'Blindaje Anti-Desborde de Celdas y Recuadros en Excel CCW-R (Dirección, Nombre de Cliente y Justificación)',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Blindaje Anti-Desborde en Dirección del Cliente: Elevado el maxWidth de Dirección Cliente Final a 85 caracteres y cálculo dinámico de ancho con inclusión estricta de headerInfo.endCustomerAddressLine1, erradicando que la dirección se salga del recuadro o traspase los bordes de la tabla.',
