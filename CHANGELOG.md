@@ -6,6 +6,22 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.10.1] - 2026-11-09
+### 🔧 Corregido, Optimizado y Mejorado (Detección Bidireccional de Formatos CCW vs CCW-R, Margen Base 5%, Logo Intcomex y Rediseño Ejecutivo de Excel)
+- **Detector Inteligente de Formato (`src/core/fileTypeDetector.ts` & `MisroutedFileModal.tsx`):**
+  - Detección precisa de firmas y metadatos: previene que una cotización CCW-R de servicios (74 columnas con números de serie y niveles de soporte) sea procesada por error en el módulo principal de Estimate como líneas corruptas a $0.
+  - Alerta y Redirección en 1 clic: si el usuario sube un archivo CCW-R en el módulo de Estimate, el sistema despliega el diálogo informativo y permite transferir el archivo directamente al Cotizador CCW-R sin fricción.
+  - Protección simétrica: si en el módulo CCW-R se carga un Price Estimate estándar de hardware/software, se ofrece abrirlo de inmediato en el Cotizador Cisco CCW.
+- **Ajuste de Margen Base Inicial en CCW-R a 5.0% (`ccwrTypes.ts`):**
+  - Los parámetros por defecto de cotizaciones de servicios y licencias ahora inician exactamente en `5.0%` de margen comercial.
+- **Rediseño Estético Ejecutivo de Planilla Excel de 13 Columnas (`ccwrExcelExporter.ts`):**
+  - **Logo Oficial Intcomex:** Inyección de imagen corporativa en la esquina superior izquierda (filas 1-2).
+  - **Fondo Limpio sin Cuadrícula:** Desactivación de líneas grises por defecto fuera del área cotizada (`showGridLines: false`), logrando un acabado idéntico a una cotización formal.
+  - **Zebra Striping (Alternancia de Filas):** Filas alternadas entre blanco puro (`#FFFFFF`) y gris/slate ejecutivo suave (`#F8FAFC`) con bordes finos completos (`#CBD5E1`) para lectura clara y ergonómica.
+  - **Auto-Ajuste Ceñido de Columnas y Filas:** Dimensionamiento dinámico de anchos calculado celda a celda en base a la longitud real del texto, eliminando espacios muertos y holguras excesivas.
+- **Suite de Pruebas Ampliada (`tests/ccwrCommercial.test.ts`):**
+  - Incorporación de Test 8 para validar la clasificación bidireccional de archivos y el margen base de 5.0%. 100% de las 25 suites de pruebas pasando con éxito.
+
 ## [v2.10.0] - 2026-11-09
 ### 🚀 Añadido, Optimizado y Lanzado (Nuevo Módulo Oficial Cotizador CCW-R de Servicios & Licencias Cisco - Formato Oficial Intcomex)
 - **Nuevo Módulo Especializado Cotizador CCW-R (`src/modules/ccwrQuote`):**

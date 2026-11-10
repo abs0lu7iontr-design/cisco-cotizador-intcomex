@@ -10,6 +10,7 @@ import {
   parseCcwrWorkbook,
   formatCcwrDate,
 } from '../src/modules/ccwrQuote/ccwrParser';
+import { detectCiscoFileType } from '../src/core/fileTypeDetector';
 import {
   calculateCcwrItemPricing,
   recalculateCcwrQuote,
@@ -263,6 +264,39 @@ assert.ok(emailHtml.includes('CON-SNT-C9115AXI'), 'Debe incluir SKUs');
 assert.ok(emailHtml.includes('#92D050'), 'Debe usar estilo corporativo verde');
 
 console.log('  ✅ Tabla HTML para Outlook generada con diseño corporativo.');
+
+// ----------------------------------------------------------------------------
+// Test 8: Detección Automática de Formato y Margen Base del 5%
+// ----------------------------------------------------------------------------
+console.log('\n▶ Test 8: Detección Automática de Formato (CCW Estimate vs CCW-R Quote)');
+
+assert.strictEqual(DEFAULT_CCWR_PARAMS.margenPct, 5.0, 'El margen base predeterminado de CCW-R debe ser 5.0%');
+console.log('  ✅ Margen inicial de CCW-R verificado en 5.0%.');
+
+// 8.1 Detectar CCW-R
+const ccwrDetection = detectCiscoFileType(fileBuffer);
+assert.strictEqual(ccwrDetection.fileType, 'ccwr_quote', 'Debe clasificar como ccwr_quote');
+assert.strictEqual(ccwrDetection.quoteNumber, '452055115', 'Debe extraer el Quote Number 452055115');
+
+// 8.2 Detectar CCW Price Estimate
+const estRows = [
+  [],
+  ['Price Estimate'],
+  [],
+  ['Estimate ID: 987654321', '', 'Deal ID: 112233'],
+  ['Customer: Banco Estado'],
+  [],
+  ['Line #', 'Part Number', 'Description', 'Qty', 'Unit List Price', 'Unit Net Price', 'Extended Net Price'],
+  ['1.0', 'C9200L-24P-4G-E', 'Catalyst 9200L', 1, 1000, 500, 500],
+];
+const estWb = XLSX.utils.book_new();
+const estWs = XLSX.utils.aoa_to_sheet(estRows);
+XLSX.utils.book_append_sheet(estWb, estWs, 'Price Estimate');
+const estBuffer = XLSX.write(estWb, { type: 'buffer', bookType: 'xlsx' });
+
+const estDetection = detectCiscoFileType(estBuffer);
+assert.strictEqual(estDetection.fileType, 'ccw_estimate', 'Debe clasificar como ccw_estimate');
+console.log('  ✅ Clasificación bidireccional CCW Estimate vs CCW-R Quote validada.');
 
 console.log('\n============================================================');
 console.log('🎉 TODAS LAS PRUEBAS DE CCW-R SERVICIOS Y LICENCIAS PASARON AL 100%!');

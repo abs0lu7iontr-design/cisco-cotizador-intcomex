@@ -48,6 +48,7 @@ import { SettingsView } from './components/SettingsView';
 import { ThemeSelectorModal } from './components/ThemeSelectorModal';
 import { AmbientMeshGlow } from './components/AmbientMeshGlow';
 import { LiveStudioModal } from './components/LiveStudioModal';
+import { MisroutedFileModal } from './components/MisroutedFileModal';
 import { QuickBomIngestModal } from './components/QuickBomIngestModal';
 import { DsvView } from './modules/dsv';
 import { PipelineView, importEstimateIntoPipeline } from './modules/pipeline';
@@ -137,6 +138,10 @@ function AppContent() {
     miningFastTrackWarningData,
     isMiningFastTrackWarningModalOpen,
     setIsMiningFastTrackWarningModalOpen,
+    misroutedFileAlert,
+    setMisroutedFileAlert,
+    pendingCcwrFile,
+    setPendingCcwrFile,
     isClientMode,
     toggleClientMode,
   } = useCiscoAutomatedStore();
@@ -366,6 +371,21 @@ function AppContent() {
     setCurrentView('dsv');
   };
 
+  const handleConfirmMisroutedRedirect = () => {
+    if (!misroutedFileAlert) return;
+    if (misroutedFileAlert.detectedType === 'ccwr_quote') {
+      setPendingCcwrFile({
+        buffer: misroutedFileAlert.buffer,
+        fileName: misroutedFileAlert.fileName,
+      });
+      setCurrentView('ccwr_quote');
+    } else {
+      processFileBuffer(misroutedFileAlert.buffer, misroutedFileAlert.fileName);
+      setCurrentView('quoter');
+    }
+    setMisroutedFileAlert(null);
+  };
+
   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -439,6 +459,13 @@ function AppContent() {
       <RulesExplanationModal
         isOpen={isRulesModalOpen}
         onClose={() => setIsRulesModalOpen(false)}
+      />
+
+      {/* Misrouted Cisco File Detection Modal (CCW Estimate vs CCW-R Quote) */}
+      <MisroutedFileModal
+        alert={misroutedFileAlert}
+        onConfirmRedirect={handleConfirmMisroutedRedirect}
+        onCancel={() => setMisroutedFileAlert(null)}
       />
 
       {/* Fast Track Administration Modal */}

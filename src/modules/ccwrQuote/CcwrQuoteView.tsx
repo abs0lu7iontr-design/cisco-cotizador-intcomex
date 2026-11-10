@@ -5,7 +5,7 @@
 // Goal Seek, exportación oficial Intcomex de 13 columnas y cruce con Forecast/Pipeline
 // ============================================================================
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   FileText,
   Upload,
@@ -26,6 +26,9 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
+  AlertTriangle,
+  X,
+  FileSpreadsheet,
 } from 'lucide-react';
 import {
   CcwrHeaderInfo,
@@ -40,8 +43,12 @@ import { recalculateCcwrQuote, calculateCcwrGoalSeekMargin } from './ccwrPricing
 import { generateCcwrQuoteExcel, generateCcwrEmailHtml } from './ccwrExcelExporter';
 import { saveCcwrQuoteHistory, linkCcwrToForecast, linkCcwrToPipeline } from './ccwrStorage';
 import { roundFinancial } from '../../core/calculations';
+import { useCiscoAutomatedStore } from '../../core/store';
+import { detectCiscoFileType } from '../../core/fileTypeDetector';
 
 export function CcwrQuoteView() {
+  const { pendingCcwrFile, setPendingCcwrFile, processFileBuffer, setCurrentView } = useCiscoAutomatedStore();
+
   const [items, setItems] = useState<CcwrLineItem[]>([]);
   const [headerInfo, setHeaderInfo] = useState<CcwrHeaderInfo>({
     quoteNumber: 'S/N',
@@ -52,12 +59,44 @@ export function CcwrQuoteView() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [onlyServicesWithCost, setOnlyServicesWithCost] = useState<boolean>(true);
-  const [goalSeekTarget, setGoalSeekTarget] = useState<string>('12329.81');
+  const [goalSeekTarget, setGoalSeekTarget] = useState<string>('');
   const [feedbackMessage, setFeedbackMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
   const [isCopiedEmail, setIsCopiedEmail] = useState<boolean>(false);
   const [isParamDrawerOpen, setIsParamDrawerOpen] = useState<boolean>(false);
+  const [misroutedEstimate, setMisroutedEstimate] = useState<{
+    isOpen: boolean;
+    fileName: string;
+    buffer: ArrayBuffer;
+    estimateId?: string;
+    customerName?: string;
+  } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Ingesta automática si el archivo fue redirigido desde el módulo CCW Estimate
+  useEffect(() => {
+    if (pendingCcwrFile) {
+      try {
+        setIsLoading(true);
+        const parsed = parseCcwrWorkbook(pendingCcwrFile.buffer, pendingCcwrFile.fileName);
+        setHeaderInfo(parsed.headerInfo);
+        setItems(parsed.items);
+        setFileName(pendingCcwrFile.fileName);
+        setFeedbackMessage({
+          type: 'success',
+          text: `✅ Cotización CCW-R #${parsed.headerInfo.quoteNumber || ''} abierta y procesada con margen inicial del 5%.`,
+        });
+      } catch (err: any) {
+        setFeedbackMessage({
+          type: 'error',
+          text: `Error al abrir cotización CCW-R: ${err?.message || 'Error desconocido'}`,
+        });
+      } finally {
+        setIsLoading(false);
+        setPendingCcwrFile(null);
+      }
+    }
+  }, [pendingCcwrFile, setPendingCcwrFile]);
 
   // Recalcular finanzas en vivo
   const { calculatedItems, summary } = useMemo(() => {
@@ -92,6 +131,21 @@ export function CcwrQuoteView() {
     try {
       setIsLoading(true);
       const buffer = await file.arrayBuffer();
+
+      // Verificación de formato: Si el usuario subió por error un Price Estimate en el módulo CCW-R
+      const detection = detectCiscoFileType(buffer);
+      if (detection.fileType === 'ccw_estimate') {
+        setMisroutedEstimate({
+          isOpen: true,
+          fileName: file.name,
+          buffer,
+          estimateId: detection.estimateId,
+          customerName: detection.customerName,
+        });
+        setIsLoading(false);
+        return;
+      }
+
       const parsed = parseCcwrWorkbook(buffer, file.name);
 
       setHeaderInfo(parsed.headerInfo);
@@ -820,6 +874,67 @@ export function CcwrQuoteView() {
           </aside>
         )}
       </div>
+
+      {/* Modal de Advertencia cuando se sube un Price Estimate en CCW-R */}
+      {misroutedEstimate?.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl p-6 text-slate-100">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300">
+                  Price Estimate Detectado
+                </span>
+                <h3 className="text-base font-bold text-white mt-1">
+                  ¿Deseas abrir en Cotizador Cisco CCW?
+                </h3>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-300 leading-relaxed mb-6">
+              <div className="p-3.5 bg-slate-800/60 rounded-2xl border border-slate-700/50 flex items-center space-x-3">
+                <FileSpreadsheet className="w-5 h-5 text-slate-400 shrink-0" />
+                <div className="min-w-0">
+                  <p className="font-semibold text-white truncate">{misroutedEstimate.fileName}</p>
+                  <p className="text-[11px] text-slate-400">
+                    Cisco CCW Price Estimate{misroutedEstimate.estimateId ? ` #${misroutedEstimate.estimateId}` : ''}
+                  </p>
+                </div>
+              </div>
+              <p>
+                El archivo subido corresponde a un <strong className="text-white">Price Estimate de Cisco CCW</strong> (Hardware / Software estándar), no a una cotización de contratos de servicios CCW-R.
+              </p>
+              <p className="text-slate-400">
+                ¿Deseas cargarlo en el módulo principal <strong>Cotizador Cisco CCW</strong> para procesar la lista de materiales, reglas de madre-hijo y descuentos?
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-800">
+              <button
+                onClick={() => setMisroutedEstimate(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  const safeBuf = misroutedEstimate.buffer;
+                  const fName = misroutedEstimate.fileName;
+                  setMisroutedEstimate(null);
+                  setCurrentView('quoter');
+                  await processFileBuffer(safeBuf, fName);
+                }}
+                className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+              >
+                <span>Abrir en Cotizador Cisco CCW</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -112,7 +112,7 @@ export interface ProcessedCcwrQuote {
 }
 
 export const DEFAULT_CCWR_PARAMS: CcwrQuoteParameters = {
-  margenPct: 8.8,
+  margenPct: 5.0,
   arancelPct: 0.0,
   internacionPct: 0.0,
   sellerName: 'Mauricio Skill',

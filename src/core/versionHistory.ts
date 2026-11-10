@@ -15,11 +15,28 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.10.1',
+    date: '2026-11-09',
+    commit: 'fix-format-detection-ccw-ccwr-and-excel-styling',
+    title: 'Detección Bidireccional de Formatos CCW vs CCW-R, Margen Base 5%, Logo Intcomex y Rediseño de Excel',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Detector Inteligente de Formato (detectCiscoFileType): Detección automática que evita que planillas CCW-R de servicios sean procesadas por error en el módulo Estimate de Hardware como líneas de $0.',
+      'Modal Interactivo de Redirección (MisroutedFileModal): Alerta con 1 clic para abrir automáticamente cotizaciones CCW-R en su módulo correspondiente, y viceversa si se carga un Price Estimate en CCW-R.',
+      'Margen Inicial en 5.0% para CCW-R: Ajuste de DEFAULT_CCWR_PARAMS para que las cotizaciones de servicios y licencias comiencen predeterminadas en 5%.',
+      'Inyección del Logo Oficial Intcomex en Excel: Incorporación del logotipo en alta resolución en la esquina superior izquierda de la planilla de 13 columnas.',
+      'Fondo Limpio sin Cuadrícula: Desactivación de líneas grises fuera del área cotizada (showGridLines: false).',
+      'Zebra Striping y Bordes Ejecutivos: Filas con alternancia de fondo blanco (#FFFFFF) y slate suave (#F8FAFC) con bordes finos completos (#CBD5E1).',
+      'Auto-Ajuste Ceñido de Celdas: Cálculo dinámico de ancho celda por celda según el contenido para comprimir espacios muertos.',
+    ],
+  },
+  {
     version: '2.10.0',
     date: '2026-11-09',
     commit: 'feat-ccwr-quote-services-and-licenses-module',
     title: 'Nuevo Módulo Cotizador CCW-R de Servicios & Licencias Cisco (Formato Oficial Intcomex)',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Nuevo Módulo Especializado Cotizador CCW-R (src/modules/ccwrQuote): Ingesta inteligente de planillas raw de 74 columnas descargadas directamente de Cisco CCW-R (.xlsx, .xls, .csv).',

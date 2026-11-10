@@ -41,6 +41,7 @@ import {
   detectMiningFastTrackUsage,
   MiningFastTrackAlertData,
 } from '../modules/mining';
+import { detectCiscoFileType } from './fileTypeDetector';
 import {
   getDesktopPyWebViewApi,
   readLocalSkuOverrides,
@@ -78,6 +79,16 @@ export const DEFAULT_PARAMS: QuoteParameters = {
   parameterMode: 'standard',
   lineCustomParams: {},
 };
+
+export interface MisroutedFileAlert {
+  isOpen: boolean;
+  detectedType: 'ccwr_quote' | 'ccw_estimate';
+  fileName: string;
+  buffer: ArrayBuffer;
+  quoteNumber?: string;
+  estimateId?: string;
+  customerName?: string;
+}
 
 export interface CiscoAutomatedState {
   // Authentication & Session
@@ -180,6 +191,12 @@ export interface CiscoAutomatedState {
   estimateVersionTag: string;
   baselineV0Amount: number;
 
+  // Detección de Archivos Misrouted (ej: CCW-R en módulo CCW o viceversa)
+  misroutedFileAlert: MisroutedFileAlert | null;
+  setMisroutedFileAlert: (alert: MisroutedFileAlert | null) => void;
+  pendingCcwrFile: { buffer: ArrayBuffer; fileName: string } | null;
+  setPendingCcwrFile: (file: { buffer: ArrayBuffer; fileName: string } | null) => void;
+
   processFileBuffer: (buffer: ArrayBuffer, fileName: string) => Promise<void>;
   setRowRule: (rowIdx: number, rule: OverrideRuleType, sku?: string) => Promise<void>;
   cycleRowRule: (rowIdx: number) => Promise<void>;
@@ -275,7 +292,11 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
   const [miningFastTrackWarningData, setMiningFastTrackWarningData] = useState<MiningFastTrackAlertData | null>(null);
   const [isMiningFastTrackWarningModalOpen, setIsMiningFastTrackWarningModalOpen] = useState<boolean>(false);
 
-  // 7. Controles de Interfaz
+  // 7. Alerta de Detección de Archivos Misrouted
+  const [misroutedFileAlert, setMisroutedFileAlert] = useState<MisroutedFileAlert | null>(null);
+  const [pendingCcwrFile, setPendingCcwrFile] = useState<{ buffer: ArrayBuffer; fileName: string } | null>(null);
+
+  // 8. Controles de Interfaz
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeQuoterTab, setActiveQuoterTab] = useState<'excel' | 'table' | 'calculator'>('excel');
@@ -409,6 +430,22 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
 
       try {
         const safeBuffer = buffer.slice(0);
+
+        // Verificación de formato: Detección proactiva de cotizaciones CCW-R en el módulo de Estimate
+        const detection = detectCiscoFileType(safeBuffer);
+        if (detection.fileType === 'ccwr_quote') {
+          setMisroutedFileAlert({
+            isOpen: true,
+            detectedType: 'ccwr_quote',
+            fileName,
+            buffer: safeBuffer,
+            quoteNumber: detection.quoteNumber,
+            customerName: detection.customerName,
+          });
+          setIsProcessing(false);
+          return;
+        }
+
         setRawWorkbookBuffer(safeBuffer);
         setCurrentFileName(fileName);
 
@@ -1203,6 +1240,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       setEstimateVersionNumber,
       estimateVersionTag,
       baselineV0Amount,
+      misroutedFileAlert,
+      setMisroutedFileAlert,
+      pendingCcwrFile,
+      setPendingCcwrFile,
       isProcessing,
       errorMessage,
       activeQuoterTab,
@@ -1264,6 +1305,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       estimateVersionNumber,
       estimateVersionTag,
       baselineV0Amount,
+      misroutedFileAlert,
+      setMisroutedFileAlert,
+      pendingCcwrFile,
+      setPendingCcwrFile,
       isProcessing,
       errorMessage,
       activeQuoterTab,

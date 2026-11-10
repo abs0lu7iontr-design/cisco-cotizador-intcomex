@@ -31,6 +31,7 @@ import {
   isCiscoServiceItem,
 } from './calculations';
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../lib/intcomexLogoBase64';
+import { detectCiscoFileType } from './fileTypeDetector';
 import { generateQuotationFileName, isPureLicensingQuote, resolveEffectiveQuoteRates } from './exportUtils';
 import {
   parseEstimateWithHierarchy,
@@ -494,6 +495,14 @@ export async function parseEstimateWorkbook(
             ((arrayBuffer as any).byteOffset || 0) + ((arrayBuffer as any).byteLength || (arrayBuffer as any).length || 0)
           )
         : (arrayBuffer && typeof (arrayBuffer as any).slice === 'function' ? (arrayBuffer as any).slice(0) : arrayBuffer)));
+
+  // Verificación de formato: Prevenir ingesta errónea de cotizaciones CCW-R de servicios en el motor de Estimate
+  const fileTypeCheck = detectCiscoFileType(bufferCopy);
+  if (fileTypeCheck.fileType === 'ccwr_quote') {
+    throw new Error(
+      `El archivo '${fileName}' corresponde a una Cotización de Servicios y Licencias Cisco CCW-R${fileTypeCheck.quoteNumber ? ` (Quote #${fileTypeCheck.quoteNumber})` : ''}, no a un Price Estimate de Cisco CCW. Por favor utiliza el módulo 'Cotizador CCW-R (Servicios & Licencias)' para cotizarlo.`
+    );
+  }
 
   const workbook = new ExcelJS.Workbook();
   const loadPayload = typeof Buffer !== 'undefined' && !(bufferCopy instanceof Buffer)
