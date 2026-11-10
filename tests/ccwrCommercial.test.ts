@@ -283,6 +283,21 @@ assert.strictEqual(headerCell.value, 'Número de Producto');
 const fillObj: any = headerCell.fill;
 assert.ok(fillObj && fillObj.fgColor && (fillObj.fgColor.argb === 'FFD9D9D9' || fillObj.fgColor.theme !== undefined), 'La cabecera de la tabla debe tener fondo plomo');
 
+// Verificar que los anchos de columnas se ajusten al contenido y nunca desborden el recuadro
+const col12Width = generatedWs.getColumn(12).width || 0;
+const col13Width = generatedWs.getColumn(13).width || 0;
+assert.ok(col12Width >= 42, `Columna 12 (Nombre Cliente Final) debe ser >= 42 para no desbordar, actual: ${col12Width}`);
+assert.ok(col13Width >= 38, `Columna 13 (Dirección Cliente Final) debe ser >= 38 para no desbordar, actual: ${col13Width}`);
+
+// Verificar alineación y justificación en celdas de datos
+const dataRow9 = generatedWs.getRow(9);
+assert.strictEqual(dataRow9.getCell(1).alignment?.horizontal, 'left');
+assert.strictEqual(dataRow9.getCell(3).alignment?.horizontal, 'center');
+assert.strictEqual(dataRow9.getCell(10).alignment?.horizontal, 'right');
+assert.strictEqual(dataRow9.getCell(12).alignment?.horizontal, 'left');
+assert.strictEqual(dataRow9.getCell(13).alignment?.horizontal, 'left');
+assert.strictEqual(dataRow9.getCell(13).alignment?.wrapText, true, 'Dirección debe tener wrapText para no salirse del recuadro');
+
 // Verificar existencia de las leyendas legales (Plazo de entrega debe estar ELIMINADO)
 let foundValidez = false;
 let foundPlazoEntrega = false;

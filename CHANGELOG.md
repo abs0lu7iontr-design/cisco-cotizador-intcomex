@@ -6,6 +6,23 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.10.4] - 2026-11-10
+### 🔧 Corrección y Ajuste Visual (Blindaje Anti-Desborde de Celdas y Recuadros en Excel CCW-R)
+- **Corrección de Desborde en Dirección Cliente Final (`ccwrExcelExporter.ts`):**
+  - **Ampliación de Límite de Ancho:** Elevado el `maxWidth` de la columna de 35 a 85 caracteres.
+  - **Inclusión de Metadatos de Cabecera:** El cálculo dinámico de ancho de columna ahora considera obligatoriamente `headerInfo.endCustomerAddressLine1`, garantizando que la columna sea lo suficientemente ancha para direcciones largas (ej. `AV LIBERTADOR BERNARDO, OHIGGINS 1414, SANTIAGO` de 47 caracteres) y no desborde fuera del recuadro ni de la tabla.
+  - **Ajuste de Texto (wrapText: true):** Activado el ajuste de texto dentro de la celda para confinar cualquier dirección atípicamente extensa estrictamente dentro de sus bordes.
+- **Corrección en Nombre de Cliente Final (`ccwrExcelExporter.ts`):**
+  - Ampliado `maxWidth` a 75 caracteres e incorporado `headerInfo.endCustomerName` en el cálculo de ancho para evitar solapamiento entre la razón social y la columna de dirección contigua.
+- **Justificación y Alineación Rigurosa en Todas las Celdas (`ccwrExcelExporter.ts`):**
+  - Alineación horizontal explícita en todas las celdas de la tabla: izquierda para texto (`Número de Producto`, `Descripción del Producto`, `Descripción del Servicio`, `SKU`, `Nombre Cliente Final`, `Dirección Cliente Final`), centrada para códigos y fechas (`Número de Serie / PAK`, `Nivel de Servicio`, `Inicio`, `Término`, `Cantidad`, `ID Cliente Final`) y derecha para valores monetarios (`Precio Unitario (USD)` y `Total General`).
+- **Definición y Nitidez de Bordes Ejecutivos (`ccwrExcelExporter.ts`):**
+  - Bordes de celdas internas actualizados a un gris contrastante (`#94A3B8`), con refuerzo perimetral exterior (`medium #334155`) en las columnas de inicio y fin, encerrando perfectamente toda la cotización en un recuadro cerrado y pulcro.
+- **Fusión de Celdas para Fecha en Cabecera (`ccwrExcelExporter.ts`):**
+  - Celdas E6 y F6 combinadas para alojar cómodamente la fecha de emisión en español largo sin invadir ni desalinear columnas adyacentes.
+- **Actualización de Suite de Pruebas Automatizadas (`tests/ccwrCommercial.test.ts`):**
+  - Aserciones automáticas sobre anchos de columna de cliente y dirección, alineaciones horizontales y `wrapText: true`.
+
 ## [v2.10.3] - 2026-11-09
 ### 🎨 Rediseño, Ergonomía y Perfeccionamiento Ejecutivo (Cabecera Compacta Excel CCW-R, Fondo Plomo, Títulos en Español, Precio Unitario y Retiro de Plazo de Entrega)
 - **Eliminación Definitiva de Cláusula de Plazo de Entrega (`ccwrExcelExporter.ts`):**

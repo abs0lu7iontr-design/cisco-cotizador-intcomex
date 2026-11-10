@@ -15,11 +15,27 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.10.4',
+    date: '2026-11-10',
+    commit: 'fix-ccwr-excel-address-box-overflow-and-column-justification',
+    title: 'Blindaje Anti-Desborde de Celdas y Recuadros en Excel CCW-R (Dirección, Nombre de Cliente y Justificación)',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Blindaje Anti-Desborde en Dirección del Cliente: Elevado el maxWidth de Dirección Cliente Final a 85 caracteres y cálculo dinámico de ancho con inclusión estricta de headerInfo.endCustomerAddressLine1, erradicando que la dirección se salga del recuadro o traspase los bordes de la tabla.',
+      'Ajuste Dinámico en Nombre de Cliente Final: Ampliado el límite de ancho a 75 caracteres y cálculo con fallback a headerInfo.endCustomerName, evitando truncamientos o superposición con la columna contigua.',
+      'Bordes Nítidos y Perimetrales Reforzados: Actualizado el estilo de bordes a un gris contrastante (#94A3B8) con contorno perimetral medio (#334155) en los extremos izquierdo y derecho de la tabla.',
+      'Justificación y Alineación Rigurosa: Alineación horizontal izquierda explícita para texto (Producto, Descripción, SKU, Nombre y Dirección), centrada para códigos/fechas y derecha para valores monetarios.',
+      'Ajuste de Texto (wrapText: true): Activado ajuste de línea protector en celdas de texto para garantizar que cualquier texto extraordinariamente largo se mantenga estrictamente confinado dentro de su recuadro.',
+      'Merge de Fecha en Cabecera (E6:F6): Fusión de celdas para fecha de emisión completa sin recortes ni invasión de celdas.',
+    ],
+  },
+  {
     version: '2.10.3',
     date: '2026-11-09',
     commit: 'feat-ccwr-compact-header-plomo-spanish-unit-price-and-legend-cleanup',
     title: 'Cabecera Compacta Excel CCW-R, Fondo Plomo, Títulos en Español, Precio Unitario y Retiro de Plazo de Entrega',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Eliminación de Cláusula de Plazo de Entrega: Retiro definitivo de la leyenda de despacho físico en cotizaciones CCW-R, ya que servicios, soporte Smart Net Total Care y licencias son 100% intangibles sin despacho.',

@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.10.3",
-  "git_commit": "69791d5",
+  "version": "2.10.4",
+  "git_commit": "cd2b33c",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-10T03:00:48.053Z",
-  "release_notes": "feat(v2.10.2): redisenio cabecera excel ccwr leyendas legales barra estetica margen y viewport ampliado",
+  "build_timestamp": "2026-11-10T03:22:14.482Z",
+  "release_notes": "feat(v2.10.3): cabecera compacta excel ccwr fondo plomo traduccion espanol precio unitario y retiro plazo entrega",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

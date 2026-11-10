@@ -15,19 +15,19 @@ import {
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../../lib/intcomexLogoBase64';
 
 export const CCWR_EXPORT_COLUMNS = [
-  { header: 'Número de Producto', key: 'productNumber', minWidth: 16, maxWidth: 22 },
-  { header: 'Descripción del Producto', key: 'productDescription', minWidth: 24, maxWidth: 38 },
-  { header: 'Número de Serie / PAK', key: 'serialNumber', minWidth: 18, maxWidth: 24 },
-  { header: 'Nivel de Servicio', key: 'serviceLevel', minWidth: 15, maxWidth: 18 },
-  { header: 'Descripción del Servicio', key: 'serviceLevelDescription', minWidth: 20, maxWidth: 26 },
-  { header: 'SKU del Servicio', key: 'serviceSku', minWidth: 18, maxWidth: 26 },
-  { header: 'Fecha de Inicio', key: 'startDate', minWidth: 14, maxWidth: 16 },
-  { header: 'Fecha de Término', key: 'endDate', minWidth: 14, maxWidth: 16 },
-  { header: 'Cantidad', key: 'quantity', minWidth: 8, maxWidth: 10 },
-  { header: 'Precio Unitario (USD)', key: 'unitSalePrice', minWidth: 18, maxWidth: 22 },
-  { header: 'ID Cliente Final', key: 'endCustomerId', minWidth: 15, maxWidth: 18 },
-  { header: 'Nombre Cliente Final', key: 'endCustomerName', minWidth: 20, maxWidth: 35 },
-  { header: 'Dirección Cliente Final', key: 'endCustomerAddress', minWidth: 20, maxWidth: 35 },
+  { header: 'Número de Producto', key: 'productNumber', minWidth: 18, maxWidth: 32 },
+  { header: 'Descripción del Producto', key: 'productDescription', minWidth: 26, maxWidth: 65 },
+  { header: 'Número de Serie / PAK', key: 'serialNumber', minWidth: 18, maxWidth: 28 },
+  { header: 'Nivel de Servicio', key: 'serviceLevel', minWidth: 15, maxWidth: 24 },
+  { header: 'Descripción del Servicio', key: 'serviceLevelDescription', minWidth: 22, maxWidth: 35 },
+  { header: 'SKU del Servicio', key: 'serviceSku', minWidth: 18, maxWidth: 32 },
+  { header: 'Fecha de Inicio', key: 'startDate', minWidth: 14, maxWidth: 18 },
+  { header: 'Fecha de Término', key: 'endDate', minWidth: 14, maxWidth: 18 },
+  { header: 'Cantidad', key: 'quantity', minWidth: 9, maxWidth: 12 },
+  { header: 'Precio Unitario (USD)', key: 'unitSalePrice', minWidth: 22, maxWidth: 28 },
+  { header: 'ID Cliente Final', key: 'endCustomerId', minWidth: 16, maxWidth: 24 },
+  { header: 'Nombre Cliente Final', key: 'endCustomerName', minWidth: 28, maxWidth: 75 },
+  { header: 'Dirección Cliente Final', key: 'endCustomerAddress', minWidth: 28, maxWidth: 85 },
 ];
 
 const SPANISH_MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -152,10 +152,10 @@ export async function generateCcwrQuoteExcel(
   };
 
   const executiveBorder: Partial<ExcelJS.Borders> = {
-    top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-    bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-    left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
-    right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    top: { style: 'thin', color: { argb: 'FF94A3B8' } },
+    bottom: { style: 'thin', color: { argb: 'FF94A3B8' } },
+    left: { style: 'thin', color: { argb: 'FF94A3B8' } },
+    right: { style: 'thin', color: { argb: 'FF94A3B8' } },
   };
 
   const tableHeaderBorder: Partial<ExcelJS.Borders> = {
@@ -268,9 +268,11 @@ export async function generateCcwrQuoteExcel(
   row6.getCell(4).alignment = { vertical: 'middle', horizontal: 'right' };
   const today = new Date();
   const dateOptions: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-  row6.getCell(5).value = today.toLocaleDateString('es-CL', dateOptions);
-  row6.getCell(5).font = regularFont;
-  row6.getCell(5).alignment = { vertical: 'middle', horizontal: 'left' };
+  worksheet.mergeCells('E6:F6');
+  const dateCell = worksheet.getCell('E6');
+  dateCell.value = today.toLocaleDateString('es-CL', dateOptions);
+  dateCell.font = regularFont;
+  dateCell.alignment = { vertical: 'middle', horizontal: 'left' };
 
   // Fila 7: Quote CCW-R (Izquierda) - Altura completa de 20px para que NUNCA aparezca cortada
   const row7 = worksheet.getRow(7);
@@ -331,10 +333,22 @@ export async function generateCcwrQuoteExcel(
       cell.alignment = { vertical: 'middle' };
     }
 
-    // Alineaciones y formatos específicos
+    // Refuerzo de bordes perimetrales de la tabla
+    row.getCell(1).border = {
+      ...executiveBorder,
+      left: { style: 'medium', color: { argb: 'FF334155' } },
+    };
+    row.getCell(13).border = {
+      ...executiveBorder,
+      right: { style: 'medium', color: { argb: 'FF334155' } },
+    };
+
+    // Justificaciones y alineaciones estrictas para cada celda
     row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
+    row.getCell(2).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
     row.getCell(3).alignment = { vertical: 'middle', horizontal: 'center' };
     row.getCell(4).alignment = { vertical: 'middle', horizontal: 'center' };
+    row.getCell(5).alignment = { vertical: 'middle', horizontal: 'left' };
     row.getCell(6).alignment = { vertical: 'middle', horizontal: 'left' };
     row.getCell(7).alignment = { vertical: 'middle', horizontal: 'center' };
     row.getCell(8).alignment = { vertical: 'middle', horizontal: 'center' };
@@ -342,17 +356,23 @@ export async function generateCcwrQuoteExcel(
     row.getCell(10).alignment = { vertical: 'middle', horizontal: 'right' };
     row.getCell(10).numFmt = '"$ " #,##0.00';
     row.getCell(11).alignment = { vertical: 'middle', horizontal: 'center' };
+    row.getCell(12).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+    row.getCell(13).alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
 
     currentExcelRow++;
   }
 
   // 5. Fila de Totales al final
   const totalRow = worksheet.getRow(currentExcelRow);
-  totalRow.height = 23;
-  totalRow.getCell(8).value = 'TOTAL GENERAL:';
-  totalRow.getCell(8).font = boldFont;
-  totalRow.getCell(8).alignment = { vertical: 'middle', horizontal: 'right' };
-  totalRow.getCell(8).border = tableHeaderBorder;
+  totalRow.height = 24;
+
+  worksheet.mergeCells(`G${currentExcelRow}:H${currentExcelRow}`);
+  const totalLabelCell = worksheet.getCell(`G${currentExcelRow}`);
+  totalLabelCell.value = 'TOTAL GENERAL:';
+  totalLabelCell.font = boldFont;
+  totalLabelCell.alignment = { vertical: 'middle', horizontal: 'right' };
+  totalLabelCell.border = tableHeaderBorder;
+  worksheet.getCell(`H${currentExcelRow}`).border = tableHeaderBorder;
 
   totalRow.getCell(9).value = summary.totalQuantity;
   totalRow.getCell(9).font = boldFont;
@@ -365,12 +385,22 @@ export async function generateCcwrQuoteExcel(
   totalRow.getCell(10).alignment = { vertical: 'middle', horizontal: 'right' };
   totalRow.getCell(10).border = tableHeaderBorder;
 
-  // Bordear celdas vacías del total
-  for (let c = 1; c <= 7; c++) {
-    totalRow.getCell(c).border = { top: { style: 'medium', color: { argb: 'FF475569' } } };
+  // Bordear celdas vacías del total para cerrar el recuadro inferior de la tabla
+  for (let c = 1; c <= 6; c++) {
+    totalRow.getCell(c).border = {
+      top: { style: 'medium', color: { argb: 'FF334155' } },
+      bottom: { style: 'medium', color: { argb: 'FF334155' } },
+      left: c === 1 ? { style: 'medium', color: { argb: 'FF334155' } } : { style: 'thin', color: { argb: 'FF94A3B8' } },
+      right: { style: 'thin', color: { argb: 'FF94A3B8' } },
+    };
   }
   for (let c = 11; c <= 13; c++) {
-    totalRow.getCell(c).border = { top: { style: 'medium', color: { argb: 'FF475569' } } };
+    totalRow.getCell(c).border = {
+      top: { style: 'medium', color: { argb: 'FF334155' } },
+      bottom: { style: 'medium', color: { argb: 'FF334155' } },
+      left: { style: 'thin', color: { argb: 'FF94A3B8' } },
+      right: c === 13 ? { style: 'medium', color: { argb: 'FF334155' } } : { style: 'thin', color: { argb: 'FF94A3B8' } },
+    };
   }
 
   // 6. Leyendas Legales Oficiales Intcomex (Filas Dinámicas ubicadas automáticamente al final)
@@ -443,13 +473,13 @@ export async function generateCcwrQuoteExcel(
           valStr = `$ ${it.precioVentaUnitario.toFixed(2)}`;
           break;
         case 'endCustomerId':
-          valStr = it.endCustomerId || '';
+          valStr = it.endCustomerId || headerInfo.endCustomerId || '';
           break;
         case 'endCustomerName':
-          valStr = it.endCustomerName || '';
+          valStr = it.endCustomerName || headerInfo.endCustomerName || '';
           break;
         case 'endCustomerAddress':
-          valStr = it.endCustomerAddress || '';
+          valStr = it.endCustomerAddress || headerInfo.endCustomerAddressLine1 || '';
           break;
       }
       if (valStr.length > maxContentLen) {
@@ -457,24 +487,43 @@ export async function generateCcwrQuoteExcel(
       }
     }
 
-    // Ancho ajustado ceñido: longitud + 2 caracteres de respiro, respetando minWidth y maxWidth
-    let adjustedWidth = maxContentLen + 2.5;
+    // Comprobar también metadatos de cabecera general para blindar columnas
+    if (col.key === 'endCustomerId') {
+      const hVal = headerInfo.endCustomerId || '';
+      if (hVal.length > maxContentLen) maxContentLen = hVal.length;
+    } else if (col.key === 'endCustomerName') {
+      const hVal = headerInfo.endCustomerName || '';
+      if (hVal.length > maxContentLen) maxContentLen = hVal.length;
+    } else if (col.key === 'endCustomerAddress') {
+      const hVal = headerInfo.endCustomerAddressLine1 || '';
+      if (hVal.length > maxContentLen) maxContentLen = hVal.length;
+    }
+
+    // Ancho ajustado con margen de respiro (+ 3.5 caracteres) para garantizar que NUNCA desborde el recuadro
+    let adjustedWidth = maxContentLen + 3.5;
+
     if (col.key === 'quantity') {
-      adjustedWidth = 9;
+      adjustedWidth = 10;
     } else if (col.key === 'startDate' || col.key === 'endDate') {
-      adjustedWidth = 15;
+      adjustedWidth = 16;
     } else if (col.key === 'serviceLevel') {
       // Col 4 contiene en la cabecera superior "Vigencia del Servicio:" (22 caracteres)
-      adjustedWidth = Math.max(adjustedWidth, 23);
+      adjustedWidth = Math.max(adjustedWidth, 24);
     } else if (col.key === 'unitSalePrice') {
-      // Encabezado "Precio Unitario (USD)"
-      adjustedWidth = Math.max(adjustedWidth, 22);
+      // Encabezado "Precio Unitario (USD)" (21 caracteres)
+      adjustedWidth = Math.max(adjustedWidth, 24);
     } else if (col.key === 'productNumber') {
       // Col 1 contiene en la cabecera "Product Manager:" y "Quote CCW-R:"
-      adjustedWidth = Math.max(adjustedWidth, 20);
-    } else {
-      adjustedWidth = Math.min(Math.max(adjustedWidth, col.minWidth), col.maxWidth);
+      adjustedWidth = Math.max(adjustedWidth, 22);
+    } else if (col.key === 'productDescription') {
+      // Col 2 contiene en la cabecera "Rosario Norte 615, SANTIAGO" (28 caracteres)
+      adjustedWidth = Math.max(adjustedWidth, 32);
+    } else if (col.key === 'serviceLevelDescription') {
+      adjustedWidth = Math.max(adjustedWidth, 26);
     }
+
+    // Aplicar minWidth y maxWidth de forma estricta asegurando que no se corte
+    adjustedWidth = Math.min(Math.max(adjustedWidth, col.minWidth), col.maxWidth);
 
     worksheet.getColumn(colIndex).width = adjustedWidth;
   });
