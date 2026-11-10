@@ -30,6 +30,53 @@ export const CCWR_EXPORT_COLUMNS = [
   { header: 'Direccion Cliente Final', key: 'endCustomerAddress', minWidth: 20, maxWidth: 35 },
 ];
 
+const SPANISH_MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const ENGLISH_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/**
+ * Parsea un string de fecha en formato "DD-mmm-YYYY" o ISO a un objeto Date
+ */
+export function parseCcwrDateToDate(dateStr: string): Date | null {
+  if (!dateStr) return null;
+  const parts = dateStr.trim().split('-');
+  if (parts.length === 3) {
+    const day = parseInt(parts[0], 10);
+    const monthStr = parts[1].toLowerCase();
+    const year = parseInt(parts[2], 10);
+    let monthIdx = SPANISH_MONTHS.indexOf(monthStr);
+    if (monthIdx === -1) {
+      monthIdx = ENGLISH_MONTHS.indexOf(monthStr);
+    }
+    if (!isNaN(day) && monthIdx !== -1 && !isNaN(year)) {
+      return new Date(Date.UTC(year, monthIdx, day));
+    }
+  }
+  const timestamp = Date.parse(dateStr);
+  if (!isNaN(timestamp)) {
+    return new Date(timestamp);
+  }
+  return null;
+}
+
+/**
+ * Calcula con precisión los meses de vigencia del contrato a partir de las fechas de inicio y término
+ */
+export function calculateContractDurationMonths(items: CcwrLineItem[]): number {
+  for (const it of items) {
+    if (it.startDate && it.endDate) {
+      const d1 = parseCcwrDateToDate(it.startDate);
+      const d2 = parseCcwrDateToDate(it.endDate);
+      if (d1 && d2 && d2 > d1) {
+        const diffMs = d2.getTime() - d1.getTime();
+        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1; // Rango inclusivo
+        const months = Math.round(diffDays / 30.4375);
+        if (months > 0) return months;
+      }
+    }
+  }
+  return 12; // Valor predeterminado estándar en servicios anuales
+}
+
 /**
  * Genera el archivo Excel de cotización formal de servicios con la estructura, logo y diseño oficial
  */
@@ -119,58 +166,112 @@ export async function generateCcwrQuoteExcel(
   };
 
   // 2. Cabecera Ejecutiva Corporativa (Filas 3 a 8)
-  // Fila 3: Vendedor y Total Cotización
+  // Bloque Izquierdo: Vendedor, Empresa, Dirección, Teléfono, Fecha y Quote CCW-R
   const row3 = worksheet.getRow(3);
   row3.getCell(1).value = 'Vendedor:';
   row3.getCell(1).font = boldFont;
   row3.getCell(2).value = params.sellerName || 'Mauricio Skill';
   row3.getCell(2).font = regularFont;
 
-  row3.getCell(4).value = 'Total Cotización:';
-  row3.getCell(4).font = boldFont;
-  row3.getCell(5).value = summary.totalPrecioVenta;
-  row3.getCell(5).numFmt = '"$ " #,##0.00';
-  row3.getCell(5).font = { ...boldFont, color: { argb: 'FF006100' }, size: 11 };
-
-  // Fila 4: Empresa
   const row4 = worksheet.getRow(4);
   row4.getCell(1).value = 'Empresa:';
   row4.getCell(1).font = boldFont;
   row4.getCell(2).value = params.companyName || 'INTCOMEX SA';
   row4.getCell(2).font = regularFont;
 
-  row4.getCell(4).value = 'Teléfono:';
-  row4.getCell(4).font = boldFont;
-  row4.getCell(5).value = params.sellerPhone || 'Movil :+56 9 88226530';
-  row4.getCell(5).font = regularFont;
-
-  // Fila 5: Dirección
   const row5 = worksheet.getRow(5);
   row5.getCell(1).value = 'Dirección:';
   row5.getCell(1).font = boldFont;
   row5.getCell(2).value = params.companyAddress || 'Rosario Norte 615, SANTIAGO';
   row5.getCell(2).font = regularFont;
 
-  // Fila 6: Fecha de Emisión
+  // Teléfono reubicado directamente bajo Dirección según solicitud
   const row6 = worksheet.getRow(6);
-  row6.getCell(1).value = 'Fecha:';
+  row6.getCell(1).value = 'Teléfono:';
   row6.getCell(1).font = boldFont;
-  const today = new Date();
-  const dateOptions: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-  row6.getCell(2).value = today.toLocaleDateString('es-CL', dateOptions);
+  row6.getCell(2).value = params.sellerPhone || 'Movil :+56 9 88226530';
   row6.getCell(2).font = regularFont;
 
-  // Fila 7: Número de Cotización Cisco CCW-R
+  // Fecha de Emisión
   const row7 = worksheet.getRow(7);
-  row7.getCell(1).value = 'Cotización CCW-R:';
+  row7.getCell(1).value = 'Fecha:';
   row7.getCell(1).font = boldFont;
-  row7.getCell(2).value = headerInfo.quoteNumber || 'S/N';
-  row7.getCell(2).font = { ...boldFont, color: { argb: 'FF002060' } };
+  const today = new Date();
+  const dateOptions: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+  row7.getCell(2).value = today.toLocaleDateString('es-CL', dateOptions);
+  row7.getCell(2).font = regularFont;
+
+  // Quote CCW-R (renombrado a "Quote CCW-R:" como solicitado)
+  const row8 = worksheet.getRow(8);
+  row8.getCell(1).value = 'Quote CCW-R:';
+  row8.getCell(1).font = boldFont;
+  row8.getCell(2).value = headerInfo.quoteNumber || 'S/N';
+  row8.getCell(2).font = { ...boldFont, color: { argb: 'FF002060' } };
+
+  // Bloque Derecho: Vigencia del Servicio y Total Cotización Encuadrado
+  const durationMonths = calculateContractDurationMonths(items);
+
+  // Vigencia del Servicio (Fila 4, Col D y E)
+  row4.getCell(4).value = 'Vigencia del Servicio:';
+  row4.getCell(4).font = { ...boldFont, size: 9.5, color: { argb: 'FF334155' } };
+  row4.getCell(4).alignment = { vertical: 'middle', horizontal: 'right' };
+
+  row4.getCell(5).value = `${durationMonths} Meses`;
+  row4.getCell(5).font = { ...boldFont, size: 10, color: { argb: 'FF1E40AF' } };
+  row4.getCell(5).alignment = { vertical: 'middle', horizontal: 'center' };
+  row4.getCell(5).fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFE0F2FE' }, // Soft blue badge
+  };
+  row4.getCell(5).border = {
+    top: { style: 'thin', color: { argb: 'FF93C5FD' } },
+    bottom: { style: 'thin', color: { argb: 'FF93C5FD' } },
+    left: { style: 'thin', color: { argb: 'FF93C5FD' } },
+    right: { style: 'thin', color: { argb: 'FF93C5FD' } },
+  };
+
+  // Encuadre destacado para Total Cotización (Filas 5 y 6, Columnas D y E)
+  row5.height = 18;
+  worksheet.mergeCells('D5:E5');
+  const totalBoxHeader = worksheet.getCell('D5');
+  totalBoxHeader.value = 'TOTAL COTIZACIÓN';
+  totalBoxHeader.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF065F46' } };
+  totalBoxHeader.alignment = { vertical: 'middle', horizontal: 'center' };
+  totalBoxHeader.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFD1FAE5' }, // Verde menta suave
+  };
+  totalBoxHeader.border = {
+    top: { style: 'medium', color: { argb: 'FF16A34A' } },
+    left: { style: 'medium', color: { argb: 'FF16A34A' } },
+    right: { style: 'medium', color: { argb: 'FF16A34A' } },
+    bottom: { style: 'thin', color: { argb: 'FFA7F3D0' } },
+  };
+
+  row6.height = 24;
+  worksheet.mergeCells('D6:E6');
+  const totalBoxValue = worksheet.getCell('D6');
+  totalBoxValue.value = summary.totalPrecioVenta;
+  totalBoxValue.numFmt = '"$ " #,##0.00';
+  totalBoxValue.font = { name: 'Calibri', size: 13, bold: true, color: { argb: 'FF15803D' } };
+  totalBoxValue.alignment = { vertical: 'middle', horizontal: 'center' };
+  totalBoxValue.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFECFDF5' }, // Verde claro distinguido
+  };
+  totalBoxValue.border = {
+    bottom: { style: 'medium', color: { argb: 'FF16A34A' } },
+    left: { style: 'medium', color: { argb: 'FF16A34A' } },
+    right: { style: 'medium', color: { argb: 'FF16A34A' } },
+  };
 
   // Espaciador Fila 8
-  worksheet.getRow(8).height = 8;
+  worksheet.getRow(8).height = 10;
 
-  // 3. Fila 9: Encabezados de Tabla (13 Columnas)
+  // 3. Fila 9: Encabezados de Tabla (13 Columnas Oficiales)
   const tableHeaderRow = worksheet.getRow(9);
   tableHeaderRow.height = 24;
 
@@ -193,7 +294,7 @@ export async function generateCcwrQuoteExcel(
   for (let i = 0; i < exportItems.length; i++) {
     const it = exportItems[i];
     const row = worksheet.getRow(currentExcelRow);
-    row.height = 19; // Ajustado compacto para evitar filas excesivamente altas
+    row.height = 19; // Compacto para lectura fluida
 
     // Alternar colores claro / oscuro para lectura ergonómica
     const rowFill = i % 2 === 0 ? zebraLightFill : zebraDarkFill;
@@ -263,7 +364,50 @@ export async function generateCcwrQuoteExcel(
     totalRow.getCell(c).border = { top: { style: 'medium', color: { argb: 'FF475569' } } };
   }
 
-  // 6. Cálculo Inteligente y Compacto de Ancho de Columnas (Auto-Ajustado al Contenido)
+  // 6. Leyendas Legales Oficiales Intcomex (Filas Dinámicas ubicadas automáticamente al final)
+  const footerRowStart = currentExcelRow + 2;
+
+  // Leyenda 1: Validez de la Oferta (14 días corridos destacado en negrita y rojo)
+  worksheet.mergeCells(`A${footerRowStart}:M${footerRowStart}`);
+  const footer1 = worksheet.getCell(`A${footerRowStart}`);
+  worksheet.getRow(footerRowStart).height = 18;
+  footer1.value = {
+    richText: [
+      { text: 'Validez de la Oferta: ', font: { name: 'Calibri', size: 8.5, bold: true, color: { argb: 'FF1F2937' } } },
+      { text: 'Esta cotización tiene una validez de ', font: { name: 'Calibri', size: 8.5, italic: true, color: { argb: 'FF475569' } } },
+      { text: '14 días corridos', font: { name: 'Calibri', size: 8.5, bold: true, italic: true, color: { argb: 'FFC00000' } } },
+      { text: ' a contar de su fecha de emisión.', font: { name: 'Calibri', size: 8.5, italic: true, color: { argb: 'FF475569' } } },
+    ],
+  };
+  footer1.alignment = { vertical: 'middle', horizontal: 'left' };
+
+  // Leyenda 2: Plazo de entrega
+  const footerRow2 = footerRowStart + 1;
+  worksheet.mergeCells(`A${footerRow2}:M${footerRow2}`);
+  const footer2 = worksheet.getCell(`A${footerRow2}`);
+  worksheet.getRow(footerRow2).height = 18;
+  footer2.value = {
+    richText: [
+      { text: 'Plazo de entrega: ', font: { name: 'Calibri', size: 8.5, bold: true, color: { argb: 'FF1F2937' } } },
+      { text: 'El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden.', font: { name: 'Calibri', size: 8.5, italic: true, color: { argb: 'FF475569' } } },
+    ],
+  };
+  footer2.alignment = { vertical: 'middle', horizontal: 'left' };
+
+  // Leyenda 3: Validación Técnica y Responsabilidad
+  const footerRow3 = footerRowStart + 2;
+  worksheet.mergeCells(`A${footerRow3}:M${footerRow3}`);
+  const footer3 = worksheet.getCell(`A${footerRow3}`);
+  worksheet.getRow(footerRow3).height = 36;
+  footer3.value = {
+    richText: [
+      { text: 'Validación Técnica y Responsabilidad: ', font: { name: 'Calibri', size: 8.5, bold: true, color: { argb: 'FF1F2937' } } },
+      { text: 'La presente cotización constituye una propuesta referencial de preventa basada en los requerimientos informados. Es responsabilidad exclusiva del Partner revisar y validar técnicamente la compatibilidad, completitud y exactitud de todos los números de parte (BOM) y licenciamiento antes de formalizar la orden de compra. Intcomex no asumirá costos ni mermas derivados de omisiones o inconsistencias en compras de productos a pedido no validadas previamente por el Partner.', font: { name: 'Calibri', size: 8.5, italic: true, color: { argb: 'FF475569' } } },
+    ],
+  };
+  footer3.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+
+  // 7. Cálculo Inteligente y Compacto de Ancho de Columnas (Auto-Ajustado al Contenido)
   CCWR_EXPORT_COLUMNS.forEach((col, idx) => {
     const colIndex = idx + 1;
     let maxContentLen = col.header.length;

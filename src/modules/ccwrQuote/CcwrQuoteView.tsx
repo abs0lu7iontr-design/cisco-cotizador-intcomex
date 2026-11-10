@@ -29,6 +29,8 @@ import {
   AlertTriangle,
   X,
   FileSpreadsheet,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   CcwrHeaderInfo,
@@ -40,7 +42,7 @@ import {
 } from './ccwrTypes';
 import { parseCcwrWorkbook } from './ccwrParser';
 import { recalculateCcwrQuote, calculateCcwrGoalSeekMargin } from './ccwrPricingEngine';
-import { generateCcwrQuoteExcel, generateCcwrEmailHtml } from './ccwrExcelExporter';
+import { generateCcwrQuoteExcel, generateCcwrEmailHtml, calculateContractDurationMonths } from './ccwrExcelExporter';
 import { saveCcwrQuoteHistory, linkCcwrToForecast, linkCcwrToPipeline } from './ccwrStorage';
 import { roundFinancial } from '../../core/calculations';
 import { useCiscoAutomatedStore } from '../../core/store';
@@ -63,6 +65,7 @@ export function CcwrQuoteView() {
   const [feedbackMessage, setFeedbackMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
   const [isCopiedEmail, setIsCopiedEmail] = useState<boolean>(false);
   const [isParamDrawerOpen, setIsParamDrawerOpen] = useState<boolean>(false);
+  const [isGroupsSummaryOpen, setIsGroupsSummaryOpen] = useState<boolean>(false);
   const [misroutedEstimate, setMisroutedEstimate] = useState<{
     isOpen: boolean;
     fileName: string;
@@ -102,6 +105,11 @@ export function CcwrQuoteView() {
   const { calculatedItems, summary } = useMemo(() => {
     return recalculateCcwrQuote(items, params, onlyServicesWithCost);
   }, [items, params, onlyServicesWithCost]);
+
+  // Vigencia del contrato calculada en meses
+  const durationMonths = useMemo(() => {
+    return calculateContractDurationMonths(items);
+  }, [items]);
 
   // Ítems filtrados por búsqueda
   const filteredItems = useMemo(() => {
@@ -446,79 +454,171 @@ export function CcwrQuoteView() {
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left/Center: Dashboard Cards + Table */}
-        <div className="flex-1 flex flex-col overflow-y-auto p-6 space-y-5 custom-scrollbar">
-          {/* KPI Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="flex-1 flex flex-col min-h-0 p-4 space-y-2.5 overflow-hidden">
+          {/* KPI Summary Cards (Compact Executive Ribbon) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 shrink-0">
             {/* Total Sale Price */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-sm relative overflow-hidden">
-              <div className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">
+            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 shadow-sm relative overflow-hidden">
+              <div className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">
                 Total Venta Cotización
               </div>
-              <div className="text-xl md:text-2xl font-bold font-mono text-emerald-300 mt-1">
+              <div className="text-lg font-bold font-mono text-emerald-300 mt-0.5">
                 ${summary.totalPrecioVenta.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
-              <div className="text-[10px] text-slate-400 mt-1">
+              <div className="text-[10px] text-slate-400 mt-0.5">
                 Con margen del {params.margenPct}% aplicado
               </div>
             </div>
 
             {/* Cost Cisco Col Z */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-sm">
-              <div className="text-[11px] font-semibold text-sky-400 uppercase tracking-wider">
+            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 shadow-sm">
+              <div className="text-[10px] font-semibold text-sky-400 uppercase tracking-wider">
                 Costo Neto Cisco (Col Z)
               </div>
-              <div className="text-xl md:text-2xl font-bold font-mono text-sky-300 mt-1">
+              <div className="text-lg font-bold font-mono text-sky-300 mt-0.5">
                 ${summary.totalExtendedNetCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
-              <div className="text-[10px] text-slate-400 mt-1">
-                Extended Net Price de CCW-R
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                Extended Net Price CCW-R
               </div>
             </div>
 
             {/* Gross Margin */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-sm">
-              <div className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider">
+            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 shadow-sm">
+              <div className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider">
                 Margen Bruto Intcomex
               </div>
-              <div className="text-xl md:text-2xl font-bold font-mono text-amber-300 mt-1">
+              <div className="text-lg font-bold font-mono text-amber-300 mt-0.5">
                 ${summary.margenBrutoUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
-              <div className="text-[10px] text-amber-400/80 mt-1">
+              <div className="text-[10px] text-amber-400/80 mt-0.5">
                 {summary.margenBrutoPct}% sobre venta
               </div>
             </div>
 
             {/* Total Serials / Items */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-sm">
-              <div className="text-[11px] font-semibold text-purple-400 uppercase tracking-wider">
+            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 shadow-sm">
+              <div className="text-[10px] font-semibold text-purple-400 uppercase tracking-wider">
                 Dispositivos / Seriales
               </div>
-              <div className="text-xl md:text-2xl font-bold font-mono text-purple-300 mt-1">
+              <div className="text-lg font-bold font-mono text-purple-300 mt-0.5">
                 {summary.totalQuantity} <span className="text-xs text-slate-400 font-normal">unidades</span>
               </div>
-              <div className="text-[10px] text-slate-400 mt-1">
+              <div className="text-[10px] text-slate-400 mt-0.5">
                 {summary.uniqueSerialsCount} seriales únicos
               </div>
             </div>
 
             {/* End Customer / Validity */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 shadow-sm col-span-2 md:col-span-1">
-              <div className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
-                Cliente Final
+            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 shadow-sm col-span-2 sm:col-span-1">
+              <div className="text-[10px] font-semibold text-sky-400 uppercase tracking-wider">
+                Vigencia / Cliente Final
               </div>
-              <div className="text-xs font-semibold text-white mt-1 truncate" title={headerInfo.endCustomerName}>
-                {headerInfo.endCustomerName || 'No especificado'}
+              <div className="text-sm font-bold text-white mt-0.5 truncate">
+                {durationMonths} Meses de Cobertura
               </div>
-              <div className="text-[10px] text-slate-400 mt-1 truncate">
-                {headerInfo.priceProtectionExpiryDate ? `Vence: ${headerInfo.priceProtectionExpiryDate}` : '1 Año de cobertura'}
+              <div className="text-[10px] text-slate-400 mt-0.5 truncate" title={headerInfo.endCustomerName}>
+                {headerInfo.endCustomerName || 'Cliente Final'}
               </div>
             </div>
           </div>
 
-          {/* Product Groups Summary Banner */}
-          {summary.byProduct.length > 0 && (
-            <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
+          {/* Aesthetic Margin Bar (100% Intangibles) */}
+          <div className="bg-slate-900/95 border border-slate-800/90 rounded-xl px-3.5 py-2 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 shrink-0">
+            {/* Left: Margin slider + presets */}
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Margen Comercial:
+                </span>
+                <span className="text-sm font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  {params.margenPct.toFixed(1)}%
+                </span>
+              </div>
+
+              {/* Glowing Slider */}
+              <div className="w-32 sm:w-44 flex items-center">
+                <input
+                  type="range"
+                  min="0"
+                  max="30"
+                  step="0.1"
+                  value={params.margenPct}
+                  onChange={(e) => setParams({ ...params, margenPct: parseFloat(e.target.value) || 0 })}
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400 hover:accent-emerald-300"
+                  title={`Margen: ${params.margenPct}%`}
+                />
+              </div>
+
+              {/* Quick Preset Pills */}
+              <div className="flex items-center gap-1">
+                {[3, 5, 8, 10, 12, 15].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setParams({ ...params, margenPct: preset })}
+                    className={`px-2 py-0.5 rounded text-[11px] font-semibold transition-all cursor-pointer ${
+                      Math.abs(params.margenPct - preset) < 0.05
+                        ? 'bg-emerald-500 text-slate-950 shadow-sm shadow-emerald-500/30 font-bold'
+                        : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60'
+                    }`}
+                  >
+                    {preset}%
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Right: Inline Goal Seek + Group Toggle */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Inline Goal Seek */}
+              <div className="flex items-center gap-1.5 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[11px] text-slate-400 font-medium">Objetivo USD:</span>
+                <input
+                  type="text"
+                  value={goalSeekTarget}
+                  onChange={(e) => setGoalSeekTarget(e.target.value)}
+                  placeholder={`$ ${summary.totalPrecioVenta.toFixed(0)}`}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleGoalSeek(); }}
+                  className="w-24 px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded text-xs text-right font-mono text-white focus:outline-none focus:border-amber-400"
+                />
+                <button
+                  type="button"
+                  onClick={handleGoalSeek}
+                  disabled={items.length === 0}
+                  className="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] font-bold transition-all disabled:opacity-40 cursor-pointer"
+                  title="Calcular margen exacto para la cifra objetivo"
+                >
+                  Calcular
+                </button>
+              </div>
+
+              {/* Resumen Grupos Toggle */}
+              {summary.byProduct.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsGroupsSummaryOpen(!isGroupsSummaryOpen)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                    isGroupsSummaryOpen
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                  }`}
+                  title="Mostrar u ocultar desglose de grupos por modelo"
+                >
+                  <Layers className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Grupos ({summary.byProduct.length})</span>
+                  {isGroupsSummaryOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Product Groups Summary Banner (Collapsible to save vertical space) */}
+          {isGroupsSummaryOpen && summary.byProduct.length > 0 && (
+            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3 shadow-sm shrink-0 max-h-44 overflow-y-auto custom-scrollbar animate-fadeIn">
+              <div className="flex items-center justify-between mb-2">
                 <div className="text-xs font-bold text-slate-200 flex items-center gap-2">
                   <Layers className="w-4 h-4 text-emerald-400" />
                   <span>Resumen Agrupado por Modelo y Servicio ({summary.byProduct.length} grupos)</span>
@@ -528,11 +628,11 @@ export function CcwrQuoteView() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
                 {summary.byProduct.map((group, idx) => (
                   <div
                     key={idx}
-                    className="p-3 rounded-lg bg-slate-950/60 border border-slate-800 hover:border-slate-700 transition-colors"
+                    className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800 hover:border-slate-700 transition-colors"
                   >
                     <div className="flex items-start justify-between">
                       <div>
@@ -547,7 +647,7 @@ export function CcwrQuoteView() {
                       </span>
                     </div>
 
-                    <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                    <div className="mt-2 pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-xs">
                       <span className="text-slate-400 text-[11px]">Unit Venta:</span>
                       <span className="font-mono font-bold text-emerald-300">
                         ${group.unitSalePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
@@ -566,7 +666,7 @@ export function CcwrQuoteView() {
           )}
 
           {/* Search Bar & View Toggles */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 bg-slate-900/60 px-3 py-2 rounded-xl border border-slate-800 shrink-0">
             <div className="relative w-full sm:w-80">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -598,7 +698,7 @@ export function CcwrQuoteView() {
             </div>
           </div>
 
-          {/* Detailed Line Items Table */}
+          {/* Detailed Line Items Table (Expanded High-Vision Viewport) */}
           {items.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center p-12 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20 text-center">
               <FileText className="w-12 h-12 text-slate-600 mb-3" />
@@ -617,23 +717,23 @@ export function CcwrQuoteView() {
               </button>
             </div>
           ) : (
-            <div className="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-lg flex flex-col">
-              <div className="overflow-x-auto max-h-[550px] custom-scrollbar">
+            <div className="flex-1 min-h-[380px] bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-lg flex flex-col">
+              <div className="flex-1 overflow-auto custom-scrollbar">
                 <table className="w-full text-left border-collapse text-xs">
-                  <thead className="bg-[#92D050] text-slate-950 sticky top-0 z-10 font-bold border-b border-emerald-700">
+                  <thead className="bg-[#92D050] text-slate-950 sticky top-0 z-20 font-bold border-b border-emerald-700 shadow-sm">
                     <tr>
-                      <th className="py-2.5 px-3 text-center w-12 border-r border-emerald-600">#</th>
-                      <th className="py-2.5 px-3 border-r border-emerald-600">Product Number</th>
-                      <th className="py-2.5 px-3 border-r border-emerald-600">Descripción del Producto</th>
-                      <th className="py-2.5 px-3 border-r border-emerald-600">PAK / Serial Number</th>
-                      <th className="py-2.5 px-3 border-r border-emerald-600 text-center">Nivel</th>
-                      <th className="py-2.5 px-3 border-r border-emerald-600">SKU de Servicio</th>
-                      <th className="py-2.5 px-3 border-r border-emerald-600 text-center">Inicio</th>
-                      <th className="py-2.5 px-3 border-r border-emerald-600 text-center">Término</th>
-                      <th className="py-2.5 px-3 border-r border-emerald-600 text-center w-14">Cant</th>
-                      <th className="py-2.5 px-3 border-r border-emerald-600 text-right">Costo Neto (Z)</th>
-                      <th className="py-2.5 px-3 border-r border-emerald-600 text-right">Unit Venta</th>
-                      <th className="py-2.5 px-3 text-right">Total Venta</th>
+                      <th className="py-2 px-3 text-center w-12 border-r border-emerald-600">#</th>
+                      <th className="py-2 px-3 border-r border-emerald-600">Product Number</th>
+                      <th className="py-2 px-3 border-r border-emerald-600">Descripción del Producto</th>
+                      <th className="py-2 px-3 border-r border-emerald-600">PAK / Serial Number</th>
+                      <th className="py-2 px-3 border-r border-emerald-600 text-center">Nivel</th>
+                      <th className="py-2 px-3 border-r border-emerald-600">SKU de Servicio</th>
+                      <th className="py-2 px-3 border-r border-emerald-600 text-center">Inicio</th>
+                      <th className="py-2 px-3 border-r border-emerald-600 text-center">Término</th>
+                      <th className="py-2 px-3 border-r border-emerald-600 text-center w-14">Cant</th>
+                      <th className="py-2 px-3 border-r border-emerald-600 text-right">Costo Neto (Z)</th>
+                      <th className="py-2 px-3 border-r border-emerald-600 text-right">Unit Venta</th>
+                      <th className="py-2 px-3 text-right">Total Venta</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
@@ -644,63 +744,63 @@ export function CcwrQuoteView() {
                           idx % 2 === 0 ? 'bg-slate-950/40' : 'bg-slate-900/30'
                         }`}
                       >
-                        <td className="py-2 px-3 text-center text-slate-500 font-mono text-[11px]">
+                        <td className="py-1.5 px-3 text-center text-slate-500 font-mono text-[11px]">
                           {it.lineNumber}
                         </td>
-                        <td className="py-2 px-3 font-mono font-medium text-slate-200">
+                        <td className="py-1.5 px-3 font-mono font-medium text-slate-200">
                           {it.productNumber}
                         </td>
-                        <td className="py-2 px-3 text-slate-300 max-w-xs truncate" title={it.productDescription}>
+                        <td className="py-1.5 px-3 text-slate-300 max-w-xs truncate" title={it.productDescription}>
                           {it.productDescription}
                         </td>
-                        <td className="py-2 px-3 font-mono text-emerald-400 font-semibold select-all">
+                        <td className="py-1.5 px-3 font-mono text-emerald-400 font-semibold select-all">
                           {it.serialNumber || '-'}
                         </td>
-                        <td className="py-2 px-3 text-center text-slate-300">
+                        <td className="py-1.5 px-3 text-center text-slate-300">
                           <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-semibold text-slate-300">
                             {it.serviceLevel || 'SNT'}
                           </span>
                         </td>
-                        <td className="py-2 px-3 font-mono text-slate-200">
+                        <td className="py-1.5 px-3 font-mono text-slate-200">
                           {it.serviceSku || '-'}
                         </td>
-                        <td className="py-2 px-3 text-center text-slate-400 text-[11px]">
+                        <td className="py-1.5 px-3 text-center text-slate-400 text-[11px]">
                           {it.startDate || '-'}
                         </td>
-                        <td className="py-2 px-3 text-center text-slate-400 text-[11px]">
+                        <td className="py-1.5 px-3 text-center text-slate-400 text-[11px]">
                           {it.endDate || '-'}
                         </td>
-                        <td className="py-2 px-3 text-center font-bold text-slate-200">
+                        <td className="py-1.5 px-3 text-center font-bold text-slate-200">
                           {it.quantity}
                         </td>
-                        <td className="py-2 px-3 text-right font-mono text-sky-300">
+                        <td className="py-1.5 px-3 text-right font-mono text-sky-300">
                           ${it.unitNetPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="py-2 px-3 text-right font-mono font-bold text-emerald-400">
+                        <td className="py-1.5 px-3 text-right font-mono font-bold text-emerald-400">
                           ${it.precioVentaUnitario.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="py-2 px-3 text-right font-mono font-bold text-white">
+                        <td className="py-1.5 px-3 text-right font-mono font-bold text-white">
                           ${it.precioVentaExtendido.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
                     ))}
                   </tbody>
-                  {/* Table Foot Totals */}
-                  <tfoot className="bg-slate-900 border-t-2 border-slate-700 font-bold sticky bottom-0 z-10 text-xs">
+                  {/* Table Foot Totals (Sticky Bottom) */}
+                  <tfoot className="bg-slate-900 border-t-2 border-slate-700 font-bold sticky bottom-0 z-20 text-xs shadow-md">
                     <tr>
-                      <td colSpan={8} className="py-3 px-4 text-right text-slate-300 uppercase tracking-wider">
+                      <td colSpan={8} className="py-2.5 px-4 text-right text-slate-300 uppercase tracking-wider">
                         Totales ({filteredItems.length} ítems):
                       </td>
-                      <td className="py-3 px-3 text-center text-white font-mono font-bold">
+                      <td className="py-2.5 px-3 text-center text-white font-mono font-bold">
                         {filteredItems.reduce((acc, it) => acc + it.quantity, 0)}
                       </td>
-                      <td className="py-3 px-3 text-right text-sky-400 font-mono font-bold">
+                      <td className="py-2.5 px-3 text-right text-sky-400 font-mono font-bold">
                         ${filteredItems.reduce((acc, it) => acc + it.extendedNetPrice, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
-                      <td className="py-3 px-3 text-right text-slate-400 text-[11px]">
+                      <td className="py-2.5 px-3 text-right text-slate-400 text-[11px]">
                         Margen {params.margenPct}%
                       </td>
-                      <td className="py-3 px-3 text-right text-emerald-400 font-mono text-sm font-bold">
+                      <td className="py-2.5 px-3 text-right text-emerald-400 font-mono text-sm font-bold">
                         ${filteredItems.reduce((acc, it) => acc + it.precioVentaExtendido, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                     </tr>

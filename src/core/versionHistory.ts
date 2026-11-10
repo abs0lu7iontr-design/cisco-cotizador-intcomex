@@ -15,11 +15,27 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.10.2',
+    date: '2026-11-09',
+    commit: 'feat-ccwr-excel-header-footers-aesthetic-margin-and-expanded-table',
+    title: 'Rediseño de Cabecera Excel CCW-R, Leyendas Legales, Barra Estética de Margen y Viewport Ampliado',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Reorganización de Cabecera Excel: Teléfono trasladado al bloque izquierdo formal bajo Dirección (Fila 6) y renombrado oficial a "Quote CCW-R:".',
+      'Cálculo Automático de Vigencia del Servicio: Determinación exacta en meses (ej. 12 Meses, 24 Meses, 36 Meses) desde las fechas de contrato y desplegado en distintivo ejecutivo.',
+      'Total Cotización Encuadrado: Recuadro destacado con borde verde corporativo medio (#16A34A), fondo suave (#D1FAE5 / #ECFDF5) y tipografía de 13pt negrita (#15803D).',
+      'Leyendas Legales Oficiales Intcomex: Incorporación dinámica al pie de la cotización de las 3 cláusulas normativas (Validez de la Oferta con "14 días corridos" destacado en rojo, Plazo de Entrega y Validación Técnica y Responsabilidad) en cursiva de 8.5pt.',
+      'Barra Estética de Margen Comercial (100% Intangibles): Control slider luminoso, botones de presets directos (3%, 5%, 8%, 10%, 12%, 15%), input numérico y Goal Seek integrado en la barra principal.',
+      'Viewport Elástico de Alta Visión en Tabla: Resumen de grupos colapsable bajo demanda, cintas KPI compactadas y tabla con scroll interno (sticky header y foot) permitiendo ver 15 a 25 filas simultáneas.',
+    ],
+  },
+  {
     version: '2.10.1',
     date: '2026-11-09',
     commit: 'fix-format-detection-ccw-ccwr-and-excel-styling',
     title: 'Detección Bidireccional de Formatos CCW vs CCW-R, Margen Base 5%, Logo Intcomex y Rediseño de Excel',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Detector Inteligente de Formato (detectCiscoFileType): Detección automática que evita que planillas CCW-R de servicios sean procesadas por error en el módulo Estimate de Hardware como líneas de $0.',

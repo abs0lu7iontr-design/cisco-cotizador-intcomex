@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.10.1",
-  "git_commit": "d23d8e3",
+  "version": "2.10.2",
+  "git_commit": "51b0c3d",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-10T01:48:59.607Z",
-  "release_notes": "feat(v2.10.0): nuevo modulo cotizador ccw-r de servicios y licencias cisco",
+  "build_timestamp": "2026-11-10T02:34:12.492Z",
+  "release_notes": "fix(v2.10.1): deteccion bidireccional formatos ccw ccwr margen 5% y diseno excel",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

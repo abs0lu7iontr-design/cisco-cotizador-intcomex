@@ -6,6 +6,34 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.10.2] - 2026-11-09
+### 🎨 Rediseño, Ergonomía y Perfeccionamiento Ejecutivo (Reorganización de Cabecera Excel, Total Encuadrado, Vigencia del Servicio, Leyendas Legales, Barra Estética de Margen y Viewport Ampliado)
+- **Reorganización Estructural de Cabecera Excel (`ccwrExcelExporter.ts`):**
+  - **Reubicación de Contacto Telefónico:** El teléfono de contacto del vendedor ha sido trasladado desde abajo del total hacia el bloque izquierdo formal, posicionado ordenadamente debajo de `Dirección:` (Fila 6).
+  - **Renombramiento Oficial:** La etiqueta de cotización ahora se identifica explícitamente como `Quote CCW-R:` (Fila 8, Columna A).
+  - **Cálculo de Vigencia del Servicio en Meses:** Motor de cómputo temporal `calculateContractDurationMonths` que determina con exactitud los meses de vigencia entre `Fecha Inicio` y `Fecha Término` (ej. 12 Meses, 24 Meses, 36 Meses), desplegado en un distintivo ejecutivo en Fila 4 (`Vigencia del Servicio:` | `12 Meses`).
+  - **Recuadro Destacado para Total Cotización:** Encuadre destacado en Filas 5 y 6 (Columnas D y E) con borde verde corporativo medio (`#16A34A`), fondo menta suave (`#D1FAE5` / `#ECFDF5`) y tipografía de 13pt negrita (`#15803D`) para máximo impacto visual y legibilidad ejecutiva.
+- **Leyendas Legales Oficiales Intcomex al Pie de la Planilla (`ccwrExcelExporter.ts`):**
+  - Inserción dinámica de las 3 cláusulas normativas al final de la cotización, adaptándose automáticamente a cualquier número de líneas sin desfasar datos:
+    1. *Validez de la Oferta:* "Esta cotización tiene una validez de **14 días corridos** a contar de su fecha de emisión." (Con plazo destacado en negrita y color rojo corporativo `#C00000`).
+    2. *Plazo de entrega:* "El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden."
+    3. *Validación Técnica y Responsabilidad:* "La presente cotización constituye una propuesta referencial de preventa basada en los requerimientos informados. Es responsabilidad exclusiva del Partner revisar y validar técnicamente la compatibilidad, completitud y exactitud de todos los números de parte (BOM) y licenciamiento antes de formalizar la orden de compra. Intcomex no asumirá costos ni mermas derivados de omisiones o inconsistencias en compras de productos a pedido no validadas previamente por el Partner."
+  - Tipografía en cursiva elegante de 8.5pt, con saltos de línea automáticos (`wrapText: true`) combinadas a lo largo de las 13 columnas.
+- **Barra Estética de Margen Comercial en UI (`CcwrQuoteView.tsx`):**
+  - Al ser servicios y licencias 100% intangibles (sin internación ni flete físico), se diseñó una barra de control de margen comercial ultra-limpia y estética:
+    - Slider continuo con indicador luminoso y rango 0% a 30%.
+    - Botones de acceso rápido (pills) para selección en 1 solo clic: `3%`, `5% (Base)`, `8%`, `10%`, `12%`, `15%`.
+    - Input numérico directo con porcentaje exacto.
+    - Widget integrado de Buscador de Objetivo (Goal Seek) directo en la barra principal con cálculo instantáneo al presionar Enter.
+- **Ampliación Integral del Rango de Visión de la Tabla en Frontend (`CcwrQuoteView.tsx`):**
+  - **Resumen por Grupos Plegable:** El bloque de "Resumen Agrupado por Modelo" ahora es colapsable/expandible bajo demanda (`[Grupos (N) ▾]`), liberando más de 200px de espacio vertical en pantalla por defecto.
+  - **Cintas KPI Compactas:** Altura compactada para tarjetas KPI con tipografía de alto contraste y mayor densidad de información.
+  - **Viewport Elástico de Alta Capacidad:** Contenedor de tabla con `flex-1` y scroll interno con cabecera y pie fijos (`sticky z-20`), permitiendo visualizar de **15 a 25 ítems simultáneamente** en pantalla sin recortes.
+  - Padding ceñido en filas (`py-1.5 px-3`) para navegación fluida.
+- **Suite de Pruebas Automatizadas Actualizada (`tests/ccwrCommercial.test.ts`):**
+  - Aserciones de celda sobre el archivo Excel generado (`A6` Teléfono, `A8` Quote CCW-R, `D4-E4` Vigencia del Servicio, `D5-E6` Total Cotización, y presencia de las 3 leyendas legales).
+  - 100% de las 25 suites de pruebas aprobadas con éxito.
+
 ## [v2.10.1] - 2026-11-09
 ### 🔧 Corregido, Optimizado y Mejorado (Detección Bidireccional de Formatos CCW vs CCW-R, Margen Base 5%, Logo Intcomex y Rediseño Ejecutivo de Excel)
 - **Detector Inteligente de Formato (`src/core/fileTypeDetector.ts` & `MisroutedFileModal.tsx`):**

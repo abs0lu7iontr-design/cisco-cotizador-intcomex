@@ -19,8 +19,10 @@ import {
 import {
   generateCcwrQuoteExcel,
   generateCcwrEmailHtml,
+  calculateContractDurationMonths,
   CCWR_EXPORT_COLUMNS,
 } from '../src/modules/ccwrQuote/ccwrExcelExporter';
+import ExcelJS from 'exceljs';
 import {
   CcwrHeaderInfo,
   CcwrLineItem,
@@ -235,9 +237,9 @@ assert.ok(goalSeekRes.targetMarginPct > 10.0, 'El margen debe ser > 10%');
 console.log(`  ✅ Goal Seek: Para alcanzar $${targetPrice.toLocaleString()} USD, el margen requerido es ${goalSeekRes.targetMarginPct}% (Logrado: $${goalSeekRes.achievedTotal.toLocaleString()} USD).`);
 
 // ----------------------------------------------------------------------------
-// Test 6: Verificación de Columnas y Generación de Excel Oficial Intcomex
+// Test 6: Verificación de Formato Oficial de 13 Columnas Intcomex y Cabecera Reorganizada
 // ----------------------------------------------------------------------------
-console.log('\n▶ Test 6: Verificación de Formato Oficial de 13 Columnas Intcomex');
+console.log('\n▶ Test 6: Verificación de Formato Oficial, Cabecera Reorganizada y Leyendas Legales');
 
 assert.strictEqual(CCWR_EXPORT_COLUMNS.length, 13, 'Deben haber exactamente 13 columnas de exportación');
 assert.strictEqual(CCWR_EXPORT_COLUMNS[0].header, 'Product Number');
@@ -247,10 +249,52 @@ assert.strictEqual(CCWR_EXPORT_COLUMNS[5].header, 'SKU');
 assert.strictEqual(CCWR_EXPORT_COLUMNS[9].header, 'Unit');
 assert.strictEqual(CCWR_EXPORT_COLUMNS[11].header, 'Nombre Cliente Final');
 
+// Test de cálculo de meses de vigencia del servicio
+const durationMonths = calculateContractDurationMonths(items);
+assert.strictEqual(durationMonths, 12, 'La vigencia calculada para 03-nov-2026 a 02-nov-2027 debe ser 12 meses');
+console.log(`  ✅ Vigencia del servicio calculada correctamente: ${durationMonths} Meses.`);
+
 const excelBuffer = await generateCcwrQuoteExcel(items, headerInfo, testParams, summary, true);
 assert.ok(excelBuffer.byteLength > 10000, 'El archivo Excel generado debe ser un buffer válido');
 
-console.log(`  ✅ Planilla Excel generada exitosamente (${excelBuffer.byteLength} bytes) con las 13 columnas oficiales.`);
+// Cargar y validar celdas del Excel generado
+const generatedWb = new ExcelJS.Workbook();
+await generatedWb.xlsx.load(excelBuffer);
+const generatedWs = generatedWb.worksheets[0];
+
+// Verificar cabecera izquierda
+assert.strictEqual(generatedWs.getCell('A3').value, 'Vendedor:');
+assert.strictEqual(generatedWs.getCell('A4').value, 'Empresa:');
+assert.strictEqual(generatedWs.getCell('A5').value, 'Dirección:');
+assert.strictEqual(generatedWs.getCell('A6').value, 'Teléfono:', 'Teléfono debe estar ubicado en la fila 6 bajo Dirección');
+assert.strictEqual(generatedWs.getCell('B6').value, 'Movil :+56 9 88226530');
+assert.strictEqual(generatedWs.getCell('A7').value, 'Fecha:');
+assert.strictEqual(generatedWs.getCell('A8').value, 'Quote CCW-R:', 'La etiqueta debe llamarse Quote CCW-R:');
+assert.strictEqual(generatedWs.getCell('B8').value, '452055115');
+
+// Verificar cabecera derecha (Vigencia y Total Encuadrado)
+assert.strictEqual(generatedWs.getCell('D4').value, 'Vigencia del Servicio:');
+assert.strictEqual(generatedWs.getCell('E4').value, '12 Meses');
+assert.strictEqual(generatedWs.getCell('D5').value, 'TOTAL COTIZACIÓN', 'D5 debe contener el encabezado del recuadro TOTAL COTIZACIÓN');
+
+// Verificar existencia de las 3 leyendas legales al final dinámicamente
+// Fila de inicio: 94 ítems + cabecera (fila 9) -> fila 104 (total) -> fila 106 (leyenda 1)
+// Let's search row with Validez de la Oferta:
+let foundFooter1 = false;
+let foundFooter2 = false;
+let foundFooter3 = false;
+generatedWs.eachRow((row) => {
+  const cellVal = JSON.stringify(row.getCell(1).value || '');
+  if (cellVal.includes('Validez de la Oferta')) foundFooter1 = true;
+  if (cellVal.includes('Plazo de entrega')) foundFooter2 = true;
+  if (cellVal.includes('Validación Técnica y Responsabilidad')) foundFooter3 = true;
+});
+
+assert.ok(foundFooter1, 'Debe contener la leyenda Validez de la Oferta');
+assert.ok(foundFooter2, 'Debe contener la leyenda Plazo de entrega');
+assert.ok(foundFooter3, 'Debe contener la leyenda Validación Técnica y Responsabilidad');
+
+console.log(`  ✅ Planilla Excel generada exitosamente (${excelBuffer.byteLength} bytes) con cabecera reorganizada, total encuadrado y leyendas legales.`);
 
 // ----------------------------------------------------------------------------
 // Test 7: Generador de Correo Outlook (HTML)
