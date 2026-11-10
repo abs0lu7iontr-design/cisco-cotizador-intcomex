@@ -6,6 +6,30 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.10.0] - 2026-11-09
+### 🚀 Añadido, Optimizado y Lanzado (Nuevo Módulo Oficial Cotizador CCW-R de Servicios & Licencias Cisco - Formato Oficial Intcomex)
+- **Nuevo Módulo Especializado Cotizador CCW-R (`src/modules/ccwrQuote`):**
+  - Desarrollado específicamente para la cotización de contratos de servicios Cisco (SmartNet, Solution Support, Software Support) y suscripciones/licencias exportadas desde Cisco CCW-R.
+  - Ingesta inteligente de planillas de 74 columnas de CCW-R (`.xlsx`, `.xls`, `.csv`), extrayendo metadatos ejecutivos (Quote Number, Quote Name, Net Amount Cisco, Cliente Final, Vencimiento de Price Protection, Deal ID) y tabla detallada de ítems.
+- **Motor Financiero y Aplicación de Margen sobre Columna Z (`Extended Net Price`):**
+  - Implementación de la fórmula comercial oficial: el costo unitario base se toma de la Columna Z (`Extended Net Price / Qty`), la cual ya incluye todos los descuentos pactados con Cisco.
+  - Soporte de parámetros comerciales: Margen comercial `(%)`, Arancel aduanero `(%)` e Internación/Logística `(%)`.
+  - Aplicación de margen sobre el costo total: `precioVenta = costoTotal / (1 - margen / 100)`.
+  - Herramienta **Buscador de Objetivo (Goal Seek)** mediante algoritmo de aproximación de búsqueda binaria de alta precisión para alcanzar automáticamente cualquier monto meta global.
+- **Generación y Exportación de Planilla Oficial de 13 Columnas Intcomex:**
+  - Exportador pixel-perfect con `ExcelJS` idéntico al estándar oficial entregado a clientes corporativos (formato Empresa de Transporte de Pasajeros Metro S.A.).
+  - Encabezado ejecutivo con Vendedor, Empresa, Total Cotización USD, Fecha y Quote Number.
+  - 13 columnas normadas: `Product Number`, `Descripcion del Producto`, `PAK/Serial Number`, `Nivel Servicios`, `Descripcion Servicio`, `SKU`, `Fecha Inicio`, `Fecha Termino`, `Cant`, `Unit`, `ID Cliente Final`, `Nombre Cliente Final`, `Direccion Cliente Final`.
+  - Estilos corporativos con cabeceras verdes (`#92D050`), bordes ejecutivos, anchos calibrados y formato contable de moneda (`"$ " #,##0.00"`).
+- **Copiado de Tabla para Correo Outlook:**
+  - Generador de tabla HTML corporativa compacta lista para pegar directamente en correos de Microsoft Outlook o Gmail, agrupada por modelo de equipo con subtotales y seriales.
+- **Integración Cruzada con Forecast Comercial y Pipeline:**
+  - Enlace directo en 1 clic para sembrar o actualizar la oportunidad cotizada en el módulo de Forecast (36 columnas) y en el Pipeline Comercial.
+  - Integrado con los motores anti-duplicación multi-vectoriales para no generar registros repetidos al recotizar un mismo Deal o Quote Number.
+- **Pruebas Automatizadas de Integridad (`tests/ccwrCommercial.test.ts`):**
+  - Cobertura de 7 áreas clave: normalización de fechas (DD-mmm-YYYY), parsing de estructura CCW-R de 74 columnas, motor de margen y aranceles sobre Columna Z, recálculo global por modelo, Goal Seek, exportación de 13 columnas y HTML para Outlook.
+  - Suite de 25 pruebas unitarias e integrales ejecutadas con 100% de éxito.
+
 ## [v2.9.4] - 2026-11-08
 ### 🚀 Añadido, Optimizado y Blindado (Motor Anti-Duplicación Multi-Vectorial y Carga Masiva Excel para Pipeline y Forecast)
 - **Motor Anti-Duplicación Multi-Vectorial en Pipeline Comercial (`pipelineService.ts`):**

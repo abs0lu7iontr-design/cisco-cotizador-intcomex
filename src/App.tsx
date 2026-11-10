@@ -57,6 +57,7 @@ import {
   crossSyncEstimateToForecast,
   saveForecastRecord,
 } from './modules/forecast';
+import { CcwrQuoteView } from './modules/ccwrQuote';
 import { ConfiguriatorView } from './modules/configuriator';
 import { FastTrackAdminModal, FastTrackOpportunityModal } from './modules/fasttrack';
 import { applyTheme, getSavedThemeId } from './core/themeEngine';
@@ -741,6 +742,16 @@ function AppContent() {
                   setCurrentView('quoter');
                 }}
               />
+            </ErrorBoundary>
+          )}
+
+          {currentView === 'ccwr_quote' && (
+            <ErrorBoundary
+              fallbackTitle="Error en Cotizador CCW-R de Servicios & Licencias"
+              resetKeys={[currentView]}
+              onReturnToSafeView={() => setCurrentView('quoter')}
+            >
+              <CcwrQuoteView />
             </ErrorBoundary>
           )}
 

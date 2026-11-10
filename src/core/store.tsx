@@ -58,6 +58,7 @@ import {
 export type NavViewId =
   | 'dashboard'
   | 'quoter'
+  | 'ccwr_quote'
   | 'pipeline'
   | 'forecast'
   | 'upload'

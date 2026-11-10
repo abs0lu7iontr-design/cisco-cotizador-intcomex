@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.9.4",
-  "git_commit": "d815f08",
+  "version": "2.10.0",
+  "git_commit": "e2c7f4e",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-08T02:40:34.889Z",
-  "release_notes": "fix(v2.9.3): db integrity for pipeline and forecast, cloud sync, flexible price protection dates and dsv hierarchy",
+  "build_timestamp": "2026-11-10T00:57:40.285Z",
+  "release_notes": "feat(v2.9.4): multi-vector deduplication and excel import for pipeline and forecast",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

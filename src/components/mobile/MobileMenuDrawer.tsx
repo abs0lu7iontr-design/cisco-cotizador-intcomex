@@ -16,6 +16,8 @@ import {
   User,
   Sparkles,
   TrendingUp,
+  ShieldCheck,
+  Table,
 } from 'lucide-react';
 import { NavViewId } from '../../core/store';
 import { UserSession } from '../../core/types';
@@ -160,6 +162,34 @@ export const MobileMenuDrawer: React.FC<MobileMenuDrawerProps> = ({
               <div className="flex items-center gap-2.5">
                 <TrendingUp className="w-4 h-4 text-emerald-400" />
                 <span>Pipeline Comercial</span>
+              </div>
+            </button>
+
+            <button
+              onClick={() => handleNav('forecast')}
+              className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-colors cursor-pointer ${
+                currentView === 'forecast'
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'text-slate-300 hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Table className="w-4 h-4 text-sky-400" />
+                <span>Forecast Comercial</span>
+              </div>
+            </button>
+
+            <button
+              onClick={() => handleNav('ccwr_quote')}
+              className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-colors cursor-pointer ${
+                currentView === 'ccwr_quote'
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'text-slate-300 hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>Cotizador CCW-R (Servicios)</span>
               </div>
             </button>
 

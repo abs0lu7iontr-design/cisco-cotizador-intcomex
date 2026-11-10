@@ -15,11 +15,28 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.10.0',
+    date: '2026-11-09',
+    commit: 'feat-ccwr-quote-services-and-licenses-module',
+    title: 'Nuevo Módulo Cotizador CCW-R de Servicios & Licencias Cisco (Formato Oficial Intcomex)',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Nuevo Módulo Especializado Cotizador CCW-R (src/modules/ccwrQuote): Ingesta inteligente de planillas raw de 74 columnas descargadas directamente de Cisco CCW-R (.xlsx, .xls, .csv).',
+      'Motor de Precios y Margen sobre Columna Z (Extended Net Price): el costo base proviene de la Columna Z con descuentos aplicados, calculando precioVenta = costoTotal / (1 - margen/100).',
+      'Parámetros comerciales ajustables: Margen comercial (%), Arancel aduanero (%) e Internación (%) con recálculo dinámico en tiempo real.',
+      'Buscador de Objetivo (Goal Seek): Algoritmo numérico de aproximación binaria para encontrar automáticamente el margen requerido para un monto total meta.',
+      'Exportación en Planilla Oficial de 13 Columnas Intcomex: Generación pixel-perfect con ExcelJS que replica fielmente el formato de Metro S.A. con cabecera verde corporativa (#92D050) y totales.',
+      'Generador de Tabla Ejecutiva HTML para Correo Outlook: Copiado de tabla estilizada en 1 clic para pegar directamente en correos comerciales a partners y clientes.',
+      'Cruce con Forecast Comercial (36 Columnas) y Pipeline: Enlace directo con protección anti-duplicación multi-vectorial que enriquece registros existentes sin duplicar.',
+    ],
+  },
+  {
     version: '2.9.4',
     date: '2026-11-08',
     commit: 'feat-multi-vector-deduplication-and-excel-import',
     title: 'Motor Anti-Duplicación Multi-Vectorial y Carga Masiva Excel para Pipeline y Forecast',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Motor Anti-Duplicación Multi-Vectorial en Pipeline Comercial (findMatchingPipelineDeal): jerarquía de 4 vectores (Deal ID oficial Cisco, Estimate ID, Huella Compuesta Partner+EndUser+USD ±2%, y Mes/Fecha) que reconcilia oportunidades existentes sin duplicarlas.',
