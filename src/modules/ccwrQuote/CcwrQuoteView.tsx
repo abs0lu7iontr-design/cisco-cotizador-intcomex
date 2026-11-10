@@ -648,7 +648,7 @@ export function CcwrQuoteView() {
                     </div>
 
                     <div className="mt-2 pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-xs">
-                      <span className="text-slate-400 text-[11px]">Unit Venta:</span>
+                      <span className="text-slate-400 text-[11px]">Precio Unitario:</span>
                       <span className="font-mono font-bold text-emerald-300">
                         ${group.unitSalePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
                       </span>
@@ -720,19 +720,19 @@ export function CcwrQuoteView() {
             <div className="flex-1 min-h-[380px] bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-lg flex flex-col">
               <div className="flex-1 overflow-auto custom-scrollbar">
                 <table className="w-full text-left border-collapse text-xs">
-                  <thead className="bg-[#92D050] text-slate-950 sticky top-0 z-20 font-bold border-b border-emerald-700 shadow-sm">
+                  <thead className="bg-[#D9D9D9] text-slate-950 sticky top-0 z-20 font-bold border-b border-slate-400 shadow-sm">
                     <tr>
-                      <th className="py-2 px-3 text-center w-12 border-r border-emerald-600">#</th>
-                      <th className="py-2 px-3 border-r border-emerald-600">Product Number</th>
-                      <th className="py-2 px-3 border-r border-emerald-600">Descripción del Producto</th>
-                      <th className="py-2 px-3 border-r border-emerald-600">PAK / Serial Number</th>
-                      <th className="py-2 px-3 border-r border-emerald-600 text-center">Nivel</th>
-                      <th className="py-2 px-3 border-r border-emerald-600">SKU de Servicio</th>
-                      <th className="py-2 px-3 border-r border-emerald-600 text-center">Inicio</th>
-                      <th className="py-2 px-3 border-r border-emerald-600 text-center">Término</th>
-                      <th className="py-2 px-3 border-r border-emerald-600 text-center w-14">Cant</th>
-                      <th className="py-2 px-3 border-r border-emerald-600 text-right">Costo Neto (Z)</th>
-                      <th className="py-2 px-3 border-r border-emerald-600 text-right">Unit Venta</th>
+                      <th className="py-2 px-3 text-center w-12 border-r border-slate-400">#</th>
+                      <th className="py-2 px-3 border-r border-slate-400">Número de Producto</th>
+                      <th className="py-2 px-3 border-r border-slate-400">Descripción del Producto</th>
+                      <th className="py-2 px-3 border-r border-slate-400">Número de Serie / PAK</th>
+                      <th className="py-2 px-3 border-r border-slate-400 text-center">Nivel de Servicio</th>
+                      <th className="py-2 px-3 border-r border-slate-400">SKU del Servicio</th>
+                      <th className="py-2 px-3 border-r border-slate-400 text-center">Inicio</th>
+                      <th className="py-2 px-3 border-r border-slate-400 text-center">Término</th>
+                      <th className="py-2 px-3 border-r border-slate-400 text-center w-14">Cantidad</th>
+                      <th className="py-2 px-3 border-r border-slate-400 text-right">Costo Neto (Z)</th>
+                      <th className="py-2 px-3 border-r border-slate-400 text-right">Precio Unitario (USD)</th>
                       <th className="py-2 px-3 text-right">Total Venta</th>
                     </tr>
                   </thead>
@@ -932,7 +932,7 @@ export function CcwrQuoteView() {
               <h4 className="text-xs font-bold text-slate-200">Datos de Cabecera para Excel</h4>
 
               <div className="space-y-1">
-                <label className="text-[11px] text-slate-400">Vendedor / PM:</label>
+                <label className="text-[11px] text-slate-400">Product Manager:</label>
                 <input
                   type="text"
                   value={params.sellerName}

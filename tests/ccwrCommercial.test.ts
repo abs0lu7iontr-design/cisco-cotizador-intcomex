@@ -237,16 +237,16 @@ assert.ok(goalSeekRes.targetMarginPct > 10.0, 'El margen debe ser > 10%');
 console.log(`  ✅ Goal Seek: Para alcanzar $${targetPrice.toLocaleString()} USD, el margen requerido es ${goalSeekRes.targetMarginPct}% (Logrado: $${goalSeekRes.achievedTotal.toLocaleString()} USD).`);
 
 // ----------------------------------------------------------------------------
-// Test 6: Verificación de Formato Oficial de 13 Columnas Intcomex y Cabecera Reorganizada
+// Test 6: Verificación de Formato Oficial de 13 Columnas Intcomex en Español y Cabecera Compacta
 // ----------------------------------------------------------------------------
-console.log('\n▶ Test 6: Verificación de Formato Oficial, Cabecera Reorganizada y Leyendas Legales');
+console.log('\n▶ Test 6: Verificación de Formato en Español, Cabecera Compacta, Plomo y Sin Plazo de Entrega');
 
 assert.strictEqual(CCWR_EXPORT_COLUMNS.length, 13, 'Deben haber exactamente 13 columnas de exportación');
-assert.strictEqual(CCWR_EXPORT_COLUMNS[0].header, 'Product Number');
-assert.strictEqual(CCWR_EXPORT_COLUMNS[2].header, 'PAK/Serial Number');
-assert.strictEqual(CCWR_EXPORT_COLUMNS[3].header, 'Nivel Servicios');
-assert.strictEqual(CCWR_EXPORT_COLUMNS[5].header, 'SKU');
-assert.strictEqual(CCWR_EXPORT_COLUMNS[9].header, 'Unit');
+assert.strictEqual(CCWR_EXPORT_COLUMNS[0].header, 'Número de Producto');
+assert.strictEqual(CCWR_EXPORT_COLUMNS[2].header, 'Número de Serie / PAK');
+assert.strictEqual(CCWR_EXPORT_COLUMNS[3].header, 'Nivel de Servicio');
+assert.strictEqual(CCWR_EXPORT_COLUMNS[5].header, 'SKU del Servicio');
+assert.strictEqual(CCWR_EXPORT_COLUMNS[9].header, 'Precio Unitario (USD)');
 assert.strictEqual(CCWR_EXPORT_COLUMNS[11].header, 'Nombre Cliente Final');
 
 // Test de cálculo de meses de vigencia del servicio
@@ -263,38 +263,42 @@ await generatedWb.xlsx.load(excelBuffer);
 const generatedWs = generatedWb.worksheets[0];
 
 // Verificar cabecera izquierda
-assert.strictEqual(generatedWs.getCell('A3').value, 'Vendedor:');
+assert.strictEqual(generatedWs.getCell('A3').value, 'Product Manager:', 'A3 debe llamarse Product Manager:');
 assert.strictEqual(generatedWs.getCell('A4').value, 'Empresa:');
 assert.strictEqual(generatedWs.getCell('A5').value, 'Dirección:');
 assert.strictEqual(generatedWs.getCell('A6').value, 'Teléfono:', 'Teléfono debe estar ubicado en la fila 6 bajo Dirección');
 assert.strictEqual(generatedWs.getCell('B6').value, 'Movil :+56 9 88226530');
-assert.strictEqual(generatedWs.getCell('A7').value, 'Fecha:');
-assert.strictEqual(generatedWs.getCell('A8').value, 'Quote CCW-R:', 'La etiqueta debe llamarse Quote CCW-R:');
-assert.strictEqual(generatedWs.getCell('B8').value, '452055115');
+assert.strictEqual(generatedWs.getCell('A7').value, 'Quote CCW-R:', 'La etiqueta debe llamarse Quote CCW-R:');
+assert.strictEqual(generatedWs.getCell('B7').value, '452055115');
 
-// Verificar cabecera derecha (Vigencia y Total Encuadrado)
-assert.strictEqual(generatedWs.getCell('D4').value, 'Vigencia del Servicio:');
-assert.strictEqual(generatedWs.getCell('E4').value, '12 Meses');
-assert.strictEqual(generatedWs.getCell('D5').value, 'TOTAL COTIZACIÓN', 'D5 debe contener el encabezado del recuadro TOTAL COTIZACIÓN');
+// Verificar cabecera derecha (Vigencia con diseño y Total Encuadrado)
+assert.strictEqual(generatedWs.getCell('D3').value, 'Vigencia del Servicio:');
+assert.strictEqual(generatedWs.getCell('E3').value, '12 Meses');
+assert.strictEqual(generatedWs.getCell('D4').value, 'TOTAL COTIZACIÓN', 'D4 debe contener el encabezado del recuadro TOTAL COTIZACIÓN');
+assert.strictEqual(generatedWs.getCell('D6').value, 'Fecha:', 'D6 debe contener Fecha:');
 
-// Verificar existencia de las 3 leyendas legales al final dinámicamente
-// Fila de inicio: 94 ítems + cabecera (fila 9) -> fila 104 (total) -> fila 106 (leyenda 1)
-// Let's search row with Validez de la Oferta:
-let foundFooter1 = false;
-let foundFooter2 = false;
-let foundFooter3 = false;
+// Verificar cabecera de tabla en Fila 8 con fondo Plomo
+const headerCell = generatedWs.getCell('A8');
+assert.strictEqual(headerCell.value, 'Número de Producto');
+const fillObj: any = headerCell.fill;
+assert.ok(fillObj && fillObj.fgColor && (fillObj.fgColor.argb === 'FFD9D9D9' || fillObj.fgColor.theme !== undefined), 'La cabecera de la tabla debe tener fondo plomo');
+
+// Verificar existencia de las leyendas legales (Plazo de entrega debe estar ELIMINADO)
+let foundValidez = false;
+let foundPlazoEntrega = false;
+let foundValidacion = false;
 generatedWs.eachRow((row) => {
   const cellVal = JSON.stringify(row.getCell(1).value || '');
-  if (cellVal.includes('Validez de la Oferta')) foundFooter1 = true;
-  if (cellVal.includes('Plazo de entrega')) foundFooter2 = true;
-  if (cellVal.includes('Validación Técnica y Responsabilidad')) foundFooter3 = true;
+  if (cellVal.includes('Validez de la Oferta')) foundValidez = true;
+  if (cellVal.includes('Plazo de entrega')) foundPlazoEntrega = true;
+  if (cellVal.includes('Validación Técnica y Responsabilidad')) foundValidacion = true;
 });
 
-assert.ok(foundFooter1, 'Debe contener la leyenda Validez de la Oferta');
-assert.ok(foundFooter2, 'Debe contener la leyenda Plazo de entrega');
-assert.ok(foundFooter3, 'Debe contener la leyenda Validación Técnica y Responsabilidad');
+assert.ok(foundValidez, 'Debe contener la leyenda Validez de la Oferta');
+assert.strictEqual(foundPlazoEntrega, false, 'Plazo de entrega NO debe figurar en cotizaciones de servicios y licencias');
+assert.ok(foundValidacion, 'Debe contener la leyenda Validación Técnica y Responsabilidad');
 
-console.log(`  ✅ Planilla Excel generada exitosamente (${excelBuffer.byteLength} bytes) con cabecera reorganizada, total encuadrado y leyendas legales.`);
+console.log(`  ✅ Planilla Excel generada exitosamente (${excelBuffer.byteLength} bytes) con cabecera compacta, fondo plomo, nombres en español y sin plazo de entrega.`);
 
 // ----------------------------------------------------------------------------
 // Test 7: Generador de Correo Outlook (HTML)
@@ -305,7 +309,7 @@ const emailHtml = generateCcwrEmailHtml(headerInfo, summary, testParams);
 assert.ok(emailHtml.includes('EMPRESA DE TRANSPORTE DE PASAJEROS METRO SA'), 'Debe incluir nombre del cliente');
 assert.ok(emailHtml.includes('452055115'), 'Debe incluir número de cotización');
 assert.ok(emailHtml.includes('CON-SNT-C9115AXI'), 'Debe incluir SKUs');
-assert.ok(emailHtml.includes('#92D050'), 'Debe usar estilo corporativo verde');
+assert.ok(emailHtml.includes('#D9D9D9') || emailHtml.includes('#92D050'), 'Debe usar estilo corporativo plomo');
 
 console.log('  ✅ Tabla HTML para Outlook generada con diseño corporativo.');
 

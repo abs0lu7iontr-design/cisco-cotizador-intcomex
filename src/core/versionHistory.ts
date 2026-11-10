@@ -15,11 +15,28 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.10.3',
+    date: '2026-11-09',
+    commit: 'feat-ccwr-compact-header-plomo-spanish-unit-price-and-legend-cleanup',
+    title: 'Cabecera Compacta Excel CCW-R, Fondo Plomo, Títulos en Español, Precio Unitario y Retiro de Plazo de Entrega',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Eliminación de Cláusula de Plazo de Entrega: Retiro definitivo de la leyenda de despacho físico en cotizaciones CCW-R, ya que servicios, soporte Smart Net Total Care y licencias son 100% intangibles sin despacho.',
+      'Corrección de Truncamiento en "Quote CCW-R:": Fijada la altura de la fila 7 en 20px garantizando visualización completa y nítida del texto y del número de cotización sin aplastamiento.',
+      'Cabecera Compacta sin Espacios Muertos: Removidas filas vacías intermedias, situando la tabla directamente en la fila 8 para una lectura ejecutiva y pulcra.',
+      'Renombramiento a "Product Manager:": Actualizado el rótulo en la cabecera tanto en Excel como en la interfaz y drawer de parámetros.',
+      'Diseño Ejecutivo en "Vigencia del Servicio:": Aplicado diseño coordinado a la etiqueta y valor con fondo azul suave (#EFF6FF), borde (#93C5FD) y tipografía corporativa (#1E40AF).',
+      'Encabezados con Fondo Plomo (#D9D9D9): Reemplazado el fondo verde por el acabado plomo institucional (#D9D9D9) con bordes sólidos oscuros en Excel y en el frontend.',
+      'Traducción Completa al Español y Claridad en Precio Unitario: Reemplazo integral de columnas técnicas por español y cambio de la celda ambigua "Unit" por "Precio Unitario (USD)".',
+    ],
+  },
+  {
     version: '2.10.2',
     date: '2026-11-09',
     commit: 'feat-ccwr-excel-header-footers-aesthetic-margin-and-expanded-table',
     title: 'Rediseño de Cabecera Excel CCW-R, Leyendas Legales, Barra Estética de Margen y Viewport Ampliado',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Reorganización de Cabecera Excel: Teléfono trasladado al bloque izquierdo formal bajo Dirección (Fila 6) y renombrado oficial a "Quote CCW-R:".',

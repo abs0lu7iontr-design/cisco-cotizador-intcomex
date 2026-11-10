@@ -6,6 +6,36 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.10.3] - 2026-11-09
+### 🎨 Rediseño, Ergonomía y Perfeccionamiento Ejecutivo (Cabecera Compacta Excel CCW-R, Fondo Plomo, Títulos en Español, Precio Unitario y Retiro de Plazo de Entrega)
+- **Eliminación Definitiva de Cláusula de Plazo de Entrega (`ccwrExcelExporter.ts`):**
+  - Retiro completo de la leyenda *"Plazo de entrega: El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden"* tanto en la planilla Excel como en la copia para correo Outlook, dado que los contratos CCW-R corresponden estrictamente a servicios de soporte Smart Net Total Care, software y licencias (intangibles puros que no requieren flete físico ni despacho).
+- **Corrección de Truncamiento en "Quote CCW-R:" (`ccwrExcelExporter.ts`):**
+  - Ajuste explícito de la altura de la fila 7 a `20px` (previamente colapsada a 10px), garantizando que el texto `Quote CCW-R:` y el ID numérico de cotización aparezcan perfectamente visibles y con margen vertical adecuado.
+- **Cabecera Compacta sin Filas Muertas (`ccwrExcelExporter.ts`):**
+  - Eliminación de espacios verticales innecesarios: cabecera reorganizada en filas 3 a 7 y la tabla de cotización arranca inmediatamente en la fila 8.
+  - Reemplazo de la etiqueta `Vendedor:` por `Product Manager:` tanto en la planilla Excel como en el drawer de parámetros y la vista previa frontend.
+- **Diseño Corporativo en "Vigencia del Servicio:" (`ccwrExcelExporter.ts`):**
+  - Aplicado acabado con diseño ejecutivo azul corporativo (fondo `#EFF6FF`, borde `#93C5FD`, tipografía `#1E40AF` centrado en celda D3) para que coincida armoniosamente con el distintivo de duración (ej. `12 Meses` en celda E3).
+- **Encabezados con Fondo Plomo Institucional (`ccwrExcelExporter.ts` & `CcwrQuoteView.tsx`):**
+  - Reemplazado el fondo verde de los encabezados por el color plomo/gris profesional (`#D9D9D9`) con texto negro en negrita de 9.5pt y bordes finos completos (`#334155`), tanto en el archivo Excel generado como en la vista de tabla en frontend y la copia para Outlook.
+- **Traducción Completa al Español y Claridad en Precio Unitario (`ccwrExcelExporter.ts` & `CcwrQuoteView.tsx`):**
+  - Todas las columnas técnicas traducidas formalmente al español:
+    - `Product Number` -> `Número de Producto`
+    - `Descripcion del Producto` -> `Descripción del Producto`
+    - `PAK/Serial Number` -> `Número de Serie / PAK`
+    - `Nivel Servicios` -> `Nivel de Servicio`
+    - `Descripcion Servicio` -> `Descripción del Servicio`
+    - `SKU` -> `SKU del Servicio`
+    - `Fecha Inicio` -> `Fecha de Inicio`
+    - `Fecha Termino` -> `Fecha de Término`
+    - `Cant` -> `Cantidad`
+    - `Unit` -> **`Precio Unitario (USD)`** (clarificando inequívocamente el concepto frente a la ambigua palabra "Unit")
+    - `ID Cliente Final`, `Nombre Cliente Final` y `Dirección Cliente Final`
+- **Suite de Pruebas Automatizadas Actualizada (`tests/ccwrCommercial.test.ts`):**
+  - Aserciones sobre eliminación de cláusula de plazo de entrega, cabecera compacta en fila 8, fondo plomo `#D9D9D9` y títulos oficiales en español.
+  - 100% de las 25 suites de pruebas aprobadas exitosamente.
+
 ## [v2.10.2] - 2026-11-09
 ### 🎨 Rediseño, Ergonomía y Perfeccionamiento Ejecutivo (Reorganización de Cabecera Excel, Total Encuadrado, Vigencia del Servicio, Leyendas Legales, Barra Estética de Margen y Viewport Ampliado)
 - **Reorganización Estructural de Cabecera Excel (`ccwrExcelExporter.ts`):**

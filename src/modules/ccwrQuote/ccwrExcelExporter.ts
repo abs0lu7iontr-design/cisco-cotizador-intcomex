@@ -15,19 +15,19 @@ import {
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../../lib/intcomexLogoBase64';
 
 export const CCWR_EXPORT_COLUMNS = [
-  { header: 'Product Number', key: 'productNumber', minWidth: 14, maxWidth: 22 },
-  { header: 'Descripcion del Producto', key: 'productDescription', minWidth: 22, maxWidth: 38 },
-  { header: 'PAK/Serial Number', key: 'serialNumber', minWidth: 16, maxWidth: 22 },
-  { header: 'Nivel Servicios', key: 'serviceLevel', minWidth: 12, maxWidth: 14 },
-  { header: 'Descripcion Servicio', key: 'serviceLevelDescription', minWidth: 16, maxWidth: 22 },
-  { header: 'SKU', key: 'serviceSku', minWidth: 16, maxWidth: 24 },
-  { header: 'Fecha Inicio', key: 'startDate', minWidth: 13, maxWidth: 15 },
-  { header: 'Fecha Termino', key: 'endDate', minWidth: 13, maxWidth: 15 },
-  { header: 'Cant', key: 'quantity', minWidth: 6, maxWidth: 8 },
-  { header: 'Unit', key: 'unitSalePrice', minWidth: 12, maxWidth: 15 },
-  { header: 'ID Cliente Final', key: 'endCustomerId', minWidth: 14, maxWidth: 18 },
+  { header: 'Número de Producto', key: 'productNumber', minWidth: 16, maxWidth: 22 },
+  { header: 'Descripción del Producto', key: 'productDescription', minWidth: 24, maxWidth: 38 },
+  { header: 'Número de Serie / PAK', key: 'serialNumber', minWidth: 18, maxWidth: 24 },
+  { header: 'Nivel de Servicio', key: 'serviceLevel', minWidth: 15, maxWidth: 18 },
+  { header: 'Descripción del Servicio', key: 'serviceLevelDescription', minWidth: 20, maxWidth: 26 },
+  { header: 'SKU del Servicio', key: 'serviceSku', minWidth: 18, maxWidth: 26 },
+  { header: 'Fecha de Inicio', key: 'startDate', minWidth: 14, maxWidth: 16 },
+  { header: 'Fecha de Término', key: 'endDate', minWidth: 14, maxWidth: 16 },
+  { header: 'Cantidad', key: 'quantity', minWidth: 8, maxWidth: 10 },
+  { header: 'Precio Unitario (USD)', key: 'unitSalePrice', minWidth: 18, maxWidth: 22 },
+  { header: 'ID Cliente Final', key: 'endCustomerId', minWidth: 15, maxWidth: 18 },
   { header: 'Nombre Cliente Final', key: 'endCustomerName', minWidth: 20, maxWidth: 35 },
-  { header: 'Direccion Cliente Final', key: 'endCustomerAddress', minWidth: 20, maxWidth: 35 },
+  { header: 'Dirección Cliente Final', key: 'endCustomerAddress', minWidth: 20, maxWidth: 35 },
 ];
 
 const SPANISH_MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -113,10 +113,10 @@ export async function generateCcwrQuoteExcel(
   }
 
   // Estilos y Paleta de Colores Ejecutiva (Inspirada en el Módulo CCW)
-  const greenHeaderFill: ExcelJS.Fill = {
+  const plomoHeaderFill: ExcelJS.Fill = {
     type: 'pattern',
     pattern: 'solid',
-    fgColor: { argb: 'FF92D050' }, // Verde corporativo oficial
+    fgColor: { argb: 'FFD9D9D9' }, // Plomo / Gris corporativo oficial (Imagen 4)
   };
 
   const zebraLightFill: ExcelJS.Fill = {
@@ -133,7 +133,7 @@ export async function generateCcwrQuoteExcel(
 
   const headerFont: Partial<ExcelJS.Font> = {
     name: 'Calibri',
-    size: 10,
+    size: 9.5,
     bold: true,
     color: { argb: 'FF000000' },
   };
@@ -159,82 +159,62 @@ export async function generateCcwrQuoteExcel(
   };
 
   const tableHeaderBorder: Partial<ExcelJS.Borders> = {
-    top: { style: 'medium', color: { argb: 'FF475569' } },
-    bottom: { style: 'medium', color: { argb: 'FF475569' } },
-    left: { style: 'thin', color: { argb: 'FF475569' } },
-    right: { style: 'thin', color: { argb: 'FF475569' } },
+    top: { style: 'medium', color: { argb: 'FF334155' } },
+    bottom: { style: 'medium', color: { argb: 'FF334155' } },
+    left: { style: 'thin', color: { argb: 'FF334155' } },
+    right: { style: 'thin', color: { argb: 'FF334155' } },
   };
 
-  // 2. Cabecera Ejecutiva Corporativa (Filas 3 a 8)
-  // Bloque Izquierdo: Vendedor, Empresa, Dirección, Teléfono, Fecha y Quote CCW-R
+  // 2. Cabecera Ejecutiva Corporativa (Filas 3 a 7) - Compacta y sin espacios muertos
+  const durationMonths = calculateContractDurationMonths(items);
+
+  // Fila 3: Product Manager (Izquierda) | Vigencia del Servicio (Derecha con diseño integral)
   const row3 = worksheet.getRow(3);
-  row3.getCell(1).value = 'Vendedor:';
+  row3.height = 21;
+  row3.getCell(1).value = 'Product Manager:';
   row3.getCell(1).font = boldFont;
   row3.getCell(2).value = params.sellerName || 'Mauricio Skill';
   row3.getCell(2).font = regularFont;
 
+  // Celda D3 y E3: Vigencia del Servicio con diseño ejecutivo a juego
+  row3.getCell(4).value = 'Vigencia del Servicio:';
+  row3.getCell(4).font = { name: 'Calibri', size: 9.5, bold: true, color: { argb: 'FF1E40AF' } };
+  row3.getCell(4).alignment = { vertical: 'middle', horizontal: 'center' };
+  row3.getCell(4).fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFEFF6FF' }, // Soft blue
+  };
+  row3.getCell(4).border = {
+    top: { style: 'thin', color: { argb: 'FF93C5FD' } },
+    bottom: { style: 'thin', color: { argb: 'FF93C5FD' } },
+    left: { style: 'thin', color: { argb: 'FF93C5FD' } },
+  };
+
+  row3.getCell(5).value = `${durationMonths} Meses`;
+  row3.getCell(5).font = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FF1E3A8A' } };
+  row3.getCell(5).alignment = { vertical: 'middle', horizontal: 'center' };
+  row3.getCell(5).fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFDBEAFE' }, // Distinct soft blue badge
+  };
+  row3.getCell(5).border = {
+    top: { style: 'thin', color: { argb: 'FF93C5FD' } },
+    bottom: { style: 'thin', color: { argb: 'FF93C5FD' } },
+    right: { style: 'thin', color: { argb: 'FF93C5FD' } },
+  };
+
+  // Fila 4: Empresa (Izquierda) | TOTAL COTIZACIÓN Encabezado (Derecha)
   const row4 = worksheet.getRow(4);
+  row4.height = 18;
   row4.getCell(1).value = 'Empresa:';
   row4.getCell(1).font = boldFont;
   row4.getCell(2).value = params.companyName || 'INTCOMEX SA';
   row4.getCell(2).font = regularFont;
 
-  const row5 = worksheet.getRow(5);
-  row5.getCell(1).value = 'Dirección:';
-  row5.getCell(1).font = boldFont;
-  row5.getCell(2).value = params.companyAddress || 'Rosario Norte 615, SANTIAGO';
-  row5.getCell(2).font = regularFont;
-
-  // Teléfono reubicado directamente bajo Dirección según solicitud
-  const row6 = worksheet.getRow(6);
-  row6.getCell(1).value = 'Teléfono:';
-  row6.getCell(1).font = boldFont;
-  row6.getCell(2).value = params.sellerPhone || 'Movil :+56 9 88226530';
-  row6.getCell(2).font = regularFont;
-
-  // Fecha de Emisión
-  const row7 = worksheet.getRow(7);
-  row7.getCell(1).value = 'Fecha:';
-  row7.getCell(1).font = boldFont;
-  const today = new Date();
-  const dateOptions: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-  row7.getCell(2).value = today.toLocaleDateString('es-CL', dateOptions);
-  row7.getCell(2).font = regularFont;
-
-  // Quote CCW-R (renombrado a "Quote CCW-R:" como solicitado)
-  const row8 = worksheet.getRow(8);
-  row8.getCell(1).value = 'Quote CCW-R:';
-  row8.getCell(1).font = boldFont;
-  row8.getCell(2).value = headerInfo.quoteNumber || 'S/N';
-  row8.getCell(2).font = { ...boldFont, color: { argb: 'FF002060' } };
-
-  // Bloque Derecho: Vigencia del Servicio y Total Cotización Encuadrado
-  const durationMonths = calculateContractDurationMonths(items);
-
-  // Vigencia del Servicio (Fila 4, Col D y E)
-  row4.getCell(4).value = 'Vigencia del Servicio:';
-  row4.getCell(4).font = { ...boldFont, size: 9.5, color: { argb: 'FF334155' } };
-  row4.getCell(4).alignment = { vertical: 'middle', horizontal: 'right' };
-
-  row4.getCell(5).value = `${durationMonths} Meses`;
-  row4.getCell(5).font = { ...boldFont, size: 10, color: { argb: 'FF1E40AF' } };
-  row4.getCell(5).alignment = { vertical: 'middle', horizontal: 'center' };
-  row4.getCell(5).fill = {
-    type: 'pattern',
-    pattern: 'solid',
-    fgColor: { argb: 'FFE0F2FE' }, // Soft blue badge
-  };
-  row4.getCell(5).border = {
-    top: { style: 'thin', color: { argb: 'FF93C5FD' } },
-    bottom: { style: 'thin', color: { argb: 'FF93C5FD' } },
-    left: { style: 'thin', color: { argb: 'FF93C5FD' } },
-    right: { style: 'thin', color: { argb: 'FF93C5FD' } },
-  };
-
-  // Encuadre destacado para Total Cotización (Filas 5 y 6, Columnas D y E)
-  row5.height = 18;
-  worksheet.mergeCells('D5:E5');
-  const totalBoxHeader = worksheet.getCell('D5');
+  worksheet.mergeCells('D4:E4');
+  const totalBoxHeader = worksheet.getCell('D4');
   totalBoxHeader.value = 'TOTAL COTIZACIÓN';
   totalBoxHeader.font = { name: 'Calibri', size: 9, bold: true, color: { argb: 'FF065F46' } };
   totalBoxHeader.alignment = { vertical: 'middle', horizontal: 'center' };
@@ -250,12 +230,19 @@ export async function generateCcwrQuoteExcel(
     bottom: { style: 'thin', color: { argb: 'FFA7F3D0' } },
   };
 
-  row6.height = 24;
-  worksheet.mergeCells('D6:E6');
-  const totalBoxValue = worksheet.getCell('D6');
+  // Fila 5: Dirección (Izquierda) | Monto Total de Venta (Derecha)
+  const row5 = worksheet.getRow(5);
+  row5.height = 24;
+  row5.getCell(1).value = 'Dirección:';
+  row5.getCell(1).font = boldFont;
+  row5.getCell(2).value = params.companyAddress || 'Rosario Norte 615, SANTIAGO';
+  row5.getCell(2).font = regularFont;
+
+  worksheet.mergeCells('D5:E5');
+  const totalBoxValue = worksheet.getCell('D5');
   totalBoxValue.value = summary.totalPrecioVenta;
   totalBoxValue.numFmt = '"$ " #,##0.00';
-  totalBoxValue.font = { name: 'Calibri', size: 13, bold: true, color: { argb: 'FF15803D' } };
+  totalBoxValue.font = { name: 'Calibri', size: 13.5, bold: true, color: { argb: 'FF15803D' } };
   totalBoxValue.alignment = { vertical: 'middle', horizontal: 'center' };
   totalBoxValue.fill = {
     type: 'pattern',
@@ -268,28 +255,50 @@ export async function generateCcwrQuoteExcel(
     right: { style: 'medium', color: { argb: 'FF16A34A' } },
   };
 
-  // Espaciador Fila 8
-  worksheet.getRow(8).height = 10;
+  // Fila 6: Teléfono (Izquierda) | Fecha (Derecha)
+  const row6 = worksheet.getRow(6);
+  row6.height = 20;
+  row6.getCell(1).value = 'Teléfono:';
+  row6.getCell(1).font = boldFont;
+  row6.getCell(2).value = params.sellerPhone || 'Movil :+56 9 88226530';
+  row6.getCell(2).font = regularFont;
 
-  // 3. Fila 9: Encabezados de Tabla (13 Columnas Oficiales)
-  const tableHeaderRow = worksheet.getRow(9);
-  tableHeaderRow.height = 24;
+  row6.getCell(4).value = 'Fecha:';
+  row6.getCell(4).font = boldFont;
+  row6.getCell(4).alignment = { vertical: 'middle', horizontal: 'right' };
+  const today = new Date();
+  const dateOptions: Intl.DateTimeFormatOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+  row6.getCell(5).value = today.toLocaleDateString('es-CL', dateOptions);
+  row6.getCell(5).font = regularFont;
+  row6.getCell(5).alignment = { vertical: 'middle', horizontal: 'left' };
+
+  // Fila 7: Quote CCW-R (Izquierda) - Altura completa de 20px para que NUNCA aparezca cortada
+  const row7 = worksheet.getRow(7);
+  row7.height = 20;
+  row7.getCell(1).value = 'Quote CCW-R:';
+  row7.getCell(1).font = boldFont;
+  row7.getCell(2).value = headerInfo.quoteNumber || 'S/N';
+  row7.getCell(2).font = { ...boldFont, size: 10.5, color: { argb: 'FF002060' } };
+
+  // 3. Fila 8: Encabezados de Tabla en Plomo / Gris (13 Columnas Oficiales en Español)
+  const tableHeaderRow = worksheet.getRow(8);
+  tableHeaderRow.height = 25;
 
   CCWR_EXPORT_COLUMNS.forEach((col, idx) => {
     const cell = tableHeaderRow.getCell(idx + 1);
     cell.value = col.header;
-    cell.fill = greenHeaderFill;
+    cell.fill = plomoHeaderFill;
     cell.font = headerFont;
     cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     cell.border = tableHeaderBorder;
   });
 
-  // 4. Filas 10+: Detalle de Ítems con Alternancia (Zebra Striping)
+  // 4. Filas 9+: Detalle de Ítems con Alternancia (Zebra Striping)
   const exportItems = onlyServicesWithCost
     ? items.filter((it) => it.isServiceOrLicense && it.extendedNetPrice > 0)
     : items;
 
-  let currentExcelRow = 10;
+  let currentExcelRow = 9;
 
   for (let i = 0; i < exportItems.length; i++) {
     const it = exportItems[i];
@@ -365,6 +374,7 @@ export async function generateCcwrQuoteExcel(
   }
 
   // 6. Leyendas Legales Oficiales Intcomex (Filas Dinámicas ubicadas automáticamente al final)
+  // Nota: "Plazo de entrega" eliminado ya que servicios y licencias son intangibles puros
   const footerRowStart = currentExcelRow + 2;
 
   // Leyenda 1: Validez de la Oferta (14 días corridos destacado en negrita y rojo)
@@ -381,31 +391,18 @@ export async function generateCcwrQuoteExcel(
   };
   footer1.alignment = { vertical: 'middle', horizontal: 'left' };
 
-  // Leyenda 2: Plazo de entrega
+  // Leyenda 2: Validación Técnica y Responsabilidad
   const footerRow2 = footerRowStart + 1;
   worksheet.mergeCells(`A${footerRow2}:M${footerRow2}`);
   const footer2 = worksheet.getCell(`A${footerRow2}`);
-  worksheet.getRow(footerRow2).height = 18;
+  worksheet.getRow(footerRow2).height = 36;
   footer2.value = {
-    richText: [
-      { text: 'Plazo de entrega: ', font: { name: 'Calibri', size: 8.5, bold: true, color: { argb: 'FF1F2937' } } },
-      { text: 'El tiempo final de despacho está determinado por el producto con mayor tiempo de espera (lead time) de la orden.', font: { name: 'Calibri', size: 8.5, italic: true, color: { argb: 'FF475569' } } },
-    ],
-  };
-  footer2.alignment = { vertical: 'middle', horizontal: 'left' };
-
-  // Leyenda 3: Validación Técnica y Responsabilidad
-  const footerRow3 = footerRowStart + 2;
-  worksheet.mergeCells(`A${footerRow3}:M${footerRow3}`);
-  const footer3 = worksheet.getCell(`A${footerRow3}`);
-  worksheet.getRow(footerRow3).height = 36;
-  footer3.value = {
     richText: [
       { text: 'Validación Técnica y Responsabilidad: ', font: { name: 'Calibri', size: 8.5, bold: true, color: { argb: 'FF1F2937' } } },
       { text: 'La presente cotización constituye una propuesta referencial de preventa basada en los requerimientos informados. Es responsabilidad exclusiva del Partner revisar y validar técnicamente la compatibilidad, completitud y exactitud de todos los números de parte (BOM) y licenciamiento antes de formalizar la orden de compra. Intcomex no asumirá costos ni mermas derivados de omisiones o inconsistencias en compras de productos a pedido no validadas previamente por el Partner.', font: { name: 'Calibri', size: 8.5, italic: true, color: { argb: 'FF475569' } } },
     ],
   };
-  footer3.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+  footer2.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
 
   // 7. Cálculo Inteligente y Compacto de Ancho de Columnas (Auto-Ajustado al Contenido)
   CCWR_EXPORT_COLUMNS.forEach((col, idx) => {
@@ -463,13 +460,18 @@ export async function generateCcwrQuoteExcel(
     // Ancho ajustado ceñido: longitud + 2 caracteres de respiro, respetando minWidth y maxWidth
     let adjustedWidth = maxContentLen + 2.5;
     if (col.key === 'quantity') {
-      adjustedWidth = 7;
+      adjustedWidth = 9;
     } else if (col.key === 'startDate' || col.key === 'endDate') {
-      adjustedWidth = 14;
+      adjustedWidth = 15;
     } else if (col.key === 'serviceLevel') {
-      adjustedWidth = 12;
+      // Col 4 contiene en la cabecera superior "Vigencia del Servicio:" (22 caracteres)
+      adjustedWidth = Math.max(adjustedWidth, 23);
     } else if (col.key === 'unitSalePrice') {
-      adjustedWidth = 13;
+      // Encabezado "Precio Unitario (USD)"
+      adjustedWidth = Math.max(adjustedWidth, 22);
+    } else if (col.key === 'productNumber') {
+      // Col 1 contiene en la cabecera "Product Manager:" y "Quote CCW-R:"
+      adjustedWidth = Math.max(adjustedWidth, 20);
     } else {
       adjustedWidth = Math.min(Math.max(adjustedWidth, col.minWidth), col.maxWidth);
     }
@@ -492,6 +494,7 @@ export function generateCcwrEmailHtml(
   const customer = headerInfo.endCustomerName || 'Cliente';
   const quoteNum = headerInfo.quoteNumber || 'S/N';
   const dateStr = headerInfo.quoteDate || new Date().toLocaleDateString('es-CL');
+  const pmName = params.sellerName || 'Mauricio Skill';
 
   let rowsHtml = '';
   for (const group of summary.byProduct) {
@@ -511,7 +514,7 @@ export function generateCcwrEmailHtml(
   return `
     <div style="font-family: Arial, sans-serif; max-width: 800px; color: #1f2937; margin: 0 auto;">
       <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-        <h2 style="margin: 0 0 10px 0; color: #0f172a; font-size: 18px; border-bottom: 2px solid #92D050; padding-bottom: 6px;">
+        <h2 style="margin: 0 0 10px 0; color: #0f172a; font-size: 18px; border-bottom: 2px solid #94a3b8; padding-bottom: 6px;">
           Cotización Oficial de Servicios y Licencias Cisco
         </h2>
         <table style="width: 100%; font-size: 13px; line-height: 1.5;">
@@ -520,22 +523,27 @@ export function generateCcwrEmailHtml(
             <td style="width: 50%;"><strong>Fecha de Emisión:</strong> ${dateStr}</td>
           </tr>
           <tr>
+            <td><strong>Product Manager:</strong> ${pmName}</td>
             <td><strong>Quote Cisco CCW-R:</strong> ${quoteNum}</td>
-            <td><strong>Total Cotización:</strong> <span style="color: #059669; font-weight: bold; font-size: 14px;">$ ${summary.totalPrecioVenta.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</span></td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding-top: 8px;">
+              <strong>Total Cotización:</strong> <span style="color: #059669; font-weight: bold; font-size: 15px;">$ ${summary.totalPrecioVenta.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</span>
+            </td>
           </tr>
         </table>
       </div>
 
       <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px;">
         <thead>
-          <tr style="background-color: #92D050; color: #000000;">
-            <th style="padding: 10px; border: 1px solid #000000; text-align: left;">Product Number</th>
-            <th style="padding: 10px; border: 1px solid #000000; text-align: left;">Descripción</th>
-            <th style="padding: 10px; border: 1px solid #000000; text-align: left;">SKU Servicio</th>
-            <th style="padding: 10px; border: 1px solid #000000; text-align: center;">Nivel</th>
-            <th style="padding: 10px; border: 1px solid #000000; text-align: center;">Cant</th>
-            <th style="padding: 10px; border: 1px solid #000000; text-align: right;">Unit Sale</th>
-            <th style="padding: 10px; border: 1px solid #000000; text-align: right;">Total Sale</th>
+          <tr style="background-color: #D9D9D9; color: #000000;">
+            <th style="padding: 10px; border: 1px solid #475569; text-align: left;">Número de Producto</th>
+            <th style="padding: 10px; border: 1px solid #475569; text-align: left;">Descripción</th>
+            <th style="padding: 10px; border: 1px solid #475569; text-align: left;">SKU Servicio</th>
+            <th style="padding: 10px; border: 1px solid #475569; text-align: center;">Nivel</th>
+            <th style="padding: 10px; border: 1px solid #475569; text-align: center;">Cantidad</th>
+            <th style="padding: 10px; border: 1px solid #475569; text-align: right;">Precio Unitario</th>
+            <th style="padding: 10px; border: 1px solid #475569; text-align: right;">Total Venta</th>
           </tr>
         </thead>
         <tbody>
