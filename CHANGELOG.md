@@ -6,6 +6,23 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.11.0] - 2026-11-11
+### 🛡️ Resiliencia Offline, Integridad de Datos DB y Trazabilidad Operativa BO/DSV
+- **Fechas de Ingreso de OC y SO Cisco en Tracking BO (`boTrackingTypes.ts`, `boTrackingService.ts`, `BoTrackingView.tsx`):**
+  - Nuevos campos persistidos `clientPoAddedAt` y `ciscoSoAddedAt` estampados automáticamente al registrar o modificar una OC (`clientPoNumber`) o SO Cisco (`ciscoSoNumber`) real (filtrando valores placeholder como `OC-PENDIENTE`, `OC-DSV`, `PENDIENTE`).
+  - Backfill heurístico en lectura y edición con `inferSoDateFromNotes`, `getEffectivePoAddedDate` y `getEffectiveSoAddedDate` para órdenes históricas previas, con edición manual disponible en el modal de orden, visualización en tarjetas Kanban/Tabla y nuevas columnas en exportación CSV.
+- **Corrección de Bodega `E1` (Física) vs `ED` (Digital) en Flujos DSV y BO (`boTrackingService.ts`, `DsvModal.tsx`, `DsvView.tsx`):**
+  - Nueva función `detectBodegaFromDsvRows` y actualización de `syncBoOrderFromDsvRecord` para asignar `bodegaDestino: 'E1'` cuando exista al menos un SKU activo de hardware y reservar `'ED'` exclusivamente para pedidos 100% intangibles (`subscription` / `service`).
+  - Auto-reparación histórica `autoRepairBoRecordBodega` en carga y edición para corregir pedidos clasificados erróneamente como `'ED'` que cuenten con guía courier física (`courierTrackingNumber`) o ítems de hardware en caché DSV/Estimates.
+- **Blindaje Anti-Pérdida en Pipeline Comercial y Forecast (`pipelineStorage.ts`, `forecastStorage.ts`, `pipelineService.ts`, `ccwrStorage.ts`, `PipelineView.tsx`, `ForecastView.tsx`):**
+  - Migración del almacenamiento local a **IndexedDB (`STORES.KEYVAL`) + Bóveda localStorage** para evitar pérdidas silenciosas por `QuotaExceededError`.
+  - Sanitizadores estrictos `sanitizePipelineDealForCloud` y `sanitizeForecastRecordForCloud` alineados con las reglas de `firestore.rules`.
+  - Eliminación del límite de 50 ítems en pushes masivos mediante `writeBatch` particionados (hasta 350 documentos por lote en `bulkSavePipelineDeals` y `bulkSaveForecastRecords`), consultas Firestore sin omisiones por `orderBy('updatedAt', 'desc')`, sincronización automática en nube al montar las vistas e IDs de Forecast libres de colisiones en CCW-R (`generateUniqueForecastId`).
+- **Modo Offline Manual en Frontend + Cola Local en PC + Advertencias de Sincronización (`offlineModeManager.ts`, `offlineSyncQueue.ts`, `OfflineSyncModal.tsx`, `Navbar.tsx`, `Sidebar.tsx`, `App.tsx`):**
+  - Nuevo interruptor **Online / MODO OFFLINE** en `Navbar.tsx` junto a un indicador de cambios pendientes guardados en el PC y banner persistente en `App.tsx`.
+  - Al operar offline, se habilitan las funciones indispensables (cotizar CCW/CCW-R, generar DSV, gestionar BO, Estimates, Pipeline, Forecast y Recordatorios) persistiendo todo localmente en IndexedDB y encolando escrituras deduplicadas por `entityKey`, mientras `Sidebar.tsx` bloquea módulos dependientes de nube o IA en vivo (`configuriator`, `feedback`, `users`, `audit`).
+  - Al volver de Offline a Online, se abre `OfflineSyncModal` mostrando el resumen por módulo en la cola del PC, advertencias explícitas sobre conflictos multiusuario y recálculo de KPIs/vistas, y opciones para **Subir Cambios y Volver Online**, **Volver Online sin Subir Ahora** o **Seguir Offline**.
+
 ## [v2.10.5] - 2026-11-10
 ### 📐 Ergonomía y Visualización (Compactación de Celdas Excel CCW-R y Eliminación de Espacios Muertos)
 - **Eliminación Integral de Espacios Muertos (-40% ancho horizontal total, `ccwrExcelExporter.ts`):**

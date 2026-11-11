@@ -32,7 +32,9 @@ import {
   DollarSign,
   Truck,
   ExternalLink,
+  RotateCcw,
 } from 'lucide-react';
+import { isAppOffline } from '../../core/storage/offlineModeManager';
 import {
   ForecastRecord,
   ForecastFilterOptions,
@@ -116,7 +118,32 @@ export function ForecastView() {
   };
 
   useEffect(() => {
-    loadRecords();
+    let active = true;
+    const initForecast = async () => {
+      await loadRecords();
+      if (!active || isAppOffline()) return;
+      try {
+        setIsSyncingCloud(true);
+        await syncForecastWithCloud();
+        if (!active) return;
+        const synced = await getForecastRecords(true);
+        if (active) setRecords(synced);
+      } catch (err) {
+        console.warn('[ForecastView] Auto-sync inicial diferida:', err);
+      } finally {
+        if (active) setIsSyncingCloud(false);
+      }
+    };
+    initForecast();
+
+    const onOfflineSyncCompleted = () => {
+      initForecast();
+    };
+    window.addEventListener('cisco-offline-sync-completed', onOfflineSyncCompleted);
+    return () => {
+      active = false;
+      window.removeEventListener('cisco-offline-sync-completed', onOfflineSyncCompleted);
+    };
   }, []);
 
   // Filtered records based on active user filters
@@ -569,10 +596,10 @@ export function ForecastView() {
           <button
             type="button"
             onClick={handleResetSeeds}
-            className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 bg-slate-950 border border-slate-800 hover:bg-slate-800 transition-colors"
-            title="Restaurar a las 158 semillas oficiales Intcomex"
+            className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-rose-300 bg-slate-950 border border-slate-800 hover:bg-rose-950/50 hover:border-rose-700/50 transition-colors cursor-pointer"
+            title="Restaurar al catálogo maestro inicial (158 semillas Intcomex) — Sobrescribe ediciones locales"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RotateCcw className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

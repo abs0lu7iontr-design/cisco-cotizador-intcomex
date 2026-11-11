@@ -32,6 +32,8 @@ export interface BoOrderTrackingRecord {
   endCustomerName: string;         // "Banco Santander"
   clientPoNumber: string;          // "OC-889922" (Orden de compra de cliente)
   ciscoSoNumber?: string;          // "SO-1298457" (Sales Order de Cisco)
+  clientPoAddedAt?: string;        // ISO timestamp / YYYY-MM-DD cuando se ingresó una OC real
+  ciscoSoAddedAt?: string;         // ISO timestamp / YYYY-MM-DD cuando se ingresó el SO de Cisco
   
   // Courier y Seguimiento
   courier: CourierProvider;
@@ -264,4 +266,75 @@ export function getOrderHealthStatus(order: BoOrderTrackingRecord, now: Date = n
     label: 'Al Día',
     badgeClass: 'bg-emerald-950/50 text-emerald-300 border border-emerald-700/40',
   };
+}
+
+const PLACEHOLDER_PO_VALUES = new Set([
+  '',
+  'OC-PENDIENTE',
+  'PO-PENDING',
+  'OC-DSV',
+  'PENDIENTE',
+  'POR CONFIRMAR',
+  'N/A',
+  'NA',
+  '-',
+]);
+
+const PLACEHOLDER_SO_VALUES = new Set([
+  '',
+  'PENDIENTE',
+  'SO-PENDING',
+  'SO-PENDIENTE',
+  'POR CONFIRMAR',
+  'N/A',
+  'NA',
+  '-',
+]);
+
+export function isRealPoNumber(po?: string): boolean {
+  const normalized = String(po || '').trim().toUpperCase();
+  return !PLACEHOLDER_PO_VALUES.has(normalized);
+}
+
+export function isRealSoNumber(so?: string): boolean {
+  const normalized = String(so || '').trim().toUpperCase();
+  return !PLACEHOLDER_SO_VALUES.has(normalized);
+}
+
+export function inferSoDateFromNotes(order: BoOrderTrackingRecord): string | undefined {
+  if (!Array.isArray(order.notes) || order.notes.length === 0) return undefined;
+  const cleanSo = String(order.ciscoSoNumber || '').trim();
+  const soNote = order.notes.find((n) => {
+    const comment = String(n.comment || '');
+    if (cleanSo && comment.includes(cleanSo) && /SO|CISCO/i.test(comment)) return true;
+    return n.stage === 'CISCO_SO_BOOKED' || /SO Cisco/i.test(comment);
+  });
+  return soNote?.date;
+}
+
+export function getEffectivePoAddedDate(order: BoOrderTrackingRecord): string | undefined {
+  if (!isRealPoNumber(order.clientPoNumber)) return undefined;
+  return order.clientPoAddedAt || order.createdAt || order.updatedAt;
+}
+
+export function getEffectiveSoAddedDate(order: BoOrderTrackingRecord): string | undefined {
+  if (!isRealSoNumber(order.ciscoSoNumber)) return undefined;
+  if (order.ciscoSoAddedAt) return order.ciscoSoAddedAt;
+  const fromNotes = inferSoDateFromNotes(order);
+  if (fromNotes) return fromNotes;
+  if (order.currentStage !== 'OC_RECEIVED') {
+    return order.updatedAt || order.createdAt;
+  }
+  return order.createdAt;
+}
+
+export function formatShortTrackingDate(iso?: string): string {
+  if (!iso) return '';
+  const parsed = new Date(iso);
+  if (isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleDateString('es-CL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
 }

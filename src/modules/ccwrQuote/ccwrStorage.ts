@@ -10,33 +10,72 @@ import { findMatchingForecastRecord } from '../forecast/forecastService';
 import { PipelineDealRecord } from '../pipeline/pipelineTypes';
 import { savePipelineDeal, getPipelineDeals } from '../pipeline/pipelineStorage';
 import { findMatchingPipelineDeal } from '../pipeline/pipelineService';
+import { idbGet, idbSet, STORES } from '../../core/storage/indexedDbStorage';
+import {
+  getActiveProjectScopeKey,
+  readProjectScopedStorage,
+  writeProjectScopedStorage,
+} from '../cloud/firebaseConfig';
 
 const CCWR_STORAGE_KEY = 'cisco_ccwr_processed_quotes_v1';
+const IDB_CCWR_KEY_PREFIX = 'ccwr_quotes_idb_v1::';
+
+function generateUniqueForecastId(existingRecords: ForecastRecord[]): string {
+  const existingIds = new Set(existingRecords.map((r) => r.id));
+  let maxNum = 0;
+  for (const r of existingRecords) {
+    const match = /^FC-(\d+)$/i.exec(String(r.id || ''));
+    if (match) {
+      const n = parseInt(match[1], 10);
+      if (n > maxNum) maxNum = n;
+    }
+  }
+  let candidate = `FC-${String(maxNum + 1).padStart(4, '0')}`;
+  if (!existingIds.has(candidate)) {
+    return candidate;
+  }
+  return `FC-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+}
 
 /**
- * Guarda una cotización CCW-R procesada en el historial local
+ * Guarda una cotización CCW-R procesada en IndexedDB + bóveda local del PC.
  */
 export async function saveCcwrQuoteHistory(quote: ProcessedCcwrQuote): Promise<void> {
   try {
+    const scopeKey = getActiveProjectScopeKey();
     const existing = await getCcwrQuoteHistory();
     const filtered = existing.filter(
       (q) => q.headerInfo.quoteNumber !== quote.headerInfo.quoteNumber
     );
-    const updated = [quote, ...filtered].slice(0, 50); // Guardar últimas 50
-    localStorage.setItem(CCWR_STORAGE_KEY, JSON.stringify(updated));
+    const updated = [quote, ...filtered].slice(0, 100);
+    await idbSet(STORES.KEYVAL, `${IDB_CCWR_KEY_PREFIX}${scopeKey}`, updated);
+    try {
+      writeProjectScopedStorage(CCWR_STORAGE_KEY, JSON.stringify(updated), scopeKey);
+    } catch {}
   } catch (err) {
     console.warn('[ccwrStorage] Error guardando historial:', err);
   }
 }
 
 /**
- * Obtiene el historial de cotizaciones CCW-R guardadas
+ * Obtiene el historial de cotizaciones CCW-R guardadas en IndexedDB o almacenamiento local.
  */
 export async function getCcwrQuoteHistory(): Promise<ProcessedCcwrQuote[]> {
   try {
-    const raw = localStorage.getItem(CCWR_STORAGE_KEY);
+    const scopeKey = getActiveProjectScopeKey();
+    const idbList = await idbGet<ProcessedCcwrQuote[]>(
+      STORES.KEYVAL,
+      `${IDB_CCWR_KEY_PREFIX}${scopeKey}`
+    );
+    if (Array.isArray(idbList) && idbList.length > 0) {
+      return idbList;
+    }
+    const raw =
+      readProjectScopedStorage(CCWR_STORAGE_KEY, scopeKey) ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem(CCWR_STORAGE_KEY) : null);
     if (!raw) return [];
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
     console.warn('[ccwrStorage] Error leyendo historial:', err);
     return [];
@@ -80,8 +119,8 @@ export async function linkCcwrToForecast(
     return { record: updated, isNew: false };
   }
 
-  // Si no existe, crear registro nuevo
-  const newId = `FC-${String(existingRecords.length + 1).padStart(4, '0')}`;
+  // Si no existe, crear registro nuevo con ID garantizado sin colisión
+  const newId = generateUniqueForecastId(existingRecords);
   const newRec: ForecastRecord = {
     id: newId,
     fechaLevantamiento: quote.headerInfo.quoteDate || nowIso.slice(0, 10),

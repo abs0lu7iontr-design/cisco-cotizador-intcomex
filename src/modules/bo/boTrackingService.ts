@@ -9,14 +9,13 @@ import {
   getDocs,
   setDoc,
   deleteDoc,
-  query,
-  orderBy,
 } from 'firebase/firestore';
 import {
   getFirestoreInstance,
   getActiveProjectScopeKey,
   readProjectScopedStorage,
   writeProjectScopedStorage,
+  registerProjectScopedCleanup,
 } from '../cloud/firebaseConfig';
 import {
   BoOrderTrackingRecord,
@@ -24,10 +23,18 @@ import {
   CourierProvider,
   getCourierTrackingUrl,
   BoDailyNote,
+  isRealPoNumber,
+  isRealSoNumber,
+  getEffectivePoAddedDate,
+  getEffectiveSoAddedDate,
 } from './boTrackingTypes';
 import { ProcessedEstimateResult } from '../../core/types';
 import { BoLineItem } from './boTypes';
 import { sanitizeForFirestore } from '../cloud/firestoreService';
+import { detectSkuCategory } from '../dsv/dsvEngine';
+import { isAppOffline } from '../../core/storage/offlineModeManager';
+import { enqueueOfflineAction } from '../../core/storage/offlineSyncQueue';
+import { getEstimatesMirrorSnapshot } from '../../hooks/useEstimatesMirror';
 import {
   getCollectionRecordsSync,
   putCollectionRecordsBatch,
@@ -43,12 +50,188 @@ const LOCAL_BO_TRACKING_PRIMARY_KEY = 'cisco_bo_order_tracking_cache_v2';
 const LOCAL_BO_TRACKING_VAULT_KEY = 'cisco_bo_order_tracking_vault_v1';
 const LOCAL_BO_TRACKING_LEGACY_KEY = 'cisco_bo_order_tracking_cache_v1';
 const LOCAL_BO_TRACKING_DELETED_KEY = 'cisco_bo_order_tracking_deleted_ids_v1';
-const LOCAL_BO_TRACKING_INIT_KEY = 'cisco_bo_tracking_initialized_flag_v1';
+const LOCAL_BO_TRACKING_INIT_KEY = 'cisco_bo_order_tracking_initialized_flag_v1';
 
 // ----------------------------------------------------------------------------
 // Local Storage Multi-Tier Vault, IndexedDB & Idempotent Event Helpers
 // ----------------------------------------------------------------------------
 let inMemoryTrackingCache: BoOrderTrackingRecord[] = [];
+let inMemoryScopeKey: string = '';
+
+registerProjectScopedCleanup(() => {
+  inMemoryTrackingCache = [];
+  inMemoryScopeKey = '';
+});
+
+export interface DsvBodegaRowInput {
+  sku?: string;
+  partNumber?: string;
+  detectedType?: string;
+  overrideType?: string;
+  productQuantity?: number;
+}
+
+/**
+ * Determina la bodega correcta a partir de las líneas de un DSV:
+ * - Si existe al menos 1 ítem de hardware activo -> 'E1' (Bodega física ENEA)
+ * - Si el 100% de las líneas son intangibles (subscription/service) -> 'ED' (Bodega digital)
+ */
+export function detectBodegaFromDsvRows(rows?: DsvBodegaRowInput[]): 'E1' | 'ED' | undefined {
+  if (!Array.isArray(rows) || rows.length === 0) return undefined;
+  const activeRows = rows.filter((r) => Number(r.productQuantity ?? 1) > 0);
+  const targetRows = activeRows.length > 0 ? activeRows : rows;
+  const hasHardware = targetRows.some((r) => {
+    const skuCode = String(r.sku || r.partNumber || '').trim();
+    const effectiveCategory =
+      r.overrideType ||
+      r.detectedType ||
+      (skuCode ? detectSkuCategory(skuCode) : undefined);
+    return effectiveCategory === 'hardware';
+  });
+  return hasHardware ? 'E1' : 'ED';
+}
+
+function findBodegaFromLocalDsvOrEstimateCaches(
+  dealId?: string,
+  soNumber?: string,
+  estimateId?: string,
+  poNumber?: string,
+  scopeKey?: string
+): 'E1' | 'ED' | undefined {
+  const cleanDeal = String(dealId || '').trim();
+  const cleanSo = String(soNumber || '').trim();
+  const cleanEst = String(estimateId || '').trim();
+  const cleanPo = String(poNumber || '').trim();
+
+  // 1. Buscar en caché local de DSVs exportados/guardados
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const dsvKeys = ['cisco_cloud_dsv_cache_v2', 'cisco_dsv_permanent_vault_v1'];
+      for (const k of dsvKeys) {
+        const raw = readProjectScopedStorage(k, scopeKey);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) continue;
+        const matchedDsv = parsed.find((d: any) => {
+          if (!d) return false;
+          if (cleanDeal && cleanDeal !== 'DEAL-N/A' && d.dealId === cleanDeal) return true;
+          if (cleanSo && d.soNumber === cleanSo) return true;
+          if (cleanEst && d.dealId === cleanEst) return true;
+          if (cleanPo && isRealPoNumber(cleanPo) && d.poNumber === cleanPo) return true;
+          return false;
+        });
+        if (matchedDsv && Array.isArray(matchedDsv.items) && matchedDsv.items.length > 0) {
+          const detected = detectBodegaFromDsvRows(matchedDsv.items);
+          if (detected) return detected;
+        }
+      }
+    }
+  } catch (_) {}
+
+  // 2. Buscar en caché mirror de Estimates guardados
+  try {
+    const estimates = getEstimatesMirrorSnapshot();
+    const matchedEst = estimates.find((e) => {
+      if (!e) return false;
+      if (cleanEst && e.estimateId === cleanEst) return true;
+      if (cleanDeal && cleanDeal !== 'DEAL-N/A' && e.dealId === cleanDeal) return true;
+      return false;
+    });
+    if (matchedEst && Array.isArray(matchedEst.items) && matchedEst.items.length > 0) {
+      const activeItems = matchedEst.items.filter((it) => (Number(it.qty) || 0) > 0);
+      if (activeItems.length > 0) {
+        return activeItems.some((it) => !it.isIntangible) ? 'E1' : 'ED';
+      }
+    }
+  } catch (_) {}
+
+  return undefined;
+}
+
+export function autoRepairBoRecordBodega(
+  record: BoOrderTrackingRecord,
+  scopeKey?: string
+): { record: BoOrderTrackingRecord; changed: boolean } {
+  if (!record || record.bodegaDestino === 'E1') {
+    return { record, changed: false };
+  }
+
+  // Si ya tiene guía física FedEx/UPS/DHL o sin bodega, es un despacho físico E1
+  const hasPhysicalTracking = Boolean(record.courierTrackingNumber && record.courierTrackingNumber.trim().length >= 5);
+  if (hasPhysicalTracking) {
+    return {
+      record: { ...record, bodegaDestino: 'E1' },
+      changed: true,
+    };
+  }
+
+  // Si fue creado vía DSV o no tiene bodega asignada, contrastar con caché DSV/Estimates
+  const isDsvOrMissing = record.estimateVersionTag === 'DSV' || !record.bodegaDestino;
+  if (isDsvOrMissing) {
+    const detected = findBodegaFromLocalDsvOrEstimateCaches(
+      record.dealId,
+      record.ciscoSoNumber,
+      record.estimateId,
+      record.clientPoNumber,
+      scopeKey
+    );
+    if (detected === 'E1' || (!record.bodegaDestino && detected)) {
+      return {
+        record: { ...record, bodegaDestino: detected || 'E1' },
+        changed: true,
+      };
+    }
+  }
+
+  return { record, changed: false };
+}
+
+/**
+ * Estampa y preserva las fechas de ingreso real de OC y SO Cisco en un registro BO.
+ */
+export function applyPoAndSoTimestamps(
+  record: BoOrderTrackingRecord,
+  previous?: BoOrderTrackingRecord,
+  nowIso: string = new Date().toISOString()
+): BoOrderTrackingRecord {
+  const next: BoOrderTrackingRecord = { ...record };
+
+  const prevPo = String(previous?.clientPoNumber || '').trim();
+  const currPo = String(next.clientPoNumber || '').trim();
+  if (isRealPoNumber(currPo)) {
+    const poChanged = Boolean(previous) && prevPo !== currPo;
+    const explicitCustomPoDate =
+      Boolean(next.clientPoAddedAt) && next.clientPoAddedAt !== previous?.clientPoAddedAt;
+    if (!explicitCustomPoDate) {
+      if (next.clientPoAddedAt && !poChanged) {
+        // Mantiene timestamp previo
+      } else if (previous && !poChanged) {
+        next.clientPoAddedAt = previous.clientPoAddedAt || getEffectivePoAddedDate(previous) || nowIso;
+      } else {
+        next.clientPoAddedAt = nowIso;
+      }
+    }
+  }
+
+  const prevSo = String(previous?.ciscoSoNumber || '').trim();
+  const currSo = String(next.ciscoSoNumber || '').trim();
+  if (isRealSoNumber(currSo)) {
+    const soChanged = Boolean(previous) && prevSo !== currSo;
+    const explicitCustomSoDate =
+      Boolean(next.ciscoSoAddedAt) && next.ciscoSoAddedAt !== previous?.ciscoSoAddedAt;
+    if (!explicitCustomSoDate) {
+      if (next.ciscoSoAddedAt && !soChanged) {
+        // Mantiene timestamp previo
+      } else if (previous && !soChanged) {
+        next.ciscoSoAddedAt = previous.ciscoSoAddedAt || getEffectiveSoAddedDate(previous) || nowIso;
+      } else {
+        next.ciscoSoAddedAt = nowIso;
+      }
+    }
+  }
+
+  return next;
+}
 
 /**
  * Merges a BO order's inline `notes` array with the idempotent event store so concurrent
@@ -184,10 +367,12 @@ export function getLocalBoTrackingCache(projectId?: string): BoOrderTrackingReco
     }
   } catch (_) {}
 
-  // Si hay datos en memoria que no están en localStorage, incluirlos
-  for (const mem of inMemoryTrackingCache) {
-    if (mem && mem.id && !deletedIds.has(mem.id) && !map.has(mem.id)) {
-      map.set(mem.id, reconcileBoOrderNotesWithEventStore(mem, scopeKey));
+  // Si hay datos en memoria del mismo scope que no están en localStorage, incluirlos
+  if (inMemoryScopeKey === scopeKey) {
+    for (const mem of inMemoryTrackingCache) {
+      if (mem && mem.id && !deletedIds.has(mem.id) && !map.has(mem.id)) {
+        map.set(mem.id, reconcileBoOrderNotesWithEventStore(mem, scopeKey));
+      }
     }
   }
 
@@ -195,7 +380,7 @@ export function getLocalBoTrackingCache(projectId?: string): BoOrderTrackingReco
     (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
   );
 
-  return result.length > 0 ? result : inMemoryTrackingCache;
+  return result.length > 0 ? result : inMemoryScopeKey === scopeKey ? inMemoryTrackingCache : [];
 }
 
 export function saveLocalBoTrackingCache(
@@ -208,6 +393,7 @@ export function saveLocalBoTrackingCache(
     .filter((r) => r && r.id && !deletedIds.has(r.id))
     .map((r) => reconcileBoOrderNotesWithEventStore(r, scopeKey));
   inMemoryTrackingCache = [...cleanRecords];
+  inMemoryScopeKey = scopeKey;
 
   // Persist per-record in IndexedDB collection store (Item 11)
   putCollectionRecordsBatch(
@@ -372,65 +558,107 @@ const SEED_BO_ORDERS: BoOrderTrackingRecord[] = [
 // ----------------------------------------------------------------------------
 
 /**
- * Obtiene todas las órdenes de seguimiento BO con fusión bidireccional inteligente
- * (Garantiza que ningún registro local se pierda y sincroniza con Cloud Firestore)
+ * Obtiene todas las órdenes de seguimiento BO con fusión bidireccional inteligente,
+ * soporte completo para Modo Offline y auto-reparación de bodegas DSV mal clasificadas.
  */
 export async function getBoTrackings(): Promise<BoOrderTrackingRecord[]> {
-  const localRecords = getLocalBoTrackingCache();
-  const deletedIds = getDeletedBoTrackingIds();
+  const scopeKey = getActiveProjectScopeKey();
+  const rawLocalRecords = getLocalBoTrackingCache(scopeKey);
+  const deletedIds = getDeletedBoTrackingIds(scopeKey);
+
+  let localRepairedAny = false;
+  const localRecords = rawLocalRecords.map((lr) => {
+    const repaired = autoRepairBoRecordBodega(lr, scopeKey);
+    if (repaired.changed) localRepairedAny = true;
+    return repaired.record;
+  });
+
+  if (localRepairedAny && localRecords.length > 0) {
+    saveLocalBoTrackingCache(localRecords, scopeKey);
+  }
+
+  // En modo Offline (manual o sin red), operar exclusivamente con la bóveda local del PC
+  if (isAppOffline()) {
+    if (localRecords.length > 0) {
+      return localRecords;
+    }
+    const isInitializedOffline =
+      typeof localStorage !== 'undefined' && readProjectScopedStorage(LOCAL_BO_TRACKING_INIT_KEY, scopeKey);
+    if (!isInitializedOffline) {
+      saveLocalBoTrackingCache(SEED_BO_ORDERS, scopeKey);
+      return SEED_BO_ORDERS;
+    }
+    return [];
+  }
 
   try {
     const { db, isReady } = getFirestoreInstance();
     if (isReady && db) {
-      const q = query(
-        collection(db, BO_TRACKING_COLLECTION),
-        orderBy('createdAt', 'desc')
-      );
-      const snapshot = await getDocs(q);
+      // Consultar colección completa sin orderBy para no omitir documentos sin campo createdAt indexado
+      const snapshot = await getDocs(collection(db, BO_TRACKING_COLLECTION));
 
       const cloudRecords: BoOrderTrackingRecord[] = [];
+      const pendingSyncToCloudMap = new Map<string, BoOrderTrackingRecord>();
+
       snapshot.forEach((docSnap) => {
         const data = docSnap.data() as BoOrderTrackingRecord;
-        if (data && data.id && !deletedIds.has(data.id)) {
-          cloudRecords.push(data);
-        } else if (data && data.id && deletedIds.has(data.id)) {
-          // Si el registro fue eliminado por el usuario, purgarlo de Firestore en segundo plano
-          deleteDoc(doc(db, BO_TRACKING_COLLECTION, data.id)).catch(() => {});
+        const docId = data?.id || docSnap.id;
+        if (!docId) return;
+        if (deletedIds.has(docId)) {
+          deleteDoc(doc(db, BO_TRACKING_COLLECTION, docId)).catch(() => {});
+          return;
         }
+        const normalizedCloud: BoOrderTrackingRecord = { ...data, id: docId };
+        const repairedCloud = autoRepairBoRecordBodega(normalizedCloud, scopeKey);
+        if (repairedCloud.changed) {
+          pendingSyncToCloudMap.set(docId, repairedCloud.record);
+        }
+        cloudRecords.push(repairedCloud.record);
       });
 
-      // SMART BIDIRECTIONAL MERGE:
-      // Combinamos nube con caché local para que NINGÚN ingreso reciente se pierda
       const mergedMap = new Map<string, BoOrderTrackingRecord>();
-
-      // 1. Incorporar registros de Firestore
       for (const cr of cloudRecords) {
         mergedMap.set(cr.id, cr);
       }
 
-      // 2. Fusionar con registros locales (preservando ingresos recientes no sincronizados)
-      const pendingSyncToCloud: BoOrderTrackingRecord[] = [];
       for (const lr of localRecords) {
         if (deletedIds.has(lr.id)) continue;
 
         const existingCloud = mergedMap.get(lr.id);
         if (!existingCloud) {
-          // El registro existe localmente pero aún no en Firestore -> PRESERVAR y auto-sincronizar
           mergedMap.set(lr.id, lr);
-          pendingSyncToCloud.push(lr);
+          pendingSyncToCloudMap.set(lr.id, lr);
         } else {
-          // Si la versión local ya fue entregada/completada (DELIVERED) y la nube no, gana DELIVERED
+          const preferE1 =
+            lr.bodegaDestino === 'E1' && existingCloud.bodegaDestino === 'ED';
+
           if (lr.currentStage === 'DELIVERED' && existingCloud.currentStage !== 'DELIVERED') {
-            mergedMap.set(lr.id, lr);
-            pendingSyncToCloud.push(lr);
+            const nextRec = preferE1 ? { ...lr, bodegaDestino: 'E1' as const } : lr;
+            mergedMap.set(lr.id, nextRec);
+            pendingSyncToCloudMap.set(lr.id, nextRec);
           } else {
             const localTs = lr.updatedAt || lr.createdAt || '';
             const cloudTs = existingCloud.updatedAt || existingCloud.createdAt || '';
             if (localTs >= cloudTs) {
-              mergedMap.set(lr.id, lr);
-              if (localTs > cloudTs) {
-                pendingSyncToCloud.push(lr);
+              const nextRec: BoOrderTrackingRecord = {
+                ...lr,
+                bodegaDestino: preferE1 ? 'E1' : (lr.bodegaDestino || existingCloud.bodegaDestino),
+                clientPoAddedAt: lr.clientPoAddedAt || existingCloud.clientPoAddedAt,
+                ciscoSoAddedAt: lr.ciscoSoAddedAt || existingCloud.ciscoSoAddedAt,
+              };
+              mergedMap.set(lr.id, nextRec);
+              if (localTs > cloudTs || preferE1) {
+                pendingSyncToCloudMap.set(lr.id, nextRec);
               }
+            } else if (preferE1) {
+              const repairedMerge: BoOrderTrackingRecord = {
+                ...existingCloud,
+                bodegaDestino: 'E1',
+                clientPoAddedAt: existingCloud.clientPoAddedAt || lr.clientPoAddedAt,
+                ciscoSoAddedAt: existingCloud.ciscoSoAddedAt || lr.ciscoSoAddedAt,
+              };
+              mergedMap.set(lr.id, repairedMerge);
+              pendingSyncToCloudMap.set(lr.id, repairedMerge);
             }
           }
         }
@@ -440,9 +668,8 @@ export async function getBoTrackings(): Promise<BoOrderTrackingRecord[]> {
         (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
       );
 
-      // Auto-reparación / Auto-sincronización con la nube para registros locales faltantes
-      if (pendingSyncToCloud.length > 0) {
-        for (const item of pendingSyncToCloud) {
+      if (pendingSyncToCloudMap.size > 0) {
+        for (const item of pendingSyncToCloudMap.values()) {
           try {
             const docRef = doc(db, BO_TRACKING_COLLECTION, item.id);
             const sanitized = sanitizeForFirestore(item);
@@ -454,7 +681,7 @@ export async function getBoTrackings(): Promise<BoOrderTrackingRecord[]> {
       }
 
       if (mergedList.length > 0) {
-        saveLocalBoTrackingCache(mergedList);
+        saveLocalBoTrackingCache(mergedList, scopeKey);
         return mergedList;
       }
     }
@@ -462,16 +689,14 @@ export async function getBoTrackings(): Promise<BoOrderTrackingRecord[]> {
     console.warn('[BoTrackingService] Firestore no disponible o sin conexión. Usando caché local blindada:', err);
   }
 
-  // Fallback: leer de caché local blindada
   if (localRecords.length > 0) {
     return localRecords;
   }
 
-  // Inicializar con semillas SOLO si es primera ejecución absoluta y no hay flag de inicio
   const isInitialized =
-    typeof localStorage !== 'undefined' && readProjectScopedStorage(LOCAL_BO_TRACKING_INIT_KEY);
+    typeof localStorage !== 'undefined' && readProjectScopedStorage(LOCAL_BO_TRACKING_INIT_KEY, scopeKey);
   if (!isInitialized && localRecords.length === 0) {
-    saveLocalBoTrackingCache(SEED_BO_ORDERS);
+    saveLocalBoTrackingCache(SEED_BO_ORDERS, scopeKey);
     return SEED_BO_ORDERS;
   }
 
@@ -479,51 +704,94 @@ export async function getBoTrackings(): Promise<BoOrderTrackingRecord[]> {
 }
 
 /**
- * Guarda o actualiza un registro completo de seguimiento BO con sanitización estricta
- * y reconciliación idempotente de eventos de bitácora (Item 12).
+ * Envía directamente un registro BO a Cloud Firestore (usado en modo online y en el flush de cola offline).
  */
-export async function saveBoTracking(
+export async function pushBoTrackingToCloud(
   record: BoOrderTrackingRecord
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const { db, isReady, error } = getFirestoreInstance();
+    if (!isReady || !db) {
+      return { success: false, error: error || 'Firestore no disponible' };
+    }
+    const docRef = doc(db, BO_TRACKING_COLLECTION, record.id);
+    const sanitized = sanitizeForFirestore(record);
+    await setDoc(docRef, sanitized, { merge: true });
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Error al subir seguimiento BO a Firestore' };
+  }
+}
+
+/**
+ * Envía directamente la eliminación de un registro BO a Cloud Firestore.
+ */
+export async function pushBoTrackingDeleteToCloud(
+  orderId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { db, isReady, error } = getFirestoreInstance();
+    if (!isReady || !db) {
+      return { success: false, error: error || 'Firestore no disponible' };
+    }
+    await deleteDoc(doc(db, BO_TRACKING_COLLECTION, orderId));
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Error al eliminar seguimiento BO en Firestore' };
+  }
+}
+
+/**
+ * Guarda o actualiza un registro completo de seguimiento BO con sanitización estricta,
+ * sellado automático de fechas de ingreso OC/SO, cola offline y reconciliación idempotente.
+ */
+export async function saveBoTracking(
+  record: BoOrderTrackingRecord
+): Promise<{ success: boolean; offlineQueued?: boolean; error?: string }> {
+  try {
     const scopeKey = getActiveProjectScopeKey();
-    const reconciled = reconcileBoOrderNotesWithEventStore(record, scopeKey);
-    const normalizedRecord: BoOrderTrackingRecord = {
-      ...reconciled,
-      courierTrackingUrl: getCourierTrackingUrl(record.courier, record.courierTrackingNumber),
-      updatedAt: new Date().toISOString(),
+    const nowIso = new Date().toISOString();
+    const current = getLocalBoTrackingCache(scopeKey);
+    const existingIdx = current.findIndex((r) => r.id === record.id);
+    const existingRecord = existingIdx >= 0 ? current[existingIdx] : undefined;
+
+    const mergedNotesBase = existingRecord
+      ? {
+          ...record,
+          notes: [...(existingRecord.notes || []), ...(record.notes || [])],
+        }
+      : record;
+
+    const reconciled = reconcileBoOrderNotesWithEventStore(mergedNotesBase, scopeKey);
+    const stamped = applyPoAndSoTimestamps(reconciled, existingRecord, nowIso);
+    const finalRecord: BoOrderTrackingRecord = {
+      ...stamped,
+      courierTrackingUrl: getCourierTrackingUrl(stamped.courier, stamped.courierTrackingNumber),
+      updatedAt: nowIso,
     };
 
-    // Actualizar caché local inmediatamente en IndexedDB y almacenes redundantes
-    const current = getLocalBoTrackingCache(scopeKey);
-    const existingIdx = current.findIndex((r) => r.id === normalizedRecord.id);
     let nextList: BoOrderTrackingRecord[];
     if (existingIdx >= 0) {
-      // Merge existing notes with incoming notes via event store so concurrent notes are never overwritten
-      const mergedRecord = reconcileBoOrderNotesWithEventStore(
-        {
-          ...normalizedRecord,
-          notes: [...(current[existingIdx].notes || []), ...(normalizedRecord.notes || [])],
-        },
-        scopeKey
-      );
       nextList = [...current];
-      nextList[existingIdx] = mergedRecord;
+      nextList[existingIdx] = finalRecord;
     } else {
-      nextList = [normalizedRecord, ...current];
+      nextList = [finalRecord, ...current];
     }
     saveLocalBoTrackingCache(nextList, scopeKey);
 
-    // Persistir en Firestore sanitizando campos undefined
-    try {
-      const { db, isReady } = getFirestoreInstance();
-      if (isReady && db) {
-        const docRef = doc(db, BO_TRACKING_COLLECTION, normalizedRecord.id);
-        const sanitized = sanitizeForFirestore(normalizedRecord);
-        await setDoc(docRef, sanitized, { merge: true });
-      }
-    } catch (errCloud) {
-      console.warn('[BoTrackingService] Sincronización nube pendiente, guardado localmente en vault:', errCloud);
+    if (isAppOffline()) {
+      await enqueueOfflineAction('save_bo_tracking', finalRecord, {
+        entityKey: `bo:${finalRecord.id}`,
+      });
+      return { success: true, offlineQueued: true };
+    }
+
+    const cloudRes = await pushBoTrackingToCloud(finalRecord);
+    if (!cloudRes.success) {
+      console.warn('[BoTrackingService] Sincronización nube pendiente, encolando para reintento:', cloudRes.error);
+      await enqueueOfflineAction('save_bo_tracking', finalRecord, {
+        entityKey: `bo:${finalRecord.id}`,
+      });
     }
 
     return { success: true };
@@ -695,7 +963,7 @@ export async function addBoDailyNote(
 }
 
 /**
- * Elimina o archiva un registro de seguimiento con registro de tombstone y limpieza en IndexedDB.
+ * Elimina o archiva un registro de seguimiento con registro de tombstone, soporte offline y limpieza en IndexedDB.
  */
 export async function deleteBoTracking(orderId: string): Promise<{ success: boolean; error?: string }> {
   try {
@@ -708,15 +976,20 @@ export async function deleteBoTracking(orderId: string): Promise<{ success: bool
     const nextList = current.filter((r) => r.id !== orderId);
     saveLocalBoTrackingCache(nextList);
 
-    // 3. Eliminar de Cloud Firestore
-    try {
-      const { db, isReady } = getFirestoreInstance();
-      if (isReady && db) {
-        const docRef = doc(db, BO_TRACKING_COLLECTION, orderId);
-        await deleteDoc(docRef);
-      }
-    } catch (errCloud) {
-      console.warn('[BoTrackingService] Eliminación en nube pendiente, eliminado localmente:', errCloud);
+    // 3. Eliminar de Cloud Firestore (o encolar si estamos offline)
+    if (isAppOffline()) {
+      await enqueueOfflineAction('delete_bo_tracking', { id: orderId }, {
+        entityKey: `bo:${orderId}`,
+      });
+      return { success: true };
+    }
+
+    const cloudRes = await pushBoTrackingDeleteToCloud(orderId);
+    if (!cloudRes.success) {
+      console.warn('[BoTrackingService] Eliminación en nube pendiente, encolando para reintento:', cloudRes.error);
+      await enqueueOfflineAction('delete_bo_tracking', { id: orderId }, {
+        entityKey: `bo:${orderId}`,
+      });
     }
 
     return { success: true };
@@ -743,6 +1016,7 @@ export function createBoTrackingRecordFromEstimate(
   const versionTag = estimate.versionTag || 'v1';
 
   const cleanPo = (clientPoNumber || 'OC-PENDIENTE').trim();
+  const cleanSo = (ciscoSoNumber || '').trim() || undefined;
   const trackingId = `BO-${cleanPo.replace(/[^A-Za-z0-9_-]/g, '')}-${estimateId}`;
 
   const validItems = (estimate.items || []).filter((it) => !it.isInfoRow && it.qty > 0);
@@ -763,7 +1037,9 @@ export function createBoTrackingRecordFromEstimate(
     partnerName: partner,
     endCustomerName: client,
     clientPoNumber: cleanPo,
-    ciscoSoNumber: (ciscoSoNumber || '').trim() || undefined,
+    ciscoSoNumber: cleanSo,
+    clientPoAddedAt: isRealPoNumber(cleanPo) ? nowIso : undefined,
+    ciscoSoAddedAt: isRealSoNumber(cleanSo) ? nowIso : undefined,
     courier: 'FedEx',
     currentStage: 'OC_RECEIVED',
     createdAt: nowIso,
@@ -931,13 +1207,16 @@ export interface SyncBoOrderFromDsvParams {
   endCustomerName?: string;
   totalSaleUsd?: number;
   itemsCount?: number;
+  bodegaDestino?: 'E1' | 'ED';
+  dsvRows?: DsvBodegaRowInput[];
   author?: string;
   notesComment?: string;
 }
 
 /**
  * Sincroniza una orden procesada o exportada en el módulo DSV con la base de datos de seguimiento
- * de Back Orders (bo_order_tracking), vinculando SO Cisco y PO Cliente, y avanzando a la etapa 2: CISCO_SO_BOOKED.
+ * de Back Orders (bo_order_tracking), vinculando SO Cisco y PO Cliente, determinando correctamente
+ * si requiere bodega física E1 (hardware) o digital ED (sólo licencias/servicios).
  */
 export async function syncBoOrderFromDsvRecord(
   params: SyncBoOrderFromDsvParams
@@ -951,6 +1230,8 @@ export async function syncBoOrderFromDsvRecord(
       endCustomerName = 'Cliente Final',
       totalSaleUsd = 0,
       itemsCount = 0,
+      bodegaDestino,
+      dsvRows,
       author = 'Usuario Intcomex',
       notesComment,
     } = params;
@@ -972,6 +1253,11 @@ export async function syncBoOrderFromDsvRecord(
         (cleanPo && cleanPo !== 'OC-DSV' && cleanPo !== 'PO-PENDING' && r.clientPoNumber === cleanPo)
     );
 
+    const resolvedDsvBodega =
+      bodegaDestino ||
+      detectBodegaFromDsvRows(dsvRows) ||
+      findBodegaFromLocalDsvOrEstimateCaches(cleanDeal, cleanSo, cleanDeal, cleanPo);
+
     const nowIso = new Date().toISOString();
     const comment =
       notesComment ||
@@ -984,12 +1270,17 @@ export async function syncBoOrderFromDsvRecord(
       // Avanzar automáticamente a CISCO_SO_BOOKED si la orden aún estaba en OC_RECEIVED
       const nextStage: BoStage =
         reconciled.currentStage === 'OC_RECEIVED' ? 'CISCO_SO_BOOKED' : reconciled.currentStage;
+      const mergedBodega: 'E1' | 'ED' =
+        resolvedDsvBodega === 'E1' || reconciled.bodegaDestino === 'E1'
+          ? 'E1'
+          : resolvedDsvBodega || reconciled.bodegaDestino || 'ED';
 
       orderRecord = {
         ...reconciled,
         ciscoSoNumber: cleanSo || reconciled.ciscoSoNumber,
         clientPoNumber: cleanPo && cleanPo !== 'PO-PENDING' ? cleanPo : reconciled.clientPoNumber,
         currentStage: nextStage,
+        bodegaDestino: mergedBodega,
         partnerName: partnerName || reconciled.partnerName,
         endCustomerName: endCustomerName || reconciled.endCustomerName,
         totalSaleUsd: totalSaleUsd > 0 ? totalSaleUsd : reconciled.totalSaleUsd,
@@ -1021,6 +1312,8 @@ export async function syncBoOrderFromDsvRecord(
         endCustomerName,
         clientPoNumber: cleanPo,
         ciscoSoNumber: cleanSo || undefined,
+        clientPoAddedAt: isRealPoNumber(cleanPo) ? nowIso : undefined,
+        ciscoSoAddedAt: isRealSoNumber(cleanSo) ? nowIso : undefined,
         courier: 'FedEx',
         currentStage: 'CISCO_SO_BOOKED',
         createdAt: nowIso,
@@ -1029,7 +1322,7 @@ export async function syncBoOrderFromDsvRecord(
         totalSaleUsd,
         grossProfitUsd: 0,
         itemsCount,
-        bodegaDestino: 'ED',
+        bodegaDestino: resolvedDsvBodega || 'ED',
         notes: [
           {
             id: `note-${Date.now()}`,

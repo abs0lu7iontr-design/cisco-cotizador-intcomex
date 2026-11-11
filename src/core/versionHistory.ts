@@ -15,11 +15,26 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.11.0',
+    date: '2026-11-11',
+    commit: 'feat-offline-mode-pipeline-forecast-armor-and-bo-dates-bodega',
+    title: 'Modo Offline Manual con Cola PC, Blindaje IndexedDB Pipeline/Forecast y Fechas OC/SO + Bodega E1/ED en BO',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Modo Offline / Online en Frontend (Navbar, Sidebar, OfflineSyncModal): Botón dedicado para trabajar sin conexión en lo indispensable (cotizar CCW/CCW-R, DSV, Tracking BO, Pipeline, Forecast, Estimates) guardando todo en este PC.',
+      'Confirmación y Advertencias al Volver Online: Al reconectar, OfflineSyncModal detalla los cambios pendientes por módulo, advierte sobre posibles conflictos de sobrescritura en la nube o recálculo de vistas/KPIs, y permite subir todo en bloque o permanecer online con la cola pausada.',
+      'Fechas de Registro OC y SO en Tracking BO: Persistencia de clientPoAddedAt y ciscoSoAddedAt visibles en Kanban, Tabla, Modal de Edición y exportación CSV.',
+      'Bodega Correcta en DSV y BO (E1 vs ED): Asignación de bodega física E1 ante presencia de hardware (reservando ED solo para 100% intangibles) y auto-reparación automática de registros históricos con guía courier.',
+      'Resistencia Anti-Pérdida en Pipeline y Forecast: Migración a IndexedDB sin límite de 5MB, sanitizadores firestore.rules, batches sin corte de 50 ítems, lectura Firestore completa sin drop por orderBy y sincronización automática al abrir cada vista.',
+    ],
+  },
+  {
     version: '2.10.5',
     date: '2026-11-10',
     commit: 'fix-ccwr-excel-compact-snug-columns-and-zero-dead-space',
     title: 'Compactación Ergonómica de Celdas Excel CCW-R y Eliminación de Espacios Muertos para Visualización Total',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Eliminación de Espacios Muertos (-40% ancho total): Rediseño de anchos de columna para ceñirse fielmente al largo del contenido con holgura ajustada (+1.5 caracteres), reduciendo el ancho total de 427 a 255 unidades para permitir visualizar toda la cotización en pantalla.',

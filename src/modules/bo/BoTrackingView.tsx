@@ -39,6 +39,11 @@ import {
   ORDERED_BO_STAGES,
   getOrderHealthStatus,
   getCourierTrackingUrl,
+  getEffectivePoAddedDate,
+  getEffectiveSoAddedDate,
+  formatShortTrackingDate,
+  isRealPoNumber,
+  isRealSoNumber,
 } from './boTrackingTypes';
 import {
   getBoTrackings,
@@ -103,12 +108,19 @@ export function BoTrackingView() {
 
   useEffect(() => {
     loadData();
+    const onSyncComplete = () => {
+      loadData();
+    };
+    window.addEventListener('cisco-offline-sync-completed', onSyncComplete);
+    return () => window.removeEventListener('cisco-offline-sync-completed', onSyncComplete);
   }, []);
 
   // Prellenar formulario de nueva orden si hay estimate cargado
   useEffect(() => {
     if (processedResult && isNewOrderModalOpen) {
       const header = processedResult.headerInfo || ({} as any);
+      const validItems = (processedResult.items || []).filter((it) => !it.isInfoRow && it.qty > 0);
+      const hasHardware = validItems.some((it) => !it.isIntangible);
       setNewOrderForm({
         estimateId: header.estimateId || header.quoteName || '',
         versionTag: processedResult.versionTag || 'v1',
@@ -123,7 +135,7 @@ export function BoTrackingView() {
         estimatedArrivalDate: '',
         totalSaleUsd: processedResult.calculatedProductTotal || 0,
         grossProfitUsd: Math.max(0, (processedResult.calculatedProductTotal || 0) - (processedResult.originalProductTotal || 0)),
-        bodegaDestino: 'E1',
+        bodegaDestino: validItems.length > 0 && !hasHardware ? 'ED' : 'E1',
       });
     }
   }, [processedResult, isNewOrderModalOpen, detectedPartner]);
@@ -245,6 +257,8 @@ export function BoTrackingView() {
       endCustomerName: newOrderForm.endCustomerName.trim() || 'Cliente Final',
       clientPoNumber: cleanPo,
       ciscoSoNumber: newOrderForm.ciscoSoNumber.trim() || undefined,
+      clientPoAddedAt: isRealPoNumber(cleanPo) ? nowIso : undefined,
+      ciscoSoAddedAt: isRealSoNumber(newOrderForm.ciscoSoNumber) ? nowIso : undefined,
       courier: newOrderForm.courier,
       courierTrackingNumber: newOrderForm.courierTrackingNumber.trim() || undefined,
       courierTrackingUrl: getCourierTrackingUrl(newOrderForm.courier, newOrderForm.courierTrackingNumber.trim()),
@@ -290,7 +304,9 @@ export function BoTrackingView() {
       'Partner / Reseller',
       'Cliente Final',
       'OC Cliente',
+      'Fecha Registro OC',
       'SO Cisco',
+      'Fecha Registro SO',
       'Etapa Actual',
       'Courier',
       'Guía Tracking',
@@ -311,7 +327,9 @@ export function BoTrackingView() {
       `"${o.partnerName.replace(/"/g, '""')}"`,
       `"${o.endCustomerName.replace(/"/g, '""')}"`,
       `"${o.clientPoNumber}"`,
+      `"${formatShortTrackingDate(getEffectivePoAddedDate(o))}"`,
       `"${o.ciscoSoNumber || ''}"`,
+      `"${formatShortTrackingDate(getEffectiveSoAddedDate(o))}"`,
       `"${BO_STAGES_METADATA[o.currentStage].title}"`,
       `"${o.courier}"`,
       `"${o.courierTrackingNumber || ''}"`,
@@ -677,16 +695,30 @@ export function BoTrackingView() {
                               </div>
                             </div>
 
-                            {/* OC / SO Numbers */}
-                            <div className="bg-slate-900/80 rounded-lg p-2 text-[10px] space-y-1 mb-2.5 border border-slate-800/60">
-                              <div className="flex justify-between">
+                            {/* OC / SO Numbers & Fechas de Registro */}
+                            <div className="bg-slate-900/80 rounded-lg p-2 text-[10px] space-y-1.5 mb-2.5 border border-slate-800/60">
+                              <div className="flex items-start justify-between gap-2">
                                 <span className="text-slate-500 font-semibold">OC Cliente:</span>
-                                <span className="font-mono font-bold text-slate-200">{order.clientPoNumber}</span>
+                                <div className="text-right">
+                                  <div className="font-mono font-bold text-slate-200">{order.clientPoNumber}</div>
+                                  {getEffectivePoAddedDate(order) && (
+                                    <div className="text-[9px] text-emerald-400/90 font-medium">
+                                      Ing. {formatShortTrackingDate(getEffectivePoAddedDate(order))}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                               {order.ciscoSoNumber && (
-                                <div className="flex justify-between">
+                                <div className="flex items-start justify-between gap-2 pt-1 border-t border-slate-800/60">
                                   <span className="text-slate-500 font-semibold">SO Cisco:</span>
-                                  <span className="font-mono font-bold text-blue-400">{order.ciscoSoNumber}</span>
+                                  <div className="text-right">
+                                    <div className="font-mono font-bold text-blue-400">{order.ciscoSoNumber}</div>
+                                    {getEffectiveSoAddedDate(order) && (
+                                      <div className="text-[9px] text-blue-300/80 font-medium">
+                                        Ing. {formatShortTrackingDate(getEffectiveSoAddedDate(order))}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -838,14 +870,30 @@ export function BoTrackingView() {
                           <span className="text-slate-400 text-[11px] block">{order.partnerName}</span>
                         </td>
                         <td className="py-3 px-4 font-mono">
-                          <div>
-                            <span className="text-slate-500 text-[10px]">OC: </span>
+                          <div className="flex items-center space-x-1.5 flex-wrap">
+                            <span className="text-slate-500 text-[10px]">OC:</span>
                             <span className="font-bold text-slate-200">{order.clientPoNumber}</span>
+                            {getEffectivePoAddedDate(order) && (
+                              <span
+                                className="text-[9px] font-sans font-medium text-emerald-400/90 bg-emerald-950/40 border border-emerald-800/40 px-1.5 py-0.5 rounded"
+                                title="Fecha de ingreso de la OC"
+                              >
+                                {formatShortTrackingDate(getEffectivePoAddedDate(order))}
+                              </span>
+                            )}
                           </div>
                           {order.ciscoSoNumber && (
-                            <div>
-                              <span className="text-slate-500 text-[10px]">SO: </span>
+                            <div className="flex items-center space-x-1.5 flex-wrap mt-1">
+                              <span className="text-slate-500 text-[10px]">SO:</span>
                               <span className="font-bold text-blue-400">{order.ciscoSoNumber}</span>
+                              {getEffectiveSoAddedDate(order) && (
+                                <span
+                                  className="text-[9px] font-sans font-medium text-blue-300/90 bg-blue-950/40 border border-blue-800/40 px-1.5 py-0.5 rounded"
+                                  title="Fecha de ingreso del SO Cisco"
+                                >
+                                  {formatShortTrackingDate(getEffectiveSoAddedDate(order))}
+                                </span>
+                              )}
                             </div>
                           )}
                         </td>
@@ -1028,6 +1076,36 @@ export function BoTrackingView() {
             <div className="p-5 space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <label className="text-[11px] font-bold text-slate-400 block mb-1">OC Cliente</label>
+                  <input
+                    type="text"
+                    value={selectedOrderForEdit.clientPoNumber || ''}
+                    onChange={(e) =>
+                      setSelectedOrderForEdit({ ...selectedOrderForEdit, clientPoNumber: e.target.value })
+                    }
+                    placeholder="ej. OC-99102"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-400 block mb-1">Fecha Registro OC</label>
+                  <input
+                    type="date"
+                    value={(getEffectivePoAddedDate(selectedOrderForEdit) || '').slice(0, 10)}
+                    onChange={(e) =>
+                      setSelectedOrderForEdit({
+                        ...selectedOrderForEdit,
+                        clientPoAddedAt: e.target.value ? `${e.target.value}T12:00:00.000Z` : undefined,
+                      })
+                    }
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
                   <label className="text-[11px] font-bold text-slate-400 block mb-1">Cisco Sales Order (SO)</label>
                   <input
                     type="text"
@@ -1041,21 +1119,36 @@ export function BoTrackingView() {
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-bold text-slate-400 block mb-1">Bodega Asignada</label>
-                  <select
-                    value={selectedOrderForEdit.bodegaDestino || 'E1'}
+                  <label className="text-[11px] font-bold text-slate-400 block mb-1">Fecha Registro SO</label>
+                  <input
+                    type="date"
+                    value={(getEffectiveSoAddedDate(selectedOrderForEdit) || '').slice(0, 10)}
                     onChange={(e) =>
                       setSelectedOrderForEdit({
                         ...selectedOrderForEdit,
-                        bodegaDestino: e.target.value as 'E1' | 'ED',
+                        ciscoSoAddedAt: e.target.value ? `${e.target.value}T12:00:00.000Z` : undefined,
                       })
                     }
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-amber-500 focus:outline-none cursor-pointer"
-                  >
-                    <option value="E1">E1 (Físico / Hardware)</option>
-                    <option value="ED">ED (Intangible / Servicios)</option>
-                  </select>
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-amber-500 focus:outline-none"
+                  />
                 </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 block mb-1">Bodega Asignada</label>
+                <select
+                  value={selectedOrderForEdit.bodegaDestino || 'E1'}
+                  onChange={(e) =>
+                    setSelectedOrderForEdit({
+                      ...selectedOrderForEdit,
+                      bodegaDestino: e.target.value as 'E1' | 'ED',
+                    })
+                  }
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:border-amber-500 focus:outline-none cursor-pointer"
+                >
+                  <option value="E1">E1 (Físico / Hardware)</option>
+                  <option value="ED">ED (Intangible / Servicios)</option>
+                </select>
               </div>
 
               {/* Courier y Tracking */}
@@ -1086,13 +1179,18 @@ export function BoTrackingView() {
                   <input
                     type="text"
                     value={selectedOrderForEdit.courierTrackingNumber || ''}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const nextTracking = e.target.value;
                       setSelectedOrderForEdit({
                         ...selectedOrderForEdit,
-                        courierTrackingNumber: e.target.value,
-                        courierTrackingUrl: getCourierTrackingUrl(selectedOrderForEdit.courier, e.target.value),
-                      })
-                    }
+                        courierTrackingNumber: nextTracking,
+                        courierTrackingUrl: getCourierTrackingUrl(selectedOrderForEdit.courier, nextTracking),
+                        bodegaDestino:
+                          nextTracking.trim().length >= 5 && selectedOrderForEdit.bodegaDestino === 'ED'
+                            ? 'E1'
+                            : selectedOrderForEdit.bodegaDestino,
+                      });
+                    }}
                     placeholder="ej. 771234567890"
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:border-amber-500 focus:outline-none"
                   />

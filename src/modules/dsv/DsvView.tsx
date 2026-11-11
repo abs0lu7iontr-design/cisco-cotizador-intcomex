@@ -25,7 +25,7 @@ import { isZeroValueBomItem, calculateDsvPrices, transformRawBomToDsv } from './
 import { SkuCategoryType, DsvModalFormData } from './types';
 import { DsvIngestionView, ConsolidatedDealRecord } from './ingestion';
 import { saveDsvToCloud, getCloudDsvs, CloudDsvRecord } from '../cloud';
-import { syncBoOrderFromDsvRecord } from '../bo/boTrackingService';
+import { syncBoOrderFromDsvRecord, detectBodegaFromDsvRows } from '../bo/boTrackingService';
 import { useCiscoAutomatedStore } from '../../core/store';
 import { openDesktopFileDialog } from '../../core/desktopBridge';
 
@@ -306,6 +306,7 @@ export const DsvView: React.FC = () => {
       });
 
       if (res.success) {
+        const resolvedBodega = detectBodegaFromDsvRows(summary.rows) || 'E1';
         // Sincronizar automáticamente la orden DSV con el Tablero de Tracking (bo_order_tracking)
         await syncBoOrderFromDsvRecord({
           dealId: dealVal,
@@ -315,8 +316,10 @@ export const DsvView: React.FC = () => {
           endCustomerName: customerVal,
           totalSaleUsd: totalReportedNet,
           itemsCount: summary.validDsvItems,
+          bodegaDestino: resolvedBodega,
+          dsvRows: summary.rows,
           author: currentUser?.full_name || currentUser?.username || 'Usuario Intcomex',
-          notesComment: `Registro DSV guardado en la nube con Deal ${dealVal} (${summary.validDsvItems} ítems) y sincronizado con Tracking.`,
+          notesComment: `Registro DSV guardado (${resolvedBodega}) con Deal ${dealVal} (${summary.validDsvItems} ítems) y sincronizado con Tracking.`,
         }).catch((err) => console.warn('[DsvView] Error sincronizando con bo_order_tracking:', err));
 
         setExportNotification(res.error || '¡Registro DSV guardado exitosamente en Firebase Firestore (Nube) y sincronizado con Tracking!');

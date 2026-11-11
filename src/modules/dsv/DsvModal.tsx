@@ -27,7 +27,7 @@ import {
 } from './dsvEngine';
 import { DsvDiscrepancyModal } from './DsvDiscrepancyModal';
 import { usePartnerDatabase } from '../../hooks/usePartnerDatabase';
-import { syncBoOrderFromDsvRecord } from '../bo/boTrackingService';
+import { syncBoOrderFromDsvRecord, detectBodegaFromDsvRows } from '../bo/boTrackingService';
 
 interface DsvModalProps {
   isOpen: boolean;
@@ -261,9 +261,10 @@ export const DsvModal: React.FC<DsvModalProps> = ({
 
       const totalReportedNet = rows.reduce((acc, r) => acc + (r.reportedNetPrice || 0), 0);
       const validDsvItems = rows.length;
+      const resolvedBodega = detectBodegaFromDsvRows(rows) || 'E1';
 
       // Sincronizar automáticamente la orden DSV con el Tablero de Tracking (bo_order_tracking),
-      // avanzando la orden a la etapa 2: CISCO_SO_BOOKED con su SO y PO confirmados
+      // asignando Bodega E1 si contiene hardware o ED únicamente si son 100% intangibles
       syncBoOrderFromDsvRecord({
         dealId: formData.dealId,
         soNumber: formData.so,
@@ -272,8 +273,10 @@ export const DsvModal: React.FC<DsvModalProps> = ({
         endCustomerName: formData.endCustomerName,
         totalSaleUsd: totalReportedNet,
         itemsCount: validDsvItems,
+        bodegaDestino: resolvedBodega,
+        dsvRows: rows,
         author: 'Usuario Intcomex',
-        notesComment: `DSV oficial (48 columnas) exportado en Excel con SO Cisco ${formData.so || 'Pendiente'} y PO Cliente ${formData.po || 'Pendiente'}.`,
+        notesComment: `DSV oficial (48 columnas) exportado en Excel (${resolvedBodega === 'E1' ? 'Hardware E1' : 'Intangibles ED'}) con SO Cisco ${formData.so || 'Pendiente'} y PO Cliente ${formData.po || 'Pendiente'}.`,
       }).catch((err) => {
         console.warn('[DsvModal] Error sincronizando con bo_order_tracking:', err);
       });

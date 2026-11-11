@@ -30,6 +30,11 @@ import {
 import { ProcessedEstimateResult } from '../../core/types';
 import { sanitizeForFirestore } from '../cloud/firestoreService';
 import {
+  isAppOffline,
+  isFlushingOfflineQueueNow,
+} from '../../core/storage/offlineModeManager';
+import { enqueueOfflineAction } from '../../core/storage/offlineSyncQueue';
+import {
   putCollectionRecordsBatch,
   deleteCollectionRecord,
   hydrateAndMigrateCollection,
@@ -358,6 +363,20 @@ export async function getDealReminders(): Promise<DealReminderRecord[]> {
     }
   } catch (_) {}
 
+  // En modo Offline (manual o sin red), retornar caché local del PC sin consultar Firestore
+  if (isAppOffline()) {
+    if (localRecords.length > 0) {
+      return localRecords;
+    }
+    const isInitializedOffline =
+      typeof localStorage !== 'undefined' && readProjectScopedStorage(LOCAL_DEAL_REMINDERS_INIT_KEY);
+    if (!isInitializedOffline) {
+      saveLocalDealRemindersCache(SEED_DEAL_REMINDERS);
+      return SEED_DEAL_REMINDERS;
+    }
+    return [];
+  }
+
   try {
     const { db, isReady } = getFirestoreInstance();
     if (isReady && db) {
@@ -483,16 +502,62 @@ export async function saveDealReminder(deal: DealReminderRecord): Promise<void> 
 
   saveLocalDealRemindersCache(updatedList);
 
-  // 2. Sincronizar en Cloud Firestore con sanitización para evitar errores de undefined
-  try {
-    const { db, isReady } = getFirestoreInstance();
-    if (isReady && db && isProjectContextCurrent(projectCtx)) {
-      const docRef = doc(db, DEAL_REMINDERS_COLLECTION, updatedDeal.id);
-      const sanitized = sanitizeForFirestore(updatedDeal);
-      await setDoc(docRef, sanitized, { merge: true });
+  if (isAppOffline()) {
+    if (!isFlushingOfflineQueueNow()) {
+      await enqueueOfflineAction('save_deal_reminder', updatedDeal, {
+        entityKey: `deal_reminder:${updatedDeal.id}`,
+      });
     }
-  } catch (err) {
-    console.warn('[DealReminderService] Error sincronizando con Firestore (guardado en caché local blindada):', err);
+    return;
+  }
+
+  // 2. Sincronizar en Cloud Firestore con sanitización para evitar errores de undefined
+  if (isProjectContextCurrent(projectCtx)) {
+    const cloudRes = await pushDealReminderToCloud(updatedDeal);
+    if (!cloudRes.success && !isFlushingOfflineQueueNow()) {
+      console.warn('[DealReminderService] Error sincronizando con Firestore (encolado offline):', cloudRes.error);
+      await enqueueOfflineAction('save_deal_reminder', updatedDeal, {
+        entityKey: `deal_reminder:${updatedDeal.id}`,
+      });
+    }
+  }
+}
+
+/**
+ * Envía directamente un recordatorio de Deal a Firestore (usado online y durante flush offline).
+ */
+export async function pushDealReminderToCloud(
+  deal: DealReminderRecord
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { db, isReady, error } = getFirestoreInstance();
+    if (!isReady || !db) {
+      return { success: false, error: error || 'Firestore no disponible' };
+    }
+    const docRef = doc(db, DEAL_REMINDERS_COLLECTION, deal.id);
+    const sanitized = sanitizeForFirestore(deal);
+    await setDoc(docRef, sanitized, { merge: true });
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Error al subir Deal Reminder a Firestore' };
+  }
+}
+
+/**
+ * Envía directamente la eliminación de un recordatorio de Deal a Firestore.
+ */
+export async function pushDealReminderDeleteToCloud(
+  dealId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { db, isReady, error } = getFirestoreInstance();
+    if (!isReady || !db) {
+      return { success: false, error: error || 'Firestore no disponible' };
+    }
+    await deleteDoc(doc(db, DEAL_REMINDERS_COLLECTION, dealId));
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Error al eliminar Deal Reminder en Firestore' };
   }
 }
 
@@ -964,14 +1029,21 @@ export async function deleteDealReminder(dealId: string): Promise<void> {
   saveLocalDealRemindersCache(updatedList);
   deleteCollectionRecord('deal_reminders', dealId).catch(() => {});
 
-  try {
-    const { db, isReady } = getFirestoreInstance();
-    if (isReady && db) {
-      const docRef = doc(db, DEAL_REMINDERS_COLLECTION, dealId);
-      await deleteDoc(docRef);
+  if (isAppOffline()) {
+    if (!isFlushingOfflineQueueNow()) {
+      await enqueueOfflineAction('delete_deal_reminder', { id: dealId }, {
+        entityKey: `deal_reminder:${dealId}`,
+      });
     }
-  } catch (err) {
-    console.warn('[DealReminderService] Error eliminando en Firestore:', err);
+    return;
+  }
+
+  const cloudRes = await pushDealReminderDeleteToCloud(dealId);
+  if (!cloudRes.success && !isFlushingOfflineQueueNow()) {
+    console.warn('[DealReminderService] Error eliminando en Firestore, encolado tombstone:', cloudRes.error);
+    await enqueueOfflineAction('delete_deal_reminder', { id: dealId }, {
+      entityKey: `deal_reminder:${dealId}`,
+    });
   }
 }
 

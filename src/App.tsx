@@ -68,6 +68,14 @@ import { EstimateDiffModal } from './modules/estimate';
 import { FeedbackView, CreateTicketModal, getFeedbackTickets } from './modules/feedback';
 import { getFormattedAppVersion } from './core/appVersion';
 import { MobileBottomNav, MobileStickyBar } from './components/mobile';
+import { OfflineSyncModal } from './components/OfflineSyncModal';
+import {
+  useOfflineMode,
+  setManualOfflineMode,
+  OFFLINE_QUEUE_UPDATED_EVENT,
+  OFFLINE_SYNC_COMPLETED_EVENT,
+} from './core/storage/offlineModeManager';
+import { getOfflineQueueSummary } from './core/storage/offlineSyncQueue';
 
 import {
   FileSpreadsheet,
@@ -80,6 +88,9 @@ import {
   GitCompare,
   Zap,
   EyeOff,
+  WifiOff,
+  HardDrive,
+  UploadCloud,
 } from 'lucide-react';
 
 function AppContent() {
@@ -190,6 +201,11 @@ function AppContent() {
   const [cloudToast, setCloudToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isCopiedEmail, setIsCopiedEmail] = useState(false);
 
+  // Offline / Online Mode & Local PC Sync Queue
+  const { isOffline, isManualOffline, isNavigatorOffline } = useOfflineMode();
+  const [pendingOfflineCount, setPendingOfflineCount] = useState<number>(0);
+  const [isOfflineSyncModalOpen, setIsOfflineSyncModalOpen] = useState<boolean>(false);
+
   // Active Back Order (BO) Count for Sidebar Badge
   const [activeBoCount, setActiveBoCount] = useState<number>(0);
   const [unreadFeedbackCount, setUnreadFeedbackCount] = useState<number>(0);
@@ -204,6 +220,25 @@ function AppContent() {
   } = useDealReminderAlerts();
 
   useEffect(() => {
+    let active = true;
+    const refreshQueueCount = () => {
+      getOfflineQueueSummary()
+        .then((summary) => {
+          if (active) setPendingOfflineCount(summary.total);
+        })
+        .catch(() => {});
+    };
+    refreshQueueCount();
+    window.addEventListener(OFFLINE_QUEUE_UPDATED_EVENT, refreshQueueCount);
+    window.addEventListener(OFFLINE_SYNC_COMPLETED_EVENT, refreshQueueCount);
+    return () => {
+      active = false;
+      window.removeEventListener(OFFLINE_QUEUE_UPDATED_EVENT, refreshQueueCount);
+      window.removeEventListener(OFFLINE_SYNC_COMPLETED_EVENT, refreshQueueCount);
+    };
+  }, []);
+
+  useEffect(() => {
     getBoTrackings()
       .then((records) => {
         const count = records.filter((r) => r.currentStage !== 'DELIVERED').length;
@@ -211,19 +246,38 @@ function AppContent() {
       })
       .catch(() => {});
 
-    getFeedbackTickets()
-      .then((tickets) => {
-        if (!currentUser) return;
-        const isSupport = currentUser.role === 'admin' || currentUser.role === 'pm';
-        const unread = tickets.filter((t) => {
-          if (isSupport && !t.readBySupport) return true;
-          if (t.author.username === currentUser.username && !t.readByAuthor) return true;
-          return false;
-        }).length;
-        setUnreadFeedbackCount(unread);
-      })
-      .catch(() => {});
-  }, [currentView, currentUser]);
+    if (!isOffline) {
+      getFeedbackTickets()
+        .then((tickets) => {
+          if (!currentUser) return;
+          const isSupport = currentUser.role === 'admin' || currentUser.role === 'pm';
+          const unread = tickets.filter((t) => {
+            if (isSupport && !t.readBySupport) return true;
+            if (t.author.username === currentUser.username && !t.readByAuthor) return true;
+            return false;
+          }).length;
+          setUnreadFeedbackCount(unread);
+        })
+        .catch(() => {});
+    }
+  }, [currentView, currentUser, isOffline]);
+
+  const handleToggleOfflineMode = () => {
+    if (!isManualOffline) {
+      setManualOfflineMode(true);
+      const cloudOnlyViews = ['configuriator', 'feedback', 'users', 'audit'];
+      if (cloudOnlyViews.includes(currentView)) {
+        setCurrentView('quoter');
+      }
+      setCloudToast({
+        message: 'Modo Offline activado: podrás cotizar y guardar BO, Estimates, Pipeline y Forecast localmente en este PC.',
+        type: 'success',
+      });
+      setTimeout(() => setCloudToast(null), 5000);
+    } else {
+      setIsOfflineSyncModalOpen(true);
+    }
+  };
 
   // Modal States
   const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
@@ -494,6 +548,42 @@ function AppContent() {
         onClose={() => setIsLiveStudioOpen(false)}
       />
 
+      {/* Offline -> Online Sync & Conflict Warning Modal */}
+      <OfflineSyncModal
+        isOpen={isOfflineSyncModalOpen}
+        onClose={() => setIsOfflineSyncModalOpen(false)}
+        onSyncFinished={(result) => {
+          getOfflineQueueSummary()
+            .then((s) => setPendingOfflineCount(s.total))
+            .catch(() => {});
+          if (result.uploadedCount > 0 && result.failedCount === 0) {
+            setCloudToast({
+              message: `Sincronización completada: ${result.uploadedCount} cambio(s) subidos a la nube y vistas actualizadas.`,
+              type: 'success',
+            });
+            setTimeout(() => setCloudToast(null), 5000);
+          } else if (result.failedCount > 0) {
+            setCloudToast({
+              message: `Sincronización parcial: ${result.uploadedCount} subido(s), ${result.failedCount} fallaron y permanecen guardados en tu PC.`,
+              type: 'error',
+            });
+            setTimeout(() => setCloudToast(null), 6000);
+          } else if (result.wentOnline && result.remainingCount > 0) {
+            setCloudToast({
+              message: `Volviste a modo Online con ${result.remainingCount} cambio(s) aún pendientes en este PC.`,
+              type: 'success',
+            });
+            setTimeout(() => setCloudToast(null), 5000);
+          } else if (result.wentOnline) {
+            setCloudToast({
+              message: 'Modo Online reactivado correctamente.',
+              type: 'success',
+            });
+            setTimeout(() => setCloudToast(null), 3500);
+          }
+        }}
+      />
+
       {/* Quick BOM Ingest Modal (Clipboard & Raw Text Parser) */}
       <QuickBomIngestModal
         isOpen={isQuickIngestOpen}
@@ -718,6 +808,9 @@ function AppContent() {
           onOpenQuickIngest={() => setIsQuickIngestOpen(true)}
           isClientMode={isClientMode}
           onToggleClientMode={toggleClientMode}
+          pendingOfflineCount={pendingOfflineCount}
+          onToggleOfflineMode={handleToggleOfflineMode}
+          onOpenOfflineSyncModal={() => setIsOfflineSyncModalOpen(true)}
         />
 
         {/* Floating Cloud Toast Notification */}
@@ -735,6 +828,48 @@ function AppContent() {
 
         {/* Scrollable View Container */}
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 pb-24 md:pb-6 custom-scrollbar">
+          {/* Offline Persistent Working Mode Banner */}
+          {isOffline && (
+            <div className="mb-4 px-4 py-3 rounded-2xl bg-amber-950/60 border border-amber-500/40 text-amber-100 text-xs flex flex-wrap items-center justify-between gap-3 shadow-lg">
+              <div className="flex items-start sm:items-center space-x-3">
+                <div className="p-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 shrink-0">
+                  <WifiOff className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-black text-amber-200 flex flex-wrap items-center gap-2">
+                    <span>
+                      {isNavigatorOffline && !isManualOffline
+                        ? 'Sin conexión a Internet detectada — Operando en Respaldo Local PC'
+                        : 'MODO OFFLINE ACTIVO — Guardado Local en este PC'}
+                    </span>
+                    {pendingOfflineCount > 0 && (
+                      <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-[10px] font-black text-amber-200">
+                        <HardDrive className="w-3 h-3" />
+                        <span>{pendingOfflineCount} cambio(s) en cola PC</span>
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-amber-200/80 mt-0.5 leading-relaxed">
+                    Puedes seguir cotizando CCW / CCW-R y guardando BO, Estimates, DSV, Pipeline y Forecast localmente. Los módulos que requieren nube o IA en vivo están temporalmente deshabilitados.
+                  </p>
+                </div>
+              </div>
+              {isManualOffline && (
+                <button
+                  onClick={() => setIsOfflineSyncModalOpen(true)}
+                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] flex items-center space-x-1.5 transition-colors cursor-pointer shrink-0 shadow-md"
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>
+                    {pendingOfflineCount > 0
+                      ? `Pasar a Online y Subir (${pendingOfflineCount})`
+                      : 'Pasar a Online'}
+                  </span>
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Global Error Banner */}
           {errorMessage && (
             <div className="mb-5 p-4 rounded-2xl bg-rose-950/80 border border-rose-600/50 text-rose-200 text-xs flex items-center space-x-3 shadow-lg">

@@ -31,7 +31,9 @@ import {
   ShieldAlert,
   Bell,
   Clock,
+  RotateCcw,
 } from 'lucide-react';
+import { isAppOffline } from '../../core/storage/offlineModeManager';
 import {
   PipelineDealRecord,
   PipelineFilterOptions,
@@ -108,7 +110,32 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
   };
 
   useEffect(() => {
-    loadDeals();
+    let active = true;
+    const initPipeline = async () => {
+      await loadDeals(true);
+      if (!active || isAppOffline()) return;
+      try {
+        setIsSyncing(true);
+        await syncPipelineWithCloud();
+        if (!active) return;
+        const synced = await getPipelineDeals(true);
+        if (active) setDeals(synced);
+      } catch (err) {
+        console.warn('[PipelineView] Auto-sync inicial diferida:', err);
+      } finally {
+        if (active) setIsSyncing(false);
+      }
+    };
+    initPipeline();
+
+    const onOfflineSyncCompleted = () => {
+      initPipeline();
+    };
+    window.addEventListener('cisco-offline-sync-completed', onOfflineSyncCompleted);
+    return () => {
+      active = false;
+      window.removeEventListener('cisco-offline-sync-completed', onOfflineSyncCompleted);
+    };
   }, []);
 
   // Filtrado y Estadísticas
@@ -367,9 +394,9 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
           <button
             onClick={handleResetSeeds}
             className="px-2.5 py-2 rounded-xl bg-slate-900 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-slate-800 hover:border-rose-700/50 text-xs font-bold transition-all cursor-pointer"
-            title="Restablecer los 70 Deals iniciales oficiales de Intcomex"
+            title="Restaurar al catálogo maestro inicial (70 Deals) — Sobrescribe cambios locales"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RotateCcw className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

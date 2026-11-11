@@ -11,7 +11,7 @@ import {
   MESES_ANO,
 } from './pipelineTypes';
 import { ProcessedEstimateResult, UserSession } from '../../core/types';
-import { savePipelineDeal, getPipelineDeals } from './pipelineStorage';
+import { savePipelineDeal, bulkSavePipelineDeals, getPipelineDeals } from './pipelineStorage';
 import { parseFlexibleNumber, parseFlexibleDate, normalizeMatchKey } from '../forecast/forecastService';
 
 // ----------------------------------------------------------------------------
@@ -630,6 +630,7 @@ export async function importPipelineFromExcel(
 
   const existingDeals = await getPipelineDeals();
   const currentPool: PipelineDealRecord[] = [...existingDeals];
+  const toPersistBatch: PipelineDealRecord[] = [];
   let addedCount = 0;
   let updatedCount = 0;
   const now = new Date().toISOString();
@@ -701,8 +702,8 @@ export async function importPipelineFromExcel(
           updatedAt: now,
         };
 
-        await savePipelineDeal(enriched);
         currentPool[poolIdx] = enriched;
+        toPersistBatch.push(enriched);
         updatedCount++;
       }
     } else {
@@ -732,16 +733,19 @@ export async function importPipelineFromExcel(
         updatedAt: now,
       };
 
-      await savePipelineDeal(newDeal);
       currentPool.push(newDeal);
+      toPersistBatch.push(newDeal);
       addedCount++;
     }
   }
+
+  const persistedDeals =
+    toPersistBatch.length > 0 ? await bulkSavePipelineDeals(toPersistBatch) : currentPool;
 
   return {
     importedCount: addedCount + updatedCount,
     addedCount,
     updatedCount,
-    deals: currentPool,
+    deals: persistedDeals,
   };
 }

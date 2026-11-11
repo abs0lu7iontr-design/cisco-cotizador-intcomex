@@ -48,6 +48,11 @@ import {
   compareDatesUnknownLast,
   extractYearMonth,
 } from '../../utils/dateUtils';
+import {
+  isAppOffline,
+  isFlushingOfflineQueueNow,
+} from '../../core/storage/offlineModeManager';
+import { enqueueOfflineAction } from '../../core/storage/offlineSyncQueue';
 
 const ESTIMATES_COLLECTION = 'estimates';
 const DSV_COLLECTION = 'dsv_records';
@@ -730,8 +735,7 @@ export async function saveEstimateToCloud(
     saveLocalEstimatesCache([pendingLocalRecord, ...filteredLocal]);
   }
 
-  const isBrowserOffline =
-    typeof navigator !== 'undefined' && navigator.onLine === false;
+  const isManualOrNetworkOffline = isAppOffline();
 
   try {
     // Prepare sanitized atomic payloads for root document and version subcollection document(s)
@@ -768,7 +772,23 @@ export async function saveEstimateToCloud(
       });
     } else {
       const { db, isReady, error } = getFirestoreInstance();
-      if (!isReady || !db || isBrowserOffline) {
+      if (!isReady || !db || isManualOrNetworkOffline) {
+        if (!isFlushingOfflineQueueNow()) {
+          await enqueueOfflineAction(
+            'save_estimate',
+            {
+              record,
+              options: {
+                operationId,
+                rawV0Snapshot: options?.rawV0Snapshot,
+              },
+            },
+            {
+              entityKey: `estimate:${docId}`,
+              summary: `Estimate ${record.estimateId || docId} (${versionTag})`,
+            }
+          );
+        }
         return {
           success: true,
           id: docId,
@@ -776,8 +796,8 @@ export async function saveEstimateToCloud(
           operationId,
           syncStatus: 'PENDING_SYNC',
           v0Status,
-          error: isBrowserOffline
-            ? 'Guardado localmente (Sin conexión: sincronización pendiente)'
+          error: isManualOrNetworkOffline
+            ? 'Modo Offline: Guardado en este PC y encolado para subir al volver Online'
             : error
             ? `Guardado localmente (Aviso Cloud: ${error})`
             : undefined,
@@ -892,6 +912,23 @@ export async function saveEstimateToCloud(
           !(record.estimateId && record.estimateId !== 'NA' && x.estimateId === record.estimateId)
       );
       saveLocalEstimatesCache([revertedLocal, ...latestLocal]);
+    }
+
+    if (!options?.driver && !isFlushingOfflineQueueNow()) {
+      await enqueueOfflineAction(
+        'save_estimate',
+        {
+          record,
+          options: {
+            operationId,
+            rawV0Snapshot: options?.rawV0Snapshot,
+          },
+        },
+        {
+          entityKey: `estimate:${docId}`,
+          summary: `Estimate ${record.estimateId || docId} (${versionTag})`,
+        }
+      );
     }
 
     console.warn('[Firestore Cloud Warning - saveEstimate]:', err);
@@ -2328,25 +2365,41 @@ export async function resumePendingEstimateDeletions(options?: {
  */
 export async function saveDsvToCloud(
   record: Omit<CloudDsvRecord, 'id'>
-): Promise<{ success: boolean; id?: string; error?: string }> {
+): Promise<{ success: boolean; id?: string; offlineQueued?: boolean; error?: string }> {
+  const cleanCreatedAt = record.createdAt || new Date().toISOString();
+  const localId = 'cloud-dsv-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+
   try {
     const { db, isReady, error } = getFirestoreInstance();
 
     // 1. Local Cache Persistence in Multi-Tier Vault
-    const cleanCreatedAt = record.createdAt || new Date().toISOString();
-    const localId = 'cloud-dsv-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
     const newRecordWithId: CloudDsvRecord = { ...record, id: localId, createdAt: cleanCreatedAt };
     
     const localList = getLocalDsvCache();
     const updatedLocal = [newRecordWithId, ...localList.filter((x) => x.id !== localId && (x.soNumber !== record.soNumber || x.dealId !== record.dealId))];
     saveLocalDsvCache(updatedLocal);
 
-    // 2. Firestore Cloud Persistence
-    if (!isReady || !db) {
+    // 2. Firestore Cloud Persistence (respeta Modo Offline)
+    if (isAppOffline() || !isReady || !db) {
+      if (!isFlushingOfflineQueueNow()) {
+        await enqueueOfflineAction(
+          'save_dsv_record',
+          { ...record, createdAt: cleanCreatedAt },
+          {
+            entityKey: `dsv:${record.dealId || record.soNumber || localId}`,
+            summary: `DSV Deal ${record.dealId || ''} / SO ${record.soNumber || ''}`.trim(),
+          }
+        );
+      }
       return {
         success: true,
         id: localId,
-        error: error ? `Guardado localmente (Aviso Cloud: ${error})` : undefined,
+        offlineQueued: true,
+        error: isAppOffline()
+          ? 'Modo Offline: DSV guardado localmente en este PC y encolado para subir a la nube.'
+          : error
+          ? `Guardado localmente (Aviso Cloud: ${error})`
+          : undefined,
       };
     }
 
@@ -2366,8 +2419,20 @@ export async function saveDsvToCloud(
     return { success: true, id: docRef ? docRef.id : localId };
   } catch (err: any) {
     console.warn('[Firestore Cloud Warning - saveDsv]:', err);
+    if (!isFlushingOfflineQueueNow()) {
+      await enqueueOfflineAction(
+        'save_dsv_record',
+        { ...record, createdAt: cleanCreatedAt },
+        {
+          entityKey: `dsv:${record.dealId || record.soNumber || localId}`,
+          summary: `DSV Deal ${record.dealId || ''} / SO ${record.soNumber || ''}`.trim(),
+        }
+      );
+    }
     return {
       success: true,
+      id: localId,
+      offlineQueued: true,
       error: `Guardado en almacenamiento local (Aviso Cloud: ${err?.message || 'Offline'})`,
     };
   }
@@ -2384,11 +2449,15 @@ export async function getCloudDsvs(
     const localCache = getLocalDsvCache();
     const deletedIds = getDeletedDsvIds();
 
-    if (!isReady || !db) {
+    if (isAppOffline() || !isReady || !db) {
       return {
         success: true,
         data: localCache,
-        error: error ? `Modo local activo (${error})` : undefined,
+        error: isAppOffline()
+          ? 'Modo Offline activo: mostrando registros DSV locales del PC.'
+          : error
+          ? `Modo local activo (${error})`
+          : undefined,
       };
     }
 

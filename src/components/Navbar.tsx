@@ -26,10 +26,14 @@ import {
   EyeOff,
   TrendingUp,
   Table,
+  Wifi,
+  WifiOff,
+  HardDrive,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { getFormattedAppVersion } from '../core/appVersion';
 import { useUiExperience } from '../core/themeEngine';
+import { useOfflineMode } from '../core/storage/offlineModeManager';
 
 interface NavbarProps {
   onUploadClick: () => void;
@@ -61,6 +65,9 @@ interface NavbarProps {
   onOpenQuickIngest?: () => void;
   isClientMode?: boolean;
   onToggleClientMode?: () => void;
+  pendingOfflineCount?: number;
+  onToggleOfflineMode?: () => void;
+  onOpenOfflineSyncModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -93,8 +100,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenQuickIngest,
   isClientMode = false,
   onToggleClientMode,
+  pendingOfflineCount = 0,
+  onToggleOfflineMode,
+  onOpenOfflineSyncModal,
 }) => {
   const { mode, changeMode, isAesthetic } = useUiExperience();
+  const { isOffline, isNavigatorOffline } = useOfflineMode();
 
   return (
     <header
@@ -207,8 +218,57 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Center / Right Section: Dual View Switcher (Clásica vs Aesthetic) & Actions */}
+        {/* Center / Right Section: Offline Mode, Dual View Switcher & Actions */}
         <div className="flex items-center flex-wrap gap-2">
+          {/* Manual Offline / Online Toggle + Pending PC Sync Queue */}
+          {onToggleOfflineMode && (
+            <div className="flex items-center space-x-1.5">
+              <button
+                id="btn-toggle-offline-mode"
+                type="button"
+                onClick={onToggleOfflineMode}
+                className={`inline-flex items-center space-x-1.5 text-xs font-extrabold px-3 py-1.5 rounded-xl border transition-all cursor-pointer shadow-sm ${
+                  isOffline
+                    ? 'bg-amber-950/90 hover:bg-amber-900 text-amber-300 border-amber-500/70 shadow-amber-950/40 ring-1 ring-amber-500/30'
+                    : 'bg-emerald-950/50 hover:bg-slate-800 text-emerald-300 border-emerald-700/50 hover:border-slate-600'
+                }`}
+                title={
+                  isOffline
+                    ? isNavigatorOffline
+                      ? 'Sin conexión física a internet. Clic para revisar cambios guardados en tu PC.'
+                      : 'Modo OFFLINE activo (trabajo local en PC). Clic para pasar a Online y subir cambios.'
+                    : 'Conectado Online a la nube. Clic para activar Modo OFFLINE (solo módulos mínimos locales).'
+                }
+              >
+                {isOffline ? (
+                  <>
+                    <WifiOff className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                    <span>MODO OFFLINE</span>
+                  </>
+                ) : (
+                  <>
+                    <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="hidden sm:inline">Online</span>
+                    <span className="sm:hidden">ON</span>
+                  </>
+                )}
+              </button>
+
+              {pendingOfflineCount > 0 && (
+                <button
+                  id="btn-pending-offline-queue"
+                  type="button"
+                  onClick={onOpenOfflineSyncModal || onToggleOfflineMode}
+                  className="inline-flex items-center space-x-1 text-[11px] font-black px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/60 transition-all cursor-pointer"
+                  title="Cambios guardados en tu PC pendientes de subir a la nube"
+                >
+                  <HardDrive className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{pendingOfflineCount} pendientes</span>
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Client Mode Privacy Toggle */}
           {onToggleClientMode && (
             <button
@@ -378,15 +438,31 @@ export const Navbar: React.FC<NavbarProps> = ({
                   id="btn-save-cloud"
                   onClick={onSaveCloudClick}
                   disabled={isSavingCloud || isProcessing}
-                  className="inline-flex items-center space-x-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white shadow-lg shadow-cyan-600/30 transition-all cursor-pointer disabled:opacity-50"
-                  title="Guardar cotización en Firebase Firestore (Nube Compartida)"
+                  className={`inline-flex items-center space-x-1.5 text-xs font-bold px-3.5 py-2 rounded-xl text-white shadow-lg transition-all cursor-pointer disabled:opacity-50 ${
+                    isOffline
+                      ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/30'
+                      : 'bg-cyan-600 hover:bg-cyan-500 shadow-cyan-600/30'
+                  }`}
+                  title={
+                    isOffline
+                      ? 'Modo Offline: Guardar cotización en este PC (se subirá al volver Online)'
+                      : 'Guardar cotización en Firebase Firestore (Nube Compartida)'
+                  }
                 >
                   {isSavingCloud ? (
                     <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                  ) : isOffline ? (
+                    <HardDrive className="w-4 h-4 text-amber-100" />
                   ) : (
                     <UploadCloud className="w-4 h-4 text-cyan-100" />
                   )}
-                  <span>{isSavingCloud ? 'Guardando...' : 'Guardar en la Nube'}</span>
+                  <span>
+                    {isSavingCloud
+                      ? 'Guardando...'
+                      : isOffline
+                      ? 'Guardar en PC (Offline)'
+                      : 'Guardar en la Nube'}
+                  </span>
                 </button>
               )}
 

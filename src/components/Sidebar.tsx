@@ -28,10 +28,19 @@ import {
   TrendingUp,
   Table,
   ShieldCheck,
+  WifiOff,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { NavViewId } from '../core/store';
 import { getFormattedAppVersion } from '../core/appVersion';
+import { useOfflineMode } from '../core/storage/offlineModeManager';
+
+const CLOUD_ONLY_VIEWS = new Set<NavViewId>([
+  'configuriator',
+  'feedback',
+  'users',
+  'audit',
+]);
 
 interface SidebarProps {
   currentView: NavViewId;
@@ -61,6 +70,7 @@ export function Sidebar({
   onOpenFastTrack,
 }: SidebarProps) {
   const [isSystemSubmenuOpen, setIsSystemSubmenuOpen] = React.useState(true);
+  const { isOffline } = useOfflineMode();
   const isAdmin = currentUser.role === 'admin';
 
   const navItems = [
@@ -196,19 +206,23 @@ export function Sidebar({
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentView === item.id;
+            const isBlockedOffline = isOffline && CLOUD_ONLY_VIEWS.has(item.id);
             return (
               <button
                 key={item.id}
-                onClick={() => onSelectView(item.id)}
-                className={`p-2.5 rounded-xl transition-all cursor-pointer block relative ${
-                  isActive
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                disabled={isBlockedOffline}
+                onClick={() => !isBlockedOffline && onSelectView(item.id)}
+                className={`p-2.5 rounded-xl transition-all block relative ${
+                  isBlockedOffline
+                    ? 'text-slate-600 opacity-45 cursor-not-allowed'
+                    : isActive
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 cursor-pointer'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900 cursor-pointer'
                 }`}
-                title={item.label}
+                title={isBlockedOffline ? `${item.label} (Solo Online)` : item.label}
               >
                 <Icon className="w-5 h-5" />
-                {item.badge !== undefined && (
+                {item.badge !== undefined && !isBlockedOffline && (
                   <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-slate-950 animate-pulse" />
                 )}
               </button>
@@ -293,24 +307,35 @@ export function Sidebar({
           .map((item) => {
             const Icon = item.icon;
             const isActive = currentView === item.id;
+            const isBlockedOffline = isOffline && CLOUD_ONLY_VIEWS.has(item.id);
             return (
               <button
                 key={item.id}
-                onClick={() => onSelectView(item.id)}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                  isActive
+                disabled={isBlockedOffline}
+                onClick={() => !isBlockedOffline && onSelectView(item.id)}
+                title={
+                  isBlockedOffline
+                    ? 'Módulo exclusivo Online — Cambia a Online para acceder'
+                    : undefined
+                }
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  isBlockedOffline
+                    ? 'text-slate-600 opacity-50 cursor-not-allowed bg-slate-900/30'
+                    : isActive
                     ? item.highlight
-                      ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
-                      : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
+                      ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25 cursor-pointer'
+                      : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25 cursor-pointer'
                     : item.highlight
-                    ? 'bg-emerald-950/40 text-emerald-300 hover:bg-emerald-950/80 border border-emerald-800/30'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                    ? 'bg-emerald-950/40 text-emerald-300 hover:bg-emerald-950/80 border border-emerald-800/30 cursor-pointer'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 cursor-pointer'
                 }`}
               >
                 <div className="flex items-center space-x-3 truncate">
                   <Icon
                     className={`w-4 h-4 shrink-0 ${
-                      isActive
+                      isBlockedOffline
+                        ? 'text-slate-600'
+                        : isActive
                         ? 'text-white'
                         : item.highlight
                         ? 'text-emerald-400'
@@ -320,12 +345,21 @@ export function Sidebar({
                   <span className="truncate">{item.label}</span>
                 </div>
                 <div className="flex items-center space-x-1.5 shrink-0">
-                  {item.badge !== undefined && (
-                    <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                      {item.badge}
+                  {isBlockedOffline ? (
+                    <span className="inline-flex items-center space-x-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-900 text-amber-400/80 border border-slate-700">
+                      <WifiOff className="w-2.5 h-2.5" />
+                      <span>Online</span>
                     </span>
+                  ) : (
+                    <>
+                      {item.badge !== undefined && (
+                        <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          {item.badge}
+                        </span>
+                      )}
+                      {isActive && <ChevronRight className="w-3.5 h-3.5 shrink-0 opacity-80" />}
+                    </>
                   )}
-                  {isActive && <ChevronRight className="w-3.5 h-3.5 shrink-0 opacity-80" />}
                 </div>
               </button>
             );
@@ -341,21 +375,37 @@ export function Sidebar({
               .map((item) => {
                 const Icon = item.icon;
                 const isActive = currentView === item.id;
+                const isBlockedOffline = isOffline && CLOUD_ONLY_VIEWS.has(item.id);
                 return (
                   <button
                     key={item.id}
-                    onClick={() => onSelectView(item.id)}
-                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                      isActive
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                    disabled={isBlockedOffline}
+                    onClick={() => !isBlockedOffline && onSelectView(item.id)}
+                    title={
+                      isBlockedOffline
+                        ? 'Módulo exclusivo Online — Cambia a Online para acceder'
+                        : undefined
+                    }
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                      isBlockedOffline
+                        ? 'text-slate-600 opacity-50 cursor-not-allowed bg-slate-900/30'
+                        : isActive
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25 cursor-pointer'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 cursor-pointer'
                     }`}
                   >
                     <div className="flex items-center space-x-3 truncate">
-                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                      <Icon className={`w-4 h-4 shrink-0 ${isActive && !isBlockedOffline ? 'text-white' : 'text-slate-400'}`} />
                       <span className="truncate">{item.label}</span>
                     </div>
-                    {isActive && <ChevronRight className="w-3.5 h-3.5 shrink-0 opacity-80" />}
+                    {isBlockedOffline ? (
+                      <span className="inline-flex items-center space-x-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-900 text-amber-400/80 border border-slate-700">
+                        <WifiOff className="w-2.5 h-2.5" />
+                        <span>Online</span>
+                      </span>
+                    ) : (
+                      isActive && <ChevronRight className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                    )}
                   </button>
                 );
               })}

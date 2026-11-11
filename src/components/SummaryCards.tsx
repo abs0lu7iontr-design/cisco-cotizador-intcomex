@@ -33,6 +33,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { AuditReport } from '../modules/mining';
+import { isAppOffline } from '../core/storage/offlineModeManager';
 import { useUiExperience } from '../core/themeEngine';
 import { useCiscoAutomatedStore } from '../core/store';
 import { categorizeEstimateItems } from '../modules/estimate';
@@ -76,6 +77,11 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
 
   // Extrae diariamente el tipo de cambio oficial chileno (BCCh / mindicador.cl) y suma +$10 CLP al dólar
   useEffect(() => {
+    if (isAppOffline()) {
+      // Modo Offline: usar exclusivamente última tasa en caché local sin consultar APIs externas
+      return;
+    }
+
     let isMounted = true;
     setIsLoadingOfficialRates(true);
 
@@ -97,6 +103,9 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
   }, []);
 
   const handleRefreshOfficialRates = async () => {
+    if (isAppOffline()) {
+      return;
+    }
     setIsLoadingOfficialRates(true);
     try {
       const freshSnap = await fetchDailyOfficialChileanRates(true);
