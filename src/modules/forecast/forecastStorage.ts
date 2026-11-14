@@ -34,7 +34,7 @@ const LOCAL_FORECAST_TOMBSTONES_KEY = 'cisco_forecast_records_tombstones_v1';
 const LOCAL_FORECAST_SEEDED_KEY = 'cisco_forecast_seed_initialized_v1';
 const IDB_FORECAST_KEY_PREFIX = 'forecast_records_idb_v1::';
 
-const CLOUD_BATCH_CHUNK_SIZE = 350;
+const CLOUD_BATCH_CHUNK_SIZE = 80;
 
 let inMemoryForecastCache: ForecastRecord[] = [];
 let inMemoryScopeKey = '';
@@ -289,7 +289,7 @@ export async function pushForecastRecordsBatchToCloud(
         const clean = sanitizeForFirestore(sanitizeForecastRecordForCloud(rec));
         batch.set(doc(firestoreDb, FORECAST_COLLECTION, clean.id), clean, { merge: true });
       }
-      await withTimeout(batch.commit(), 8000);
+      await withTimeout(batch.commit(), 15000);
       uploaded += chunk.length;
     } catch (batchErr: any) {
       lastError = batchErr?.message || 'Error en lote batch de forecast';
@@ -437,13 +437,13 @@ export async function bulkSaveForecastRecords(
   if (stampedBatch.length > 0) {
     if (isAppOffline()) {
       await enqueueOfflineAction('bulk_save_forecast', stampedBatch, {
-        entityKey: `forecast:bulk:${Date.now().toString(36)}`,
+        entityKey: 'forecast:bulk',
       });
     } else {
       const pushRes = await pushForecastRecordsBatchToCloud(stampedBatch);
       if (!pushRes.success) {
         await enqueueOfflineAction('bulk_save_forecast', stampedBatch, {
-          entityKey: `forecast:bulk:${Date.now().toString(36)}`,
+          entityKey: 'forecast:bulk',
         });
       }
     }

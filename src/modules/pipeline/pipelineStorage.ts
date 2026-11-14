@@ -35,7 +35,7 @@ const LOCAL_PIPELINE_TOMBSTONES_KEY = 'cisco_pipeline_deals_tombstones_v1';
 const LOCAL_PIPELINE_SEEDED_KEY = 'cisco_pipeline_seed_initialized_v1';
 const IDB_PIPELINE_KEY_PREFIX = 'pipeline_deals_idb_v1::';
 
-const CLOUD_BATCH_CHUNK_SIZE = 350;
+const CLOUD_BATCH_CHUNK_SIZE = 80;
 
 let inMemoryPipelineCache: PipelineDealRecord[] = [];
 let inMemoryScopeKey = '';
@@ -276,7 +276,7 @@ export async function pushPipelineDealsBatchToCloud(
         const clean = sanitizeForFirestore(sanitizePipelineDealForCloud(deal));
         batch.set(doc(firestoreDb, PIPELINE_COLLECTION, clean.id), clean, { merge: true });
       }
-      await withTimeout(batch.commit(), 8000);
+      await withTimeout(batch.commit(), 15000);
       uploaded += chunk.length;
     } catch (batchErr: any) {
       lastError = batchErr?.message || 'Error en lote batch de pipeline';
@@ -433,13 +433,13 @@ export async function bulkSavePipelineDeals(
   if (stampedBatch.length > 0) {
     if (isAppOffline()) {
       await enqueueOfflineAction('bulk_save_pipeline', stampedBatch, {
-        entityKey: `pipeline:bulk:${Date.now().toString(36)}`,
+        entityKey: 'pipeline:bulk',
       });
     } else {
       const pushRes = await pushPipelineDealsBatchToCloud(stampedBatch);
       if (!pushRes.success) {
         await enqueueOfflineAction('bulk_save_pipeline', stampedBatch, {
-          entityKey: `pipeline:bulk:${Date.now().toString(36)}`,
+          entityKey: 'pipeline:bulk',
         });
       }
     }

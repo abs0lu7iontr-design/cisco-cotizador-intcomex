@@ -16,10 +16,12 @@ import {
   RefreshCw,
   ShieldAlert,
   Clock,
+  Trash2,
 } from 'lucide-react';
 import {
   getOfflineQueueSummary,
   flushOfflineQueue,
+  clearOfflineQueue,
   OfflineQueueItem,
 } from '../core/storage/offlineSyncQueue';
 import {
@@ -53,6 +55,7 @@ export const OfflineSyncModal: React.FC<OfflineSyncModalProps> = ({
   });
   const [errors, setErrors] = useState<string[]>([]);
   const [acknowledgedRisk, setAcknowledgedRisk] = useState(true);
+  const [isConfirmingClear, setIsConfirmingClear] = useState(false);
 
   const loadSummary = async () => {
     setIsLoadingSummary(true);
@@ -130,6 +133,18 @@ export const OfflineSyncModal: React.FC<OfflineSyncModalProps> = ({
       uploadedCount: 0,
       failedCount: 0,
       remainingCount: totalPending,
+    });
+    onClose();
+  };
+
+  const handleClearQueueAndGoOnline = async () => {
+    await clearOfflineQueue();
+    setManualOfflineMode(false);
+    onSyncFinished?.({
+      wentOnline: true,
+      uploadedCount: 0,
+      failedCount: 0,
+      remainingCount: 0,
     });
     onClose();
   };
@@ -328,49 +343,85 @@ export const OfflineSyncModal: React.FC<OfflineSyncModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-6 py-4 bg-slate-950 border-t border-slate-800 flex flex-wrap items-center justify-end gap-2.5">
-          <button
-            type="button"
-            disabled={isUploading}
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
-          >
-            Seguir Offline
-          </button>
+        <div className="px-6 py-4 bg-slate-950 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
+          <div>
+            {totalPending > 0 && !isUploading && (
+              isConfirmingClear ? (
+                <div className="flex items-center space-x-2">
+                  <span className="text-[11px] text-rose-300 font-bold">¿Descartar cambios del PC?</span>
+                  <button
+                    type="button"
+                    onClick={handleClearQueueAndGoOnline}
+                    className="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-black transition-colors cursor-pointer"
+                  >
+                    Sí, descartar y pasar a Online
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsConfirmingClear(false)}
+                    className="px-2.5 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-[11px] font-bold transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmingClear(true)}
+                  className="px-3 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/40 text-[11px] font-bold transition-colors cursor-pointer flex items-center space-x-1.5"
+                  title="Elimina todos los cambios acumulados en la cola local de este PC y pasa a Online limpio"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Descartar Cambios del PC</span>
+                </button>
+              )
+            )}
+          </div>
 
-          {totalPending > 0 ? (
-            <>
-              <button
-                type="button"
-                disabled={isUploading}
-                onClick={handleGoOnlineWithoutUpload}
-                className="px-4 py-2 rounded-xl bg-amber-950/70 hover:bg-amber-900/80 text-amber-300 border border-amber-700/50 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
-                title="Cambia a Online pero deja estos cambios en espera dentro de tu PC para subirlos luego"
-              >
-                Volver Online sin Subir Ahora
-              </button>
-
-              <button
-                type="button"
-                disabled={isUploading || netOffline || !acknowledgedRisk}
-                onClick={handleUploadAndGoOnline}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-black flex items-center space-x-1.5 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer"
-              >
-                <UploadCloud className="w-4 h-4" />
-                <span>Subir {totalPending} Cambios y Volver Online</span>
-              </button>
-            </>
-          ) : (
+          <div className="flex flex-wrap items-center gap-2.5">
             <button
               type="button"
-              disabled={netOffline}
-              onClick={handleGoOnlineWithoutUpload}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-black flex items-center space-x-1.5 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer"
+              disabled={isUploading}
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
             >
-              <Wifi className="w-4 h-4" />
-              <span>Activar Modo Online</span>
+              Seguir Offline
             </button>
-          )}
+
+            {totalPending > 0 ? (
+              <>
+                <button
+                  type="button"
+                  disabled={isUploading}
+                  onClick={handleGoOnlineWithoutUpload}
+                  className="px-4 py-2 rounded-xl bg-amber-950/70 hover:bg-amber-900/80 text-amber-300 border border-amber-700/50 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+                  title="Cambia a Online pero deja estos cambios en espera dentro de tu PC para subirlos luego"
+                >
+                  Volver Online sin Subir Ahora
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isUploading || netOffline || !acknowledgedRisk}
+                  onClick={handleUploadAndGoOnline}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-black flex items-center space-x-1.5 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  <span>Subir {totalPending} Cambios y Volver Online</span>
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                disabled={netOffline}
+                onClick={handleGoOnlineWithoutUpload}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-black flex items-center space-x-1.5 shadow-lg shadow-emerald-600/25 transition-all cursor-pointer"
+              >
+                <Wifi className="w-4 h-4" />
+                <span>Activar Modo Online</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

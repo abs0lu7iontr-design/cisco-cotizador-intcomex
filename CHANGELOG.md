@@ -6,6 +6,19 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.11.1] - 2026-11-14
+### ⚡ Resiliencia Cloud Firestore, Particionado Batch y Gestión Limpia de Cola Offline
+- **Despliegue y Validación de Reglas Cloud Firestore (`firestore.rules`):**
+  - Despliegue en producción de las reglas de seguridad de Firestore para las colecciones `cisco_pipeline_deals` y `cisco_forecast_records`, eliminando el error `permission-denied` que impedía la sincronización de oportunidades y registros con la nube.
+- **Optimización de Escrituras Masivas y Particionado de Lotes Batch (`pipelineStorage.ts`, `forecastStorage.ts`):**
+  - Reducción del tamaño de fragmento (`CLOUD_BATCH_CHUNK_SIZE`) de 350 a **80 documentos por batch**, evitando sobrecargas de red y garantizando una ejecución fluida.
+  - Incremento del timeout de confirmación de batch de 8 a **15 segundos**, permitiendo sincronizaciones seguras de colecciones extensas (ej. 305 registros de Forecast) sin falsos positivos de desconexión.
+  - Claves fijas de entidad en cola offline (`pipeline:bulk` y `forecast:bulk`), garantizando una estricta deduplicación para que múltiples intentos o lotes no acumulen elementos repetidos en la cola del navegador.
+- **Acción Rápida "Descartar Cambios del PC" en Modal Offline (`OfflineSyncModal.tsx`):**
+  - Incorporación de botón dedicado con confirmación interactiva para vaciar de inmediato la cola local del PC y reanudar el modo Online sin sincronizar datos desactualizados o no deseados.
+- **Verificación Automatizada de Suites de Pruebas:**
+  - Corrección de tipado en tests de Tracking BO (`tests/boDsvAndOfflineMode.test.ts`) asegurando el 100% de cobertura y ejecución limpia en las 26 suites de prueba del proyecto.
+
 ## [v2.11.0] - 2026-11-11
 ### 🛡️ Resiliencia Offline, Integridad de Datos DB y Trazabilidad Operativa BO/DSV
 - **Fechas de Ingreso de OC y SO Cisco en Tracking BO (`boTrackingTypes.ts`, `boTrackingService.ts`, `BoTrackingView.tsx`):**

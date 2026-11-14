@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.11.0",
-  "git_commit": "fd5943b",
+  "version": "2.11.1",
+  "git_commit": "e3fa8cf",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-11T10:31:05.183Z",
-  "release_notes": "fix(v2.10.5): compactacion de celdas excel ccwr eliminacion de espacios muertos y visualizacion total",
+  "build_timestamp": "2026-11-14T21:22:02.492Z",
+  "release_notes": "feat(v2.11.0): offline mode with pc sync queue, indexeddb pipeline/forecast armor, and bo oc/so dates + e1/ed fix",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

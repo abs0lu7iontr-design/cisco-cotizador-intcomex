@@ -15,11 +15,26 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.11.1',
+    date: '2026-11-14',
+    commit: 'fix-firestore-rules-batch-chunking-and-offline-queue-cleanup',
+    title: 'Despliegue de Reglas Firestore, Particionado Batch Óptimo y Descarte de Cola Offline',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Despliegue de Reglas Cloud Firestore: Activación de permisos de seguridad en producción para cisco_pipeline_deals y cisco_forecast_records, resolviendo fallos permission-denied al sincronizar.',
+      'Particionado de Lotes Batch a 80 Documentos: Ajuste en Pipeline y Forecast para evitar saturación de red y timeouts, con ventana de espera extendida a 15s.',
+      'Deduplicación Estricta en Cola Offline: Claves estáticas pipeline:bulk y forecast:bulk para evitar acumulación redundante de acciones pendientes en el almacenamiento local.',
+      'Botón Descartar Cambios del PC en OfflineSyncModal: Acción de 1 clic con confirmación visual para limpiar la cola local del PC y volver a Online de forma inmediata.',
+      'Integridad Total en Tests: Verificación exitosa de las 26 suites de pruebas automáticas del sistema.',
+    ],
+  },
+  {
     version: '2.11.0',
     date: '2026-11-11',
     commit: 'feat-offline-mode-pipeline-forecast-armor-and-bo-dates-bodega',
     title: 'Modo Offline Manual con Cola PC, Blindaje IndexedDB Pipeline/Forecast y Fechas OC/SO + Bodega E1/ED en BO',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Modo Offline / Online en Frontend (Navbar, Sidebar, OfflineSyncModal): Botón dedicado para trabajar sin conexión en lo indispensable (cotizar CCW/CCW-R, DSV, Tracking BO, Pipeline, Forecast, Estimates) guardando todo en este PC.',
