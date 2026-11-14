@@ -69,6 +69,7 @@ import { FeedbackView, CreateTicketModal, getFeedbackTickets } from './modules/f
 import { getFormattedAppVersion } from './core/appVersion';
 import { MobileBottomNav, MobileStickyBar } from './components/mobile';
 import { OfflineSyncModal } from './components/OfflineSyncModal';
+import { HealthDashboardView } from './modules/health';
 import {
   useOfflineMode,
   setManualOfflineMode,
@@ -1027,6 +1028,16 @@ function AppContent() {
                 onOpenSharedSku={() => setIsSharedSkuManagerOpen(true)}
                 onOpenFastTrack={() => setIsFastTrackAdminModalOpen(true)}
               />
+            </ErrorBoundary>
+          )}
+
+          {currentView === 'health' && (
+            <ErrorBoundary
+              fallbackTitle="Error en Monitor de Salud"
+              resetKeys={[currentView]}
+              onReturnToSafeView={() => setCurrentView('quoter')}
+            >
+              <HealthDashboardView onOpenOfflineModal={() => setIsOfflineSyncModalOpen(true)} />
             </ErrorBoundary>
           )}
 

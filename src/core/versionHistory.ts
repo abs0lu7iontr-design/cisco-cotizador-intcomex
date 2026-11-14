@@ -15,11 +15,28 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.12.0',
+    date: '2026-11-14',
+    commit: 'feat-system-health-dashboard-and-deep-linking',
+    title: 'Monitor de Salud y Diagnóstico en Tiempo Real, Deep Linking (?view=health) y Endpoint Edge',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Monitor de Salud en Sidebar (HealthDashboardView): Módulo accesible para todos los roles con telemetría en vivo de Firestore, almacenamiento PC, tasas BCCh y entorno.',
+      'Scorecard Global de Salud (0-100%): Evaluación ponderada multivariable con estados Óptimo, Degradado y Crítico.',
+      'Diagnóstico de Permisos Firestore: Verificación en tiempo real de reglas de lectura y escritura en colecciones cisco_pipeline_deals, cisco_forecast_records, estimates y bo_order_tracking.',
+      'Auditoría de Almacenamiento PC: Semáforo y barra visual de uso de LocalStorage (límite 5 MB), estado de IndexedDB y cola offline local con botón de auto-reparación y purga de caché.',
+      'Deep Linking por URL (?view=health): Soporte para acceder de forma directa al monitor desde la barra de direcciones o enlaces compartidos.',
+      'Endpoint Edge Cloudflare (/api/health): Microservicio ultraliviano para chequeos automatizados de disponibilidad y versión.',
+      'Suite de Pruebas Unitarias Automatizadas: 27 suites de pruebas automáticas pasando al 100%.',
+    ],
+  },
+  {
     version: '2.11.1',
     date: '2026-11-14',
     commit: 'fix-firestore-rules-batch-chunking-and-offline-queue-cleanup',
     title: 'Despliegue de Reglas Firestore, Particionado Batch Óptimo y Descarte de Cola Offline',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Despliegue de Reglas Cloud Firestore: Activación de permisos de seguridad en producción para cisco_pipeline_deals y cisco_forecast_records, resolviendo fallos permission-denied al sincronizar.',

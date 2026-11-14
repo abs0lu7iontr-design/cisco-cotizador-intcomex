@@ -70,7 +70,41 @@ export type NavViewId =
   | 'feedback'
   | 'users'
   | 'audit'
-  | 'settings';
+  | 'settings'
+  | 'health';
+
+export const VALID_NAV_VIEWS: NavViewId[] = [
+  'dashboard',
+  'quoter',
+  'ccwr_quote',
+  'pipeline',
+  'forecast',
+  'upload',
+  'dsv',
+  'configuriator',
+  'estimates',
+  'bo_tracking',
+  'feedback',
+  'users',
+  'audit',
+  'settings',
+  'health',
+];
+
+export function getInitialNavView(): NavViewId {
+  if (typeof window !== 'undefined') {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const queryView = searchParams.get('view') || searchParams.get('v');
+      const hashView = window.location.hash.replace(/^#\/?/, '').trim();
+      const candidate = (queryView || hashView || '').toLowerCase();
+      if (VALID_NAV_VIEWS.includes(candidate as NavViewId)) {
+        return candidate as NavViewId;
+      }
+    } catch {}
+  }
+  return 'dashboard';
+}
 
 export const DEFAULT_PARAMS: QuoteParameters = {
   internacionPct: 7.0,
@@ -224,7 +258,34 @@ const CiscoAutomatedContext = createContext<CiscoAutomatedState | null>(null);
 export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // 1. Dominio de Sesión y Navegación
   const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
-  const [currentView, setCurrentView] = useState<NavViewId>('dashboard');
+  const [currentView, setCurrentViewState] = useState<NavViewId>(getInitialNavView);
+
+  const setCurrentView = useCallback((view: NavViewId) => {
+    setCurrentViewState(view);
+    if (typeof window !== 'undefined' && window.history?.replaceState) {
+      try {
+        const url = new URL(window.location.href);
+        if (view === 'dashboard') {
+          url.searchParams.delete('view');
+          url.searchParams.delete('v');
+        } else {
+          url.searchParams.set('view', view);
+        }
+        window.history.replaceState({}, '', url.toString());
+      } catch {}
+    }
+  }, []);
+
+  // Sincronizar navegación al usar botones atrás/adelante del navegador
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handlePopState = () => {
+      const initial = getInitialNavView();
+      setCurrentViewState(initial);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
   const [isClientMode, setIsClientMode] = useState<boolean>(() => {
     try {
       return localStorage.getItem('cisco_client_presentation_mode') === 'true';

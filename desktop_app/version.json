@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.11.1",
-  "git_commit": "e3fa8cf",
+  "version": "2.12.0",
+  "git_commit": "91ad59c",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-14T21:22:02.492Z",
-  "release_notes": "feat(v2.11.0): offline mode with pc sync queue, indexeddb pipeline/forecast armor, and bo oc/so dates + e1/ed fix",
+  "build_timestamp": "2026-11-14T22:54:39.240Z",
+  "release_notes": "fix(v2.11.1): deploy firestore rules, batch chunking optimization and clear offline queue button",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

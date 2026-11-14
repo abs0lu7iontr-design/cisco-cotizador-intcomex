@@ -6,6 +6,29 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.12.0] - 2026-11-14
+### 🏥 Monitor de Salud y Diagnóstico del Sistema en Tiempo Real (Opción C Híbrida)
+- **Nuevo Módulo "Monitor de Salud & Diagnóstico" (`HealthDashboardView.tsx`, `healthService.ts`, `healthTypes.ts`):**
+  - Vista ejecutiva accesible para todos los roles (PMs, Administradores y Preventa) en el menú lateral bajo *Sistema & Monitoreo* (`Sidebar.tsx`).
+  - **Scorecard de Salud Global (0-100%):** Algoritmo de ponderación multivariable que evalúa el estado del sistema en 4 niveles (*Óptimo*, *Degradado*, *Crítico* o *Desconocido*).
+  - **4 Cuadrantes de Diagnóstico Interactivo:**
+    1. *Cloud & Base de Datos Firestore:* Latencia en vivo, comprobación de conectividad y verificación de permisos de seguridad en colecciones críticas (`cisco_pipeline_deals`, `cisco_forecast_records`, `estimates`, `bo_order_tracking`) junto con validación de versión en Cloudflare CDN.
+    2. *Almacenamiento Local en PC:* Barra gráfica de porcentaje de uso de LocalStorage (límite de 5 MB), estado del motor IndexedDB, conteo de cola offline pendiente y tombstones.
+    3. *Indicadores Oficiales BCCh:* Dólar Observado, Dólar con spread comercial (+10 CLP), valor oficial de la Unidad de Fomento (UF) y botón para forzar refresco desde el Banco Central de Chile.
+    4. *Entorno & Rendimiento:* Detección de plataforma (App Desktop Windows vs Navegador Web), estado físico de red, modo manual de la app y memoria JavaScript (JS Heap) consumida.
+  - **Herramientas de Auto-Reparación y Diagnóstico:**
+    - Botón *Diagnóstico en Vivo* para disparar pruebas concurrentes con tiempos de respuesta.
+    - Botón *Limpiar Caché* para purgar claves residuales y optimizar el almacenamiento local sin alterar bóvedas comerciales.
+    - Botón *Copiar Reporte* que genera un reporte estructurado en Markdown para soporte o TI.
+    - Botón *Copiar Enlace Directo* para compartir la URL profunda del módulo.
+- **Soporte de Enlace Directo / Deep Linking (`?view=health` y `#health` en `store.tsx`):**
+  - Apertura directa del monitor al ingresar mediante `https://develop.cisco-automated.pages.dev/?view=health` o con hashtag `#health` sin pasar por la vista inicial.
+  - Sincronización automática de parámetros en la barra de direcciones del navegador mediante `history.replaceState` y soporte para botones atrás/adelante (`popstate`).
+- **Endpoint Edge de Salud en Cloudflare Pages (`functions/api/health.ts`):**
+  - Endpoint REST ultraliviano en `/api/health` para consultas externas de disponibilidad, monitoreo automatizado tipo UptimeRobot y verificación de versión de release.
+- **Suite de Pruebas Unitarias Automatizadas (`tests/healthService.test.ts`):**
+  - 6 escenarios de prueba que validan el cálculo de métricas de almacenamiento, diagnóstico financiero, entorno de ejecución, ponderación de salud (100, degradado, crítico), purga de caché y formato de reporte Markdown, elevando el total a 27 suites de prueba automatizadas.
+
 ## [v2.11.1] - 2026-11-14
 ### ⚡ Resiliencia Cloud Firestore, Particionado Batch y Gestión Limpia de Cola Offline
 - **Despliegue y Validación de Reglas Cloud Firestore (`firestore.rules`):**
