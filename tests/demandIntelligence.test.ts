@@ -32,6 +32,7 @@ if (typeof globalThis.localStorage === 'undefined') {
 import {
   detectSkuFamily,
   computeStockRecommendation,
+  dampQuotationQuantity,
   generateDemandIntelligenceReport,
 } from '../src/modules/demandIntelligence/demandIntelligenceService';
 import { SkuDemandItem } from '../src/modules/demandIntelligence/demandTypes';
@@ -170,7 +171,66 @@ assert.equal(recAccessory.priority, 'NOT_APPLICABLE', 'Accesorios no deben suger
 assert.equal(recAccessory.suggestedUnits, 0, 'Unidades sugeridas para accesorio deben ser 0');
 assert.equal(recAccessory.estimatedTotalInvestmentUsd, 0);
 
-console.log('  ✅ Test 2: Algoritmo de recomendación de inventario E1 (exclusión de accesorios) verificado.');
+// Case E: Outlier/Mega-deal in single unconfirmed Estimate (300 switches quoted, 0 real sales)
+// Protege el inventario de Bodega E1: No debe activar CRITICAL_STOCK ni GROWTH_OPPORTUNITY
+const recMegadeal = computeStockRecommendation(
+  'C9300-48P-A',
+  'hardware',
+  0,   // 0 real sold
+  300, // 300 quoted in speculative tender
+  300,
+  3200,
+  1    // 1 single estimate
+);
+assert.equal(recMegadeal.priority, 'MADE_TO_ORDER', 'Megadisparo aislado de 300 unds sin venta no debe inflar stock');
+assert.equal(recMegadeal.priorityLabel, 'Proyecto Especial (Bajo Pedido)');
+assert.equal(recMegadeal.suggestedUnits, 0, 'Sugerencia de unidades en megadeal especulativo debe ser 0');
+assert.equal(recMegadeal.estimatedTotalInvestmentUsd, 0, 'Inversión sugerida debe ser 0 USD');
+assert.ok(recMegadeal.rationale.includes('Back-to-Back'), 'Debe sugerir atender proyecto Back-to-Back');
+
+// Case F: Item with real sales and a megadeal quote (10 sold, 200 quoted across 3 deals)
+// Debe marcarse como CRITICAL_STOCK por ventas reales, pero unidades sugeridas deben ser seguras y amortiguadas
+const recDampedHigh = computeStockRecommendation(
+  'C9200L-24P-4G-E',
+  'hardware',
+  10,  // 10 real sales confirmed
+  200, // 200 quoted
+  210,
+  1400,
+  3,
+  dampQuotationQuantity(200)
+);
+assert.equal(recDampedHigh.priority, 'CRITICAL_STOCK');
+assert.ok(recDampedHigh.suggestedUnits >= 7 && recDampedHigh.suggestedUnits <= 15, 'Sugerencia debe estar amortiguada entre 7 y 15 unidades');
+
+// Case G: Multi-deal market recurrence without closed sales (3 distinct deals quoting 10 units each)
+const recMultiDeal = computeStockRecommendation(
+  'C1300-24T-4G',
+  'hardware',
+  0,  // 0 real sales
+  30, // 30 total quoted
+  30,
+  800,
+  3,  // 3 distinct partners/deals
+  dampQuotationQuantity(10) * 3
+);
+assert.equal(recMultiDeal.priority, 'GROWTH_OPPORTUNITY', 'Demanda recurrente de múltiples partners califica como Oportunidad');
+assert.ok(recMultiDeal.suggestedUnits >= 2 && recMultiDeal.suggestedUnits <= 5, 'Sugerencia prudente para validar mercado');
+
+console.log('  ✅ Test 2: Algoritmo de recomendación de inventario E1 (exclusión de accesorios y protección anti-megadeals) verificado.');
+
+// ----------------------------------------------------------------------------
+// Test 2B: Damping Formula for Megadeals (dampQuotationQuantity)
+// ----------------------------------------------------------------------------
+assert.equal(dampQuotationQuantity(1), 1, '1 und es 100% lineal');
+assert.equal(dampQuotationQuantity(5), 5, '5 unds es 100% lineal');
+assert.equal(dampQuotationQuantity(8), 8, '8 unds es el umbral lineal exacto');
+assert.equal(dampQuotationQuantity(12), 11, '12 unds se amortigua a 11');
+assert.equal(dampQuotationQuantity(16), 12, '16 unds se amortigua a 12');
+assert.equal(dampQuotationQuantity(50), 17, '50 unds se amortigua a 17');
+assert.equal(dampQuotationQuantity(100), 22, '100 unds se amortigua a 22');
+assert.equal(dampQuotationQuantity(300), 32, '300 unds se amortigua a 32');
+console.log('  ✅ Test 2B: Función matemática de amortiguación de megadeals (dampQuotationQuantity) validada.');
 
 // ----------------------------------------------------------------------------
 // Test 3: Detection of Main Lines vs Child Lines ("Hijos") in Estimates
@@ -241,4 +301,8 @@ async function runReportTest() {
 
 runReportTest().then(() => {
   console.log('✨ ¡Todas las pruebas de Inteligencia de Demanda & Planificador de Stock completadas con ÉXITO!');
+  process.exit(0);
+}).catch((err) => {
+  console.error('❌ Error en pruebas:', err);
+  process.exit(1);
 });

@@ -6,6 +6,25 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.13.2] - 2026-11-14
+### ⚡ Fórmula de Amortiguación de Megadisparos y Protección de Inventario E1 / Hit Rate
+- **Fórmula de Amortiguación Matemática (`dampQuotationQuantity` en `demandIntelligenceService.ts`):**
+  - Implementación de compresión cóncava sublineal ($\text{dampedQty} = 8 + \text{round}(\sqrt{2 \times (\text{rawQty} - 8)})$) para cotizaciones masivas o licitaciones de gran escala (ej. 20, 50, 100, 300 unidades).
+  - Preserva el comportamiento lineal 100% exacto (1:1) en pedidos normales de run-rate ($\le 8$ unidades) y amortigua el exceso para que proyectos especulativos no distorsionen el plan de inventario.
+- **Blindaje Anti-Megadisparos en Bodega E1 Santiago:**
+  - Cotizaciones puntuales de gran volumen ($\ge 20$ unidades) en 1 o 2 transacciones sin venta real confirmada se clasifican estrictamente como `MADE_TO_ORDER` con la etiqueta visual *"Proyecto Especial (Bajo Pedido)"* y 0 unidades sugeridas de inventario.
+  - En Cisco Intcomex, estos proyectos masivos se gestionan de manera back-to-back directo con fábrica (Miami) con descuento especial DSA, evitando inmovilizar capital en bodega local.
+- **Criterios Rigurosos para Stock Crítico (`CRITICAL_STOCK`):**
+  - Requiere estrictamente venta real confirmada ($\ge 6$ unidades o $\ge 3$ en múltiples órdenes con demanda continua). Jamás se otorga a SKUs sin órdenes reales de compra cerradas (`realSoldUnits < 2`).
+- **Recurrencia Multi-Partner para Oportunidades (`GROWTH_OPPORTUNITY`):**
+  - Requiere ventas reales moderadas ($\ge 2$ unidades) o recurrencia demostrada a través de múltiples canales/partners ($\ge 3$ cotizaciones distintas) antes de recomendar compras preventivas.
+- **Protección del Hit Rate (Tasa de Conversión %):**
+  - El porcentaje de conversión se calcula sobre la demanda efectiva ponderada (`effectiveTotalUnits`), impidiendo que una cotización aislada de 300 unidades pulverice el Hit Rate de equipos que tienen rotación comercial saludable.
+- **Insignia Visual "⚡ Mega-deal" en UI (`DemandIntelligenceView.tsx`):**
+  - Indicador visual distintivo en la tabla para marcar cotizaciones de volumen extraordinario y mostrar la demanda efectiva ponderada.
+- **Suite de Pruebas Unitarias Automatizadas (`tests/demandIntelligence.test.ts`):**
+  - Validación de casos de megadisparos (300 unidades sin venta), amortiguación con venta real y recurrencia multi-partner aprobada al 100%.
+
 ## [v2.13.1] - 2026-11-14
 ### 🛡️ Exclusión Estricta de Componentes y Accesorios Hijos en Demanda y Planificador de Stock
 - **Exclusión Determinista de Líneas Hijas ("Hijos" 1.1, 1.2, 1.3... en `demandIntelligenceService.ts`):**

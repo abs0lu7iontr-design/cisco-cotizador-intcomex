@@ -15,11 +15,28 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.13.2',
+    date: '2026-11-14',
+    commit: 'fix-megadeal-outlier-damping-and-stock-protection',
+    title: 'Fórmula de Amortiguación de Megadisparos y Protección de Inventario E1 / Hit Rate',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Fórmula de Amortiguación Matemática (dampQuotationQuantity): Amortiguación cóncava sublineal sobre cotizaciones y licitaciones masivas (ej. 20, 50, 100, 300 unidades). Preserva linealidad exacta (1:1) en pedidos normales (<= 8 unidades) y comprime el exceso para evitar inflar artificialmente el stock.',
+      'Blindaje Anti-Megadisparos en Bodega E1: Cotizaciones puntuales de gran volumen (>= 20 unidades) en 1 o 2 transacciones sin venta real confirmada se clasifican estrictamente como "Proyecto Especial (Bajo Pedido)" con 0 unidades de stock sugerido, protegiendo a Intcomex de compras especulativas que deben atenderse Back-to-Back con DSA directo de fábrica.',
+      'Condiciones Estrictas para Stock Crítico (CRITICAL_STOCK): Requiere venta real confirmada sostenida (>= 6 unidades o >= 3 en múltiples transacciones con demanda activa). Jamás se asigna a productos sin ventas cerradas.',
+      'Recurrencia Multi-Partner para Oportunidades (GROWTH_OPPORTUNITY): Valida si la demanda proviene de múltiples canales/partners (>= 3 deals distintos) antes de sugerir stock preventivo prudente.',
+      'Protección del Hit Rate (Conversión %): El porcentaje de conversión se calcula sobre la demanda efectiva ponderada, evitando que una sola licitación especulativa de 300 unidades pulverice la tasa de éxito de equipos con rotación saludable.',
+      'Insignia Visual "⚡ Mega-deal" en UI: Marcador visual distintivo en la tabla para identificar inmediatamente solicitudes atípicas de gran volumen.',
+      'Integridad de Pruebas: 28 suites de pruebas unitarias automáticas aprobadas al 100%.',
+    ],
+  },
+  {
     version: '2.13.1',
     date: '2026-11-14',
     commit: 'fix-exclude-child-accessories-from-equipment-demand-and-stock-planner',
     title: 'Exclusión Estricta de Componentes y Accesorios Hijos en Demanda y Planificador de Stock',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Exclusión de Líneas Hijas ("Hijos" 1.1, 1.2, 1.3...): En Cisco CCW, los accesorios que ya vienen incluidos dentro del chasis del equipo (cables de poder, fuentes, stack kits, tapas ciegas, brackets y licencias de red internas) se configuran como sub-líneas hijas. Se descartan terminantemente de las ventas de hardware y del plan de stock para Bodega E1.',

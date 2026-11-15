@@ -128,7 +128,7 @@ export const DemandIntelligenceView: React.FC = () => {
   const fmtCurrency = (n: number) =>
     `$${(n || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} USD`;
 
-  const getPriorityBadge = (priority: StockPriority) => {
+  const getPriorityBadge = (priority: StockPriority, isMegadeal?: boolean) => {
     switch (priority) {
       case 'CRITICAL_STOCK':
         return {
@@ -142,8 +142,10 @@ export const DemandIntelligenceView: React.FC = () => {
         };
       case 'MADE_TO_ORDER':
         return {
-          label: 'Bajo Pedido (Back-to-Back)',
-          bg: 'bg-slate-800 text-slate-400 border-slate-700',
+          label: isMegadeal ? 'Proyecto Especial (Bajo Pedido)' : 'Bajo Pedido (Back-to-Back)',
+          bg: isMegadeal
+            ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+            : 'bg-slate-800 text-slate-400 border-slate-700',
         };
       default:
         return {
@@ -427,14 +429,24 @@ export const DemandIntelligenceView: React.FC = () => {
                   </tr>
                 ) : (
                   filteredItems.map((item, idx) => {
-                    const badge = getPriorityBadge(item.stockRecommendation.priority);
+                    const badge = getPriorityBadge(item.stockRecommendation.priority, item.isMegadealOutlier);
                     return (
                       <tr
                         key={`${item.partNumber}-${idx}`}
                         className="hover:bg-slate-800/40 transition-colors"
                       >
                         <td className="py-3 px-4 font-mono font-bold text-white">
-                          {item.partNumber}
+                          <div className="flex items-center space-x-1.5">
+                            <span>{item.partNumber}</span>
+                            {item.isMegadealOutlier && (
+                              <span
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-500/10 text-amber-400 border border-amber-500/30 whitespace-nowrap"
+                                title="Cotización masiva o licitación amortiguada para proteger inventario E1"
+                              >
+                                ⚡ Mega-deal
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4 max-w-xs truncate text-slate-300" title={item.description}>
                           {item.description}
@@ -457,6 +469,15 @@ export const DemandIntelligenceView: React.FC = () => {
                           <span className="block text-[10px] text-slate-500">
                             {fmtCurrency(item.quotedUsd)}
                           </span>
+                          {item.effectiveQuotedUnits !== undefined &&
+                            item.effectiveQuotedUnits !== item.quotedUnits && (
+                              <span
+                                className="block text-[9px] text-indigo-400 font-mono"
+                                title="Demanda ponderada tras amortiguar megadisparos"
+                              >
+                                Pond: {item.effectiveQuotedUnits} und
+                              </span>
+                            )}
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span

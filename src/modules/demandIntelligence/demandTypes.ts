@@ -30,15 +30,18 @@ export interface SkuDemandItem {
   // Quoted Demand (Estimates History / Pipeline Open / CCW-R Active)
   quotedUnits: number;
   quotedUsd: number;
+  effectiveQuotedUnits?: number; // Damped units to prevent megadeals/outliers from distorting stock planning
 
   // Aggregated Totals
   totalDemandUnits: number;
   totalDemandUsd: number;
+  effectiveTotalUnits?: number;  // realSoldUnits + effectiveQuotedUnits
 
   // Metrics
-  conversionRatePct: number; // realSoldUnits / totalDemandUnits * 100
+  conversionRatePct: number; // Hit Rate calculado sobre effectiveTotalUnits
   ordersCount: number;       // Distinct transactions / estimates featuring this SKU
   avgUnitPriceUsd: number;
+  isMegadealOutlier?: boolean; // True si la demanda proviene de cotizaciones desproporcionadas sin SO real
 
   // Procurement & Bodega E1 Advice
   stockRecommendation: StockRecommendation;

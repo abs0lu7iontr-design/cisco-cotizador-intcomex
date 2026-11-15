@@ -192,7 +192,24 @@ export function detectSkuFamily(
 }
 
 /**
+ * Amortigua cantidades masivas o desproporcionadas en cotizaciones individuales (Estimates, Licitaciones, Mega-deals)
+ * para evitar que distorsionen las oportunidades de inventario o las sugerencias de Stock Crítico en Bodega E1 Santiago.
+ * 
+ * - Para pedidos y cotizaciones normales (<= maxLinearThreshold, por defecto 8 unidades): comportamiento 100% lineal.
+ * - Para cantidades excedentes (> 8 unidades, ej. 20, 50, 100, 300 unidades): compresión sublineal cóncava
+ *   que reconoce la presencia del negocio sin inflar artificialmente el inventario físico ni castigar el Hit Rate.
+ */
+export function dampQuotationQuantity(rawQty: number, maxLinearThreshold: number = 8): number {
+  if (rawQty <= 0) return 0;
+  if (rawQty <= maxLinearThreshold) return Math.round(rawQty);
+  const excess = rawQty - maxLinearThreshold;
+  return maxLinearThreshold + Math.round(Math.sqrt(excess * 2));
+}
+
+/**
  * Calculates stock recommendation for Bodega E1 Santiago based on real sales vs quoted demand.
+ * Incorporates outlier protection and multi-deal recurrence checks to ensure speculative mega-deals
+ * do not falsely trigger Critical Stock or Growth Opportunity recommendations.
  */
 export function computeStockRecommendation(
   partNumber: string,
@@ -200,7 +217,10 @@ export function computeStockRecommendation(
   realSoldUnits: number,
   quotedUnits: number,
   totalDemandUnits: number,
-  avgUnitPriceUsd: number
+  avgUnitPriceUsd: number,
+  ordersCount: number = 1,
+  effectiveQuotedUnits?: number,
+  isMegadealOutlier?: boolean
 ): StockRecommendation {
   const avgCostUsd = Math.round(avgUnitPriceUsd * 0.88); // Costo aproximado base
 
@@ -221,13 +241,43 @@ export function computeStockRecommendation(
     };
   }
 
-  // Reglas para Hardware y Accesorios en Bodega E1 Santiago
-  const isHighTurnover = realSoldUnits >= 6 || (realSoldUnits >= 3 && quotedUnits >= 10) || totalDemandUnits >= 20;
-  const isGrowthOpportunity = realSoldUnits >= 2 || quotedUnits >= 8;
+  const effectiveQuoted = typeof effectiveQuotedUnits === 'number'
+    ? effectiveQuotedUnits
+    : dampQuotationQuantity(quotedUnits, 8);
+
+  const isOutlier = typeof isMegadealOutlier === 'boolean'
+    ? isMegadealOutlier
+    : (ordersCount <= 2 && quotedUnits >= 20 && realSoldUnits === 0);
+
+  // 1. REGLA DE PROTECCIÓN DE MEGADISPAROS / LICITACIONES SIN CONFIRMACIÓN:
+  // Si un Estimate solicita cantidades masivas (ej. 20, 50, 100, 300 unidades) pero NO tiene órdenes reales confirmadas (realSoldUnits === 0)
+  // o proviene de 1 o 2 solicitudes aisladas, NUNCA debe marcarse como Stock Crítico ni Oportunidad de Stock para Bodega E1 Santiago.
+  // En Cisco Intcomex, estos proyectos se atienden estrictamente Back-to-Back directo desde fábrica (Miami) con DSA (Special Pricing).
+  if (isOutlier) {
+    return {
+      priority: 'MADE_TO_ORDER',
+      priorityLabel: 'Proyecto Especial (Bajo Pedido)',
+      suggestedUnits: 0,
+      rationale: `Demanda cotizada de gran volumen (${quotedUnits} unds solicitadas en ${ordersCount} transacción${ordersCount > 1 ? 'es' : ''}) sin confirmación de venta real. Gestionar estrictamente Back-to-Back directo de fábrica (DSA) para no inmovilizar capital en Bodega E1 Santiago.`,
+      estimatedUnitCostUsd: avgCostUsd,
+      estimatedTotalInvestmentUsd: 0,
+      targetBodega: 'E1',
+    };
+  }
+
+  // 2. STOCK CRÍTICO (ALTA ROTACIÓN):
+  // Requiere venta real confirmada sostenida (>= 6 unidades vendidas o >= 3 vendidas en múltiples órdenes con demanda continua).
+  // Nunca se otorga si no hay venta real (realSoldUnits < 2).
+  const isHighTurnover =
+    realSoldUnits >= 6 ||
+    (realSoldUnits >= 3 && ordersCount >= 2 && effectiveQuoted >= 6);
 
   if (isHighTurnover) {
-    // Sugerencia proporcional al ritmo de venta real + fracción de demanda cotizada
-    const suggested = Math.min(30, Math.max(8, Math.round(realSoldUnits * 0.75 + quotedUnits * 0.15)));
+    // Sugerencia anclada en venta real + ponderación amortiguada de demanda cotizada
+    const suggested = Math.min(
+      20,
+      Math.max(4, Math.round(realSoldUnits * 0.70 + Math.min(effectiveQuoted, 12) * 0.15))
+    );
     return {
       priority: 'CRITICAL_STOCK',
       priorityLabel: 'Alta Prioridad (Stock Crítico)',
@@ -239,19 +289,33 @@ export function computeStockRecommendation(
     };
   }
 
+  // 3. OPORTUNIDAD DE STOCK (DEMANDA MODERADA / RECURRENTE):
+  // Requiere:
+  // - Venta real moderada (>= 2 unidades), O
+  // - Al menos 1 unidad vendida con recurrencia en cotizaciones (ordersCount >= 2 y effectiveQuoted >= 5), O
+  // - Recurrencia comprobada entre múltiples partners/deals (ordersCount >= 3 y effectiveQuoted >= 8) aún sin venta cerrada.
+  const isGrowthOpportunity =
+    realSoldUnits >= 2 ||
+    (realSoldUnits >= 1 && ordersCount >= 2 && effectiveQuoted >= 5) ||
+    (realSoldUnits === 0 && ordersCount >= 3 && effectiveQuoted >= 8);
+
   if (isGrowthOpportunity) {
-    const suggested = Math.min(10, Math.max(3, Math.round(totalDemandUnits * 0.25)));
+    const suggested = Math.min(
+      8,
+      Math.max(2, Math.round(realSoldUnits * 0.40 + Math.min(effectiveQuoted, 8) * 0.20))
+    );
     return {
       priority: 'GROWTH_OPPORTUNITY',
       priorityLabel: 'Oportunidad de Stock',
       suggestedUnits: suggested,
-      rationale: 'Demanda activa en Pipeline y cotizaciones recientes. Stock preventivo recomendado para acortar el Lead Time de 175 días y asegurar adjudicaciones.',
+      rationale: 'Demanda activa y recurrente en Pipeline/cotizaciones. Stock preventivo recomendado para acortar el Lead Time de 175 días y asegurar adjudicaciones.',
       estimatedUnitCostUsd: avgCostUsd,
       estimatedTotalInvestmentUsd: suggested * avgCostUsd,
       targetBodega: 'E1',
     };
   }
 
+  // 4. BAJO PEDIDO (BACK-TO-BACK):
   return {
     priority: 'MADE_TO_ORDER',
     priorityLabel: 'Bajo Pedido (Back-to-Back)',
@@ -288,6 +352,8 @@ export async function generateDemandIntelligenceReport(): Promise<DemandIntellig
       realSoldUsd: number;
       quotedUnits: number;
       quotedUsd: number;
+      dampedQuotedUnits: number;
+      hasOutlierQuantities: boolean;
       ordersSet: Set<string>;
       unitPrices: number[];
     }
@@ -313,6 +379,8 @@ export async function generateDemandIntelligenceReport(): Promise<DemandIntellig
         realSoldUsd: 0,
         quotedUnits: 0,
         quotedUsd: 0,
+        dampedQuotedUnits: 0,
+        hasOutlierQuantities: false,
         ordersSet: new Set<string>(),
         unitPrices: [],
       };
@@ -368,6 +436,10 @@ export async function generateDemandIntelligenceReport(): Promise<DemandIntellig
         } else {
           entry.quotedUnits += qty;
           entry.quotedUsd += extPrice;
+          entry.dampedQuotedUnits += dampQuotationQuantity(qty, 8);
+          if (qty >= 15) {
+            entry.hasOutlierQuantities = true;
+          }
         }
       }
     }
@@ -406,6 +478,7 @@ export async function generateDemandIntelligenceReport(): Promise<DemandIntellig
           } else {
             entry.quotedUnits += 1;
             entry.quotedUsd += bo.totalSaleUsd ? Math.round(bo.totalSaleUsd / Math.max(1, bo.itemsCount || 1)) : 0;
+            entry.dampedQuotedUnits += 1;
           }
         }
       }
@@ -435,6 +508,7 @@ export async function generateDemandIntelligenceReport(): Promise<DemandIntellig
           } else {
             entry.quotedUnits += units;
             entry.quotedUsd += usdShare;
+            entry.dampedQuotedUnits += dampQuotationQuantity(units, 8);
           }
         }
       }
@@ -463,6 +537,8 @@ export async function generateDemandIntelligenceReport(): Promise<DemandIntellig
         entry.ordersSet.add(`CCWR:${qId}`);
         entry.quotedUnits += qty;
         entry.quotedUsd += price;
+        entry.dampedQuotedUnits += dampQuotationQuantity(qty, 8);
+        if (qty >= 15) entry.hasOutlierQuantities = true;
         if (price > 0) entry.unitPrices.push(Math.round(price / qty));
       }
     }
@@ -476,9 +552,22 @@ export async function generateDemandIntelligenceReport(): Promise<DemandIntellig
     if (totalDemandUnits === 0) continue;
 
     const totalDemandUsd = entry.realSoldUsd + entry.quotedUsd;
+    const ordersCount = entry.ordersSet.size;
+
+    // Demanda cotizada efectiva amortiguada (outlier damping)
+    const effectiveQuotedUnits = Math.round(entry.dampedQuotedUnits) || entry.quotedUnits;
+    const effectiveTotalUnits = entry.realSoldUnits + effectiveQuotedUnits;
+
+    // Detección de megadisparos aislados sin confirmación
+    const isMegadealOutlier =
+      (ordersCount <= 2 && entry.quotedUnits >= 20 && entry.realSoldUnits === 0) ||
+      (entry.hasOutlierQuantities && entry.realSoldUnits === 0);
+
+    // Hit Rate (Tasa de Conversión): calculado con base en demanda efectiva para que
+    // licitaciones especulativas masivas no pulvericen el porcentaje de conversión de equipos de alta rotación
     const conversionRatePct =
-      totalDemandUnits > 0
-        ? Math.min(100, Math.round((entry.realSoldUnits / totalDemandUnits) * 100))
+      effectiveTotalUnits > 0
+        ? Math.min(100, Math.round((entry.realSoldUnits / effectiveTotalUnits) * 100))
         : 0;
 
     const avgPrice =
@@ -494,7 +583,10 @@ export async function generateDemandIntelligenceReport(): Promise<DemandIntellig
       entry.realSoldUnits,
       entry.quotedUnits,
       totalDemandUnits,
-      avgPrice
+      avgPrice,
+      ordersCount,
+      effectiveQuotedUnits,
+      isMegadealOutlier
     );
 
     allItems.push({
@@ -506,11 +598,14 @@ export async function generateDemandIntelligenceReport(): Promise<DemandIntellig
       realSoldUsd: entry.realSoldUsd,
       quotedUnits: entry.quotedUnits,
       quotedUsd: entry.quotedUsd,
+      effectiveQuotedUnits,
       totalDemandUnits,
       totalDemandUsd,
+      effectiveTotalUnits,
       conversionRatePct,
-      ordersCount: entry.ordersSet.size,
+      ordersCount,
       avgUnitPriceUsd: avgPrice,
+      isMegadealOutlier,
       stockRecommendation: stockRec,
     });
   }
@@ -518,7 +613,12 @@ export async function generateDemandIntelligenceReport(): Promise<DemandIntellig
   // Sort and Partition: Solo equipos de hardware reales (Switches, APs, Routers, Firewalls) - SIN accesorios ni componentes hijos
   const topHardwareItems = allItems
     .filter((x) => x.category === 'hardware')
-    .sort((a, b) => b.realSoldUnits - a.realSoldUnits || b.totalDemandUnits - a.totalDemandUnits);
+    .sort(
+      (a, b) =>
+        b.realSoldUnits - a.realSoldUnits ||
+        (b.effectiveTotalUnits || b.totalDemandUnits) - (a.effectiveTotalUnits || a.totalDemandUnits) ||
+        b.totalDemandUsd - a.totalDemandUsd
+    );
 
   const topLicenseItems = allItems
     .filter((x) => x.category === 'license' || x.category === 'service')
