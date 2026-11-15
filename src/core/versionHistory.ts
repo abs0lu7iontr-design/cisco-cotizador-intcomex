@@ -15,11 +15,29 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.13.0',
+    date: '2026-11-14',
+    commit: 'feat-demand-intelligence-and-stock-planner',
+    title: 'Inteligencia de Demanda Comercial, Top Equipos & Licencias y Planificador de Stock Sugerido (Bodega E1)',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Módulo Integral Demanda & Stock E1 (DemandIntelligenceView): 4 vistas analíticas (Top Hardware, Top Licencias/Suscripciones, Comparativa Real vs Cotizado, y Plan de Stock Bodega E1 Santiago).',
+      'Cruce Holístico de 5 Módulos de Datos: Agregación en tiempo real de BOs con SO confirmada, Forecast Ganado, Pipeline Comercial Activo, Historial de Estimates y Cotizaciones CCW-R.',
+      'Diferenciación Real vs Cotizado: Cálculo del Hit Rate (Tasa de Conversión %) por SKU para distinguir compras efectivas de cotizaciones presupuestarias sin cierre.',
+      'Clasificación Automática de Familias Cisco: Detección inteligente de 10 familias comerciales (Catalyst 9200, 9300, 1000/1200/1300 SMB, Meraki Switch/Wireless/Security, Wi-Fi 6, Nexus, Routing y Transceivers).',
+      'Planificador de Stock E1 Santiago con Exportación Excel (.xlsx): Sugerencia cuantitativa de compra para Bodega E1 para mitigar Lead Times de 3 a 27 semanas y ganar negocios con entrega 24-48h.',
+      'Executive Widget en Dashboard Analítico: Resumen interactivo con métricas clave de demanda, top 5 hardware con barras de conversión y acceso directo con 1 clic.',
+      'Deep Linking por URL (?view=stock_intelligence o #stock_intelligence): Acceso directo desde cualquier navegador o enlace corporativo.',
+      'Suite de Pruebas Unitarias Automatizadas: 28 suites de pruebas unitarias cubriendo algoritmos de clasificación, recomendaciones y agregación.',
+    ],
+  },
+  {
     version: '2.12.0',
     date: '2026-11-14',
     commit: 'feat-system-health-dashboard-and-deep-linking',
     title: 'Monitor de Salud y Diagnóstico en Tiempo Real, Deep Linking (?view=health) y Endpoint Edge',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Monitor de Salud en Sidebar (HealthDashboardView): Módulo accesible para todos los roles con telemetría en vivo de Firestore, almacenamiento PC, tasas BCCh y entorno.',

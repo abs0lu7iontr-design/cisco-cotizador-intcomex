@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.12.0",
-  "git_commit": "91ad59c",
+  "version": "2.13.0",
+  "git_commit": "bc6da6f",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-14T22:54:39.240Z",
-  "release_notes": "fix(v2.11.1): deploy firestore rules, batch chunking optimization and clear offline queue button",
+  "build_timestamp": "2026-11-15T00:39:57.989Z",
+  "release_notes": "feat(v2.12.0): implement real-time system health monitor, deep linking (?view=health) and edge status endpoint",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

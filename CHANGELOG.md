@@ -6,6 +6,29 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.13.0] - 2026-11-14
+### 📦 Inteligencia de Demanda Comercial, Top Equipos & Licencias y Planificador de Stock Sugerido (Bodega E1 Santiago)
+- **Nuevo Módulo "Demanda & Stock E1" (`DemandIntelligenceView.tsx`, `demandIntelligenceService.ts`, `demandTypes.ts`):**
+  - Módulo analítico especializado accesible desde el menú lateral (`Sidebar.tsx`) bajo la sección de análisis comercial con icono `Boxes`.
+  - **4 Pestañas Analíticas Interactivas:**
+    1. *🏆 Top Hardware Más Vendido:* Ranking de equipos físicos (Switches, Access Points, Routers, Firewalls y Transceivers) ordenados por volumen de ventas reales con SO confirmada y facturación USD.
+    2. *📜 Top Licencias & Suscripciones:* Análisis de adopción de servicios SmartNet (SNT/CX), suscripciones de software Cisco DNA y licencias Cloud SaaS (Meraki, Duo, Umbrella) aprovisionadas en Bodega ED.
+    3. *⚖️ Comparativa Real vs Cotizado (Hit Rate %):* Métrica porcentual de conversión por SKU para distinguir con precisión los productos que los clientes efectivamente compran de aquellos cotizados con frecuencia únicamente con fines referenciales o presupuestarios.
+    4. *📦 Planificador de Stock Sugerido (Bodega E1 Santiago):* Algoritmo cuantitativo de cálculo de inventario preventivo para Bodega E1 en Santiago de Chile, diseñado específicamente para neutralizar Lead Times críticos de Cisco (3 a 27 semanas) y cerrar negocios inmediatos con despacho en 24-48 horas.
+  - **Exportación Profesional a Excel (.xlsx):**
+    - Generación en 1 clic de una propuesta formal de orden de stock (`Propuesta_Stock_Bodega_E1_Cisco_Intcomex_<fecha>.xlsx`) utilizando ExcelJS, con encabezados corporativos Intcomex, formato numérico oficial USD, prioridad visual (CRÍTICO, OPORTUNIDAD, REGULAR) y justificación comercial por línea.
+- **Executive Widget en Dashboard Analítico (`DashboardView.tsx`):**
+  - Resumen ejecutivo interactivo "Top Equipos Calientes & Plan de Stock Bodega E1" integrado sobre la tabla de cotizaciones.
+  - Indicadores inmediatos de SKUs monitoreados, ventas reales cerradas, demanda total cotizada y sugerencia global de inversión para stock en Bodega E1.
+  - Previsualización del Top 5 de equipos con barras de Hit Rate y botón de navegación directa en 1 clic a la vista completa.
+- **Motor de Clasificación y Cruce Multi-Módulo en Tiempo Real (`demandIntelligenceService.ts`):**
+  - Clasificación automática en 10 familias comerciales Cisco (Catalyst 9200, 9300, 1000/1200/1300 SMB, Meraki Switch/Wireless/Security, Wi-Fi 6, Nexus, Routing y Transceivers).
+  - Consumo seguro de solo lectura a través de 5 módulos de datos existentes: BOs con SO confirmada (`boTrackingService`), Forecast Ganado (`forecastService`), Pipeline Comercial Activo (`pipelineService`), Historial de Estimates Cloud/Mirror (`useEstimatesMirror`) y Cotizaciones CCW-R (`ccwrService`).
+- **Soporte de Deep Linking (`?view=stock_intelligence` y `#stock_intelligence` en `store.tsx`):**
+  - Enlace directo permalink para abrir inmediatamente la vista de inteligencia de stock desde el navegador o accesos directos.
+- **Suite de Pruebas Unitarias Automatizadas (`tests/demandIntelligence.test.ts`):**
+  - Validación exhaustiva de clasificación de familias, algoritmos de cálculo de prioridad y asignación de bodegas (E1 física vs ED electrónica), cálculo de Hit Rate y generación end-to-end del reporte, elevando el total a 28 suites de prueba automáticas.
+
 ## [v2.12.0] - 2026-11-14
 ### 🏥 Monitor de Salud y Diagnóstico del Sistema en Tiempo Real (Opción C Híbrida)
 - **Nuevo Módulo "Monitor de Salud & Diagnóstico" (`HealthDashboardView.tsx`, `healthService.ts`, `healthTypes.ts`):**

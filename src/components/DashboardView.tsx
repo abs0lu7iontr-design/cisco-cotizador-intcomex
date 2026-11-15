@@ -40,7 +40,15 @@ import {
   BarChart3,
   Layers,
   ExternalLink,
+  Boxes,
+  ChevronRight,
+  PackageCheck,
+  Sparkles,
 } from 'lucide-react';
+import {
+  generateDemandIntelligenceReport,
+  DemandIntelligenceSummary,
+} from '../modules/demandIntelligence';
 import { formatPartnerName, getUniqueFormattedPartners } from '../utils/partnerDbUtils';
 import { normalizeIsoTimestamp, extractYearMonth, extractYear } from '../utils/dateUtils';
 
@@ -88,6 +96,29 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
   const [selectedCreator, setSelectedCreator] = useState<string>('all');
   const [selectedPartner, setSelectedPartner] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Demand & Stock Intelligence Widget Data
+  const [demandSummary, setDemandSummary] = useState<DemandIntelligenceSummary | null>(null);
+  const [isLoadingDemand, setIsLoadingDemand] = useState<boolean>(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const report = await generateDemandIntelligenceReport();
+        if (isMounted) {
+          setDemandSummary(report);
+          setIsLoadingDemand(false);
+        }
+      } catch (err) {
+        console.error('Error cargando inteligencia de demanda en Dashboard:', err);
+        if (isMounted) setIsLoadingDemand(false);
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, [lastSyncIso]);
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToast({ text, type });
@@ -1065,6 +1096,167 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
               })
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Demand Intelligence & Stock Planner Executive Widget */}
+      <div className="bg-gradient-to-br from-slate-900 via-slate-900/95 to-indigo-950/40 border border-indigo-500/30 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-5">
+          <div className="space-y-1">
+            <div className="flex items-center space-x-2.5">
+              <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                <Boxes className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-white tracking-wide uppercase flex items-center gap-2">
+                  <span>Top Equipos Calientes & Plan de Stock Bodega E1</span>
+                  <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-700/40">
+                    <Sparkles className="w-3 h-3 text-cyan-400" />
+                    <span>Inteligencia de Negocio</span>
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Cruce holístico de Ventas Reales (BO + Forecast Ganado) vs Demanda Cotizada (Estimates + Pipeline)
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setCurrentView('stock_intelligence')}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 hover:shadow-indigo-600/50 transition-all flex items-center gap-2 cursor-pointer group"
+            >
+              <span>Ver Análisis Completo & Plan de Stock</span>
+              <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          </div>
+        </div>
+
+        {/* KPI Mini-Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+          <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+            <span className="text-[10px] font-bold uppercase text-slate-400">SKUs Analizados</span>
+            <div className="text-lg font-mono font-black text-white mt-0.5">
+              {demandSummary ? demandSummary.topHardwareItems.length + demandSummary.topLicenseItems.length : '—'}
+            </div>
+          </div>
+          <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+            <span className="text-[10px] font-bold uppercase text-emerald-400">Ventas Reales Cerradas</span>
+            <div className="text-lg font-mono font-black text-emerald-400 mt-0.5">
+              {demandSummary ? fmtCurrency(demandSummary.totalHardwareSoldUsd + demandSummary.totalLicensesSoldUsd) : '—'}
+            </div>
+          </div>
+          <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+            <span className="text-[10px] font-bold uppercase text-indigo-400">Demanda Cotizada</span>
+            <div className="text-lg font-mono font-black text-indigo-300 mt-0.5">
+              {demandSummary ? fmtCurrency(demandSummary.totalHardwareQuotedUsd + demandSummary.totalLicensesQuotedUsd) : '—'}
+            </div>
+          </div>
+          <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+            <span className="text-[10px] font-bold uppercase text-amber-400">Sugerencia Stock E1</span>
+            <div className="text-lg font-mono font-black text-amber-300 mt-0.5">
+              {demandSummary
+                ? `${demandSummary.totalSuggestedUnitsToStock} u. (${fmtCurrency(demandSummary.totalSuggestedInvestmentUsd)})`
+                : '—'}
+            </div>
+          </div>
+        </div>
+
+        {/* Top 5 Hardware SKUs Preview Table */}
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left text-xs text-slate-300">
+            <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
+              <tr>
+                <th className="px-3 py-2">#</th>
+                <th className="px-3 py-2">Part Number (Hardware)</th>
+                <th className="px-3 py-2">Familia Cisco</th>
+                <th className="px-3 py-2 text-right">Venta Real</th>
+                <th className="px-3 py-2 text-right">Cotizado</th>
+                <th className="px-3 py-2 text-center">Hit Rate %</th>
+                <th className="px-3 py-2 text-right">Venta USD</th>
+                <th className="px-3 py-2 text-center">Sugerencia Stock E1</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 font-sans">
+              {isLoadingDemand ? (
+                <tr>
+                  <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
+                    <RefreshCw className="w-4 h-4 animate-spin inline-block mr-2" />
+                    Analizando demanda en tiempo real...
+                  </td>
+                </tr>
+              ) : !demandSummary || demandSummary.topHardwareItems.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
+                    Sin registros de hardware suficientes para análisis de inventario.
+                  </td>
+                </tr>
+              ) : (
+                demandSummary.topHardwareItems.slice(0, 5).map((item, idx) => {
+                  const priorityColors = {
+                    CRITICAL_STOCK: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
+                    GROWTH_OPPORTUNITY: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+                    MADE_TO_ORDER: 'bg-slate-800 text-slate-400 border-slate-700',
+                    NOT_APPLICABLE: 'bg-slate-900 text-slate-500 border-slate-800',
+                  };
+                  return (
+                    <tr key={item.partNumber} className="hover:bg-slate-800/30 transition-colors">
+                      <td className="px-3 py-2.5 font-mono text-slate-500 font-bold">{idx + 1}</td>
+                      <td className="px-3 py-2.5">
+                        <span className="font-mono font-bold text-cyan-300">{item.partNumber}</span>
+                        {item.description && (
+                          <p className="text-[11px] text-slate-400 truncate max-w-xs">{item.description}</p>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-800 text-indigo-300 border border-slate-700">
+                          {item.family}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-400">
+                        {item.realSoldUnits} u.
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-slate-400">
+                        {item.quotedUnits} u.
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        <div className="flex items-center justify-center space-x-1.5">
+                          <div className="w-16 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className="bg-emerald-500 h-full rounded-full"
+                              style={{ width: `${Math.min(item.conversionRatePct, 100)}%` }}
+                            />
+                          </div>
+                          <span className="font-mono text-[10px] font-bold text-emerald-400">
+                            {item.conversionRatePct.toFixed(0)}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-mono text-slate-200">
+                        {fmtCurrency(item.realSoldUsd)}
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        {item.stockRecommendation.suggestedUnits > 0 ? (
+                          <span
+                            className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${
+                              priorityColors[item.stockRecommendation.priority] || priorityColors.GROWTH_OPPORTUNITY
+                            }`}
+                          >
+                            <PackageCheck className="w-3 h-3" />
+                            <span>Pedir {item.stockRecommendation.suggestedUnits} u.</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-500 italic">Bajo pedido</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 

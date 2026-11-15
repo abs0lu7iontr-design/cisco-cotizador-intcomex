@@ -71,7 +71,8 @@ export type NavViewId =
   | 'users'
   | 'audit'
   | 'settings'
-  | 'health';
+  | 'health'
+  | 'stock_intelligence';
 
 export const VALID_NAV_VIEWS: NavViewId[] = [
   'dashboard',
@@ -89,6 +90,7 @@ export const VALID_NAV_VIEWS: NavViewId[] = [
   'audit',
   'settings',
   'health',
+  'stock_intelligence',
 ];
 
 export function getInitialNavView(): NavViewId {

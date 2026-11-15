@@ -70,6 +70,7 @@ import { getFormattedAppVersion } from './core/appVersion';
 import { MobileBottomNav, MobileStickyBar } from './components/mobile';
 import { OfflineSyncModal } from './components/OfflineSyncModal';
 import { HealthDashboardView } from './modules/health';
+import { DemandIntelligenceView } from './modules/demandIntelligence';
 import {
   useOfflineMode,
   setManualOfflineMode,
@@ -1038,6 +1039,16 @@ function AppContent() {
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
               <HealthDashboardView onOpenOfflineModal={() => setIsOfflineSyncModalOpen(true)} />
+            </ErrorBoundary>
+          )}
+
+          {currentView === 'stock_intelligence' && (
+            <ErrorBoundary
+              fallbackTitle="Error en Inteligencia de Demanda y Stock"
+              resetKeys={[currentView]}
+              onReturnToSafeView={() => setCurrentView('quoter')}
+            >
+              <DemandIntelligenceView />
             </ErrorBoundary>
           )}
 

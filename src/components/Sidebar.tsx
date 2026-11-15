@@ -30,6 +30,7 @@ import {
   ShieldCheck,
   WifiOff,
   Activity,
+  Boxes,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { NavViewId } from '../core/store';
@@ -104,6 +105,12 @@ export function Sidebar({
       id: 'forecast' as NavViewId,
       label: 'Forecast Comercial',
       icon: Table,
+      section: 'main',
+    },
+    {
+      id: 'stock_intelligence' as NavViewId,
+      label: 'Demanda & Stock E1',
+      icon: Boxes,
       section: 'main',
     },
     {
