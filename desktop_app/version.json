@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.13.0",
-  "git_commit": "bc6da6f",
+  "version": "2.13.1",
+  "git_commit": "29de498",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-15T00:39:57.989Z",
-  "release_notes": "feat(v2.12.0): implement real-time system health monitor, deep linking (?view=health) and edge status endpoint",
+  "build_timestamp": "2026-11-15T01:58:47.632Z",
+  "release_notes": "feat(v2.13.0): implement demand intelligence, top sales, stock planner and dashboard widget",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

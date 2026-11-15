@@ -1117,7 +1117,7 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
                   </span>
                 </h3>
                 <p className="text-xs text-slate-400">
-                  Cruce holístico de Ventas Reales (BO + Forecast Ganado) vs Demanda Cotizada (Estimates + Pipeline)
+                  Cruce holístico de Ventas Reales (BO + Forecast Ganado) vs Demanda Cotizada (Estimates + Pipeline) &bull; Solo Equipos Principales (sin accesorios internos)
                 </p>
               </div>
             </div>
@@ -1170,7 +1170,7 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
             <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
               <tr>
                 <th className="px-3 py-2">#</th>
-                <th className="px-3 py-2">Part Number (Hardware)</th>
+                <th className="px-3 py-2">Part Number (Equipo Principal)</th>
                 <th className="px-3 py-2">Familia Cisco</th>
                 <th className="px-3 py-2 text-right">Venta Real</th>
                 <th className="px-3 py-2 text-right">Cotizado</th>

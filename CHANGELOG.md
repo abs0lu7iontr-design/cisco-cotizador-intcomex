@@ -6,6 +6,18 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.13.1] - 2026-11-14
+### 🛡️ Exclusión Estricta de Componentes y Accesorios Hijos en Demanda y Planificador de Stock
+- **Exclusión Determinista de Líneas Hijas ("Hijos" 1.1, 1.2, 1.3... en `demandIntelligenceService.ts`):**
+  - En Cisco CCW, los accesorios que ya vienen incluidos dentro del chasis del equipo (cables de poder `CAB-`, fuentes de poder `PWR-`, tapas ciegas `-BLANK`, kits de apilamiento `STACK-KIT`, brackets y licencias de red internas `-NW-`) se desglosan como sub-líneas hijas.
+  - Se descartan de forma estricta de las ventas de hardware y del plan de stock para Bodega E1 mediante `isMainLineItem(item.lineNumber)` y verificación de categoría de accesorios, evitando falsos pedidos de stock de componentes que ya vienen incluidos en la caja del equipo.
+- **Filtro Exclusivo de Equipos Principales en Top Hardware y Sugerencias de Stock:**
+  - Los rankings de Top Hardware y sugerencias de compra para Bodega E1 Santiago se limitan al 100% a Equipos Principales (`category === 'hardware'`), excluyendo transceivers y accesorios sueltos del plan de chasis.
+- **Clasificación Robusta de Accesorios Internos:**
+  - Detección previa de accesorios con prefijo de switch (`-STACK-KIT`, `-NM`, `-BLANK`, `-RMK`, `PWR-`, `CAB-`, `-NW-`) para garantizar que nunca se confundan con chasis principales en el motor de clasificación.
+- **Claridad de Interfaz de Usuario (`DemandIntelligenceView.tsx`, `DashboardView.tsx`):**
+  - Nuevas etiquetas y subtítulos explicitando *"Solo Equipos Principales (sin accesorios internos)"* y cabecera de tabla *"Part Number (Equipo Principal)"*.
+
 ## [v2.13.0] - 2026-11-14
 ### 📦 Inteligencia de Demanda Comercial, Top Equipos & Licencias y Planificador de Stock Sugerido (Bodega E1 Santiago)
 - **Nuevo Módulo "Demanda & Stock E1" (`DemandIntelligenceView.tsx`, `demandIntelligenceService.ts`, `demandTypes.ts`):**

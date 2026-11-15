@@ -173,7 +173,7 @@ export const DemandIntelligenceView: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Cruce multimodular de Ventas Reales (BO, Forecast) vs Demanda Cotizada (Pipeline, Estimates, CCW-R)
+              Cruce multimodular de Ventas Reales (BO, Forecast) vs Demanda Cotizada (Pipeline, Estimates, CCW-R) &bull; Solo Equipos Principales (sin accesorios ni componentes internos)
             </p>
           </div>
         </div>
@@ -313,7 +313,7 @@ export const DemandIntelligenceView: React.FC = () => {
               }`}
             >
               <PackageCheck className="w-4 h-4" />
-              <span>Top Hardware (Equipos)</span>
+              <span>Top Hardware (Equipos Principales)</span>
             </button>
 
             <button
@@ -398,7 +398,7 @@ export const DemandIntelligenceView: React.FC = () => {
             <table className="w-full text-left text-xs text-slate-300">
               <thead className="bg-slate-950/80 text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-800">
                 <tr>
-                  <th className="py-3 px-4">Part Number (BOM)</th>
+                  <th className="py-3 px-4">{activeTab === 'licenses' ? 'Part Number / SKU' : 'Part Number (Equipo Principal)'}</th>
                   <th className="py-3 px-4">Descripción</th>
                   <th className="py-3 px-4">Familia</th>
                   <th className="py-3 px-4 text-center">Ventas Reales</th>

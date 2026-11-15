@@ -15,11 +15,26 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.13.1',
+    date: '2026-11-14',
+    commit: 'fix-exclude-child-accessories-from-equipment-demand-and-stock-planner',
+    title: 'Exclusión Estricta de Componentes y Accesorios Hijos en Demanda y Planificador de Stock',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Exclusión de Líneas Hijas ("Hijos" 1.1, 1.2, 1.3...): En Cisco CCW, los accesorios que ya vienen incluidos dentro del chasis del equipo (cables de poder, fuentes, stack kits, tapas ciegas, brackets y licencias de red internas) se configuran como sub-líneas hijas. Se descartan terminantemente de las ventas de hardware y del plan de stock para Bodega E1.',
+      'Filtro Exclusivo de Equipos Principales: Los rankings de Top Hardware y sugerencias de compra para Bodega E1 Santiago se limitan al 100% a Equipos Principales (Switches, Routers, APs y Firewalls), eliminando falsos pedidos de stock de cables o fuentes ya incluidas en la caja.',
+      'Clasificación Robusta de Accesorios Internos: Detección anticipada de accesorios con prefijo de switch (-STACK-KIT, -NM, -BLANK, -RMK, PWR-, CAB-, -NW-) para que nunca se confundan con chasis principales.',
+      'Textos Claros en UI: Indicadores visuales en el módulo y en el Dashboard Widget especificando "Solo Equipos Principales (sin accesorios internos)".',
+      'Integridad de Pruebas: 28 suites de pruebas unitarias automáticas aprobadas al 100%.',
+    ],
+  },
+  {
     version: '2.13.0',
     date: '2026-11-14',
     commit: 'feat-demand-intelligence-and-stock-planner',
     title: 'Inteligencia de Demanda Comercial, Top Equipos & Licencias y Planificador de Stock Sugerido (Bodega E1)',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Módulo Integral Demanda & Stock E1 (DemandIntelligenceView): 4 vistas analíticas (Top Hardware, Top Licencias/Suscripciones, Comparativa Real vs Cotizado, y Plan de Stock Bodega E1 Santiago).',

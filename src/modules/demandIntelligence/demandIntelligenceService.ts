@@ -15,6 +15,8 @@ import { getForecastRecords } from '../forecast/forecastStorage';
 import { getPipelineDeals } from '../pipeline/pipelineStorage';
 import { getEstimatesMirrorSnapshot } from '../cloud/firestoreService';
 import { getCcwrQuoteHistory } from '../ccwrQuote/ccwrStorage';
+import { isMainLineItem } from '../../core/calculations';
+import { isCiscoAccessorySku, isMainHardwareChassisSku } from '../../core/ciscoAccessoriesCatalog';
 import ExcelJS from 'exceljs';
 
 /**
@@ -28,22 +30,39 @@ export function detectSkuFamily(
   const pn = (partNumber || '').toUpperCase().trim();
   const desc = (description || '').toUpperCase().trim();
 
-  // 1. Accesorios, Ópticas, Transceivers y Cables
-  if (
+  // 1. Accesorios, Ópticas, Transceivers, Fuentes, Cables y Componentes Internos
+  // (Detectar antes de hardware para que accesorios que compartan prefijo no se clasifiquen como chasis)
+  const isAccessory =
+    isCiscoAccessorySku(pn, desc) ||
     pn.startsWith('GLC-') ||
     pn.startsWith('SFP-') ||
     pn.startsWith('QSFP-') ||
     pn.startsWith('CAB-') ||
     pn.startsWith('PWR-') ||
     pn.startsWith('STACK-') ||
+    pn.includes('-STACK-KIT') ||
+    pn.includes('-STACK=') ||
     pn.includes('-NM-') ||
     pn.includes('-BLANK') ||
+    pn.includes('-RMK') ||
+    pn.includes('-RM-') ||
+    pn.includes('-RCKMNT') ||
+    pn.includes('-ACC-KIT') ||
+    pn.includes('-4PT-KIT') ||
     pn.startsWith('C9300-NM') ||
     pn.startsWith('C9200-NM') ||
+    pn.startsWith('MA-') ||
+    pn.startsWith('ANT-') ||
+    pn.startsWith('FAN-') ||
     desc.includes('TRANSCEIVER') ||
     desc.includes('POWER SUPPLY') ||
-    desc.includes('STACK CABLE')
-  ) {
+    desc.includes('POWER CORD') ||
+    desc.includes('STACK CABLE') ||
+    desc.includes('STACK KIT') ||
+    desc.includes('RACK MOUNT') ||
+    desc.includes('MOUNTING BRACKET');
+
+  if (isAccessory && !isMainHardwareChassisSku(pn)) {
     return { family: 'Transceivers, Óptica & Accesorios', category: 'accessory' };
   }
 
@@ -69,9 +88,13 @@ export function detectSkuFamily(
     pn.includes('-SUB') ||
     pn.includes('-SEC-') ||
     pn.includes('-ENT-') ||
+    pn.includes('-NW-') ||
+    pn.includes('-NW=') ||
     desc.includes('DNA ADVANTAGE') ||
     desc.includes('DNA ESSENTIALS') ||
     desc.includes('ENTERPRISE LICENSE') ||
+    desc.includes('NETWORK ESSENTIALS') ||
+    desc.includes('NETWORK ADVANTAGE') ||
     isIntangibleFlag
   ) {
     return { family: 'Suscripciones DNA & Cloud SaaS', category: 'license' };
@@ -181,15 +204,20 @@ export function computeStockRecommendation(
 ): StockRecommendation {
   const avgCostUsd = Math.round(avgUnitPriceUsd * 0.88); // Costo aproximado base
 
-  if (category === 'license' || category === 'service') {
+  // Exclusión estricta: Licencias, Servicios e Ítems clasificados como Accesorios
+  // Las sugerencias para Bodega E1 Santiago se concentran exclusivamente en Equipos Principales (Switches, APs, Routers, Firewalls)
+  if (category === 'license' || category === 'service' || category === 'accessory') {
+    const isDigital = category === 'license' || category === 'service';
     return {
       priority: 'NOT_APPLICABLE',
-      priorityLabel: 'No Aplica Bodega (Digital)',
+      priorityLabel: isDigital ? 'No Aplica Bodega (Digital)' : 'No Aplica Stock Principal (Accesorio)',
       suggestedUnits: 0,
-      rationale: 'Suscripción o servicio digital (Bodega ED). Se provisiona electrónicamente en Cisco CCW sin requerir espacio físico ni flete.',
+      rationale: isDigital
+        ? 'Suscripción o servicio digital (Bodega ED). Se provisiona electrónicamente en Cisco CCW sin requerir espacio físico ni flete.'
+        : 'Accesorio o componente. El plan de inventario para Bodega E1 Santiago se focaliza exclusivamente en Equipos Principales (Switches, Routers, APs y Firewalls).',
       estimatedUnitCostUsd: 0,
       estimatedTotalInvestmentUsd: 0,
-      targetBodega: 'ED',
+      targetBodega: isDigital ? 'ED' : 'E1',
     };
   }
 
@@ -307,8 +335,25 @@ export async function generateDemandIntelligenceReport(): Promise<DemandIntellig
     if (Array.isArray(est.items)) {
       for (const item of est.items) {
         if (!item.partNumber) continue;
+
+        // FILTRO ESTRICTO DE LÍNEAS HIJAS ("HIJOS") Y ACCESORIOS QUE YA VIENEN DENTRO DEL EQUIPO:
+        // En Cisco CCW, los accesorios que ya vienen incluidos dentro del chasis del equipo
+        // (fuentes de poder, cables de alimentación, tapas ciegas, kits de rack/apilamiento)
+        // se desglosan como sub-líneas hijas (1.1, 1.2, 1.3, 2.1...).
+        // Únicamente las líneas madre (1.0, 2.0, 3.0...) representan equipos principales.
+        const isMain = isMainLineItem(item.lineNumber);
+        if (!isMain && !item.isIntangible) {
+          // Descartar accesorio o componente hijo que ya viene dentro del equipo
+          continue;
+        }
+
         const entry = getOrCreateEntry(item.partNumber, item.description, item.isIntangible);
         if (!entry) continue;
+
+        // Excluir cualquier SKU clasificado como accesorio: solo queremos equipos principales en el ranking
+        if (entry.category === 'accessory') {
+          continue;
+        }
 
         const qty = Math.max(1, Number(item.qty) || 1);
         const unitPrice = Number(item.precioVentaUnitario || item.netCiscoUnit) || 0;
@@ -336,7 +381,7 @@ export async function generateDemandIntelligenceReport(): Promise<DemandIntellig
     // Check if BO notes contain specific part numbers
     const boText = `${bo.estimateId} ${bo.partnerName} ${bo.endCustomerName} ${(bo.notes || []).map((n) => n.text).join(' ')}`.toUpperCase();
 
-    // Look for common Cisco switches or APs mentioned in BO
+    // Look for common Cisco switches or APs mentioned in BO (Solo equipos principales, sin accesorios)
     const knownPns = [
       'C9200L-24P-4G-E',
       'C9200L-48P-4G-E',
@@ -348,8 +393,6 @@ export async function generateDemandIntelligenceReport(): Promise<DemandIntellig
       'MR36-HW',
       'CW9164I-A',
       'C9115AXI-A',
-      'GLC-TE',
-      'SFP-10G-SR',
     ];
 
     for (const pn of knownPns) {
@@ -472,9 +515,9 @@ export async function generateDemandIntelligenceReport(): Promise<DemandIntellig
     });
   }
 
-  // Sort and Partition
+  // Sort and Partition: Solo equipos de hardware reales (Switches, APs, Routers, Firewalls) - SIN accesorios ni componentes hijos
   const topHardwareItems = allItems
-    .filter((x) => x.category === 'hardware' || x.category === 'accessory')
+    .filter((x) => x.category === 'hardware')
     .sort((a, b) => b.realSoldUnits - a.realSoldUnits || b.totalDemandUnits - a.totalDemandUnits);
 
   const topLicenseItems = allItems
