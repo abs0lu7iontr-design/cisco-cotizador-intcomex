@@ -119,7 +119,7 @@ export function Sidebar({
     },
     {
       id: 'configuriator' as NavViewId,
-      label: 'ConfigurIAtor (AI BOM)',
+      label: 'Preventa IA',
       icon: Bot,
       section: 'main',
     },

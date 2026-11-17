@@ -29,6 +29,7 @@ import {
   ShieldCheck,
   FileSpreadsheet,
   ArrowRight,
+  ArrowLeftRight,
   X,
   Globe,
   Cpu,
@@ -100,7 +101,9 @@ import {
   AiDiscrepancyCard,
   CcwPreviewTable,
   ApiManagementModal,
+  HomologationComparisonCard,
 } from './components';
+import { generateHomologationComparison } from './competitorHomologationRules';
 
 export interface ConfiguriatorViewProps {
   isNavSidebarOpen?: boolean;
@@ -144,6 +147,7 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
   // Orden de prioridad para las 3+ propuestas homologadas (Mejor Descuento + Mayor % Compatibilidad)
   const [proposalSortMode, setProposalSortMode] = useState<ProposalPrioritySortMode>('priority_optimal');
   const [expandedProposalsByIdx, setExpandedProposalsByIdx] = useState<Record<number, boolean>>({});
+  const [showHomologationComparisonByIdx, setShowHomologationComparisonByIdx] = useState<Record<number, boolean>>({});
   const [showComplianceDetails, setShowComplianceDetails] = useState<boolean>(false);
   const [fastTrackDiscountMap, setFastTrackDiscountMap] = useState<
     Record<string, { discountPct: number; listPrice?: number }>
@@ -962,9 +966,9 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
     const record: CloudEstimateRecord = {
       dealId: `BOM-${cleanClient.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) || 'CCW'}`,
       estimateId,
-      partnerName: 'ConfigurIAtor Pre-Costeo GPL',
+      partnerName: 'Preventa IA Pre-Costeo GPL',
       clientFinalName: cleanClient,
-      originalFileName: `ConfigurIAtor_${cleanClient.replace(/\s+/g, '_')}_GPL.xlsx`,
+      originalFileName: `Preventa_IA_${cleanClient.replace(/\s+/g, '_')}_GPL.xlsx`,
       createdAt: new Date().toISOString(),
       creator: {
         username: currentUser?.username || 'preventa',
@@ -982,7 +986,7 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
         params: quoterParams || { internacionPct: 7, arancelPct: 6, margenPct: 5 },
       },
       headerInfo: {
-        customerName: 'ConfigurIAtor Pre-Costeo GPL',
+        customerName: 'Preventa IA Pre-Costeo GPL',
         companyName: cleanClient,
         address: '',
         city: 'Santiago',
@@ -1230,10 +1234,10 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
-                ConfigurIAtor
+                Preventa IA
               </h2>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-950 text-indigo-300 border border-indigo-700/50">
-                Arquitecto Preventa Cisco &bull; CCW 2026
+                Arquitecto Preventa Cisco &bull; Homologación e Ingeniería CCW 2026
               </span>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-700/40">
                 🇨🇱 Norma Chile (CAB-IT)
@@ -1243,7 +1247,7 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Dimensionamiento preventa y jerarquía Madre-Hijo (Catalyst, Meraki, IE, UCS M7, Nexus, FPR, Colab)
+              Dimensionamiento preventa, homologación de marcas rivales (Aruba, Fortinet, Huawei, Dell, etc.) y jerarquía Madre-Hijo CCW
             </p>
           </div>
         </div>
@@ -1570,7 +1574,7 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
               rows={6}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Escribe o pega aquí el requerimiento del cliente en lenguaje natural (ej: 'Cotizar 1 switch Meraki MS210-48FP a 3 años', '2 switches industriales IE PoE, 1 servidor UCS M7 y 15 teléfonos IP') o pega un pantallazo con Ctrl + V..."
+              placeholder="Escribe o pega aquí el requerimiento en lenguaje natural o equipo a homologar (ej: 'Homologar switch Aruba CX 6200F 24G PoE+ a Cisco', 'Fortigate 60F', 'Huawei S5735-L48P4X', 'Cotizar switch Meraki MS130-24P') o pega un pantallazo con Ctrl + V..."
               className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 leading-relaxed resize-y"
             />
           </div>
@@ -2057,6 +2061,7 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                   const isSingleProductRequest = extractionResult.items.length === 1;
                   const showProposalsPanel =
                     isSingleProductRequest ||
+                    Boolean(item.isCompetitorBrand) ||
                     Boolean(item.isEol2026) ||
                     Boolean(item.isNonExistentSku) ||
                     Boolean(parentRow?.wasReplacedFromEol) ||
@@ -2133,6 +2138,16 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                             {parentRow?.resolvedChildModel && (
                               <span className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-200 border border-indigo-600/40 font-mono text-xs font-bold">
                                 &rarr; Hijo 1.1: {parentRow.resolvedChildModel}
+                              </span>
+                            )}
+
+                            {/* Badge Homologación Multi-Marca Competidor */}
+                            {item.isCompetitorBrand && (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-950 text-emerald-200 border border-emerald-500/80 flex items-center gap-1 shadow-sm">
+                                <ArrowLeftRight className="w-3 h-3 text-emerald-400" />
+                                <span>
+                                  Homologación Multi-Marca: {item.competitorBrand || 'Competidor'} ({item.competitorModel || item.rawMentionedSku}) &rarr; Cisco
+                                </span>
                               </span>
                             )}
 
@@ -2325,6 +2340,29 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
 
                           <button
                             type="button"
+                            onClick={() =>
+                              setShowHomologationComparisonByIdx((prev) => ({
+                                ...prev,
+                                [idx]: prev[idx] === undefined ? !item.isCompetitorBrand : !prev[idx],
+                              }))
+                            }
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border flex items-center gap-1.5 cursor-pointer transition-all ${
+                              (showHomologationComparisonByIdx[idx] ?? item.isCompetitorBrand)
+                                ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/60 shadow-sm shadow-emerald-950/40 ring-1 ring-emerald-400/30'
+                                : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700 hover:border-emerald-500/50'
+                            }`}
+                            title="Ver comparativa técnica de homologación lado a lado con lo más relevante de cada equipo"
+                          >
+                            <ArrowLeftRight className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>
+                              {(showHomologationComparisonByIdx[idx] ?? item.isCompetitorBrand)
+                                ? 'Ocultar Comparativa'
+                                : 'Comparativa de Homologación'}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={() => removeParentItem(idx)}
                             className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
                             title="Eliminar este bloque Madre-Hijo"
@@ -2333,6 +2371,29 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                           </button>
                         </div>
                       </div>
+
+                      {/* ============================================================================
+                          COMPARATIVA DE HOMOLOGACIÓN TÉCNICA (COMPETIDORES U HOMOLOGACIÓN SOLICITADA)
+                          Muestra comparativa lado a lado con lo más relevante de cada uno para
+                          saber si está bien homologado, preservando el % de homologación.
+                         ============================================================================ */}
+                      {(item.isCompetitorBrand || showHomologationComparisonByIdx[idx]) && (
+                        <div className="mb-3">
+                          <HomologationComparisonCard
+                            comparison={generateHomologationComparison({
+                              rawCompetitorText: item.competitorModel || item.rawMentionedSku,
+                              selectedCiscoSku: effectiveHardwareSku,
+                              homologationPct:
+                                itemProposals.find(
+                                  (p) =>
+                                    p.recommendedSku.toUpperCase() === effectiveHardwareSku.toUpperCase() ||
+                                    p.recommendedSku.toUpperCase() === activeSku.toUpperCase()
+                                )?.compatibilityPct ?? 100,
+                            })}
+                            initiallyExpanded={true}
+                          />
+                        </div>
+                      )}
 
                       {/* ============================================================================
                           PANEL DE 3+ PROPUESTAS HOMOLOGADAS CON VALOR GPL (SIN DESCUENTOS) Y ORDEN DE PRIORIDAD

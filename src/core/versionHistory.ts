@@ -15,11 +15,29 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.16.0',
+    date: '2026-11-17',
+    commit: 'feat-preventa-ia-competitor-homologation-comparison',
+    title: 'Módulo Preventa IA: Comparativa Técnica de Homologación de Marcas Rivales y Rebranding Oficial',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Rebranding Oficial a "Preventa IA": El módulo anteriormente denominado "ConfigurIAtor" pasa a llamarse formalmente "Preventa IA" en toda la interfaz (barra lateral, encabezados, asistentes, tooltips y modales de conectividad).',
+      'Comparativa Técnica de Homologación Lado a Lado: Al ingresar un equipo de otra marca (Aruba/HPE, Fortinet, Huawei, Dell, Juniper, Ubiquiti, MikroTik, Palo Alto o Extreme), el sistema despliega una tarjeta ejecutiva interactiva con la comparativa detallada de lo más relevante de cada equipo.',
+      'Auditoría de 10 Criterios Clave: Evaluación técnica rigurosa de Arquitectura, Puertos de Acceso (Downlinks), Uplinks de Fibra (1G/10G), Presupuesto Eléctrico PoE (W), Nivel de Enrutamiento L2/L3, Rendimiento de Switching (Gbps/Mpps), Apilamiento Hardware (StackWise), Gestión Cloud, Fuente de Poder con Norma Chile (CAB-IT) y Garantía/Soporte Oficial Intcomex.',
+      'Preservación del % de Homologación: Se mantiene y resalta visualmente el porcentaje de compatibilidad técnica (ej. 100% Homologado), asegurando certeza técnica inmediata para saber si el equipo está correctamente dimensionado.',
+      'Veredicto Técnico y Dictamen Preventa: Redacción ejecutiva automática que valida la viabilidad del reemplazo y lista las ventajas clave de Cisco para licitaciones y propuestas comerciales.',
+      'Copiado Rápido para Propuestas: Botón directo "Copiar Comparativa" que genera un informe estructurado listo para pegar en correos Outlook, cotizaciones formales o pliegos de licitación.',
+      'Detección Automática Multi-Marca: Motor inteligente que reconoce automáticamente modelos por Part Number (ej. JL726A, FG-60F, S5735-L48P4X) o mediante lenguaje natural.',
+      'Suite de Pruebas Unitarias al 100%: Incorporada la suite tests/preventaIaHomologation.test.ts con 33 suites de pruebas automatizadas aprobadas con éxito.',
+    ],
+  },
+  {
     version: '2.15.3',
     date: '2026-11-17',
     commit: 'fix-silent-cloud-auth-and-remove-login-legends',
     title: 'Validación de Credenciales 100% Silenciosa en la Nube y Retiro de Leyendas en Pantalla de Login',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Validación de Credenciales 100% Silenciosa: Eliminación de la leyenda visual "Validación 100% en Firestore Cloud. Las contraseñas no se almacenan en el PC." al pie del formulario de inicio de sesión.',

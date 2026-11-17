@@ -1015,7 +1015,7 @@ function AppContent() {
 
           {currentView === 'configuriator' && (
             <ErrorBoundary
-              fallbackTitle="Error en ConfigurIAtor (AI BOM Generator)"
+              fallbackTitle="Error en Preventa IA (AI BOM & Homologador)"
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >

@@ -6,3 +6,4 @@ export * from './PoeBudgetCard';
 export * from './AiDiscrepancyCard';
 export * from './CcwPreviewTable';
 export * from './ApiManagementModal';
+export * from './HomologationComparisonCard';

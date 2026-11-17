@@ -6,6 +6,32 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.16.0] - 2026-11-17
+### 🤖 Rebranding a "Preventa IA" & Comparativa Técnica de Homologación de Marcas Rivales
+- **Rebranding Oficial del Módulo a "Preventa IA":**
+  - El módulo anteriormente denominado *"ConfigurIAtor"* pasa a llamarse formalmente **"Preventa IA"** en todos los puntos de contacto de la aplicación: barra lateral de navegación (`Sidebar.tsx`), encabezado principal y barra de herramientas (`ConfiguriatorView.tsx`), modales de conectividad online (`OnlineRequirementModal.tsx`) y ajustes del sistema (`SettingsView.tsx`).
+- **Comparativa Técnica de Homologación Lado a Lado (`HomologationComparisonCard.tsx`):**
+  - Al ingresar un equipo de otra marca (Aruba/HPE, Fortinet, Huawei, Dell, Juniper, Ubiquiti, MikroTik, Palo Alto, Extreme Networks, etc.) para su sustitución u homologación, el sistema despliega automáticamente una tarjeta interactiva con la comparativa detallada de especificaciones entre el equipo rival y la propuesta oficial Cisco 2026.
+  - Se evalúan lado a lado los 10 aspectos técnicos más relevantes para validar la homologación:
+    1. *Tipo & Arquitectura de Equipo*
+    2. *Puertos de Acceso (Downlinks cobre/PoE)*
+    3. *Uplinks de Fibra Óptica (1G/10G/25G SFP+)*
+    4. *Presupuesto Eléctrico PoE y Capacidad en Watts*
+    5. *Nivel de Enrutamiento (Layer 2 vs Layer 3 / OSPF / BGP / Dynamic Routing)*
+    6. *Capacidad de Conmutación & Throughput de Reenvío (Gbps / Mpps)*
+    7. *Capacidad de Apilamiento / Hardware Stacking (StackWise)*
+    8. *Gestión Cloud & Telemetría (Catalyst Center & Meraki Dashboard)*
+    9. *Fuente de Poder y Conector Norma Chilena (CAB-IT / CAB-ACA)*
+    10. *Garantía Oficial de por Vida (E-LLW) & Soporte Intcomex (SmartNet Total Care)*
+- **Preservación del % de Homologación Técnica:**
+  - Se mantiene y destaca visualmente el porcentaje de compatibilidad y homologación (ej. *100% Homologación Técnica*), asegurando que el preventa o PM conozca con certeza matemática si la solución cubre o supera el requerimiento del cliente o pliego de licitación.
+- **Dictamen Técnico y Ventajas Competitivas:**
+  - El módulo genera un veredicto formal redactado por el Arquitecto Preventa IA certificando la equivalencia y destacando las ventajas competitivas de Cisco para su defensa en propuestas comerciales.
+- **Botón de Copiado Rápido:**
+  - Botón integrado *"Copiar Comparativa"* para exportar instantáneamente el informe técnico al portapapeles en formato limpio, listo para pegar en correos de Outlook o propuestas comerciales.
+- **Suite de Pruebas Unitarias al 100% (`tests/preventaIaHomologation.test.ts`):**
+  - Nueva suite automatizada que valida la detección de competidores, la generación de comparativas de 10 criterios, la preservación del % de homologación y la extracción en lenguaje natural. 33 suites de pruebas pasando al 100%.
+
 ## [v2.15.3] - 2026-11-17
 ### 🤫 Validación de Credenciales 100% Silenciosa en la Nube y Retiro de Leyendas en Login
 - **Retiro de Leyenda Visual en Pantalla de Login (`LoginScreen.tsx`):**

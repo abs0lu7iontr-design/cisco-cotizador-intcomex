@@ -28,6 +28,10 @@ import {
   SubItemConfig,
   PowerCordStandard,
 } from './catalogRules';
+import {
+  detectCompetitorEquipment,
+  generateHomologationComparison,
+} from './competitorHomologationRules';
 
 export interface ExtractedRequirementItem {
   id?: string;
@@ -73,6 +77,9 @@ export interface ExtractedRequirementItem {
   discountPct?: number;      // % de Descuento detectado o analizado
   serviceLevel?: string;
   notes?: string;
+  isCompetitorBrand?: boolean; // true si proviene de una marca rival (Aruba, Fortinet, Huawei, etc.) para homologar
+  competitorBrand?: string;
+  competitorModel?: string;
   aiSubItems?: SubItemConfig[]; // Sub-líneas Hijo sugeridas por la IA para ensamblaje Madre-Hijo
 }
 
@@ -111,7 +118,7 @@ export interface ExtractedRequirementResult {
 }
 
 const SYSTEM_INSTRUCTION = `
-Eres el Arquitecto Senior de Preventa Técnica "ConfigurIAtor" de Cisco e Intcomex Chile (Año 2026).
+Eres el Arquitecto Senior de Preventa Técnica "Preventa IA" de Cisco e Intcomex Chile (Año 2026).
 Tu prioridad absoluta es comprender solicitudes en LENGUAJE NATURAL (correos, chats, requerimientos técnicos, frases imprecisas o coloquiales) o CAPTURAS DE PANTALLA / FOTOS (tablas CCW, cotizaciones, diagramas, listas de equipos) de CUALQUIER familia del portafolio completo de Cisco y Meraki, y transformarlas en una estructura jerárquica **MADRE-HIJO (Parent-Child Assembly)** 100% compatible con Cisco Commerce Workspace (CCW) y 100% VIGENTE EN 2026 (CERO SKUs con End-of-Sale / EOL).
 
 REGLAS OBLIGATORIAS DE COHERENCIA TÉCNICA, DEDUCCIÓN PREVENTA ANTE SOLICITUDES IMPRECISAS, REVISIÓN EOL (CISCO & MERAKI), VALORES DE LISTA Y PREVENTA CCW CHILE (2026):
@@ -135,6 +142,13 @@ REGLAS OBLIGATORIAS DE COHERENCIA TÉCNICA, DEDUCCIÓN PREVENTA ANTE SOLICITUDES
       * B.2) **"c9300 24 poe" / "c9300 24" / "catalyst 9300 24 poe" / "c9300 de 24 poe"**:
         -> Si el cliente pide "Advantage" o "avantage" o "Capa 3": Deducir Catalyst 9300 modular 24P PoE+ Advantage: **"C9300-24P-A"** (con módulo uplink C9300-NM-8X, cable stack STACK-T1-50CM, fuente PWR-C1-715WAC-P y licencia C9300-DNA-A-24-3Y).
         -> Si pide Essentials o no especifica licencia: Deducir **"C9300L-24P-4X-E"** (o **"C9300-24P-E"** modular). Sub-hijos: "C9300-DNA-E-24-3Y", "PWR-C1-715WAC-P", "CAB-TA-IT" y "C9300-NW-E-24". NUNCA configurar 48 puertos si el cliente pidió 24 puertos.
+
+0.2 REGLA #0.2 — HOMOLOGACIÓN TÉCNICA MULTI-MARCA (COMPETIDORES A CISCO 2026):
+   - Cuando el cliente o preventa solicite homologar o reemplazar un equipo de OTRA MARCA (Aruba/HPE, Fortinet, Huawei, Dell, Juniper, Ubiquiti, MikroTik, Palo Alto, Extreme, etc.):
+     * Identifica con precisión la marca ("competitorBrand") y el modelo exacto del competidor ("competitorModel").
+     * Marca "isCompetitorBrand": true.
+     * Deduce y homologa al modelo oficial Cisco 2026 más idéntico o superior ("suggestedActiveSku") en densidad de puertos, PoE, uplinks 10G y routing L2/L3.
+     * En "notes" detalla: "Homologación Preventa IA: [Marca Rival Modelo] -> [Cisco SKU] (100% Homologación Técnica)."
      * C) **Mención de "con fibra", "enlace fibra", "10G", "SFP+"**:
        -> Deducir switch con uplinks 4x10G SFP+: **"C9200L-24P-4X-E"** o **"C9200L-48P-4X-E"** (o C9300 con C9300-NM-8X) y sugerir transceivers vigentes "SFP-10G-SR-S".
      * D) **Dimensionamiento por Puestos / Usuarios (ej. "oficina para 15 usuarios", "sucursal 20 personas")**:
@@ -990,6 +1004,43 @@ export function extractWithLocalDeterministicEngine(text: string): ExtractedRequ
       return;
     }
 
+    // Detección de Marcas Competidoras para Homologación Técnica Preventa IA
+    const compDetection = detectCompetitorEquipment(seg);
+    if (compDetection.isCompetitor) {
+      const suggestedSku = compDetection.suggestedCiscoSku || 'C9200L-24P-4X-E';
+      const ports: 8 | 16 | 24 | 48 = contextPorts || (suggestedSku.includes('48') ? 48 : 24);
+      const isPoe = !/\bsin\s+poe\b|\bsolo\s+datos\b/i.test(seg);
+
+      extractedItems.push({
+        id: `item-${Date.now()}-${idx}-comp`,
+        rawMentionedSku: compDetection.detectedModel || seg.trim(),
+        suggestedActiveSku: suggestedSku,
+        isEol2026: false,
+        deviceType: compDetection.detectedBrand === 'Fortinet' && /firewall|fg/i.test(seg) ? 'firewall' : 'switch',
+        ports,
+        isPoe,
+        uplinkType: suggestedSku.includes('4X') ? '10G' : '1G',
+        licenseTier,
+        termYears,
+        quantity,
+        includeStacking,
+        includeRedundantPsu,
+        includeSmartNet,
+        smartNetLevel,
+        powerCordStandard,
+        clientRequestedPowerCord,
+        clientPowerCordLabel,
+        merakiLicenseMode,
+        unitListPriceUsd,
+        discountPct,
+        isCompetitorBrand: true,
+        competitorBrand: compDetection.detectedBrand,
+        competitorModel: compDetection.detectedModel,
+        notes: `Homologación Multi-Marca Preventa IA: ${compDetection.detectedBrand} (${compDetection.detectedModel}) homologado a Cisco ${suggestedSku} (100% Homologación Técnica).`,
+      });
+      return;
+    }
+
     const skuMatches = Array.from(seg.matchAll(skuRegex));
     if (skuMatches.length > 0) {
       for (const m of skuMatches) {
@@ -1416,6 +1467,17 @@ export function postProcessExtractedResult(
   const processedItems = (result.items || []).map((item, idx) => {
     const lineContext = inputLines[idx] || '';
     const itemContext = `${lineContext} ${item.rawMentionedSku || ''} ${item.notes || ''}`;
+
+    // Detección de marcas competidoras para homologación multi-marca Preventa IA
+    const compCheck = detectCompetitorEquipment(item.rawMentionedSku || lineContext || itemContext || '');
+    if (compCheck.isCompetitor) {
+      item.isCompetitorBrand = true;
+      item.competitorBrand = item.competitorBrand || compCheck.detectedBrand;
+      item.competitorModel = item.competitorModel || compCheck.detectedModel;
+      if (!item.suggestedActiveSku && compCheck.suggestedCiscoSku) {
+        item.suggestedActiveSku = compCheck.suggestedCiscoSku;
+      }
+    }
     const contextHasAdvantage = /\b(?:advantage|avantage|advanatage|capa\s*3|bgp|ospf)\b/i.test(itemContext);
     const tier: 'Essentials' | 'Advantage' =
       (item.licenseTier === 'Advantage' || contextHasAdvantage) ? 'Advantage' : 'Essentials';

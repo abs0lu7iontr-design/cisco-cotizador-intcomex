@@ -731,12 +731,12 @@ export function SettingsView({
         </div>
       </div>
 
-      {/* ConfigurIAtor AI & Multi-Provider API Pool */}
+      {/* Preventa IA & Multi-Provider API Pool */}
       <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2.5 text-cyan-400 font-bold text-xs uppercase tracking-wider">
             <Bot className="w-4 h-4" />
-            <span>ConfigurIAtor AI &bull; Pool Multi-API (Gemini, OpenRouter Free, Groq Free, DeepSeek)</span>
+            <span>Preventa IA &bull; Pool Multi-API (Gemini, OpenRouter Free, Groq Free, DeepSeek)</span>
           </div>
           <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-700/40">
             {aiSettings.keys.length} Key(s) en rotación

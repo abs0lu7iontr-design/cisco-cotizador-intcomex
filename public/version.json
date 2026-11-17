@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.15.3",
-  "git_commit": "3d425d6",
+  "version": "2.16.0",
+  "git_commit": "13c011a",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-17T10:09:16.741Z",
-  "release_notes": "feat(v2.15.2): auto-dismiss offline banner, prompt to switch online on cloud features, and show clean actual dollar without +10",
+  "build_timestamp": "2026-11-17T10:57:55.964Z",
+  "release_notes": "fix(v2.15.3): silent cloud credentials validation and remove login screen legends",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

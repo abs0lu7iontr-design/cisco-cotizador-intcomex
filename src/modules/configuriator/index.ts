@@ -3,3 +3,4 @@ export * from './aiProviderManager';
 export * from './aiBomExtractor';
 export * from './ccwExcelGenerator';
 export * from './ConfiguriatorView';
+export * from './competitorHomologationRules';
