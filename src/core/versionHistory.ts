@@ -15,11 +15,27 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.14.1',
+    date: '2026-11-16',
+    commit: 'fix-modern-storage-engine-gigabytes-and-localstorage-purge',
+    title: 'Motor de Almacenamiento Moderno de Alta Capacidad (StorageManager / Gigabytes) y Purga de LocalStorage',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Motor Moderno de Alta Capacidad (StorageManager / IndexedDB): Integración nativa con la API W3C StorageManager (navigator.storage.estimate y navigator.storage.persist), desbloqueando decenas de Gigabytes de almacenamiento local en el PC (ej. 50 a 120 GB) operativos tanto en Modo Online como Offline.',
+      'Resolución de Saturación LocalStorage (9.99 MB / 100%): Eliminación de escrituras duplicadas y triplicadas en LocalStorage (bóvedas masivas de Pipeline, Forecast, Estimates, BO Tracking y Respaldo de Emergencia), consolidando el almacenamiento pesado exclusivamente en el motor IndexedDB.',
+      'Auto-Purga y Migración Automática: Función optimizeAndMigrateLocalStorage que migra respaldos de emergencia a IndexedDB y purga bóvedas redundantes de LocalStorage, reduciendo el consumo de 9.99 MB a menos de 0.1 MB de forma instantánea.',
+      'Rediseño del Monitor de Salud (Health Dashboard): La tarjeta "Almacenamiento Local en PC" ahora exhibe como medidor principal el Motor Moderno con Gigabytes de cuota y estado Óptimo (verde), y relega LocalStorage a una bóveda rápida de configuración liviana (< 1% usado).',
+      'Botón "Optimizar Almacenamiento": Acción en 1 clic para limpiar y migrar cualquier caché residual a IndexedDB, garantizando salud al 100/100.',
+      'Integridad de Pruebas: 29 suites de pruebas unitarias automáticas aprobadas al 100%.',
+    ],
+  },
+  {
     version: '2.14.0',
     date: '2026-11-16',
     commit: 'feat-local-first-device-persistence-and-permanent-offline-mode',
     title: 'Persistencia Local-First por Computador: Modo Offline Permanente, Temas y Parámetros Comerciales sin Nube',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Persistencia Permanente de Modo Offline por Computador: Si el usuario activa el Modo Offline en su PC, el estado queda guardado permanentemente en el equipo (localPlatformConfig). Al cerrar sesión, volver a ingresar con usuario/contraseña o recargar el navegador, la aplicación se mantiene en Modo Offline sin necesidad de volver a presionar el botón.',

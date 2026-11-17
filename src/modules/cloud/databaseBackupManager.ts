@@ -22,6 +22,7 @@ import { getFirestoreInstance } from './firebaseConfig';
 import { doc, setDoc } from 'firebase/firestore';
 import { downloadBlobSafe } from '../../utils/downloadHelper';
 import { APP_VERSION } from '../../core/appVersion';
+import { idbSet, idbGet, STORES } from '../../core/storage/indexedDbStorage';
 
 export type BackupCollectionName =
   | 'estimates'
@@ -366,13 +367,19 @@ export function exportAllDatabasesSnapshot(user: string = 'mskill'): CiscoDataba
 }
 
 /**
- * Guarda una copia de seguridad rodante (rolling emergency backup) en LocalStorage.
+ * Guarda una copia de seguridad rodante (rolling emergency backup) en el motor moderno IndexedDB de alta capacidad.
+ * Elimina la necesidad de almacenar el snapshot masivo en LocalStorage (evitando saturar el límite de 5 MB).
  */
 export function saveRollingEmergencyBackup(): void {
   try {
-    if (typeof localStorage === 'undefined') return;
     const snapshot = exportAllDatabasesSnapshot('auto_scheduler');
-    localStorage.setItem(EMERGENCY_BACKUP_KEY, JSON.stringify(snapshot));
+    // Guardar en motor moderno IndexedDB (sin límite de 5 MB)
+    idbSet(STORES.KEYVAL, 'cisco_emergency_vault_backup_v2', snapshot).catch(() => {});
+
+    // Limpiar snapshot pesado de LocalStorage para liberar espacio
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(EMERGENCY_BACKUP_KEY);
+    }
   } catch (_) {}
 }
 
@@ -381,11 +388,34 @@ export function saveRollingEmergencyBackup(): void {
  */
 export function checkAndAutoHealFromEmergencyBackup(): boolean {
   try {
-    if (typeof localStorage === 'undefined') return false;
-    const raw = localStorage.getItem(EMERGENCY_BACKUP_KEY);
-    if (!raw) return false;
+    let backup: CiscoDatabaseMasterBackup | null = null;
 
-    const backup: CiscoDatabaseMasterBackup = JSON.parse(raw);
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(EMERGENCY_BACKUP_KEY);
+      if (raw) {
+        try {
+          backup = JSON.parse(raw);
+        } catch {}
+      }
+    }
+
+    // Si aún no se lee sincrónicamente y existe en IndexedDB, se agenda la restauración asíncrona
+    if (!backup) {
+      idbGet<CiscoDatabaseMasterBackup>(STORES.KEYVAL, 'cisco_emergency_vault_backup_v2').then((idbBackup) => {
+        if (idbBackup && idbBackup.data) {
+          const currentBo = getLocalBoTrackingCache();
+          if (currentBo.length === 0 && (idbBackup.data.boOrders?.length || 0) > 0) {
+            saveLocalBoTrackingCache(idbBackup.data.boOrders!);
+          }
+          const currentDeals = getLocalDealRemindersCache();
+          if (currentDeals.length === 0 && (idbBackup.data.dealReminders?.length || 0) > 0) {
+            saveLocalDealRemindersCache(idbBackup.data.dealReminders!);
+          }
+        }
+      }).catch(() => {});
+      return false;
+    }
+
     if (!backup || !backup.data) return false;
 
     const currentBo = getLocalBoTrackingCache();

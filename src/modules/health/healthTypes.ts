@@ -18,11 +18,26 @@ export interface HealthCheckResult {
 }
 
 export interface StorageHealthMetrics {
+  // Motor Moderno de Alta Capacidad (IndexedDB / StorageManager - Gigabytes)
+  storageManagerSupported: boolean;
+  storageManagerUsageBytes: number;
+  storageManagerQuotaBytes: number;
+  storageManagerUsageFormatted: string;
+  storageManagerQuotaFormatted: string;
+  storageManagerPct: number;
+  isPersistentStorage: boolean;
+  storageEngineName: string;
+
+  // Bóveda Rápida de Preferencias (LocalStorage - Límite estándar 5 MB)
   localStorageBytes: number;
   localStorageFormatted: string;
   localStoragePct: number;
+
+  // Estado IndexedDB
   indexedDbSupported: boolean;
   indexedDbReady: boolean;
+
+  // Cola y sincronización offline
   offlineQueueCount: number;
   offlineQueueFailedCount: number;
   tombstonesCount: number;

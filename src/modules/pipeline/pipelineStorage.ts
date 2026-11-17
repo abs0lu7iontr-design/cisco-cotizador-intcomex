@@ -179,7 +179,6 @@ async function persistDurableDeals(
   try {
     const serialized = JSON.stringify(deals);
     writeProjectScopedStorage(LOCAL_PIPELINE_PRIMARY_KEY, serialized, projectScope);
-    writeProjectScopedStorage(LOCAL_PIPELINE_VAULT_KEY, serialized, projectScope);
   } catch {
     // QuotaExceededError en localStorage no afecta la durabilidad en IndexedDB
   }

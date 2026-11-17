@@ -21,6 +21,11 @@ import {
   applyFrontendUsdClpSpread,
 } from '../../core/chileanExchangeRateService';
 import { getFormattedAppVersion, APP_VERSION } from '../../core/appVersion';
+import {
+  getModernStorageQuota,
+  optimizeAndMigrateLocalStorage,
+  formatStorageBytes,
+} from '../../core/storage/modernStorageEngine';
 import { collection, getDocs, limit, query } from 'firebase/firestore';
 
 const SESSION_START_TIME = Date.now();
@@ -221,16 +226,14 @@ export async function checkStorageHealth(): Promise<{
   result: HealthCheckResult;
   metrics: StorageHealthMetrics;
 }> {
-  const ls = getLocalStorageMetrics();
-  let idbSupported = typeof window !== 'undefined' && 'indexedDB' in window;
-  let idbReady = false;
+  const [modernQuota, db] = await Promise.all([
+    getModernStorageQuota(),
+    getIndexedDb().catch(() => null),
+  ]);
 
-  try {
-    const db = await getIndexedDb();
-    idbReady = !!db;
-  } catch {
-    idbReady = false;
-  }
+  const ls = getLocalStorageMetrics();
+  const idbSupported = typeof window !== 'undefined' && 'indexedDB' in window;
+  const idbReady = !!db;
 
   let queueSummary = { items: [], byModule: {}, total: 0 };
   try {
@@ -247,6 +250,14 @@ export async function checkStorageHealth(): Promise<{
   } catch {}
 
   const metrics: StorageHealthMetrics = {
+    storageManagerSupported: modernQuota.isSupported,
+    storageManagerUsageBytes: modernQuota.usageBytes,
+    storageManagerQuotaBytes: modernQuota.quotaBytes,
+    storageManagerUsageFormatted: modernQuota.usageFormatted,
+    storageManagerQuotaFormatted: modernQuota.quotaFormatted,
+    storageManagerPct: modernQuota.pctUsed,
+    isPersistentStorage: modernQuota.isPersisted,
+    storageEngineName: modernQuota.engine,
     localStorageBytes: ls.bytes,
     localStorageFormatted: ls.formatted,
     localStoragePct: ls.pct,
@@ -258,14 +269,16 @@ export async function checkStorageHealth(): Promise<{
   };
 
   let status: HealthStatusLevel = 'healthy';
-  let message = `Almacenamiento en PC óptimo. IndexedDB listo y LocalStorage al ${ls.pct}%.`;
+  let message = `Motor IndexedDB operativo con ${modernQuota.quotaFormatted} de capacidad (${modernQuota.usageFormatted} en uso). LocalStorage en ${ls.formatted}.`;
 
   if (!idbReady) {
     status = 'critical';
     message = 'IndexedDB no está disponible en este navegador. Se opera en modo degradado.';
-  } else if (ls.pct > 80) {
+  } else if (modernQuota.pctUsed > 85) {
     status = 'degraded';
-    message = `LocalStorage cercano al límite estándar (${ls.pct}% usado). Se recomienda limpiar caché.`;
+    message = `Almacenamiento de alta capacidad cercano al límite (${modernQuota.pctUsed}% usado).`;
+  } else if (ls.pct > 95) {
+    message = `Motor IndexedDB de alta capacidad óptimo (${modernQuota.quotaFormatted}). Bóveda LocalStorage con caché residual (${ls.pct}%); se recomienda optimizar.`;
   } else if (queueSummary.total > 15) {
     status = 'degraded';
     message = `Hay ${queueSummary.total} operaciones en cola local esperando sincronización con la nube.`;
@@ -273,7 +286,7 @@ export async function checkStorageHealth(): Promise<{
 
   const result: HealthCheckResult = {
     id: 'storage',
-    name: 'Almacenamiento Local del PC (IndexedDB & Bóveda)',
+    name: 'Almacenamiento Local del PC (Motor Moderno IndexedDB & Bóveda)',
     category: 'storage',
     status,
     latencyMs: 1,
@@ -464,7 +477,7 @@ export async function runAllHealthChecks(): Promise<SystemHealthReport> {
 }
 
 /**
- * Utility: Safely frees residual localStorage cache keys (e.g. old temporary exports, stale query logs)
+ * Utility: Safely frees residual localStorage cache keys and consolidates oversized vaults into IndexedDB.
  */
 export function repairStorageCache(): { clearedKeys: number; freedBytes: number } {
   let clearedKeys = 0;
@@ -475,7 +488,19 @@ export function repairStorageCache(): { clearedKeys: number; freedBytes: number 
       const keysToClear: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && (key.startsWith('temp_') || key.startsWith('cache_log_') || key.includes('_debug_'))) {
+        if (!key) continue;
+        const val = localStorage.getItem(key) || '';
+
+        // 1. Claves temporales y de depuración
+        if (key.startsWith('temp_') || key.startsWith('cache_log_') || key.includes('_debug_')) {
+          keysToClear.push(key);
+        }
+        // 2. Claves de respaldo masivo o duplicados sobredimensionados (> 50 KB) que ya residen en IndexedDB
+        else if (
+          key === 'cisco_automated_emergency_vault_backup_v1' ||
+          key.startsWith('idb_fallback_') ||
+          ((key.endsWith('_vault_v1') || key.endsWith('_mirror_v1')) && val.length > 50_000)
+        ) {
           keysToClear.push(key);
         }
       }
@@ -487,6 +512,9 @@ export function repairStorageCache(): { clearedKeys: number; freedBytes: number 
         clearedKeys++;
       }
     }
+
+    // Ejecutar optimización profunda en background hacia IndexedDB
+    optimizeAndMigrateLocalStorage().catch(() => {});
   } catch (err) {
     console.warn('[HealthService] Error reparando caché:', err);
   }
@@ -514,8 +542,10 @@ export function exportDiagnosticReportMarkdown(report: SystemHealthReport): stri
 * **Cloudflare CDN:** ${report.checks.cdn?.status.toUpperCase()} (${report.checks.cdn?.latencyMs || 0} ms)
   * Detalle: ${report.checks.cdn?.message}
 
-## 💾 2. Almacenamiento Local en PC
-* **LocalStorage:** ${report.storage.localStorageFormatted} de uso
+## 💾 2. Almacenamiento Local en PC (Alta Capacidad)
+* **Motor Moderno (IndexedDB):** ${report.storage.storageManagerUsageFormatted || report.storage.localStorageFormatted} en uso de ${report.storage.storageManagerQuotaFormatted || '50 GB'} (${report.storage.storageManagerPct || 0}%)
+* **Bóveda LocalStorage:** ${report.storage.localStorageFormatted} de uso
+* **Persistencia Anti-Evicción:** ${report.storage.isPersistentStorage ? 'Activa ✅' : 'Estándar ℹ️'}
 * **IndexedDB:** ${report.storage.indexedDbReady ? 'Operativo ✅' : 'No disponible ❌'}
 * **Cola Offline:** ${report.storage.offlineQueueCount} cambios pendientes
 * **Tombstones:** ${report.storage.tombstonesCount} registros eliminados pendientes

@@ -37,6 +37,11 @@ import {
   repairStorageCache,
   exportDiagnosticReportMarkdown,
 } from '../src/modules/health/healthService';
+import {
+  getModernStorageQuota,
+  optimizeAndMigrateLocalStorage,
+  formatStorageBytes,
+} from '../src/core/storage/modernStorageEngine';
 import { HealthCheckResult, SystemHealthReport } from '../src/modules/health/healthTypes';
 
 console.log('🧪 Iniciando Suite de Pruebas: Monitor de Salud & Diagnóstico (v2.12.0)...');
@@ -129,6 +134,14 @@ const mockReport: SystemHealthReport = {
     },
   },
   storage: {
+    storageManagerSupported: true,
+    storageManagerUsageBytes: 15000000,
+    storageManagerQuotaBytes: 53687091200,
+    storageManagerUsageFormatted: '14.3 MB',
+    storageManagerQuotaFormatted: '50.00 GB',
+    storageManagerPct: 0.03,
+    isPersistentStorage: true,
+    storageEngineName: 'StorageManager / IndexedDB',
     localStorageBytes: 500000,
     localStorageFormatted: '0.48 MB (10%)',
     localStoragePct: 10,
@@ -167,5 +180,19 @@ assert.ok(md.includes('0.48 MB (10%)'));
 assert.ok(md.includes('$979.50 CLP'));
 assert.ok(md.includes('$989.50 CLP'));
 console.log('  ✅ Test 6: Exportación de reporte Markdown estructurado validada.');
+
+// Test 7: Motor Moderno de Alta Capacidad (StorageManager / IndexedDB - Gigabytes)
+const modernQuota = await getModernStorageQuota();
+assert.ok(modernQuota.quotaBytes > 1024 * 1024 * 1024, 'La cuota moderna debe soportar Gigabytes');
+assert.ok(modernQuota.quotaFormatted.includes('GB'), 'Cuota formateada debe expresar Gigabytes');
+assert.ok(typeof modernQuota.isSupported === 'boolean');
+assert.ok(formatStorageBytes(1073741824).includes('1.00 GB'));
+
+// Simular clave pesada de respaldo para verificar optimización y purga de LocalStorage
+localStorage.setItem('cisco_automated_emergency_vault_backup_v1', JSON.stringify({ heavy: 'x'.repeat(2000) }));
+const optRes = await optimizeAndMigrateLocalStorage();
+assert.ok(optRes.clearedKeys.includes('cisco_automated_emergency_vault_backup_v1'), 'Debe migrar y purgar el respaldo masivo de LocalStorage');
+assert.equal(localStorage.getItem('cisco_automated_emergency_vault_backup_v1'), null, 'Respaldo masivo no debe permanecer en LocalStorage');
+console.log('  ✅ Test 7: Motor Moderno de Alta Capacidad (Gigabytes) y purga de LocalStorage validados.');
 
 console.log('🎉 ¡TODAS LAS PRUEBAS DE SALUD Y DIAGNÓSTICO (v2.12.0) PASARON AL 100%!');

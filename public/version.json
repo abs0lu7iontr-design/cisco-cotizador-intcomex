@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.14.0",
-  "git_commit": "b6b662d",
+  "version": "2.14.1",
+  "git_commit": "11ce6cc",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-17T02:25:34.389Z",
-  "release_notes": "fix(v2.13.2): implement quotation outlier damping formula to protect stock opportunities and critical stock",
+  "build_timestamp": "2026-11-17T02:49:28.736Z",
+  "release_notes": "feat(v2.14.0): implement local-first device persistence, permanent offline mode, and local settings without cloud dependency",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

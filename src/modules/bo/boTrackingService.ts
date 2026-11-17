@@ -406,8 +406,6 @@ export function saveLocalBoTrackingCache(
     if (typeof localStorage !== 'undefined') {
       const json = JSON.stringify(cleanRecords);
       writeProjectScopedStorage(LOCAL_BO_TRACKING_PRIMARY_KEY, json, scopeKey);
-      writeProjectScopedStorage(LOCAL_BO_TRACKING_VAULT_KEY, json, scopeKey);
-      writeProjectScopedStorage(LOCAL_BO_TRACKING_LEGACY_KEY, json, scopeKey);
       writeProjectScopedStorage(LOCAL_BO_TRACKING_INIT_KEY, 'true', scopeKey);
     }
   } catch (_) {}

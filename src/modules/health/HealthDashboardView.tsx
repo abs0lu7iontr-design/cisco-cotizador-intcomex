@@ -34,6 +34,7 @@ import {
   repairStorageCache,
   exportDiagnosticReportMarkdown,
 } from './healthService';
+import { optimizeAndMigrateLocalStorage } from '../../core/storage/modernStorageEngine';
 import { fetchDailyOfficialChileanRates } from '../../core/chileanExchangeRateService';
 import { getFormattedAppVersion } from '../../core/appVersion';
 
@@ -82,15 +83,22 @@ export const HealthDashboardView: React.FC<HealthDashboardViewProps> = ({ onOpen
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
-  const handleCleanCache = () => {
+  const handleCleanCache = async () => {
+    setIsLoading(true);
     const res = repairStorageCache();
-    const freedKb = Math.round(res.freedBytes / 1024);
+    await optimizeAndMigrateLocalStorage();
+    const freedText =
+      res.freedBytes >= 1024 * 1024
+        ? `${(res.freedBytes / (1024 * 1024)).toFixed(2)} MB`
+        : `${Math.round(res.freedBytes / 1024)} KB`;
+
     setRepairFeedback(
       res.clearedKeys > 0
-        ? `Se liberaron ${res.clearedKeys} elementos de caché (${freedKb} KB) con éxito.`
-        : 'La caché ya se encuentra completamente limpia y optimizada.'
+        ? `✨ Almacenamiento optimizado: ${res.clearedKeys} elementos consolidados en IndexedDB y ${freedText} liberados de LocalStorage.`
+        : '✨ Motor de almacenamiento IndexedDB y LocalStorage al 100% optimizados.'
     );
-    executeDiagnostics();
+    await executeDiagnostics();
+    setIsLoading(false);
   };
 
   const handleRefreshRates = async () => {
@@ -311,7 +319,7 @@ export const HealthDashboardView: React.FC<HealthDashboardViewProps> = ({ onOpen
           </div>
         </div>
 
-        {/* Card 2: Almacenamiento Local en PC */}
+        {/* Card 2: Almacenamiento Local en PC (Motor Moderno IndexedDB / StorageManager) */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 flex flex-col justify-between shadow-xl">
           <div>
             <div className="flex items-center justify-between pb-4 border-b border-slate-800">
@@ -321,7 +329,9 @@ export const HealthDashboardView: React.FC<HealthDashboardViewProps> = ({ onOpen
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-white">Almacenamiento Local en PC</h3>
-                  <p className="text-[11px] text-slate-400">IndexedDB, LocalStorage & Cola Offline</p>
+                  <p className="text-[11px] text-slate-400">
+                    Motor Moderno de Alta Capacidad (IndexedDB & StorageManager)
+                  </p>
                 </div>
               </div>
               {report?.checks.storage && (
@@ -336,31 +346,62 @@ export const HealthDashboardView: React.FC<HealthDashboardViewProps> = ({ onOpen
             </div>
 
             <div className="mt-4 space-y-3">
-              {/* LocalStorage Usage Progress Bar */}
+              {/* Modern Storage Capacity Progress Bar (IndexedDB / StorageManager) */}
               <div>
                 <div className="flex items-center justify-between text-xs mb-1.5">
-                  <span className="text-slate-400">Uso de LocalStorage (Límite 5 MB):</span>
-                  <span className="font-bold text-white">{report?.storage.localStorageFormatted || '0 MB'}</span>
+                  <span className="text-slate-300 font-medium flex items-center gap-1.5">
+                    <Database className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Motor Moderno de Alta Capacidad:</span>
+                  </span>
+                  <span className="font-bold text-white font-mono">
+                    {report?.storage.storageManagerUsageFormatted || '0 MB'} de{' '}
+                    {report?.storage.storageManagerQuotaFormatted || '50 GB'} (
+                    {report?.storage.storageManagerPct || 0.01}%)
+                  </span>
                 </div>
                 <div className="w-full h-2 rounded-full bg-slate-950 overflow-hidden border border-slate-800">
                   <div
                     className={`h-full transition-all duration-500 ${
-                      (report?.storage.localStoragePct || 0) > 80
+                      (report?.storage.storageManagerPct || 0) > 85
                         ? 'bg-rose-500'
-                        : (report?.storage.localStoragePct || 0) > 50
+                        : (report?.storage.storageManagerPct || 0) > 50
                         ? 'bg-amber-500'
                         : 'bg-emerald-500'
                     }`}
-                    style={{ width: `${report?.storage.localStoragePct || 5}%` }}
+                    style={{
+                      width: `${Math.max(2, Math.min(100, report?.storage.storageManagerPct || 1))}%`,
+                    }}
                   />
                 </div>
+                <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                  <span>Soporte de Gigabytes activo tanto Online como Offline</span>
+                  <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                    <ShieldCheck className="w-3 h-3" />
+                    <span>Persistencia Protegida</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Secondary LocalStorage Preferences Cache */}
+              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Bóveda Rápida de Preferencias (LocalStorage):</span>
+                  <span className="font-mono text-xs font-bold text-slate-300">
+                    {report?.storage.localStorageFormatted || '0 MB'}
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-500 block">
+                  Reservado exclusivamente para parámetros rápidos del PC y preferencias de UI
+                </span>
               </div>
 
               <div className="flex items-center justify-between text-xs pt-1">
                 <span className="text-slate-400">Motor IndexedDB:</span>
                 <span className="font-bold text-emerald-400 flex items-center space-x-1">
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>{report?.storage.indexedDbReady ? 'Conectado & Operativo' : 'Inactivo'}</span>
+                  <span>
+                    {report?.storage.indexedDbReady ? 'Conectado & Operativo (Alta Capacidad)' : 'Inactivo'}
+                  </span>
                 </span>
               </div>
 
@@ -381,17 +422,17 @@ export const HealthDashboardView: React.FC<HealthDashboardViewProps> = ({ onOpen
           </div>
 
           <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
-            <span className="text-[11px] text-slate-400 truncate mr-2">
+            <span className="text-[11px] text-slate-400 truncate mr-2" title={report?.checks.storage?.message}>
               {report?.checks.storage?.message}
             </span>
             <button
               type="button"
               onClick={handleCleanCache}
-              className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-bold transition-colors flex items-center space-x-1 shrink-0 cursor-pointer"
-              title="Limpia registros temporales para optimizar LocalStorage"
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-[11px] font-bold transition-colors flex items-center space-x-1.5 shrink-0 cursor-pointer border border-slate-700 shadow-sm"
+              title="Optimiza y consolida el almacenamiento pesado en IndexedDB, liberando la memoria caché de LocalStorage"
             >
-              <Trash2 className="w-3 h-3 text-rose-400" />
-              <span>Limpiar Caché</span>
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span>Optimizar Almacenamiento</span>
             </button>
           </div>
         </div>

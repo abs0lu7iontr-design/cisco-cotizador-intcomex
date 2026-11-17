@@ -334,12 +334,12 @@ export function saveEstimatesMirrorSnapshot(
     }
 
     const serialized = JSON.stringify(cleanList);
-    // Avoid QuotaExceededError on huge collections by falling back to compact headers in localStorage
+    // Preserva LocalStorage ultra-ligero (< 150 KB) mientras el payload completo con partidas vive en IndexedDB (Tier 1)
     let payloadForLocalStorage = serialized;
-    if (serialized.length > 1_800_000) {
+    if (serialized.length > 200_000) {
       const compactList = cleanList.map((rec) => ({
         ...rec,
-        items: Array.isArray(rec.items) && rec.items.length > 20 ? [] : rec.items,
+        items: [],
       }));
       payloadForLocalStorage = JSON.stringify(compactList);
       lastMirrorStorageWarning =
@@ -350,8 +350,6 @@ export function saveEstimatesMirrorSnapshot(
 
     try {
       writeProjectScopedStorage(LOCAL_ESTIMATES_PRIMARY_KEY, payloadForLocalStorage, scopeKey);
-      writeProjectScopedStorage(LOCAL_ESTIMATES_VAULT_KEY, payloadForLocalStorage, scopeKey);
-      writeProjectScopedStorage(LOCAL_ESTIMATES_MIRROR_KEY, payloadForLocalStorage, scopeKey);
     } catch (quotaErr: any) {
       lastMirrorStorageWarning = `QuotaExceededError en localStorage (${quotaErr?.message || 'cuota llena'}): respaldado en IndexedDB.`;
     }

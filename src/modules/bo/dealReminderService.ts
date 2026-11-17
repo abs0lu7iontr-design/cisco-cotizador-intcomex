@@ -189,8 +189,6 @@ export function saveLocalDealRemindersCache(records: DealReminderRecord[]): void
   try {
     const json = JSON.stringify(cleanRecords);
     writeProjectScopedStorage(LOCAL_DEAL_REMINDERS_PRIMARY_KEY, json);
-    writeProjectScopedStorage(LOCAL_DEAL_REMINDERS_VAULT_KEY, json);
-    writeProjectScopedStorage(LOCAL_DEAL_REMINDERS_LEGACY_KEY, json);
     writeProjectScopedStorage(LOCAL_DEAL_REMINDERS_INIT_KEY, 'true');
   } catch (_) {
     // Item 11: Si localStorage excede cuota, persiste en memoria + IndexedDB

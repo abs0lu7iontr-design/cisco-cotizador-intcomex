@@ -131,8 +131,6 @@ function saveLocalDsvCache(list: CloudDsvRecord[]) {
     const cleanList = list.filter((r) => r && r.id && !deletedIds.has(r.id)).slice(0, 500);
     const serialized = JSON.stringify(cleanList);
     writeProjectScopedStorage(LOCAL_DSV_BACKUP_KEY, serialized);
-    writeProjectScopedStorage(LOCAL_DSV_VAULT_KEY, serialized);
-    writeProjectScopedStorage(LOCAL_DSV_LEGACY_KEY, serialized);
   } catch (_) {}
 }
 
@@ -2778,8 +2776,6 @@ export function saveLocalSharedSkuCache(rules: SharedSkuOverrideRecord[]) {
     const cleanList = rules.filter((r) => r && r.sku && !deletedIds.has(r.sku.trim().toUpperCase()));
     const serialized = JSON.stringify(cleanList);
     localStorage.setItem(LOCAL_SHARED_SKU_BACKUP_KEY, serialized);
-    localStorage.setItem(LOCAL_SHARED_SKU_VAULT_KEY, serialized);
-    localStorage.setItem(LOCAL_SHARED_SKU_LEGACY_KEY, serialized);
   } catch (_) {}
 }
 

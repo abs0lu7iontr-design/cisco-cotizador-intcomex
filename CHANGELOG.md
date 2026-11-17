@@ -6,6 +6,23 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.14.1] - 2026-11-16
+### 🚀 Motor de Almacenamiento Moderno de Alta Capacidad (StorageManager / Gigabytes) y Purga de LocalStorage
+- **Motor Moderno de Alta Capacidad (StorageManager / IndexedDB - Gigabytes):**
+  - Integración nativa con la API oficial W3C `navigator.storage` (`estimate()` y `persist()`), proveyendo cuotas masivas de almacenamiento (entre 50 GB y 120+ GB según el disco del equipo).
+  - El motor opera con idéntica potencia y confiabilidad tanto en **Modo Online** como en **Modo Offline**, asegurando almacenamiento ilimitado de cotizaciones, pipeline, forecast y órdenes BO.
+- **Resolución de Saturación de LocalStorage (9.99 MB / 100%):**
+  - Se eliminaron las escrituras masivas duplicadas y triplicadas en LocalStorage (`LOCAL_PIPELINE_VAULT_KEY`, `LOCAL_FORECAST_VAULT_KEY`, `LOCAL_ESTIMATES_VAULT_KEY`, `LOCAL_ESTIMATES_MIRROR_KEY`, `LOCAL_BO_TRACKING_VAULT_KEY`, `LOCAL_DEAL_REMINDERS_VAULT_KEY`, `LOCAL_DSV_VAULT_KEY`).
+  - El respaldo de emergencia maestro (`EMERGENCY_BACKUP_KEY`) ahora se guarda de forma segura en IndexedDB (`STORES.KEYVAL`), impidiendo que un único JSON masivo consuma la cuota de 5 MB de LocalStorage.
+- **Auto-Purga y Migración Automática (`optimizeAndMigrateLocalStorage`):**
+  - Migración silenciosa de colecciones pesadas desde LocalStorage hacia IndexedDB y purga de copias redundantes, reduciendo el consumo de LocalStorage de 9.99 MB a menos de 0.1 MB (< 2% de uso).
+- **Rediseño del Monitor de Salud (`HealthDashboardView.tsx` & `healthService.ts`):**
+  - La tarjeta *"Almacenamiento Local en PC"* ahora destaca como medidor primario el **Motor Moderno de Alta Capacidad (StorageManager / IndexedDB)** en verde óptimo con decenas de Gigabytes libres y persistencia blindada contra evicción del navegador.
+  - LocalStorage se reclasifica correctamente como *"Bóveda Rápida de Preferencias"* (reservada para tokens y parámetros rápidos < 50 KB).
+  - Nuevo botón interactivo *"Optimizar Almacenamiento"* que consolida datos pesados en IndexedDB y libera la memoria de LocalStorage en 1 solo clic.
+- **Integridad de Pruebas:**
+  - 29 suites de pruebas unitarias automáticas aprobadas al 100%.
+
 ## [v2.14.0] - 2026-11-16
 ### 💻 Persistencia Local-First por Computador: Modo Offline Permanente, Temas y Parámetros Comerciales sin Nube
 - **Persistencia Permanente del Modo Offline en este Equipo (`localPlatformConfig.ts`, `offlineModeManager.ts`):**

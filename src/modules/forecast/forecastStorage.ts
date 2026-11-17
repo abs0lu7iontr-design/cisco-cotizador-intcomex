@@ -172,7 +172,6 @@ async function persistDurableRecords(
   try {
     const serialized = JSON.stringify(records);
     writeProjectScopedStorage(LOCAL_FORECAST_PRIMARY_KEY, serialized, projectScope);
-    writeProjectScopedStorage(LOCAL_FORECAST_VAULT_KEY, serialized, projectScope);
   } catch {
     // QuotaExceededError en localStorage no afecta la durabilidad en IndexedDB
   }
