@@ -2729,13 +2729,13 @@ export async function authenticateCloudUser(
     return { success: false, error: 'Por favor complete el usuario y la contraseña.' };
   }
 
-  // Por política de seguridad, las contraseñas se autentican exclusivamente en la nube
-  if (isAppOffline() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+  // Por política de seguridad, las contraseñas se autentican de forma discreta en la nube.
+  // Solo se bloquea si el equipo carece físicamente de conexión a Internet.
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return {
       success: false,
       isOfflineBlocked: true,
-      error:
-        '🔒 Por motivos de seguridad y privacidad, la validación de credenciales se realiza directamente en la nube. Conéctate a internet para iniciar sesión.',
+      error: 'Se requiere conexión a Internet para iniciar sesión.',
     };
   }
 

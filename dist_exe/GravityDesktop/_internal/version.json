@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.15.2",
-  "git_commit": "eab20d2",
+  "version": "2.15.3",
+  "git_commit": "3d425d6",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-17T06:42:20.628Z",
-  "release_notes": "feat(v2.15.1): ensure auto-updates never go offline, enforce cloud-only password verification, and eliminate localstorage saturation",
+  "build_timestamp": "2026-11-17T10:09:16.741Z",
+  "release_notes": "feat(v2.15.2): auto-dismiss offline banner, prompt to switch online on cloud features, and show clean actual dollar without +10",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

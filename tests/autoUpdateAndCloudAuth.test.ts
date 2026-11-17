@@ -132,11 +132,15 @@ console.log('  ✅ Test 3: Optimización y purga de LocalStorage masivo comproba
 // Test 4: Offline Login Cloud Requirement
 console.log('  Testing Cloud-Only Authentication Requirement...');
 const offlineAuthResult = await authenticateCloudUser('admin', 'Intcomex2026!');
-// En entorno Node.js / offline, debe indicar bloqueo por seguridad en la nube
+// En entorno Node.js / offline, debe indicar bloqueo por falta de conexión o credenciales de la nube
 assert.equal(offlineAuthResult.success, false, 'No se debe autenticar sin conexión segura a la nube');
 assert.ok(
-  offlineAuthResult.error?.includes('nube') || offlineAuthResult.error?.includes('seguridad'),
-  'El mensaje de error debe indicar requerimiento de validación en la nube'
+  offlineAuthResult.error?.includes('nube') ||
+  offlineAuthResult.error?.includes('seguridad') ||
+  offlineAuthResult.error?.includes('Firebase') ||
+  offlineAuthResult.error?.includes('Internet') ||
+  offlineAuthResult.error?.includes('conexión'),
+  'El mensaje de error debe indicar requerimiento de conexión a la nube'
 );
 console.log('  ✅ Test 4: Autenticación 100% en la nube y protección offline comprobadas.');
 

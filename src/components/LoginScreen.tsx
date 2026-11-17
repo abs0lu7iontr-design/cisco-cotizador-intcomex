@@ -12,7 +12,6 @@ import {
   AlertCircle,
   Loader2,
   ShieldAlert,
-  ShieldCheck,
   Eye,
   EyeOff,
   Clock,
@@ -314,10 +313,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       const authRes = await authenticateCloudUser(cleanUser, cleanPass);
       if (!authRes.success || !authRes.user) {
         if (authRes.isOfflineBlocked) {
-          setErrorMsg(
-            authRes.error ||
-              '🔒 Por motivos de seguridad y privacidad, la validación de credenciales se realiza directamente en la nube. Conéctate a internet para iniciar sesión.'
-          );
+          setErrorMsg(authRes.error || 'Se requiere conexión a Internet para iniciar sesión.');
           return;
         }
 
@@ -604,11 +600,6 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               </>
             )}
           </button>
-
-          <div className="flex items-center space-x-1.5 text-[10px] text-slate-400 justify-center pt-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span>Validación 100% en Firestore Cloud. Las contraseñas no se almacenan en el PC.</span>
-          </div>
         </form>
 
         {/* Footer */}

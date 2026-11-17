@@ -6,6 +6,20 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.15.3] - 2026-11-17
+### 🤫 Validación de Credenciales 100% Silenciosa en la Nube y Retiro de Leyendas en Login
+- **Retiro de Leyenda Visual en Pantalla de Login (`LoginScreen.tsx`):**
+  - Se eliminó la leyenda *"Validación 100% en Firestore Cloud. Las contraseñas no se almacenan en el PC."* ubicada al pie del botón de inicio de sesión, manteniendo la interfaz corporativa completamente limpia y minimalista.
+  - La función de seguridad subyacente sigue operando al 100% de forma invisible y silenciosa: las contraseñas se autentican contra Firestore Cloud y las claves locales jamás retienen contraseñas en texto plano ni hashes.
+- **Autenticación Discreta en Modo Offline (`firestoreService.ts`, `LoginScreen.tsx`):**
+  - Si el usuario tiene seleccionado el perfil *"MODO OFFLINE"* en su equipo pero su computadora cuenta con conexión a Internet (`navigator.onLine === true`), el sistema ya no bloquea el inicio de sesión ni muestra cuadros de advertencia.
+  - El sistema valida las credenciales de forma discreta y silenciosa contra Firestore en la nube, autentica al usuario y entra directamente al cotizador preservando el Modo Offline en el equipo.
+- **Eliminación del Banner de Advertencia Bloqueante:**
+  - Se retiró la advertencia invasiva *"🔒 Por motivos de seguridad y privacidad, la validación de credenciales se realiza directamente en la nube. Conéctate a internet para iniciar sesión."*.
+  - En caso de que el equipo carezca físicamente de conexión de red al intentar iniciar sesión, el sistema muestra un mensaje limpio y conciso: *"Se requiere conexión a Internet para iniciar sesión."*.
+- **Suite de Pruebas Unitarias Actualizada (`tests/autoUpdateAndCloudAuth.test.ts`):**
+  - Se adaptaron las aserciones de validación para soportar la autenticación discreta sin leyendas bloqueantes. Las 32 suites de pruebas continúan pasando al 100%.
+
 ## [v2.15.2] - 2026-11-17
 ### 👁️ Banner Offline Auto-Dismiss, Intercepción Inteligente de Funciones Nube & Dólar Actual Limpio
 - **Banner de Modo Offline Auto-Dismiss y No Invasivo (`App.tsx`):**

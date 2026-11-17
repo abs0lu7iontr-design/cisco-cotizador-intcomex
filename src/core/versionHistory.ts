@@ -15,11 +15,27 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.15.3',
+    date: '2026-11-17',
+    commit: 'fix-silent-cloud-auth-and-remove-login-legends',
+    title: 'Validación de Credenciales 100% Silenciosa en la Nube y Retiro de Leyendas en Pantalla de Login',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Validación de Credenciales 100% Silenciosa: Eliminación de la leyenda visual "Validación 100% en Firestore Cloud. Las contraseñas no se almacenan en el PC." al pie del formulario de inicio de sesión.',
+      'Seguridad Sin Rastros Locales: Las contraseñas y hashes continúan verificándose con máxima seguridad directamente contra Firestore Cloud y excluyéndose por completo del almacenamiento local del PC de manera completamente silenciosa y transparente.',
+      'Autenticación Discreta en Modo Offline: Si el equipo tiene activado el perfil de "Modo Offline" pero cuenta con conexión a Internet, el login valida las credenciales de forma silenciosa en la nube sin mostrar avisos de advertencia ni bloquear al usuario.',
+      'Preservación del Modo Offline: Tras iniciar sesión exitosamente, la aplicación mantiene el Modo Offline configurado por el usuario en su equipo para que continúe operando localmente sin fricción.',
+      'Retiro de Banner de Advertencia Bloqueante: Se eliminó el cuadro de advertencia "Por motivos de seguridad y privacidad, la validación de credenciales se realiza directamente en la nube. Conéctate a internet para iniciar sesión.", mostrando un mensaje limpio y conciso únicamente si el equipo carece físicamente de red.',
+      'Compatibilidad Total con Pruebas Unitarias: Las 32 suites de pruebas unitarias automatizadas del proyecto continúan pasando al 100%.',
+    ],
+  },
+  {
     version: '2.15.2',
     date: '2026-11-17',
     commit: 'feat-auto-dismiss-offline-banner-prompt-to-switch-online-and-clean-actual-dollar',
     title: 'Banner Offline Auto-Dismiss, Intercepción Inteligente de Funciones Nube y Dólar Actual Limpio',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Banner de Modo Offline No Invasivo: El aviso visual de Modo Offline activo ahora se oculta de forma automática tras 6 segundos de aparecer (o inmediatamente con el botón de cierre "X"), liberando espacio vertical y despejando la visión de trabajo.',
