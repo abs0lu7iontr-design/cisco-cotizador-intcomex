@@ -447,7 +447,7 @@ export const HealthDashboardView: React.FC<HealthDashboardViewProps> = ({ onOpen
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-white">Indicadores Oficiales BCCh</h3>
-                  <p className="text-[11px] text-slate-400">Dólar Observado, UF & Spread Comercial</p>
+                  <p className="text-[11px] text-slate-400">Dólar Observado & UF Oficial (BCCh)</p>
                 </div>
               </div>
               {report?.checks.rates && (
@@ -463,16 +463,9 @@ export const HealthDashboardView: React.FC<HealthDashboardViewProps> = ({ onOpen
 
             <div className="mt-4 space-y-3">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Dólar Observado Oficial:</span>
-                <span className="font-bold text-white">
-                  ${report?.rates.usdObs.toFixed(2)} CLP
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Dólar Cotizador (+Spread ${report?.rates.spreadClp || 10} CLP):</span>
+                <span className="text-slate-400">Dólar Actual (BCCh):</span>
                 <span className="font-bold text-emerald-400">
-                  ${report?.rates.effectiveUsd.toFixed(2)} CLP
+                  1 USD = ${report?.rates.usdObs.toFixed(2)} CLP
                 </span>
               </div>
 

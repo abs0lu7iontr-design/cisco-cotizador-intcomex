@@ -15,11 +15,29 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.15.2',
+    date: '2026-11-17',
+    commit: 'feat-auto-dismiss-offline-banner-prompt-to-switch-online-and-clean-actual-dollar',
+    title: 'Banner Offline Auto-Dismiss, Intercepción Inteligente de Funciones Nube y Dólar Actual Limpio',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Banner de Modo Offline No Invasivo: El aviso visual de Modo Offline activo ahora se oculta de forma automática tras 6 segundos de aparecer (o inmediatamente con el botón de cierre "X"), liberando espacio vertical y despejando la visión de trabajo.',
+      'Persistencia de Estado Compacto: El botón compacto "MODO OFFLINE" permanece siempre accesible en la barra superior (Navbar) para cambiar de modo o revisar el estado en cualquier momento.',
+      'Intercepción Inteligente de Módulos Online: Al hacer clic en un módulo que requiere nube (ConfigurIAtor IA en vivo, Gestión de Usuarios, Feedback & Soporte, Auditoría Cloud) estando en Modo Offline, la aplicación no bloquea silenciosamente.',
+      'Modal de Requerimiento de Conexión: Muestra una ventana explicativa intuitiva que diagnostica la conectividad de red y ofrece un botón directo "[Pasar a Modo Online y Abrir]" para reconectarse y entrar al módulo en 1 solo clic.',
+      'Dólar Actual Limpio sin "+10": En el módulo de tipo de cambio (SummaryCards) y Monitor de Salud, se eliminó la fórmula confusa "+ $10 = $991.61 CLP" o "+Spread 10 CLP". Ahora muestra limpia y directamente el Dólar Actual oficial: "1 USD = $981,61 CLP • 1 UF = $41.146,83 CLP".',
+      'Conversión Directa a CLP: Al seleccionar la divisa "CLP" en el cotizador, los valores se convierten multiplicando directamente por el Dólar Actual sin sumar recargos de spread artificiales.',
+      'Ajuste Rápido de Tipo de Cambio: El panel de ajuste de TC permite modificar directamente el Dólar Actual en pesos chilenos y el valor de la UF sin campos de recargo redundantes.',
+      'Suite de Pruebas Unitarias Automatizadas: Nueva suite tests/offlineBannerAndCleanRates.test.ts con 100% de éxito en las 32 suites del proyecto.',
+    ],
+  },
+  {
     version: '2.15.1',
     date: '2026-11-17',
     commit: 'feat-auto-update-always-active-cloud-only-auth-and-localstorage-purge',
     title: 'Actualizaciones Permanentes (Online/Offline), Seguridad Cloud de Credenciales y Purga Masiva de LocalStorage',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Actualizaciones NUNCA quedan Offline: La detección de actualizaciones se mantiene activa permanentemente ante cualquier conectividad de red, sin ser bloqueada por el Modo Offline.',

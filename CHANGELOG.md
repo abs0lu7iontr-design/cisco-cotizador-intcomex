@@ -6,6 +6,27 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.15.2] - 2026-11-17
+### 👁️ Banner Offline Auto-Dismiss, Intercepción Inteligente de Funciones Nube & Dólar Actual Limpio
+- **Banner de Modo Offline Auto-Dismiss y No Invasivo (`App.tsx`):**
+  - La leyenda superior *"MODO OFFLINE ACTIVO — Guardado Local en este PC..."* ahora se oculta de forma automática tras 6 segundos de aparecer para no obstaculizar el espacio vertical de trabajo ni la visibilidad de los paneles.
+  - Se incorporó un botón de cierre inmediato (`X`) para descartar el aviso en cualquier instante.
+  - El botón compacto e indicador de estado `MODO OFFLINE` permanece visible de forma permanente en la barra superior (`Navbar.tsx`), permitiendo alternar entre modos o verificar el estado en 1 clic.
+- **Intercepción Inteligente de Módulos que Requieren Conexión (`OnlineRequirementModal.tsx`, `Sidebar.tsx`, `App.tsx`):**
+  - Al hacer clic en un módulo que requiere conexión activa a la nube (ConfigurIAtor IA en vivo, Gestión de Usuarios, Feedback & Soporte, Auditoría Cloud) mientras la aplicación está en Modo Offline, el sistema ya no bloquea la acción de forma silenciosa e inerte.
+  - Se despliega el nuevo componente modal `OnlineRequirementModal.tsx`, el cual:
+    - Explica con claridad por qué el módulo seleccionado requiere conectividad de red e inteligencia artificial en vivo.
+    - Si el equipo tiene conexión a internet (`navigator.onLine`), detecta que el usuario está en Modo Offline Manual y le ofrece el botón directo **[Pasar a Modo Online y Abrir]**, cambiando el modo y cargando la vista solicitada de forma inmediata.
+    - Si el equipo carece físicamente de internet, le notifica amablemente que conecte su computador a una red Wi-Fi o cable de red.
+- **Visualización y Conversión de Dólar Actual Limpio sin "+10" (`SummaryCards.tsx`, `chileanExchangeRateService.ts`, `HealthDashboardView.tsx`, `healthService.ts`):**
+  - Se eliminó completamente la fórmula confusa `+ $10 = $991.61 CLP` y la mención `+Spread 10 CLP` tanto en el banner de tipos de cambio de `SummaryCards` como en el Monitor de Salud.
+  - La visualización ahora expone limpia y directamente el indicador oficial del día:
+    $$\text{1 USD = \$981,61 CLP} \quad \bullet \quad \text{1 UF = \$41.146,83 CLP}$$
+  - **Conversión Directa a CLP:** Al presionar el botón de divisa `CLP` en el cotizador, los valores y totales se calculan directamente en base al Dólar Actual observado publicado por el Banco Central de Chile, sin sumarle recargos artificiales.
+  - El modal de ajuste rápido de tipo de cambio permite modificar directamente el Dólar Actual y la UF en pesos chilenos sin campos de recargo redundantes.
+- **Suite de Pruebas Unitarias Automatizadas (`tests/offlineBannerAndCleanRates.test.ts`):**
+  - Nueva suite de pruebas automáticas que verifica el spread cero, la conversión limpia a CLP con el dólar actual, y la clasificación estricta de módulos offline vs online. Todas las 32 suites del proyecto ejecutadas y aprobadas al 100%.
+
 ## [v2.15.1] - 2026-11-17
 ### ⚡ Actualizaciones Permanentes (Online/Offline), Seguridad Cloud de Credenciales & Purga Masiva de LocalStorage
 - **Actualizaciones NUNCA quedan Offline (`autoUpdateManager.ts`, `AutoUpdateBanner.tsx`, `Navbar.tsx`):**

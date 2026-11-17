@@ -127,16 +127,15 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
 
   const handleUpdateOfficialUsdBase = (newBaseUsd: number) => {
     const cleanBase = Math.max(0, newBaseUsd);
-    const appliedClp = applyFrontendUsdClpSpread(cleanBase, USD_TO_CLP_FRONTEND_SPREAD);
     const updatedSnap: OfficialChileanRatesSnapshot = {
       ...officialSnapshot,
       dolarObservadoOficial: cleanBase,
-      spreadClp: USD_TO_CLP_FRONTEND_SPREAD,
-      dolarAplicadoClp: appliedClp,
+      spreadClp: 0,
+      dolarAplicadoClp: cleanBase,
       isManualOverride: true,
     };
     setOfficialSnapshot(updatedSnap);
-    setRates({ ...rates, CLP: appliedClp });
+    setRates({ ...rates, CLP: cleanBase });
     saveCachedDailyOfficialRates(updatedSnap);
     notifyFrontendCurrencyChange();
   };
@@ -228,25 +227,21 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
         <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-slate-300 bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
           <span
             className="flex items-center gap-1 text-[10px] font-sans font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-700/40 px-2 py-0.5 rounded-md"
-            title={`Fuente: ${officialSnapshot.sourceName} (${officialSnapshot.indicatorDate})`}
+            title={`Fuente oficial: ${officialSnapshot.sourceName} (${officialSnapshot.indicatorDate})`}
           >
             <CheckCircle2 className="w-3 h-3" />
-            <span>BCCh Oficial ({officialSnapshot.indicatorDate})</span>
+            <span>BCCh ({officialSnapshot.indicatorDate})</span>
           </span>
           <span>
-            USD Obs:{' '}
-            <span className="text-slate-400">
-              ${officialSnapshot.dolarObservadoOficial.toLocaleString('es-CL', { maximumFractionDigits: 2 })}
-            </span>{' '}
-            <span className="text-amber-400 font-bold">+ ${USD_TO_CLP_FRONTEND_SPREAD}</span> ={' '}
-            <strong className="text-emerald-400">
-              ${rates.CLP.toLocaleString('es-CL', { maximumFractionDigits: 2 })} CLP
+            1 USD ={' '}
+            <strong className="text-emerald-400 font-bold">
+              ${officialSnapshot.dolarObservadoOficial.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CLP
             </strong>
           </span>
           <span className="text-slate-600">•</span>
           <span>
             1 UF ={' '}
-            <strong className="text-cyan-400">
+            <strong className="text-cyan-400 font-bold">
               ${rates.UF.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CLP
             </strong>
           </span>
@@ -274,24 +269,12 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
         <div className="bg-slate-900 border border-indigo-500/30 p-3 rounded-xl flex flex-wrap items-center justify-between gap-4 text-xs font-mono text-slate-300 animate-fade-in">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
-              <label className="text-[11px] text-slate-400">Dólar Obs. Oficial (CLP):</label>
+              <label className="text-[11px] text-slate-400">Dólar Actual (CLP):</label>
               <input
                 type="number"
                 step="0.01"
                 value={officialSnapshot.dolarObservadoOficial || ''}
                 onChange={(e) => handleUpdateOfficialUsdBase(parseFloat(e.target.value) || 0)}
-                className="w-24 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-right text-slate-200 font-bold focus:border-indigo-500 outline-none"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-[11px] text-amber-300 font-bold">
-                TC Aplicado (+${USD_TO_CLP_FRONTEND_SPREAD} CLP):
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                value={rates.CLP || ''}
-                onChange={(e) => handleUpdateAppliedClpDirect(parseFloat(e.target.value) || 0)}
                 className="w-24 bg-slate-950 border border-emerald-600/50 rounded px-2 py-0.5 text-right text-emerald-400 font-bold focus:border-indigo-500 outline-none"
               />
             </div>
@@ -317,7 +300,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
               className="text-[10px] text-emerald-400 hover:text-emerald-300 underline cursor-pointer flex items-center gap-1"
             >
               <RefreshCw className={`w-3 h-3 ${isLoadingOfficialRates ? 'animate-spin' : ''}`} />
-              <span>Sincronizar Oficial BCCh (+${USD_TO_CLP_FRONTEND_SPREAD} CLP)</span>
+              <span>Sincronizar Oficial BCCh</span>
             </button>
           </div>
         </div>

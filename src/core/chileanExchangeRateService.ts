@@ -3,21 +3,20 @@
 // ============================================================================
 // Extrae diariamente el Dólar Observado y la Unidad de Fomento (UF) desde medios
 // oficiales chilenos (Banco Central de Chile / SII vía mindicador.cl y findic.cl).
-// Regla comercial Front-End Intcomex Chile:
-//   Valor USD -> CLP = Dólar Observado Oficial + $10 CLP de spread
-//   (Ejemplo: si el Dólar Observado es $970 CLP -> se aplica $980 CLP por dólar).
+// Conversión Front-End Intcomex Chile:
+//   Valor USD -> CLP = Dólar Observado Oficial del día (sin recargos ni fórmulas extra).
 // ============================================================================
 
 import { CurrencyConversionRates, roundFinancial } from './calculations';
 
-export const USD_TO_CLP_FRONTEND_SPREAD = 10;
+export const USD_TO_CLP_FRONTEND_SPREAD = 0;
 
 export interface OfficialChileanRatesSnapshot {
-  /** Valor oficial del Dólar Observado publicado por el Banco Central de Chile (sin recargo) */
+  /** Valor oficial del Dólar Observado publicado por el Banco Central de Chile */
   dolarObservadoOficial: number;
-  /** Recargo comercial fijo en Front-End (+10 pesos chilenos por dólar) */
+  /** Recargo comercial (0 por defecto) */
   spreadClp: number;
-  /** Valor efectivo aplicado en Front-End para conversión USD -> CLP (dolarObservadoOficial + 10) */
+  /** Valor efectivo aplicado en Front-End para conversión USD -> CLP */
   dolarAplicadoClp: number;
   /** Valor oficial diario de la Unidad de Fomento (UF) en CLP publicado por el Banco Central / SII */
   ufOficialClp: number;
@@ -75,9 +74,10 @@ export function applyFrontendUsdClpSpread(
 export function snapshotToConversionRates(
   snapshot: OfficialChileanRatesSnapshot
 ): CurrencyConversionRates {
+  const clpRate = snapshot.dolarObservadoOficial || snapshot.dolarAplicadoClp || 981.61;
   return {
     USD: 1,
-    CLP: snapshot.dolarAplicadoClp,
+    CLP: clpRate,
     UF: snapshot.ufOficialClp,
   };
 }

@@ -62,7 +62,7 @@ assert.equal(ratesHealth.result.id, 'rates');
 assert.equal(ratesHealth.result.category, 'external');
 assert.ok(ratesHealth.metrics.usdObs > 0, 'Dólar observado debe ser mayor a 0');
 assert.ok(ratesHealth.metrics.uf > 0, 'UF debe ser mayor a 0');
-assert.equal(ratesHealth.metrics.effectiveUsd, ratesHealth.metrics.usdObs + ratesHealth.metrics.spreadClp);
+assert.equal(ratesHealth.metrics.effectiveUsd, ratesHealth.metrics.usdObs);
 assert.equal(ratesHealth.result.status, 'healthy');
 console.log('  ✅ Test 2: Diagnóstico de Indicadores Oficiales BCCh validado.');
 
@@ -178,7 +178,7 @@ assert.ok(md.includes('98/100'));
 assert.ok(md.includes('Firestore'));
 assert.ok(md.includes('0.48 MB (10%)'));
 assert.ok(md.includes('$979.50 CLP'));
-assert.ok(md.includes('$989.50 CLP'));
+assert.ok(md.includes('Dólar Actual (BCCh)'));
 console.log('  ✅ Test 6: Exportación de reporte Markdown estructurado validada.');
 
 // Test 7: Motor Moderno de Alta Capacidad (StorageManager / IndexedDB - Gigabytes)

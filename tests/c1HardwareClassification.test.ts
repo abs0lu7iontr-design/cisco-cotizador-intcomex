@@ -498,9 +498,9 @@ for (const eolSku of eolAccessorySkus) {
 console.log(`✅ Exclusión de SKUs EOL verificada (${NON_EOL_CISCO_ACCESSORIES_SET.size} SKUs de accesorios vigentes No-EOL en catálogo base + cobertura RegExp infinita).`);
 
 // ----------------------------------------------------------------------------
-// 7. Verificación de Conversión Front-End USD -> CLP (+10 CLP sobre BCCh) y UF
+// 7. Verificación de Conversión Front-End USD -> CLP (Dólar Actual sin sumar +10) y UF
 // ----------------------------------------------------------------------------
-console.log('\n--- 7. Verificación de Tipo de Cambio Oficial Chileno Diario (BCCh + $10 CLP Spread Front-End) ---');
+console.log('\n--- 7. Verificación de Tipo de Cambio Oficial Chileno Diario (Dólar Actual BCCh sin sumar +10) ---');
 import {
   USD_TO_CLP_FRONTEND_SPREAD,
   applyFrontendUsdClpSpread,
@@ -509,30 +509,30 @@ import {
 } from '../src/core/chileanExchangeRateService';
 import { convertUsdToCurrency, safeParseFloat } from '../src/core/calculations';
 
-assert.strictEqual(USD_TO_CLP_FRONTEND_SPREAD, 10, 'El spread de USD a CLP en el Front-End debe ser exactamente +10 CLP');
+assert.strictEqual(USD_TO_CLP_FRONTEND_SPREAD, 0, 'El spread por defecto de USD a CLP en el Front-End debe ser 0 (Dólar Actual sin recargo)');
 assert.strictEqual(
   applyFrontendUsdClpSpread(970),
-  980,
-  'Si el Dólar Observado oficial es 970 CLP, el valor aplicado con +10 pesos debe ser 980 CLP'
+  970,
+  'Si el Dólar Observado oficial es 970 CLP, el valor por defecto sin spread debe ser 970 CLP'
 );
 assert.strictEqual(
-  applyFrontendUsdClpSpread(981.61),
-  991.61,
-  'Si el Dólar Observado oficial es 981.61 CLP, el valor aplicado con +10 pesos debe ser 991.61 CLP'
+  applyFrontendUsdClpSpread(970, 10),
+  980,
+  'Si se aplica un spread manual de +10 pesos, debe retornar 980 CLP'
 );
 
 const mockSnap970 = {
   ...getDefaultOfficialRatesSnapshot(),
   dolarObservadoOficial: 970,
-  spreadClp: 10,
-  dolarAplicadoClp: applyFrontendUsdClpSpread(970),
+  spreadClp: 0,
+  dolarAplicadoClp: 970,
   ufOficialClp: 40000,
 };
 const rates970 = snapshotToConversionRates(mockSnap970);
-assert.strictEqual(rates970.CLP, 980);
-assert.strictEqual(convertUsdToCurrency(100, 'CLP', rates970), 98000, '100 USD a TC 980 (970+10) debe ser $98.000 CLP');
-assert.strictEqual(convertUsdToCurrency(100, 'UF', rates970), 2.45, '100 USD ($98.000 CLP) con UF $40.000 debe ser 2.45 UF');
-console.log('✅ Conversión Front-End USD -> CLP (Dólar Observado BCCh + $10 CLP: ej. 970 -> 980) y UF verificada.');
+assert.strictEqual(rates970.CLP, 970, 'El tipo de cambio para conversión a CLP debe ser exactamente el Dólar Actual (970)');
+assert.strictEqual(convertUsdToCurrency(100, 'CLP', rates970), 97000, '100 USD a TC limpio 970 debe ser $97.000 CLP');
+assert.strictEqual(convertUsdToCurrency(100, 'UF', rates970), 2.42, '100 USD ($97.000 CLP) con UF $40.000 redondeado a 2 decimales debe ser 2.42 UF');
+console.log('✅ Conversión Front-End USD -> CLP (Dólar Actual BCCh limpio sin +10 CLP) y UF verificada.');
 
 // ----------------------------------------------------------------------------
 // 8. Verificación de safeParseFloat con decimales con coma ("12,50" -> 12.5, "0,25" -> 0.25)

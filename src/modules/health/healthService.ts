@@ -311,13 +311,13 @@ export function checkExchangeRatesHealth(): {
 } {
   const cached = getCachedDailyOfficialRates(false);
   const snapshot = cached || getDefaultOfficialRatesSnapshot();
-  const effectiveUsd = snapshot.dolarAplicadoClp || (snapshot.dolarObservadoOficial + snapshot.spreadClp);
+  const effectiveUsd = snapshot.dolarObservadoOficial;
 
   const hasValidUsd = snapshot.dolarObservadoOficial > 0;
   const hasValidUf = snapshot.ufOficialClp > 0;
 
   let status: HealthStatusLevel = 'healthy';
-  let message = `Indicadores BCCh activos: USD $${effectiveUsd.toFixed(2)} CLP (Spread +$${snapshot.spreadClp}), UF $${snapshot.ufOficialClp.toLocaleString('es-CL')}.`;
+  let message = `Indicadores BCCh activos: 1 USD = $${effectiveUsd.toFixed(2)} CLP, 1 UF = $${snapshot.ufOficialClp.toLocaleString('es-CL')} CLP.`;
 
   if (!hasValidUsd || !hasValidUf) {
     status = 'degraded';
@@ -569,8 +569,7 @@ export function exportDiagnosticReportMarkdown(report: SystemHealthReport): stri
 * **Tombstones:** ${report.storage.tombstonesCount} registros eliminados pendientes
 
 ## 💵 3. Indicadores Financieros Oficiales (BCCh)
-* **Dólar Observado:** $${report.rates.usdObs.toFixed(2)} CLP
-* **Dólar con Spread (+${report.rates.spreadClp} CLP):** $${report.rates.effectiveUsd.toFixed(2)} CLP
+* **Dólar Actual (BCCh):** 1 USD = $${report.rates.usdObs.toFixed(2)} CLP
 * **Unidad de Fomento (UF):** $${report.rates.uf.toLocaleString('es-CL')} CLP
 * **Fuente:** ${report.rates.provider} (${report.rates.dateKey})
 

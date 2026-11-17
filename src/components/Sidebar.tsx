@@ -57,6 +57,7 @@ interface SidebarProps {
   onOpenRules?: () => void;
   onOpenSharedSku?: () => void;
   onOpenFastTrack?: () => void;
+  onAttemptCloudFeature?: (viewId: NavViewId, label: string) => void;
 }
 
 export function Sidebar({
@@ -72,6 +73,7 @@ export function Sidebar({
   onOpenRules,
   onOpenSharedSku,
   onOpenFastTrack,
+  onAttemptCloudFeature,
 }: SidebarProps) {
   const [isSystemSubmenuOpen, setIsSystemSubmenuOpen] = React.useState(true);
   const { isOffline } = useOfflineMode();
@@ -227,20 +229,28 @@ export function Sidebar({
             return (
               <button
                 key={item.id}
-                disabled={isBlockedOffline}
-                onClick={() => !isBlockedOffline && onSelectView(item.id)}
-                className={`p-2.5 rounded-xl transition-all block relative ${
+                onClick={() => {
+                  if (isBlockedOffline) {
+                    if (onAttemptCloudFeature) onAttemptCloudFeature(item.id, item.label);
+                  } else {
+                    onSelectView(item.id);
+                  }
+                }}
+                className={`p-2.5 rounded-xl transition-all block relative cursor-pointer ${
                   isBlockedOffline
-                    ? 'text-slate-600 opacity-45 cursor-not-allowed'
+                    ? 'text-amber-400/80 hover:bg-amber-950/40 hover:text-amber-300'
                     : isActive
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 cursor-pointer'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-900 cursor-pointer'
+                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
                 }`}
-                title={isBlockedOffline ? `${item.label} (Solo Online)` : item.label}
+                title={isBlockedOffline ? `${item.label} (Requiere Online — Clic para conectar)` : item.label}
               >
                 <Icon className="w-5 h-5" />
                 {item.badge !== undefined && !isBlockedOffline && (
                   <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-slate-950 animate-pulse" />
+                )}
+                {isBlockedOffline && (
+                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-slate-950" />
                 )}
               </button>
             );
@@ -328,30 +338,35 @@ export function Sidebar({
             return (
               <button
                 key={item.id}
-                disabled={isBlockedOffline}
-                onClick={() => !isBlockedOffline && onSelectView(item.id)}
+                onClick={() => {
+                  if (isBlockedOffline) {
+                    if (onAttemptCloudFeature) onAttemptCloudFeature(item.id, item.label);
+                  } else {
+                    onSelectView(item.id);
+                  }
+                }}
                 title={
                   isBlockedOffline
-                    ? 'Módulo exclusivo Online — Cambia a Online para acceder'
+                    ? `${item.label} (Requiere Online — Clic para conectar y acceder)`
                     : undefined
                 }
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isBlockedOffline
-                    ? 'text-slate-600 opacity-50 cursor-not-allowed bg-slate-900/30'
+                    ? 'text-amber-300/80 hover:bg-amber-950/30 hover:text-amber-200 border border-amber-900/30'
                     : isActive
                     ? item.highlight
-                      ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25 cursor-pointer'
-                      : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25 cursor-pointer'
+                      ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
+                      : 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
                     : item.highlight
-                    ? 'bg-emerald-950/40 text-emerald-300 hover:bg-emerald-950/80 border border-emerald-800/30 cursor-pointer'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 cursor-pointer'
+                    ? 'bg-emerald-950/40 text-emerald-300 hover:bg-emerald-950/80 border border-emerald-800/30'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
                 }`}
               >
                 <div className="flex items-center space-x-3 truncate">
                   <Icon
                     className={`w-4 h-4 shrink-0 ${
                       isBlockedOffline
-                        ? 'text-slate-600'
+                        ? 'text-amber-400'
                         : isActive
                         ? 'text-white'
                         : item.highlight
@@ -363,7 +378,7 @@ export function Sidebar({
                 </div>
                 <div className="flex items-center space-x-1.5 shrink-0">
                   {isBlockedOffline ? (
-                    <span className="inline-flex items-center space-x-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-900 text-amber-400/80 border border-slate-700">
+                    <span className="inline-flex items-center space-x-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-500/40 shadow-xs">
                       <WifiOff className="w-2.5 h-2.5" />
                       <span>Online</span>
                     </span>
@@ -396,27 +411,32 @@ export function Sidebar({
                 return (
                   <button
                     key={item.id}
-                    disabled={isBlockedOffline}
-                    onClick={() => !isBlockedOffline && onSelectView(item.id)}
+                    onClick={() => {
+                      if (isBlockedOffline) {
+                        if (onAttemptCloudFeature) onAttemptCloudFeature(item.id, item.label);
+                      } else {
+                        onSelectView(item.id);
+                      }
+                    }}
                     title={
                       isBlockedOffline
-                        ? 'Módulo exclusivo Online — Cambia a Online para acceder'
+                        ? `${item.label} (Requiere Online — Clic para conectar y acceder)`
                         : undefined
                     }
-                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                       isBlockedOffline
-                        ? 'text-slate-600 opacity-50 cursor-not-allowed bg-slate-900/30'
+                        ? 'text-amber-300/80 hover:bg-amber-950/30 hover:text-amber-200 border border-amber-900/30'
                         : isActive
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25 cursor-pointer'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 cursor-pointer'
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
                     }`}
                   >
                     <div className="flex items-center space-x-3 truncate">
-                      <Icon className={`w-4 h-4 shrink-0 ${isActive && !isBlockedOffline ? 'text-white' : 'text-slate-400'}`} />
+                      <Icon className={`w-4 h-4 shrink-0 ${isBlockedOffline ? 'text-amber-400' : isActive ? 'text-white' : 'text-slate-400'}`} />
                       <span className="truncate">{item.label}</span>
                     </div>
                     {isBlockedOffline ? (
-                      <span className="inline-flex items-center space-x-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-900 text-amber-400/80 border border-slate-700">
+                      <span className="inline-flex items-center space-x-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-500/40 shadow-xs">
                         <WifiOff className="w-2.5 h-2.5" />
                         <span>Online</span>
                       </span>

@@ -70,6 +70,7 @@ import { FeedbackView, CreateTicketModal, getFeedbackTickets } from './modules/f
 import { getFormattedAppVersion } from './core/appVersion';
 import { MobileBottomNav, MobileStickyBar } from './components/mobile';
 import { OfflineSyncModal } from './components/OfflineSyncModal';
+import { OnlineRequirementModal } from './components/OnlineRequirementModal';
 import { SaveEstimateModal } from './components/SaveEstimateModal';
 import { HealthDashboardView } from './modules/health';
 import { useEstimatesMirror } from './hooks/useEstimatesMirror';
@@ -97,6 +98,7 @@ import {
   WifiOff,
   HardDrive,
   UploadCloud,
+  X,
 } from 'lucide-react';
 
 function AppContent() {
@@ -289,6 +291,46 @@ function AppContent() {
     } else {
       setIsOfflineSyncModalOpen(true);
     }
+  };
+
+  const [showOfflineBanner, setShowOfflineBanner] = useState<boolean>(false);
+  const [cloudRequirementTarget, setCloudRequirementTarget] = useState<{
+    isOpen: boolean;
+    viewId?: any;
+    label?: string;
+  }>({ isOpen: false });
+
+  // Auto-dismiss the offline banner after 6 seconds so it doesn't take up visual space
+  useEffect(() => {
+    if (isOffline) {
+      setShowOfflineBanner(true);
+      const timer = setTimeout(() => {
+        setShowOfflineBanner(false);
+      }, 6000);
+      return () => clearTimeout(timer);
+    } else {
+      setShowOfflineBanner(false);
+    }
+  }, [isOffline]);
+
+  const handleAttemptCloudFeature = (viewId: any, label: string) => {
+    setCloudRequirementTarget({
+      isOpen: true,
+      viewId,
+      label,
+    });
+  };
+
+  const handleSwitchOnlineFromModal = () => {
+    setManualOfflineMode(false);
+    if (cloudRequirementTarget.viewId) {
+      setCurrentView(cloudRequirementTarget.viewId);
+    }
+    setCloudToast({
+      message: 'Modo Online activado: sincronización con la nube habilitada.',
+      type: 'success',
+    });
+    setTimeout(() => setCloudToast(null), 4000);
   };
 
   // Modal States
@@ -782,6 +824,7 @@ function AppContent() {
         onOpenRules={() => setIsRulesModalOpen(true)}
         onOpenSharedSku={() => setIsSharedSkuManagerOpen(true)}
         onOpenFastTrack={() => setIsFastTrackAdminModalOpen(true)}
+        onAttemptCloudFeature={handleAttemptCloudFeature}
       />
 
       </div>
@@ -837,11 +880,11 @@ function AppContent() {
 
         {/* Scrollable View Container */}
         <main className="flex-1 overflow-y-auto p-3 sm:p-6 pb-24 md:pb-6 custom-scrollbar">
-          {/* Offline Persistent Working Mode Banner */}
-          {isOffline && (
-            <div className="mb-4 px-4 py-3 rounded-2xl bg-amber-950/60 border border-amber-500/40 text-amber-100 text-xs flex flex-wrap items-center justify-between gap-3 shadow-lg">
+          {/* Offline Working Mode Temporary Notice (auto-dismisses after 6s & has manual close) */}
+          {isOffline && showOfflineBanner && (
+            <div className="mb-4 px-4 py-3 rounded-2xl bg-amber-950/80 border border-amber-500/50 text-amber-100 text-xs flex flex-wrap items-center justify-between gap-3 shadow-xl animate-fade-in transition-all">
               <div className="flex items-start sm:items-center space-x-3">
-                <div className="p-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 shrink-0">
+                <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 shrink-0">
                   <WifiOff className="w-4 h-4" />
                 </div>
                 <div>
@@ -863,19 +906,30 @@ function AppContent() {
                   </p>
                 </div>
               </div>
-              {isManualOffline && (
+              <div className="flex items-center space-x-2 shrink-0">
+                {isManualOffline && (
+                  <button
+                    onClick={() => setIsOfflineSyncModalOpen(true)}
+                    className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] flex items-center space-x-1.5 transition-colors cursor-pointer shadow-md"
+                  >
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    <span>
+                      {pendingOfflineCount > 0
+                        ? `Pasar a Online y Subir (${pendingOfflineCount})`
+                        : 'Pasar a Online'}
+                    </span>
+                  </button>
+                )}
                 <button
-                  onClick={() => setIsOfflineSyncModalOpen(true)}
-                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] flex items-center space-x-1.5 transition-colors cursor-pointer shrink-0 shadow-md"
+                  type="button"
+                  onClick={() => setShowOfflineBanner(false)}
+                  className="p-1.5 rounded-xl text-amber-300 hover:text-white hover:bg-amber-900/60 transition-colors cursor-pointer"
+                  title="Ocultar aviso de Modo Offline"
+                  aria-label="Cerrar aviso de Modo Offline"
                 >
-                  <UploadCloud className="w-3.5 h-3.5" />
-                  <span>
-                    {pendingOfflineCount > 0
-                      ? `Pasar a Online y Subir (${pendingOfflineCount})`
-                      : 'Pasar a Online'}
-                  </span>
+                  <X className="w-4 h-4" />
                 </button>
-              )}
+              </div>
             </div>
           )}
 
@@ -1303,6 +1357,14 @@ function AppContent() {
         onOpenFastTrack={() => setIsFastTrackAdminModalOpen(true)}
         isDrawerOpen={isMobileDrawerOpen}
         onToggleDrawer={setIsMobileDrawerOpen}
+      />
+      {/* Modal de Requerimiento de Conexión Online para funciones nube */}
+      <OnlineRequirementModal
+        isOpen={cloudRequirementTarget.isOpen}
+        onClose={() => setCloudRequirementTarget({ isOpen: false })}
+        featureName={cloudRequirementTarget.label}
+        isNavigatorOffline={isNavigatorOffline}
+        onSwitchToOnline={handleSwitchOnlineFromModal}
       />
     </div>
   );
