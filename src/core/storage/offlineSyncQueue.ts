@@ -213,8 +213,11 @@ export async function clearOfflineQueue(): Promise<void> {
 async function executeQueuedItem(item: OfflineQueueItem): Promise<{ ok: boolean; error?: string }> {
   switch (item.action) {
     case 'save_estimate': {
-      const { saveEstimateToCloud } = await import('../../modules/cloud/firestoreService');
       const record = item.payload?.record || item.payload;
+      if (record?.isLocalOnly || record?.storageScope === 'local_only') {
+        return { ok: true };
+      }
+      const { saveEstimateToCloud } = await import('../../modules/cloud/firestoreService');
       const options = item.payload?.options;
       const res = await saveEstimateToCloud(record, options);
       if (!res.success || res.syncStatus === 'PENDING_SYNC' || res.syncStatus === 'UNCERTAIN_COMMIT') {

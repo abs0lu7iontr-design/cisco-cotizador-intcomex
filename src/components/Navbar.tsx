@@ -29,11 +29,13 @@ import {
   Wifi,
   WifiOff,
   HardDrive,
+  Shield,
 } from 'lucide-react';
 import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { getFormattedAppVersion } from '../core/appVersion';
 import { useUiExperience } from '../core/themeEngine';
 import { useOfflineMode } from '../core/storage/offlineModeManager';
+import { AccessNotificationsDropdown } from './AccessNotificationsDropdown';
 
 interface NavbarProps {
   onUploadClick: () => void;
@@ -41,6 +43,7 @@ interface NavbarProps {
   onSharedSkuClick?: () => void;
   onDownloadClick: () => void;
   onSaveCloudClick?: () => void;
+  onOpenEstimateHistory?: () => void;
   isSavingCloud?: boolean;
   onDsvClick?: () => void;
   onBoClick?: () => void;
@@ -76,6 +79,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSharedSkuClick: _onSharedSkuClick,
   onDownloadClick,
   onSaveCloudClick,
+  onOpenEstimateHistory,
   isSavingCloud = false,
   onDsvClick,
   onBoClick,
@@ -269,6 +273,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           )}
 
+          {/* Access Requests & Security Notifications Dropdown */}
+          <AccessNotificationsDropdown onOpenEstimateHistory={onOpenEstimateHistory} />
+
           {/* Client Mode Privacy Toggle */}
           {onToggleClientMode && (
             <button
@@ -445,8 +452,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }`}
                   title={
                     isOffline
-                      ? 'Modo Offline: Guardar cotización en este PC (se subirá al volver Online)'
-                      : 'Guardar cotización en Firebase Firestore (Nube Compartida)'
+                      ? 'Guardar cotización privada en este PC (Modo Offline)'
+                      : 'Guardar cotización: Elige privacidad (Pública, Restringida o Solo en este PC) y gestiona versiones'
                   }
                 >
                   {isSavingCloud ? (
@@ -454,14 +461,14 @@ export const Navbar: React.FC<NavbarProps> = ({
                   ) : isOffline ? (
                     <HardDrive className="w-4 h-4 text-amber-100" />
                   ) : (
-                    <UploadCloud className="w-4 h-4 text-cyan-100" />
+                    <Shield className="w-4 h-4 text-cyan-100" />
                   )}
                   <span>
                     {isSavingCloud
                       ? 'Guardando...'
                       : isOffline
-                      ? 'Guardar en PC (Offline)'
-                      : 'Guardar en la Nube'}
+                      ? 'Guardar en PC (Privado)'
+                      : 'Guardar / Privacidad'}
                   </span>
                 </button>
               )}

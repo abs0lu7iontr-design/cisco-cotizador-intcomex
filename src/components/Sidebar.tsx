@@ -53,6 +53,7 @@ interface SidebarProps {
   onToggleOpen?: () => void;
   activeBoCount?: number;
   unreadFeedbackCount?: number;
+  pendingAccessCount?: number;
   onOpenRules?: () => void;
   onOpenSharedSku?: () => void;
   onOpenFastTrack?: () => void;
@@ -67,6 +68,7 @@ export function Sidebar({
   onToggleOpen,
   activeBoCount,
   unreadFeedbackCount,
+  pendingAccessCount,
   onOpenRules,
   onOpenSharedSku,
   onOpenFastTrack,
@@ -135,6 +137,7 @@ export function Sidebar({
       id: 'estimates' as NavViewId,
       label: 'Historial Estimates',
       icon: History,
+      badge: pendingAccessCount !== undefined && pendingAccessCount > 0 ? pendingAccessCount : undefined,
       section: 'main',
     },
     {

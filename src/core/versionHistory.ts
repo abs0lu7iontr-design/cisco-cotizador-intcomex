@@ -15,11 +15,32 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.15.0',
+    date: '2026-11-17',
+    commit: 'feat-estimate-privacy-local-storage-auto-versioning-and-access-notifications',
+    title: 'Seguridad y Privacidad de Cotizaciones, Versionado Automático (v1, v2, v3) y Notificaciones de Permisos',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Privacidad y Visibilidad para PMs y Preventas: Nueva opción "Solo en este PC (Privado Local)" para guardar cotizaciones de forma 100% confidencial en el disco local del equipo (IndexedDB) sin subirlas a Firestore ni encolarlas en la nube.',
+      'Descarga sin Guardar Historial: Opción "Sin Guardar Historial" al exportar planillas Excel para cotizar proyectos ultra-confidenciales sin registrar datos.',
+      'Acceso Cruzado al Historial del Equipo: Los usuarios que opten por almacenar cotizaciones privadas locales siguen teniendo acceso completo para consultar, filtrar y reutilizar las cotizaciones públicas de sus compañeros en el Historial Cloud.',
+      'Versionado Automático Secuencial Multi-Versión (v1 -> v2 -> v3): Al modificar y guardar un Estimate existente, el sistema detecta de forma autónoma la versión más alta e incrementa secuencialmente el tag (v1, v2, v3...) con trazabilidad histórica completa.',
+      'Enmascaramiento de Datos Financieros Sensibles: En cotizaciones restringidas o privadas compartidas, el Margen %, Internación %, Arancel %, Costo Neto Cisco, Ganancia USD y valores extendidos se ocultan bajo "🔒 Protegido" para usuarios sin autorización formal.',
+      'Protección Analítica en Dashboard: Las cotizaciones restringidas no autorizadas se excluyen de las métricas comerciales y utilidades del Dashboard para evitar deducciones indirectas de márgenes.',
+      'Sistema de Solicitud y Notificación de Permisos: Botón "[Solicitar Permiso al PM]" para solicitar acceso a cotizaciones restringidas, con campana de notificaciones en el Navbar, contador de pendientes y aprobación/rechazo en 1 solo clic por parte del PM creador.',
+      'Avisos de Concesión de Acceso: Notificaciones emergentes para el solicitante cuando su permiso ha sido autorizado por el PM, desbloqueando inmediatamente los datos financieros de la cotización.',
+      'Subida a la Nube en 1 Clic (publishLocalEstimateToCloud): Botón "[Subir a Nube ☁️]" en el Historial para publicar cotizaciones locales en Firestore como Públicas o Restringidas cuando el usuario decida compartirlas.',
+      'Optimización Reforzada de Almacenamiento: Consolidación automática de colecciones pesadas hacia IndexedDB (soporte de Gigabytes), manteniendo LocalStorage libre (< 0.5 MB) y en estado Óptimo (100% verde) en el Monitor de Salud tanto Online como Offline.',
+      'Suite de Pruebas Unitarias Automatizadas: 30 suites de pruebas unitarias automáticas aprobadas al 100% (tests/estimatePrivacyAndVersioning.test.ts).',
+    ],
+  },
+  {
     version: '2.14.1',
     date: '2026-11-16',
     commit: 'fix-modern-storage-engine-gigabytes-and-localstorage-purge',
     title: 'Motor de Almacenamiento Moderno de Alta Capacidad (StorageManager / Gigabytes) y Purga de LocalStorage',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Motor Moderno de Alta Capacidad (StorageManager / IndexedDB): Integración nativa con la API W3C StorageManager (navigator.storage.estimate y navigator.storage.persist), desbloqueando decenas de Gigabytes de almacenamiento local en el PC (ej. 50 a 120 GB) operativos tanto en Modo Online como Offline.',

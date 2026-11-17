@@ -244,7 +244,13 @@ export interface CiscoAutomatedState {
   loadCloudEstimateIntoStore: (record: CloudEstimateRecord) => Promise<void>;
   saveCurrentEstimateToCloud: (
     options?: SaveEstimateCloudOptions
-  ) => Promise<{ success: boolean; id?: string; error?: string }>;
+  ) => Promise<{
+    success: boolean;
+    id?: string;
+    versionNumber?: number;
+    versionTag?: string;
+    error?: string;
+  }>;
   logout: () => Promise<void>;
 }
 
@@ -254,8 +260,12 @@ export interface SaveEstimateCloudOptions {
   modelName?: string;
   originalFileName?: string;
   isRestricted?: boolean;
+  isLocalOnly?: boolean;
+  storageScope?: 'cloud' | 'local_only';
+  privacyLevel?: 'public' | 'restricted' | 'local_only';
   versionNumber?: number;
   versionTag?: string;
+  autoIncrementIfExisting?: boolean;
   note?: string;
 }
 
@@ -1066,10 +1076,21 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         `${processedResult.headerInfo.estimateId || 'Estimate'}.xlsx`
       ).trim();
 
+      const isLocalOnly = Boolean(
+        options?.isLocalOnly ||
+        options?.storageScope === 'local_only' ||
+        options?.privacyLevel === 'local_only'
+      );
+
       const resolvedVersionNum =
-        options?.versionNumber !== undefined ? options.versionNumber : estimateVersionNumber;
+        options?.versionNumber !== undefined ? options.versionNumber : undefined;
       const resolvedVersionTag =
-        options?.versionTag || (resolvedVersionNum === 0 ? 'v0_RAW' : `v${resolvedVersionNum}`);
+        options?.versionTag ||
+        (resolvedVersionNum !== undefined
+          ? resolvedVersionNum === 0
+            ? 'v0_RAW'
+            : `v${resolvedVersionNum}`
+          : undefined);
       const resolvedBaseline = baselineV0Amount > 0 ? baselineV0Amount : totalNetCisco;
 
       const effectiveRates = resolveEffectiveQuoteRates(params, processedResult.items);
@@ -1083,6 +1104,9 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         originalFileName: resolvedFileName,
         createdAt: new Date().toISOString(),
         isRestricted: options?.isRestricted,
+        isLocalOnly,
+        storageScope: isLocalOnly ? 'local_only' : 'cloud',
+        privacyLevel: isLocalOnly ? 'local_only' : options?.isRestricted ? 'restricted' : 'public',
         activeVersion: resolvedVersionNum,
         activeVersionTag: resolvedVersionTag,
         baselineV0Amount: resolvedBaseline,
@@ -1144,9 +1168,16 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         })),
       };
 
-      const res = await saveEstimateToCloud(cloudPayload);
+      const res = await saveEstimateToCloud(cloudPayload, {
+        isLocalOnly,
+        storageScope: isLocalOnly ? 'local_only' : 'cloud',
+        autoIncrementIfExisting: options?.autoIncrementIfExisting,
+        note: options?.note,
+      });
+
       if (
         !res.success &&
+        !isLocalOnly &&
         typeof navigator !== 'undefined' &&
         (!navigator.onLine ||
           res.error?.includes('network') ||
@@ -1161,8 +1192,12 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         };
       }
       if (res.success) {
-        setEstimateVersionNumber(resolvedVersionNum);
-        setEstimateVersionTag(resolvedVersionTag);
+        if (res.versionNumber !== undefined) {
+          setEstimateVersionNumber(res.versionNumber);
+        }
+        if (res.versionTag) {
+          setEstimateVersionTag(res.versionTag);
+        }
         setBaselineV0Amount(resolvedBaseline);
       }
       return res;

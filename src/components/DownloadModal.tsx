@@ -28,6 +28,8 @@ import {
   Sparkles,
   Package,
   Presentation,
+  HardDrive,
+  Shield,
 } from 'lucide-react';
 import { generateOptimizedWorkbook, synthesizeOfficialEstimateWorkbook } from '../core/excelEngine';
 import { generateErpTemplateWorkbook } from '../core/erpExportHelper';
@@ -163,7 +165,9 @@ export function DownloadModal({
   // UI state
   const [showDetails, setShowDetails] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [isRestricted, setIsRestricted] = useState(false);
+  const [historySaveMode, setHistorySaveMode] = useState<
+    'cloud_public' | 'cloud_restricted' | 'local_only' | 'none'
+  >('cloud_public');
   const [cloudSaveNote, setCloudSaveNote] = useState<string | null>(null);
   const [emailNotice, setEmailNotice] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -221,7 +225,7 @@ export function DownloadModal({
       setIsSaving(false);
       setShowDetails(false);
       setShowPreview(false);
-      setIsRestricted(false);
+      setHistorySaveMode('cloud_public');
       setCloudSaveNote(null);
       setGuardrailConfirmed(false);
       const initialPartner = defaultPartner || headerInfo?.companyName || 'Intcomex';
@@ -320,23 +324,39 @@ export function DownloadModal({
     URL.revokeObjectURL(url);
   };
 
-  // Automatic Cloud Persistence right after download (asynchronous, non-blocking)
+  // Automatic Persistence right after download (asynchronous, non-blocking)
   const persistToCloudAfterDownload = async (cleanFile: string) => {
+    if (historySaveMode === 'none') {
+      setCloudSaveNote('🚫 Archivo descargado sin guardar en historial (modo privado).');
+      return;
+    }
+
+    const isRestricted = historySaveMode === 'cloud_restricted';
+    const isLocalOnly = historySaveMode === 'local_only';
+
     try {
-      setCloudSaveNote('☁️ Sincronizando respaldo con Historial Cloud...');
+      setCloudSaveNote(
+        isLocalOnly
+          ? '💻 Guardando en almacenamiento local de este PC...'
+          : '☁️ Sincronizando respaldo con Historial Cloud...'
+      );
       const cloudRes = await saveCurrentEstimateToCloud({
         partnerName: partnerName.trim() || defaultPartner || 'Intcomex',
         clientFinalName: clientName.trim() || defaultClient || 'Cliente Final',
         modelName: modelName.trim() || defaultModel || 'Cisco',
         originalFileName: cleanFile,
         isRestricted,
-        versionNumber: estimateVersionNumber,
-        versionTag: estimateVersionTag,
+        isLocalOnly,
+        storageScope: isLocalOnly ? 'local_only' : 'cloud',
+        privacyLevel: isLocalOnly ? 'local_only' : isRestricted ? 'restricted' : 'public',
+        autoIncrementIfExisting: true,
       });
       if (cloudRes.success) {
-        const vBadge = estimateVersionTag || `v${estimateVersionNumber}`;
+        const vBadge = cloudRes.versionTag || `v${estimateVersionNumber}`;
         setCloudSaveNote(
-          isRestricted
+          isLocalOnly
+            ? `💻 Guardado privado solo en este PC (${vBadge}).`
+            : isRestricted
             ? `🔒 Guardado en Historial Cloud (${vBadge}) con acceso restringido.`
             : `☁️ Guardado automáticamente en Historial Cloud (${vBadge} - visible para el equipo).`
         );
@@ -589,7 +609,7 @@ export function DownloadModal({
               {cloudSaveNote && (
                 <div
                   className={`p-2.5 rounded-xl border text-[10px] font-semibold flex items-center space-x-2 ${
-                    isRestricted
+                    historySaveMode === 'cloud_restricted'
                       ? 'bg-amber-950/50 border-amber-600/40 text-amber-300'
                       : 'bg-cyan-950/50 border-cyan-600/40 text-cyan-300'
                   }`}
@@ -820,39 +840,78 @@ export function DownloadModal({
                 </div>
               )}
 
-              {/* Cloud Visibility Toggle */}
-              <div className="p-3 bg-slate-950/90 border border-slate-800 rounded-xl space-y-2">
+              {/* Cloud / Local Visibility & Privacy Controls */}
+              <div className="p-3 bg-slate-950/90 border border-slate-800 rounded-xl space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
-                    <Cloud className="w-3.5 h-3.5" />
-                    Visibilidad en Historial Cloud
+                    <Shield className="w-3.5 h-3.5 text-cyan-400" />
+                    Destino y Privacidad de la Cotización
                   </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setIsRestricted((prev) => !prev)}
-                    className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
-                      isRestricted
-                        ? 'bg-amber-950/80 text-amber-300 border-amber-600/50 hover:bg-amber-900/80'
-                        : 'bg-emerald-950/70 text-emerald-300 border-emerald-600/40 hover:bg-emerald-900/70'
+                    onClick={() => setHistorySaveMode('cloud_public')}
+                    className={`p-2 rounded-lg text-[10px] font-bold border transition-all cursor-pointer flex items-center justify-center space-x-1.5 ${
+                      historySaveMode === 'cloud_public'
+                        ? 'bg-cyan-950/80 text-cyan-300 border-cyan-500 shadow-sm'
+                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
                     }`}
                   >
-                    {isRestricted ? (
-                      <>
-                        <Lock className="w-3 h-3 text-amber-400" />
-                        <span>Restringido (Con Permiso)</span>
-                      </>
-                    ) : (
-                      <>
-                        <Unlock className="w-3 h-3 text-emerald-400" />
-                        <span>Público (Todo el equipo)</span>
-                      </>
-                    )}
+                    <Unlock className="w-3 h-3 text-cyan-400" />
+                    <span>Nube Pública 🌐</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHistorySaveMode('cloud_restricted')}
+                    className={`p-2 rounded-lg text-[10px] font-bold border transition-all cursor-pointer flex items-center justify-center space-x-1.5 ${
+                      historySaveMode === 'cloud_restricted'
+                        ? 'bg-amber-950/80 text-amber-300 border-amber-500 shadow-sm'
+                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                    }`}
+                  >
+                    <Lock className="w-3 h-3 text-amber-400" />
+                    <span>Nube Restringida 🔒</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHistorySaveMode('local_only')}
+                    className={`p-2 rounded-lg text-[10px] font-bold border transition-all cursor-pointer flex items-center justify-center space-x-1.5 ${
+                      historySaveMode === 'local_only'
+                        ? 'bg-purple-950/80 text-purple-300 border-purple-500 shadow-sm'
+                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                    }`}
+                  >
+                    <HardDrive className="w-3 h-3 text-purple-400" />
+                    <span>Solo en este PC 💻</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHistorySaveMode('none')}
+                    className={`p-2 rounded-lg text-[10px] font-bold border transition-all cursor-pointer flex items-center justify-center space-x-1.5 ${
+                      historySaveMode === 'none'
+                        ? 'bg-rose-950/80 text-rose-300 border-rose-500 shadow-sm'
+                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                    }`}
+                  >
+                    <X className="w-3 h-3 text-rose-400" />
+                    <span>Sin Guardar Historial 🚫</span>
                   </button>
                 </div>
+
                 <p className="text-[10px] text-slate-400 leading-relaxed">
-                  {isRestricted
-                    ? '🔒 Otros usuarios verán esta cotización en la búsqueda del historial, pero deberán solicitarte permiso para ver los montos o cargarla.'
-                    : '🔓 Cualquier usuario registrado podrá ver y cargar esta cotización desde el Historial de Estimates.'}
+                  {historySaveMode === 'cloud_public' &&
+                    '🌐 Visible con todos los márgenes y montos para el equipo en Historial Cloud.'}
+                  {historySaveMode === 'cloud_restricted' &&
+                    '🔒 Subida a la nube con margen e internación protegidos. Requiere solicitarte permiso para ver montos.'}
+                  {historySaveMode === 'local_only' &&
+                    '💻 Guardada exclusivamente en el almacenamiento interno de este PC. NO se comparte en la nube.'}
+                  {historySaveMode === 'none' &&
+                    '🚫 Se descarga el archivo Excel sin guardar copias ni historial en el sistema.'}
                 </p>
               </div>
 

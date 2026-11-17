@@ -89,10 +89,13 @@ export interface CloudEstimateRecord {
 
   // Visibility & Access Control (Shared by default; manual restriction & permission request flow)
   isRestricted?: boolean;
+  isLocalOnly?: boolean;
+  storageScope?: 'cloud' | 'local_only';
+  privacyLevel?: 'public' | 'restricted' | 'local_only';
   allowedUsers?: string[];
   accessRequests?: EstimateAccessRequest[];
   syncedToCloud?: boolean;
-  syncStatus?: 'SYNCED' | 'PENDING_SYNC' | 'UNCERTAIN_COMMIT';
+  syncStatus?: 'SYNCED' | 'PENDING_SYNC' | 'UNCERTAIN_COMMIT' | 'LOCAL_ONLY';
   lastOperationId?: string;
   v0Status?: 'PRESENT_IMMUTABLE' | 'UNAVAILABLE_ORIGINAL' | 'READ_ERROR_DEFERRED';
   lifecycleState?: 'ACTIVE' | 'ARCHIVED' | 'PENDING_DELETE';

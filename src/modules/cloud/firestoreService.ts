@@ -90,11 +90,11 @@ export function addDeletedDsvId(id: string): void {
 // ----------------------------------------------------------------------------
 // Local Storage Cache & Mirror Snapshot Helpers (0ms Instant Load + Failsafe)
 // ----------------------------------------------------------------------------
-function getLocalEstimatesCache(): CloudEstimateRecord[] {
+export function getLocalEstimatesCache(): CloudEstimateRecord[] {
   return getEstimatesMirrorSnapshot();
 }
 
-function saveLocalEstimatesCache(list: CloudEstimateRecord[], markSyncedNow: boolean = false) {
+export function saveLocalEstimatesCache(list: CloudEstimateRecord[], markSyncedNow: boolean = false) {
   saveEstimatesMirrorSnapshot(list, markSyncedNow);
 }
 
@@ -426,6 +426,10 @@ export async function saveEstimateToCloud(
   options?: {
     driver?: EstimatePersistenceDriver;
     operationId?: string;
+    isLocalOnly?: boolean;
+    storageScope?: 'cloud' | 'local_only';
+    autoIncrementIfExisting?: boolean;
+    note?: string;
     rawV0Snapshot?: {
       items: CloudEstimateRecord['items'];
       totalNetCisco: number;
@@ -435,9 +439,10 @@ export async function saveEstimateToCloud(
 ): Promise<{
   success: boolean;
   id?: string;
+  versionNumber?: number;
   versionTag?: string;
   operationId?: string;
-  syncStatus?: 'SYNCED' | 'PENDING_SYNC' | 'UNCERTAIN_COMMIT';
+  syncStatus?: 'SYNCED' | 'PENDING_SYNC' | 'UNCERTAIN_COMMIT' | 'LOCAL_ONLY';
   v0Status?: 'PRESENT_IMMUTABLE' | 'UNAVAILABLE_ORIGINAL' | 'READ_ERROR_DEFERRED';
   skippedImmutableV0?: boolean;
   error?: string;
@@ -445,6 +450,14 @@ export async function saveEstimateToCloud(
   const capturedCtx = captureProjectContext();
   const docId = buildEstimateDocId(record.estimateId, record.dealId, record.originalFileName);
   const nowIso = new Date().toISOString();
+
+  const isLocalOnly = Boolean(
+    options?.isLocalOnly ||
+    options?.storageScope === 'local_only' ||
+    record.isLocalOnly ||
+    record.storageScope === 'local_only' ||
+    record.privacyLevel === 'local_only'
+  );
 
   // 1. Check existing local record to preserve permissions, baseline, and versions
   const localList = getLocalEstimatesCache();
@@ -464,10 +477,29 @@ export async function saveEstimateToCloud(
 
   // Determine active version number & canonical tags
   let versionNumber: number;
-  if (record.activeVersion !== undefined) {
+  if (record.activeVersion === 0) {
+    versionNumber = 0;
+  } else if (
+    options?.autoIncrementIfExisting !== false &&
+    existingLocal &&
+    (options?.operationId === undefined || existingLocal.lastOperationId !== options.operationId)
+  ) {
+    // If the estimate already exists in the system and this is a new modification/save:
+    const existingVersions = (existingLocal.versionsSummary || []).map((v) => v.versionNumber);
+    const maxExisting = Math.max(
+      existingLocal.activeVersion ?? 1,
+      ...existingVersions,
+      1
+    );
+    if (record.activeVersion !== undefined && record.activeVersion > maxExisting) {
+      versionNumber = record.activeVersion;
+    } else {
+      // Auto-increment version: v1 -> v2 -> v3
+      versionNumber = maxExisting + 1;
+    }
+  } else if (record.activeVersion !== undefined) {
     versionNumber = record.activeVersion;
   } else if (existingLocal?.activeVersion !== undefined) {
-    // If retrying a pending/uncertain operation with the same operationId, reuse the same versionNumber!
     if (
       options?.operationId &&
       existingLocal.lastOperationId === options.operationId &&
@@ -577,6 +609,7 @@ export async function saveEstimateToCloud(
     creatorUsername: record.creator?.username || 'anonymous',
     creatorFullName: record.creator?.fullName || '',
     originalFileName: record.originalFileName || '',
+    note: options?.note || (versionNumber === 0 ? 'BOM Original CCW (Sin Márgenes)' : undefined),
     ...(versionNumber === 0 ? { note: 'BOM Original CCW (Sin Márgenes)' } : {}),
   };
 
@@ -690,10 +723,13 @@ export async function saveEstimateToCloud(
       record.isRestricted !== undefined
         ? Boolean(record.isRestricted)
         : Boolean(existingLocal?.isRestricted ?? false),
+    isLocalOnly,
+    storageScope: isLocalOnly ? 'local_only' : 'cloud',
+    privacyLevel: isLocalOnly ? 'local_only' : record.isRestricted ? 'restricted' : 'public',
     allowedUsers: record.allowedUsers ?? existingLocal?.allowedUsers ?? [],
     accessRequests: record.accessRequests ?? existingLocal?.accessRequests ?? [],
-    syncedToCloud: false,
-    syncStatus: 'PENDING_SYNC',
+    syncedToCloud: !isLocalOnly && false,
+    syncStatus: isLocalOnly ? 'LOCAL_ONLY' : 'PENDING_SYNC',
     lastOperationId: operationId,
     v0Status,
     lifecycleState: record.lifecycleState || existingLocal?.lifecycleState || 'ACTIVE',
@@ -731,6 +767,20 @@ export async function saveEstimateToCloud(
   );
   if (isProjectContextCurrent(capturedCtx)) {
     saveLocalEstimatesCache([pendingLocalRecord, ...filteredLocal]);
+  }
+
+  // If user requested strictly local storage on this PC, do NOT upload or enqueue to cloud
+  if (isLocalOnly) {
+    return {
+      success: true,
+      id: docId,
+      versionNumber,
+      versionTag,
+      operationId,
+      syncStatus: 'LOCAL_ONLY',
+      v0Status,
+      error: 'Guardado privado únicamente en este PC (no compartido en la nube)',
+    };
   }
 
   const isManualOrNetworkOffline = isAppOffline();
@@ -790,6 +840,7 @@ export async function saveEstimateToCloud(
         return {
           success: true,
           id: docId,
+          versionNumber,
           versionTag,
           operationId,
           syncStatus: 'PENDING_SYNC',
@@ -871,6 +922,7 @@ export async function saveEstimateToCloud(
     return {
       success: true,
       id: docId,
+      versionNumber,
       versionTag,
       operationId,
       syncStatus: 'SYNCED',
@@ -990,7 +1042,7 @@ export async function saveModifiedEstimateVersion(
   success: boolean;
   id?: string;
   versionTag?: string;
-  syncStatus?: 'SYNCED' | 'PENDING_SYNC' | 'UNCERTAIN_COMMIT';
+  syncStatus?: 'SYNCED' | 'PENDING_SYNC' | 'UNCERTAIN_COMMIT' | 'LOCAL_ONLY';
   v0Status?: 'PRESENT_IMMUTABLE' | 'UNAVAILABLE_ORIGINAL' | 'READ_ERROR_DEFERRED';
   error?: string;
 }> {
@@ -1770,6 +1822,11 @@ export async function getCloudEstimates(
           ? `EST:${l.estimateId.trim().toUpperCase()}`
           : `ID:${l.id}`;
       if (!dedupMap.has(key)) {
+        if (l.isLocalOnly || l.storageScope === 'local_only') {
+          // Keep strictly local-only estimates in memory/UI for this PC without pushing to cloud
+          dedupMap.set(key, l);
+          continue;
+        }
         const targetId = buildEstimateDocId(l.estimateId, l.dealId, l.originalFileName);
         const promoted: CloudEstimateRecord = {
           ...l,
@@ -1781,7 +1838,7 @@ export async function getCloudEstimates(
         };
         dedupMap.set(key, promoted);
 
-        // Background push to Firestore if it wasn't synced yet
+        // Background push to Firestore if it wasn't synced yet and not local-only
         if (!l.syncedToCloud) {
           const { id: _omit, ...payload } = promoted;
           setDoc(doc(db, ESTIMATES_COLLECTION, targetId), sanitizeForFirestore(payload), {
@@ -1833,6 +1890,44 @@ export async function queryCloudEstimatesPaginated(
   return {
     ...paged,
     fromCacheOnly: Boolean(res.fromCacheOnly),
+    error: res.error,
+  };
+}
+
+/**
+ * Publica una cotización que estaba guardada únicamente en el PC local a la nube de Firestore.
+ * Permite al PM elegir si publicarla como Pública o Restringida (con datos sensibles bloqueados).
+ */
+export async function publishLocalEstimateToCloud(
+  docId: string,
+  options?: { isRestricted?: boolean; note?: string }
+): Promise<{ success: boolean; versionTag?: string; error?: string }> {
+  const localList = getLocalEstimatesCache();
+  const target = localList.find((x) => x.id === docId);
+  if (!target) {
+    return { success: false, error: 'Cotización no encontrada en el almacenamiento local de este PC.' };
+  }
+
+  const { id: _omitId, ...payloadWithoutId } = target;
+  const isRestricted =
+    options?.isRestricted !== undefined ? options.isRestricted : Boolean(target.isRestricted);
+
+  const updatedPayload: Omit<CloudEstimateRecord, 'id'> = {
+    ...payloadWithoutId,
+    isLocalOnly: false,
+    storageScope: 'cloud',
+    privacyLevel: isRestricted ? 'restricted' : 'public',
+    isRestricted,
+  };
+
+  const res = await saveEstimateToCloud(updatedPayload, {
+    autoIncrementIfExisting: false,
+    note: options?.note || 'Publicado desde almacenamiento local del PC a la nube',
+  });
+
+  return {
+    success: res.success,
+    versionTag: res.versionTag,
     error: res.error,
   };
 }

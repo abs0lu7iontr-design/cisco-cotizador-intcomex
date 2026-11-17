@@ -6,6 +6,29 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.15.0] - 2026-11-17
+### 🛡️ Seguridad, Privacidad de Cotizaciones, Versionado Automático (v1, v2, v3) y Notificaciones de Permisos
+- **Privacidad y Control de Visibilidad para PMs y Preventas (`SaveEstimateModal.tsx`, `DownloadModal.tsx`):**
+  - Nueva opción *"Solo en este PC (Privado Local)"*: Permite guardar la cotización exclusivamente en el disco local del equipo (IndexedDB) sin subirla a la nube de Firestore ni incluirla en la cola de sincronización offline.
+  - Opción de *"Sin Guardar en Historial"*: Permite descargar planillas Excel corporativas en modo confidencial sin dejar rastro en el historial local ni remoto.
+  - **Acceso Cruzado al Historial del Equipo:** Los usuarios con cotizaciones locales privadas pueden seguir consultando, filtrando y cargando todas las cotizaciones públicas compartidas por el resto del equipo en tiempo real.
+- **Versionado Automático Secuencial ($v1 \rightarrow v2 \rightarrow v3 \dots$):**
+  - Al guardar o exportar modificaciones de una cotización existente (mismo `estimateId`), el motor calcula automáticamente la versión más alta existente y genera la siguiente versión incremental ($v1 \rightarrow v2 \rightarrow v3$) con nota de cambios opcional y trazabilidad completa.
+- **Enmascaramiento de Datos Financieros Sensibles en Cotizaciones Restringidas (`EstimatesHistoryView.tsx`, `DashboardView.tsx`):**
+  - En cotizaciones con visibilidad restringida, las cifras confidenciales (Margen %, Internación %, Arancel %, Costo Neto Cisco, Ganancia Intcomex USD y montos por partida) se ocultan automáticamente bajo la insignia `🔒 Protegido` para usuarios no autorizados.
+  - Protección analítica en el Dashboard: Las utilidades y totales de cotizaciones restringidas no autorizadas se excluyen de los cálculos de rentabilidad comercial general para impedir deducciones indirectas.
+- **Sistema de Notificaciones y Solicitud de Permisos (`estimateAccessNotificationService.ts`, `AccessNotificationsDropdown.tsx`):**
+  - Flujo de solicitud formal de acceso: Los colegas pueden solicitar permiso para visualizar los márgenes de una cotización restringida mediante el botón `[Solicitar Permiso al PM]`.
+  - Notificaciones en tiempo real en el Navbar con campana y contador de solicitudes pendientes dirigidas exclusivamente al PM creador.
+  - Resolución en 1 solo clic: El PM puede autorizar o rechazar solicitudes al instante desde el dropdown del Navbar o desde la vista de detalle del Estimate.
+  - Avisos interactivos de resolución para el solicitante cuando su solicitud es concedida.
+- **Publicación de Cotizaciones Locales a la Nube en 1 Clic (`publishLocalEstimateToCloud`):**
+  - Botón directo `[Subir a Nube ☁️]` en la tabla del Historial para que el PM o preventa pueda compartir una cotización local en Firestore (como Pública o Restringida) cuando esté lista.
+- **Optimización Reforzada de Almacenamiento Local (`modernStorageEngine.ts`, `healthService.ts`):**
+  - Consolidación automática de colecciones pesadas desde LocalStorage hacia IndexedDB (Tier 1 de alta capacidad con soporte de Gigabytes), liberando espacio inmediato para mantener LocalStorage en niveles óptimos (< 0.5 MB) tanto Online como Offline.
+- **Suite de Pruebas Unitarias Automatizadas (`tests/estimatePrivacyAndVersioning.test.ts`):**
+  - 30 suites de pruebas unitarias automáticas aprobadas al 100%.
+
 ## [v2.14.1] - 2026-11-16
 ### 🚀 Motor de Almacenamiento Moderno de Alta Capacidad (StorageManager / Gigabytes) y Purga de LocalStorage
 - **Motor Moderno de Alta Capacidad (StorageManager / IndexedDB - Gigabytes):**

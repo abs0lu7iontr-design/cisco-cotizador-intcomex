@@ -420,3 +420,9 @@ export function getMirrorLastSyncTimestamp(projectId?: string): string | null {
   }
 }
 
+/**
+ * Direct accessor to the local estimates cache
+ */
+export const getLocalEstimatesCache = getEstimatesMirrorSnapshot;
+
+

@@ -24,6 +24,7 @@ import {
   EstimateVersionDetail,
   createVersionSelectionController,
   compareEstimateRecordsDeterministic,
+  publishLocalEstimateToCloud,
 } from '../modules/cloud';
 import { useCiscoAutomatedStore } from '../core/store';
 import { savePipelineDeal, PipelineDealRecord, MESES_ANO } from '../modules/pipeline';
@@ -48,6 +49,7 @@ import {
   Unlock,
   KeyRound,
   Bell,
+  HardDrive,
   Check,
   XCircle,
   Clock,
@@ -136,7 +138,7 @@ export function EstimatesHistoryView() {
   const [selectedCreator, setSelectedCreator] = useState<string>('all');
   const [selectedPartner, setSelectedPartner] = useState<string>('all');
   const [visibilityFilter, setVisibilityFilter] = useState<
-    'all' | 'public' | 'restricted' | 'pending_requests'
+    'all' | 'public' | 'restricted' | 'local_only' | 'pending_requests'
   >('all');
   const [sortBy, setSortBy] = useState<'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc'>(
     'date_desc'
@@ -312,7 +314,9 @@ export function EstimatesHistoryView() {
         (est.allowedUsers || []).some((u) => String(u || '').trim().toLowerCase() === myUsername)
     );
     const canManagePrivacy = isOwner || isAdmin;
-    const hasAccess = !est.isRestricted || isOwner || isAdmin || isAllowed;
+    const hasAccess = est.isLocalOnly
+      ? isOwner || isAdmin
+      : !est.isRestricted || isOwner || isAdmin || isAllowed;
 
     const myRequest: EstimateAccessRequest | undefined = (est.accessRequests || []).find(
       (r) => (r.username || '').trim().toLowerCase() === myUsername
@@ -496,8 +500,9 @@ export function EstimatesHistoryView() {
       const hasPending = (e.accessRequests || []).some((r) => r.status === 'pending');
       const matchesVisibility =
         visibilityFilter === 'all' ||
-        (visibilityFilter === 'public' && !e.isRestricted) ||
-        (visibilityFilter === 'restricted' && Boolean(e.isRestricted)) ||
+        (visibilityFilter === 'public' && !e.isRestricted && !e.isLocalOnly) ||
+        (visibilityFilter === 'restricted' && Boolean(e.isRestricted) && !e.isLocalOnly) ||
+        (visibilityFilter === 'local_only' && Boolean(e.isLocalOnly)) ||
         (visibilityFilter === 'pending_requests' && hasPending);
 
       return (
@@ -545,6 +550,17 @@ export function EstimatesHistoryView() {
   const paginatedEstimates = useMemo(() => {
     return filteredEstimates.slice(0, visibleCount);
   }, [filteredEstimates, visibleCount]);
+
+  const myPendingRequestsCount = useMemo(() => {
+    const myUsername = (currentUser?.username || '').trim().toLowerCase();
+    if (!myUsername) return 0;
+    return estimates.reduce((count, est) => {
+      const creatorUsername = (est.creator?.username || '').trim().toLowerCase();
+      if (creatorUsername !== myUsername) return count;
+      const pending = (est.accessRequests || []).filter((r) => r.status === 'pending');
+      return count + pending.length;
+    }, 0);
+  }, [estimates, currentUser]);
 
   const hasMoreEstimates = visibleCount < filteredEstimates.length;
 
@@ -655,6 +671,30 @@ export function EstimatesHistoryView() {
       return;
     }
     loadCloudEstimateIntoStore(est);
+  };
+
+  // Handle Publishing Local PC Estimate to Cloud
+  const handlePublishLocalToCloud = async (est: CloudEstimateRecord) => {
+    if (!est.id) return;
+    setIsLoading(true);
+    try {
+      const res = await publishLocalEstimateToCloud(est.id, {
+        isRestricted: false,
+      });
+      if (res.success) {
+        showToast(
+          `☁️ Cotización ${est.estimateId || est.id} publicada exitosamente en la nube.`,
+          'success'
+        );
+        await fetchAllHistory(false);
+      } else {
+        showToast(res.error || 'Error publicando a la nube', 'error');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Error inesperado al publicar', 'error');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Handle Manual Privacy Toggle (Restringir / Público)
@@ -1046,6 +1086,9 @@ export function EstimatesHistoryView() {
                   <option value="restricted" className="bg-slate-900">
                     🔒 Solo Restringidas (Con permiso)
                   </option>
+                  <option value="local_only" className="bg-slate-900">
+                    💻 Solo en este PC (Privadas)
+                  </option>
                   <option value="pending_requests" className="bg-slate-900">
                     🔔 Con Solicitudes Pendientes
                   </option>
@@ -1113,6 +1156,31 @@ export function EstimatesHistoryView() {
           </div>
         </div>
       </div>
+
+      {/* Pending Access Requests Banner for PM/Owner */}
+      {activeTab === 'estimates' && myPendingRequestsCount > 0 && (
+        <div className="p-4 rounded-2xl bg-amber-950/70 border border-amber-500/50 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center space-x-3">
+            <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-300">
+              <KeyRound className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <div className="font-bold text-amber-200 text-xs">
+                Tienes {myPendingRequestsCount} solicitud(es) de acceso pendiente(s) a tus cotizaciones protegidas
+              </div>
+              <p className="text-[11px] text-amber-300/80">
+                Colegas de preventa o comercial han solicitado ver tus cotizaciones restringidas. Puedes aprobar o rechazar directamente.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setVisibilityFilter('pending_requests')}
+            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-md cursor-pointer"
+          >
+            Ver Solicitudes ({myPendingRequestsCount})
+          </button>
+        </div>
+      )}
 
       {/* TAB 1: ESTIMATES TABLE */}
       {activeTab === 'estimates' && (
@@ -1186,7 +1254,15 @@ export function EstimatesHistoryView() {
                                 {est.estimateId || '—'}
                               </span>
                             )}
-                            {est.isRestricted ? (
+                            {est.isLocalOnly ? (
+                              <span
+                                className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-950/90 text-purple-300 border border-purple-700/50"
+                                title="Cotización guardada exclusivamente en el almacenamiento interno de este PC (no compartida en la nube)"
+                              >
+                                <HardDrive className="w-2.5 h-2.5 text-purple-400" />
+                                <span>Solo en este PC</span>
+                              </span>
+                            ) : est.isRestricted ? (
                               <span
                                 className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-950/90 text-amber-300 border border-amber-700/50"
                                 title="Cotización con restricción manual de vista"
@@ -1400,6 +1476,18 @@ export function EstimatesHistoryView() {
                                     ? 'Re-solicitar Permiso'
                                     : 'Solicitar Permiso'}
                                 </span>
+                              </button>
+                            )}
+
+                            {/* Publish Local PC Estimate to Cloud */}
+                            {est.isLocalOnly && isOwner && (
+                              <button
+                                onClick={() => handlePublishLocalToCloud(est)}
+                                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-bold shadow-md shadow-cyan-600/20 transition-all cursor-pointer"
+                                title="Subir esta cotización privada local a la nube de Firestore (compartir con el equipo)"
+                              >
+                                <Cloud className="w-3.5 h-3.5" />
+                                <span>Subir a Nube</span>
                               </button>
                             )}
 
@@ -1905,6 +1993,7 @@ export function EstimatesHistoryView() {
             <div className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
               {/* Version Selector & Immutability Timeline */}
               {(() => {
+                const { hasAccess, isOwner: _isOwner, isAdmin: _isAdmin, myRequest } = evaluateAccess(selectedEstimateDetail);
                 const isViewingV0 =
                   selectedVersionTag === 'v0' || selectedVersionTag === 'v0_RAW';
                 const baseV0Amt = Number(
@@ -2051,7 +2140,7 @@ export function EstimatesHistoryView() {
                     </div>
 
                     {/* Version Comparison Card (v0 vs selected) */}
-                    {showVersionComparison && !isViewingV0 && (
+                    {hasAccess && showVersionComparison && !isViewingV0 && (
                       <div className="bg-gradient-to-r from-slate-950 via-cyan-950/20 to-slate-950 p-4 rounded-2xl border border-cyan-800/40 space-y-3 animate-in fade-in">
                         <div className="flex items-center justify-between text-xs font-bold text-cyan-300">
                           <div className="flex items-center gap-2">
@@ -2095,6 +2184,46 @@ export function EstimatesHistoryView() {
                       </div>
                     )}
 
+                    {/* Access Request Banner inside Modal if unauthorized */}
+                    {!hasAccess && (
+                      <div className="p-4 rounded-2xl bg-amber-950/60 border border-amber-500/50 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+                        <div className="flex items-center space-x-3">
+                          <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-300">
+                            <Lock className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div className="font-bold text-amber-200 text-xs flex items-center gap-2">
+                              <span>Cotización Restringida por @{selectedEstimateDetail.creator?.username || 'autor'}</span>
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                Datos Financieros Protegidos
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-amber-300/80 mt-0.5">
+                              Los márgenes, internación, costos netos y precios comerciales están ocultos.
+                              {myRequest?.status === 'pending'
+                                ? ' Tu solicitud de permiso está enviada y pendiente de aprobación por el autor.'
+                                : ' Solicita permiso al autor para desbloquear los valores comerciales y cargar la cotización.'}
+                            </p>
+                          </div>
+                        </div>
+                        {myRequest?.status === 'pending' ? (
+                          <div className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-amber-950 text-amber-300 border border-amber-600/50 text-xs font-bold">
+                            <Clock className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Solicitud Pendiente</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleRequestAccess(selectedEstimateDetail)}
+                            className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+                          >
+                            <KeyRound className="w-4 h-4" />
+                            <span>Solicitar Permiso al PM</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {/* Financial KPI Highlights & Parámetros */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                       <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
@@ -2102,7 +2231,7 @@ export function EstimatesHistoryView() {
                           Net Cisco {isViewingV0 ? '(Costo Base)' : ''}
                         </span>
                         <div className="text-lg font-black font-mono text-white mt-1">
-                          {fmtCurrency(dispNet)}
+                          {hasAccess ? fmtCurrency(dispNet) : <span className="text-amber-400 font-sans text-sm italic">🔒 Protegido</span>}
                         </div>
                       </div>
                       <div className="bg-slate-950 p-4 rounded-2xl border border-indigo-700/40">
@@ -2110,7 +2239,7 @@ export function EstimatesHistoryView() {
                           {isViewingV0 ? 'Monto Base Original (v0)' : `Cotizado Intcomex (${selectedVersionTag})`}
                         </span>
                         <div className="text-lg font-black font-mono text-emerald-400 mt-1">
-                          {fmtCurrency(dispTot)}
+                          {hasAccess ? fmtCurrency(dispTot) : <span className="text-amber-400 font-sans text-sm italic">🔒 Protegido</span>}
                         </div>
                       </div>
                       <div className="bg-slate-950 p-4 rounded-2xl border border-amber-700/40">
@@ -2118,41 +2247,45 @@ export function EstimatesHistoryView() {
                           Margen / Profit
                         </span>
                         <div className="text-lg font-black font-mono text-amber-400 mt-1">
-                          {isViewingV0 ? '$0.00 (v0 RAW)' : fmtCurrency(dispProfit)}
+                          {hasAccess ? (isViewingV0 ? '$0.00 (v0 RAW)' : fmtCurrency(dispProfit)) : <span className="text-amber-400 font-sans text-sm italic">🔒 Protegido</span>}
                         </div>
                       </div>
                       <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
                         <span className="text-[10px] text-cyan-400 uppercase font-bold">
                           {isViewingV0 ? 'Estado de Versión' : 'Parámetros Aplicados'}
                         </span>
-                        {isViewingV0 ? (
-                          <div className="mt-2 font-mono text-[11px] text-slate-400 flex items-center gap-1.5">
-                            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-bold border border-slate-700">
-                              Sin margen (0%)
-                            </span>
-                            <span className="text-[10px] text-slate-500">Inmutable</span>
-                          </div>
+                        {hasAccess ? (
+                          isViewingV0 ? (
+                            <div className="mt-2 font-mono text-[11px] text-slate-400 flex items-center gap-1.5">
+                              <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-bold border border-slate-700">
+                                Sin margen (0%)
+                              </span>
+                              <span className="text-[10px] text-slate-500">Inmutable</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 mt-2 font-mono text-[11px] flex-wrap">
+                              <span
+                                className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40"
+                                title="Margen Intcomex"
+                              >
+                                M: {formatPctNumber(dispMargin, 5)}%
+                              </span>
+                              <span
+                                className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-semibold border border-cyan-500/40"
+                                title="Costo de Internación"
+                              >
+                                Int: {formatPctNumber(dispInt, 7)}%
+                              </span>
+                              <span
+                                className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/40"
+                                title="Arancel Aduanero"
+                              >
+                                Ar: {formatPctNumber(dispAra, 6)}%
+                              </span>
+                            </div>
+                          )
                         ) : (
-                          <div className="flex items-center gap-1.5 mt-2 font-mono text-[11px] flex-wrap">
-                            <span
-                              className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40"
-                              title="Margen Intcomex"
-                            >
-                              M: {formatPctNumber(dispMargin, 5)}%
-                            </span>
-                            <span
-                              className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-semibold border border-cyan-500/40"
-                              title="Costo de Internación"
-                            >
-                              Int: {formatPctNumber(dispInt, 7)}%
-                            </span>
-                            <span
-                              className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/40"
-                              title="Arancel Aduanero"
-                            >
-                              Ar: {formatPctNumber(dispAra, 6)}%
-                            </span>
-                          </div>
+                          <div className="mt-2 text-amber-400 font-sans text-xs italic">🔒 Protegido (Requiere permiso)</div>
                         )}
                       </div>
                     </div>
@@ -2213,11 +2346,11 @@ export function EstimatesHistoryView() {
                                 </td>
                                 {showVersionComparison && !isViewingV0 && (
                                   <td className="px-4 py-2.5 text-right text-slate-400">
-                                    {fmtCurrency(netUnit * (it.qty || 1))}
+                                    {hasAccess ? fmtCurrency(netUnit * (it.qty || 1)) : <span className="text-[10px] text-amber-400/80 italic">🔒 Protegido</span>}
                                   </td>
                                 )}
                                 <td className="px-4 py-2.5 text-right font-bold text-emerald-400">
-                                  {fmtCurrency(extAmount)}
+                                  {hasAccess ? fmtCurrency(extAmount) : <span className="text-[10px] text-amber-400/80 italic">🔒 Protegido</span>}
                                 </td>
                               </tr>
                             );
@@ -2233,93 +2366,128 @@ export function EstimatesHistoryView() {
             {/* Modal Footer */}
             <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-end gap-3">
               <button
-                onClick={() => {
-                  const isViewingV0 =
-                    selectedVersionTag === 'v0' || selectedVersionTag === 'v0_RAW';
-                  const baseV0Amt = Number(
-                    selectedEstimateDetail.baselineV0Amount ??
-                      selectedEstimateDetail.financialSummary?.totalNetCisco ??
-                      0
-                  );
-
-                  if (activeVersionDetail) {
-                    const customRecord: CloudEstimateRecord = {
-                      ...selectedEstimateDetail,
-                      activeVersion: activeVersionDetail.versionNumber,
-                      activeVersionTag: activeVersionDetail.versionTag,
-                      currentAmount: activeVersionDetail.totalAmount,
-                      baselineV0Amount: activeVersionDetail.netCiscoTotal,
-                      financialSummary: {
-                        totalNetCisco: activeVersionDetail.netCiscoTotal,
-                        totalCotizadoIntcomex: activeVersionDetail.totalAmount,
-                        gananciaIntcomexUsd: Math.max(
-                          0,
-                          activeVersionDetail.totalAmount - activeVersionDetail.netCiscoTotal
-                        ),
-                        margenPct: activeVersionDetail.marginPct,
-                        currency: 'USD',
-                        params: {
-                          ...selectedEstimateDetail.financialSummary?.params,
-                          margenPct: activeVersionDetail.marginPct,
-                          internacionPct:
-                            activeVersionDetail.internacionPct ??
-                            selectedEstimateDetail.financialSummary?.params?.internacionPct ??
-                            7,
-                          arancelPct:
-                            activeVersionDetail.arancelPct ??
-                            selectedEstimateDetail.financialSummary?.params?.arancelPct ??
-                            6,
-                        } as any,
-                      },
-                      items: activeVersionDetail.items,
-                      customOverrideMap: activeVersionDetail.customOverrideMap,
-                      fastTrackPromoMap: activeVersionDetail.fastTrackPromoMap,
-                    };
-                    handleLoadEstimate(customRecord);
-                  } else if (isViewingV0) {
-                    const v0Record: CloudEstimateRecord = {
-                      ...selectedEstimateDetail,
-                      activeVersion: 0,
-                      activeVersionTag: 'v0_RAW',
-                      currentAmount: baseV0Amt,
-                      baselineV0Amount: baseV0Amt,
-                      financialSummary: {
-                        totalNetCisco: baseV0Amt,
-                        totalCotizadoIntcomex: baseV0Amt,
-                        gananciaIntcomexUsd: 0,
-                        margenPct: 0,
-                        currency: 'USD',
-                        params: {
-                          ...selectedEstimateDetail.financialSummary?.params,
-                          margenPct: 0,
-                          internacionPct: 0,
-                          arancelPct: 0,
-                        } as any,
-                      },
-                      items: (selectedEstimateDetail.items || []).map((it) => ({
-                        ...it,
-                        costoInternacion: 0,
-                        costoArancel: 0,
-                        costoTotalUnitario: it.originalNetCiscoUnit || it.netCiscoUnit,
-                        precioVentaUnitario: it.originalNetCiscoUnit || it.netCiscoUnit,
-                        precioVentaExtendido: (it.originalNetCiscoUnit || it.netCiscoUnit) * (it.qty || 1),
-                      })),
-                    };
-                    handleLoadEstimate(v0Record);
-                  } else {
-                    handleLoadEstimate(selectedEstimateDetail);
-                  }
-                  setSelectedEstimateDetail(null);
-                }}
-                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 flex items-center space-x-2 cursor-pointer"
+                type="button"
+                onClick={() => setSelectedEstimateDetail(null)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
               >
-                <UploadCloud className="w-4 h-4" />
-                <span>
-                  {selectedVersionTag === 'v0' || selectedVersionTag === 'v0_RAW'
-                    ? 'Cargar Versión v0 (RAW CCW) en Cotizador'
-                    : `Cargar Versión ${selectedVersionTag || 'v1'} en Cotizador CCW`}
-                </span>
+                Cerrar
               </button>
+
+              {(() => {
+                const { hasAccess, myRequest } = evaluateAccess(selectedEstimateDetail);
+                if (hasAccess) {
+                  return (
+                    <button
+                      onClick={() => {
+                        const isViewingV0 =
+                          selectedVersionTag === 'v0' || selectedVersionTag === 'v0_RAW';
+                        const baseV0Amt = Number(
+                          selectedEstimateDetail.baselineV0Amount ??
+                            selectedEstimateDetail.financialSummary?.totalNetCisco ??
+                            0
+                        );
+
+                        if (activeVersionDetail) {
+                          const customRecord: CloudEstimateRecord = {
+                            ...selectedEstimateDetail,
+                            activeVersion: activeVersionDetail.versionNumber,
+                            activeVersionTag: activeVersionDetail.versionTag,
+                            currentAmount: activeVersionDetail.totalAmount,
+                            baselineV0Amount: activeVersionDetail.netCiscoTotal,
+                            financialSummary: {
+                              totalNetCisco: activeVersionDetail.netCiscoTotal,
+                              totalCotizadoIntcomex: activeVersionDetail.totalAmount,
+                              gananciaIntcomexUsd: Math.max(
+                                0,
+                                activeVersionDetail.totalAmount - activeVersionDetail.netCiscoTotal
+                              ),
+                              margenPct: activeVersionDetail.marginPct,
+                              currency: 'USD',
+                              params: {
+                                ...selectedEstimateDetail.financialSummary?.params,
+                                margenPct: activeVersionDetail.marginPct,
+                                internacionPct:
+                                  activeVersionDetail.internacionPct ??
+                                  selectedEstimateDetail.financialSummary?.params?.internacionPct ??
+                                  7,
+                                arancelPct:
+                                  activeVersionDetail.arancelPct ??
+                                  selectedEstimateDetail.financialSummary?.params?.arancelPct ??
+                                  6,
+                              } as any,
+                            },
+                            items: activeVersionDetail.items,
+                            customOverrideMap: activeVersionDetail.customOverrideMap,
+                            fastTrackPromoMap: activeVersionDetail.fastTrackPromoMap,
+                          };
+                          handleLoadEstimate(customRecord);
+                        } else if (isViewingV0) {
+                          const v0Record: CloudEstimateRecord = {
+                            ...selectedEstimateDetail,
+                            activeVersion: 0,
+                            activeVersionTag: 'v0_RAW',
+                            currentAmount: baseV0Amt,
+                            baselineV0Amount: baseV0Amt,
+                            financialSummary: {
+                              totalNetCisco: baseV0Amt,
+                              totalCotizadoIntcomex: baseV0Amt,
+                              gananciaIntcomexUsd: 0,
+                              margenPct: 0,
+                              currency: 'USD',
+                              params: {
+                                ...selectedEstimateDetail.financialSummary?.params,
+                                margenPct: 0,
+                                internacionPct: 0,
+                                arancelPct: 0,
+                              } as any,
+                            },
+                            items: (selectedEstimateDetail.items || []).map((it) => ({
+                              ...it,
+                              costoInternacion: 0,
+                              costoArancel: 0,
+                              costoTotalUnitario: it.originalNetCiscoUnit || it.netCiscoUnit,
+                              precioVentaUnitario: it.originalNetCiscoUnit || it.netCiscoUnit,
+                              precioVentaExtendido: (it.originalNetCiscoUnit || it.netCiscoUnit) * (it.qty || 1),
+                            })),
+                          };
+                          handleLoadEstimate(v0Record);
+                        } else {
+                          handleLoadEstimate(selectedEstimateDetail);
+                        }
+                        setSelectedEstimateDetail(null);
+                      }}
+                      className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 flex items-center space-x-2 cursor-pointer"
+                    >
+                      <UploadCloud className="w-4 h-4" />
+                      <span>
+                        {selectedVersionTag === 'v0' || selectedVersionTag === 'v0_RAW'
+                          ? 'Cargar Versión v0 (RAW CCW) en Cotizador'
+                          : `Cargar Versión ${selectedVersionTag || 'v1'} en Cotizador CCW`}
+                      </span>
+                    </button>
+                  );
+                }
+
+                if (myRequest?.status === 'pending') {
+                  return (
+                    <div className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-amber-950 text-amber-300 border border-amber-600/50 text-xs font-bold">
+                      <Clock className="w-4 h-4 text-amber-400" />
+                      <span>Solicitud de Acceso Pendiente de Aprobación</span>
+                    </div>
+                  );
+                }
+
+                return (
+                  <button
+                    type="button"
+                    onClick={() => handleRequestAccess(selectedEstimateDetail)}
+                    className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 flex items-center space-x-2 cursor-pointer"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                    <span>Solicitar Permiso al PM para Cargar</span>
+                  </button>
+                );
+              })()}
             </div>
           </div>
         </div>

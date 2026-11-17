@@ -2,7 +2,7 @@
 // CISCO AUTOMATED v2.1 - MAIN APPLICATION ENTRYPOINT
 // ============================================================================
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   CiscoAutomatedProvider,
   useCiscoAutomatedStore,
@@ -69,7 +69,10 @@ import { FeedbackView, CreateTicketModal, getFeedbackTickets } from './modules/f
 import { getFormattedAppVersion } from './core/appVersion';
 import { MobileBottomNav, MobileStickyBar } from './components/mobile';
 import { OfflineSyncModal } from './components/OfflineSyncModal';
+import { SaveEstimateModal } from './components/SaveEstimateModal';
 import { HealthDashboardView } from './modules/health';
+import { useEstimatesMirror } from './hooks/useEstimatesMirror';
+import { getPendingAccessRequestsForUser } from './modules/notifications/estimateAccessNotificationService';
 import { DemandIntelligenceView } from './modules/demandIntelligence';
 import {
   useOfflineMode,
@@ -264,6 +267,12 @@ function AppContent() {
     }
   }, [currentView, currentUser, isOffline]);
 
+  const mirrorEstimates = useEstimatesMirror();
+  const pendingAccessCount = useMemo(
+    () => getPendingAccessRequestsForUser(mirrorEstimates, currentUser?.username).length,
+    [mirrorEstimates, currentUser?.username]
+  );
+
   const handleToggleOfflineMode = () => {
     if (!isManualOffline) {
       setManualOfflineMode(true);
@@ -314,33 +323,11 @@ function AppContent() {
     );
   }, [processedResult?.items]);
 
-  const handleSaveCloud = async () => {
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+
+  const handleSaveCloud = () => {
     if (!processedResult) return;
-    setIsSavingCloud(true);
-    try {
-      const res = await saveCurrentEstimateToCloud();
-      if (res.success) {
-        setCloudToast({
-          message: res.error || '¡Cotización guardada exitosamente en la nube (Firestore)!',
-          type: 'success',
-        });
-        setTimeout(() => setCloudToast(null), 4000);
-      } else {
-        setCloudToast({
-          message: `Error al guardar en la nube: ${res.error || 'Fallo desconocido'}`,
-          type: 'error',
-        });
-        setTimeout(() => setCloudToast(null), 5000);
-      }
-    } catch (err: any) {
-      setCloudToast({
-        message: `Error de red: ${err?.message || 'Sin conexión'}`,
-        type: 'error',
-      });
-      setTimeout(() => setCloudToast(null), 5000);
-    } finally {
-      setIsSavingCloud(false);
-    }
+    setIsSaveModalOpen(true);
   };
 
   const handleCopyEmailSummary = async () => {
@@ -764,6 +751,21 @@ function AppContent() {
         );
       })()}
 
+      {/* Save Estimate & Privacy Level Modal */}
+      {processedResult && (
+        <SaveEstimateModal
+          isOpen={isSaveModalOpen}
+          onClose={() => setIsSaveModalOpen(false)}
+          defaultPartner={defaultPartner}
+          defaultClient={defaultClient}
+          defaultModel={defaultModel}
+          onSuccess={(msg) => {
+            setCloudToast({ message: msg, type: 'success' });
+            setTimeout(() => setCloudToast(null), 5000);
+          }}
+        />
+      )}
+
       {/* Collapsible Navigation Sidebar (Hidden on mobile < md, full on desktop >= md) */}
       <div className="hidden md:flex shrink-0">
       <Sidebar
@@ -775,6 +777,7 @@ function AppContent() {
         onToggleOpen={() => setIsNavSidebarOpen((prev) => !prev)}
         activeBoCount={activeBoCount}
         unreadFeedbackCount={unreadFeedbackCount}
+        pendingAccessCount={pendingAccessCount}
         onOpenRules={() => setIsRulesModalOpen(true)}
         onOpenSharedSku={() => setIsSharedSkuManagerOpen(true)}
         onOpenFastTrack={() => setIsFastTrackAdminModalOpen(true)}
@@ -789,6 +792,7 @@ function AppContent() {
           onUploadClick={handleUploadClick}
           onDownloadClick={() => setIsDownloadModalOpen(true)}
           onSaveCloudClick={handleSaveCloud}
+          onOpenEstimateHistory={() => setCurrentView('estimates')}
           isSavingCloud={isSavingCloud}
           onCopyEmailClick={handleCopyEmailSummary}
           isCopiedEmail={isCopiedEmail}

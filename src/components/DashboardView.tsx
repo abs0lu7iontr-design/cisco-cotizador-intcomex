@@ -339,6 +339,10 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
     > = {};
 
     for (const est of filteredEstimates) {
+      const { hasAccess } = evaluateAccess(est);
+      // Privacy protection: exclude restricted records from unauthorized users' aggregated financial totals
+      if (!hasAccess) continue;
+
       const rev =
         Number(est.currentAmount ?? est.financialSummary?.totalCotizadoIntcomex) || 0;
       const net =
@@ -1398,7 +1402,9 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
                         {hasAccess ? (
                           fmtCurrency(e.financialSummary?.gananciaIntcomexUsd)
                         ) : (
-                          <span className="text-slate-500">—</span>
+                          <span className="text-[10px] text-amber-400/80 font-sans italic">
+                            🔒 Protegido
+                          </span>
                         )}
                       </td>
                       <td className="px-5 py-3.5 text-right text-[11px]">

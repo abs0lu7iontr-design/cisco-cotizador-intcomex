@@ -499,7 +499,7 @@ export function repairStorageCache(): { clearedKeys: number; freedBytes: number 
         else if (
           key === 'cisco_automated_emergency_vault_backup_v1' ||
           key.startsWith('idb_fallback_') ||
-          ((key.endsWith('_vault_v1') || key.endsWith('_mirror_v1')) && val.length > 50_000)
+          ((key.includes('_vault_') || key.includes('_mirror_') || key.includes('_backup_cache_') || key.includes('emergency_vault')) && val.length > 50_000)
         ) {
           keysToClear.push(key);
         }

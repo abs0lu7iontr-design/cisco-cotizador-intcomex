@@ -173,14 +173,56 @@ export async function optimizeAndMigrateLocalStorage(): Promise<{
       }
     }
 
-    // 3. Purga de bóvedas redundantes duplicadas en LocalStorage si son pesadas (> 100 KB)
-    for (const vaultKey of HEAVY_VAULT_KEYS_TO_MIGRATE) {
-      const raw = localStorage.getItem(vaultKey);
-      if (raw && raw.length > 100_000) {
-        freedBytes += (vaultKey.length + raw.length) * 2;
-        localStorage.removeItem(vaultKey);
+    // 3. Purga y consolidación de bóvedas pesadas hacia IndexedDB
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      const raw = localStorage.getItem(key) || '';
+
+      const isHeavyVault =
+        HEAVY_VAULT_KEYS_TO_MIGRATE.some((h) => key.includes(h)) ||
+        key.includes('_vault_') ||
+        key.includes('_mirror_') ||
+        key.includes('emergency_vault') ||
+        key.includes('_backup_cache_') ||
+        key.includes('_legacy_v1') ||
+        key.startsWith('idb_fallback_');
+
+      if (isHeavyVault && raw.length > 30_000) {
+        try {
+          const parsed = JSON.parse(raw);
+          await idbSet(STORES.KEYVAL, key, parsed);
+        } catch (_) {}
+        freedBytes += (key.length + raw.length) * 2;
+        localStorage.removeItem(key);
         migratedKeys++;
-        clearedKeys.push(vaultKey);
+        clearedKeys.push(key);
+      } else if (key.includes('cisco_cloud_estimates_cache_v2') && raw.length > 80_000) {
+        // Reducir la copia de LocalStorage a un subset ultra-liviano de las últimas 25 cabeceras sin partidas
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 25) {
+            await idbSet(STORES.KEYVAL, 'cisco_estimates_full_history_backup', parsed);
+            const trimmed = parsed.slice(0, 25).map((r: any) => ({
+              id: r.id,
+              estimateId: r.estimateId,
+              dealId: r.dealId,
+              partnerName: r.partnerName,
+              clientFinalName: r.clientFinalName,
+              createdAt: r.createdAt,
+              creator: r.creator,
+              financialSummary: r.financialSummary,
+              headerInfo: r.headerInfo,
+              itemsCount: r.itemsCount,
+              items: [],
+            }));
+            const trimmedStr = JSON.stringify(trimmed);
+            freedBytes += (raw.length - trimmedStr.length) * 2;
+            localStorage.setItem(key, trimmedStr);
+            migratedKeys++;
+            clearedKeys.push(`${key} (compactado a 25 registros)`);
+          }
+        } catch (_) {}
       }
     }
 
