@@ -57,7 +57,7 @@ import {
   importEstimateIntoPipeline,
   generatePipelineReminders,
 } from './pipelineService';
-import { parseFlexibleNumber } from '../forecast/forecastService';
+import { parseFlexibleNumber, formatCommercialDate } from '../forecast/forecastService';
 import { PipelineDealModal } from './PipelineDealModal';
 import { useCiscoAutomatedStore } from '../../core/store';
 
@@ -877,8 +877,8 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
                       }}
                       className="hover:bg-slate-800/50 transition-colors cursor-pointer group"
                     >
-                      <td className="py-3 px-3 font-mono text-slate-400">{deal.fechaLevantamiento || '-'}</td>
-                      <td className="py-3 px-3 font-mono text-slate-400">{deal.fechaCotizacion || '-'}</td>
+                      <td className="py-3 px-3 font-mono text-slate-400">{formatCommercialDate(deal.fechaLevantamiento)}</td>
+                      <td className="py-3 px-3 font-mono text-slate-400">{formatCommercialDate(deal.fechaCotizacion)}</td>
                       <td className="py-3 px-3 font-medium text-slate-300">{deal.pmResponsable}</td>
                       <td className="py-3 px-4 font-bold text-white group-hover:text-indigo-300 transition-colors">
                         {deal.partner}
@@ -920,7 +920,7 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
                         {deal.notas || '-'}
                       </td>
                       <td className="py-3 px-3 font-mono text-amber-300">
-                        {deal.priceProtectionExpiryDate || '-'}
+                        {formatCommercialDate(deal.priceProtectionExpiryDate)}
                       </td>
                       <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center space-x-1">

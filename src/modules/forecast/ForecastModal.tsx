@@ -26,7 +26,7 @@ import {
   FORECAST_BODEGA_OPTIONS,
   FORECAST_CREDIT_STATUSES,
 } from './forecastTypes';
-import { parseFlexibleNumber } from './forecastService';
+import { parseFlexibleNumber, formatCommercialDateHyphen } from './forecastService';
 
 interface ForecastModalProps {
   isOpen: boolean;
@@ -58,8 +58,8 @@ export function ForecastModal({
 
       const rec = {
         id: initialRecord?.id || `FC-${Date.now().toString().slice(-4)}`,
-        fechaLevantamiento: initialRecord?.fechaLevantamiento || defaultDate,
-        fechaCotizacion: initialRecord?.fechaCotizacion || defaultDate,
+        fechaLevantamiento: initialRecord?.fechaLevantamiento ? formatCommercialDateHyphen(initialRecord.fechaLevantamiento) : defaultDate,
+        fechaCotizacion: initialRecord?.fechaCotizacion ? formatCommercialDateHyphen(initialRecord.fechaCotizacion) : defaultDate,
         marca: initialRecord?.marca || 'CISCO',
         pmResponsable: initialRecord?.pmResponsable || 'Raul Cuevas',
         partner: initialRecord?.partner || '',
@@ -67,7 +67,7 @@ export function ForecastModal({
         endUser: initialRecord?.endUser || '',
         usdIntcomex: initialRecord?.usdIntcomex || 0,
         emailEjecutivoPartner: initialRecord?.emailEjecutivoPartner || '',
-        mesFacturacion: initialRecord?.mesFacturacion || '',
+        mesFacturacion: initialRecord?.mesFacturacion ? formatCommercialDateHyphen(initialRecord.mesFacturacion) : '',
         emailClienteFinal: initialRecord?.emailClienteFinal || '',
         detalleProductos: initialRecord?.detalleProductos || '',
         oc: initialRecord?.oc || '',
@@ -82,7 +82,7 @@ export function ForecastModal({
         dsvSubmission: initialRecord?.dsvSubmission || '',
         po: initialRecord?.po || '',
         so: initialRecord?.so || '',
-        submittedDate: initialRecord?.submittedDate || '',
+        submittedDate: initialRecord?.submittedDate ? formatCommercialDateHyphen(initialRecord.submittedDate) : '',
         clienteCisco: initialRecord?.clienteCisco || '',
         promotionAuthorizationNumber: initialRecord?.promotionAuthorizationNumber || '',
         endCustomerName: initialRecord?.endCustomerName || initialRecord?.endUser || '',
@@ -90,7 +90,7 @@ export function ForecastModal({
         numeroVenta: initialRecord?.numeroVenta || '',
         bodega: initialRecord?.bodega || 'E1',
         caso: initialRecord?.caso || '',
-        priceProtectionExpiryDate: initialRecord?.priceProtectionExpiryDate || '',
+        priceProtectionExpiryDate: initialRecord?.priceProtectionExpiryDate ? formatCommercialDateHyphen(initialRecord.priceProtectionExpiryDate) : '',
         credit: initialRecord?.credit || 'Aprobado',
         nuevoCaso: initialRecord?.nuevoCaso || '',
         confirmacionCredito: initialRecord?.confirmacionCredito || '',

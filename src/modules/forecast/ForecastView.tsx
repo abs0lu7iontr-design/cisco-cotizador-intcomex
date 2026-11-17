@@ -64,6 +64,7 @@ import {
   parseCsvToForecastRecords,
   importFromGoogleSheetsCsv,
   importForecastFromExcel,
+  formatCommercialDate,
 } from './forecastService';
 import { ForecastModal } from './ForecastModal';
 import { useCiscoAutomatedStore } from '../../core/store';
@@ -791,10 +792,40 @@ export function ForecastView() {
                           );
                         }
 
+                        // Highlight & format Date columns (Excel serial dates like 46252, ISO or text)
+                        if (
+                          col.isDate ||
+                          col.key === 'fechaLevantamiento' ||
+                          col.key === 'fechaCotizacion' ||
+                          col.key === 'submittedDate' ||
+                          col.key === 'priceProtectionExpiryDate' ||
+                          (col.key === 'mesFacturacion' &&
+                            (typeof val === 'number' || (typeof val === 'string' && /^\d{4,6}$/.test(val.trim()))))
+                        ) {
+                          const formattedDate = formatCommercialDate(val);
+                          return (
+                            <td key={col.key} className={`${cellClass} font-mono`}>
+                              {formattedDate !== '-' ? (
+                                formattedDate
+                              ) : (
+                                <span className="text-slate-600">-</span>
+                              )}
+                            </td>
+                          );
+                        }
+
+                        // Protect any unexpected serial numbers in cells
+                        const displayVal =
+                          typeof val === 'number' && val >= 30000 && val <= 70000 && col.key.toLowerCase().includes('fecha')
+                            ? formatCommercialDate(val)
+                            : val !== undefined && val !== null && String(val).trim() !== ''
+                            ? String(val)
+                            : '-';
+
                         return (
                           <td key={col.key} className={cellClass}>
-                            {val !== undefined && val !== null && String(val).trim() !== '' ? (
-                              String(val)
+                            {displayVal !== '-' ? (
+                              displayVal
                             ) : (
                               <span className="text-slate-600">-</span>
                             )}

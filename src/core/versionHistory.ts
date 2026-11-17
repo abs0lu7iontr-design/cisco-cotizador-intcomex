@@ -15,11 +15,27 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.16.2',
+    date: '2026-11-17',
+    commit: 'fix-commercial-dates-excel-serial-resolution-and-formatting',
+    title: 'Resolución Universal de Fechas Comerciales y Conversión Automática de Números de Serie de Excel',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Resolución de Fechas de Excel (Seriales Numéricos): Resuelto el problema visual donde las columnas Fecha de Levantamiento y Fecha de Cotización mostraban números enteros de Excel (ej. 46252, 45846, 45978) en lugar de fechas legibles.',
+      'Conversión Matemática Exacta (1900 Date System): Implementado algoritmo universal formatCommercialDate que calcula con precisión atómica el año, mes y día (UTC) de cualquier serial de Excel (46252 -> 18/08/2026, 45846 -> 08/07/2025, 45978 -> 17/11/2025).',
+      'Normalización Integral en Tabla de Forecast Comercial (36 Columnas): ForecastView ahora aplica formatCommercialDate en todas las columnas temporales (Fecha Levantamiento, Fecha Cotización, Submitted Date, Price Protection Expiry Date y Mes Facturación si es serial).',
+      'Soporte Universal en Pipeline Comercial & Modales: PipelineView, PipelineDealModal y ForecastModal ahora normalizan y renderizan siempre fechas en formato DD/MM/YYYY y DD-MM-YYYY, evitando inputs rotos o números crudos.',
+      'Saneamiento Automático al Importar Planillas Excel: importForecastFromExcel e importPipelineFromExcel ahora convierten los seriales numéricos de Excel a fechas válidas en el momento de la ingesta.',
+      'Nueva Suite de Pruebas Unitarias Automatizadas: Creada suite tests/commercialDateFormatting.test.ts con 100% de éxito en la conversión de seriales de Excel y formatos mixtos (35 suites del proyecto pasando al 100%).',
+    ],
+  },
+  {
     version: '2.16.1',
     date: '2026-11-17',
     commit: 'fix-pipeline-forecast-persistence-armor-and-auto-hydration',
     title: 'Blindaje Absoluto de Persistencia y Auto-Hidratación Infalible de Pipeline Comercial y Forecast Comercial',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Blindaje Anti-Pérdida en Pipeline y Forecast: Resuelto el problema visual donde el Pipeline Comercial y Forecast Comercial quedaban en 0 deals / $0 USD al compilar actualizaciones o al operar en Modo Offline.',

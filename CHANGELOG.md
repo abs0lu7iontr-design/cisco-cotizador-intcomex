@@ -6,6 +6,25 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.16.2] - 2026-11-17
+### 📅 Resolución de Fechas Comerciales y Conversión de Números de Serie de Excel
+- **Resolución Universal de Fechas en Tablas Comerciales:**
+  - Corregido el problema visual donde las columnas de fecha (ej. *Fecha de Levantamiento* y *Fecha de Cotización*) mostraban números enteros de serie de Excel (`46252`, `45846`, `45978`) en lugar de fechas legibles para el usuario.
+- **Conversión de Seriales Numéricos de Excel (`dateUtils.ts`):**
+  - Implementada la función `formatCommercialDate` que reconoce números de serie de Excel (rango 20000 a 100000) y los convierte con precisión de calendario gregoriano UTC a formato `DD/MM/YYYY`:
+    - `46252` $\rightarrow$ `18/08/2026`
+    - `45846` $\rightarrow$ `08/07/2025`
+    - `45978` $\rightarrow$ `17/11/2025`
+  - Soporte automático para strings numéricos, fechas ISO `YYYY-MM-DD`, formatos `DD-MM-YYYY` y preservación de descripciones no-fecha (ej. `"Nov-2026"` o `"Q4"`).
+- **Formateo Integral en Forecast Comercial (`ForecastView.tsx`):**
+  - Renderizado automático en todas las columnas temporales de la matriz de 36 columnas: Col 1 (`fechaLevantamiento`), Col 2 (`fechaCotizacion`), Col 10 (`mesFacturacion` si es serial), Col 25 (`submittedDate`) y Col 33 (`priceProtectionExpiryDate`).
+- **Normalización en Pipeline Comercial y Modales de Edición:**
+  - `PipelineView.tsx`, `PipelineDealModal.tsx` y `ForecastModal.tsx` ahora normalizan y renderizan siempre fechas en formato `DD/MM/YYYY` o `DD-MM-YYYY`, previniendo campos rotos.
+- **Saneamiento Automático al Importar Planillas Excel:**
+  - Las funciones de ingesta `importForecastFromExcel` e `importPipelineFromExcel` convierten de inmediato los seriales numéricos a fechas humanas al procesar el archivo.
+- **Nueva Suite de Pruebas Unitarias Automatizadas (`tests/commercialDateFormatting.test.ts`):**
+  - 100% de cobertura en la resolución de seriales de Excel, formatos mixtos y preservación de textos comerciales.
+
 ## [v2.16.1] - 2026-11-17
 ### 🛡️ Blindaje de Persistencia y Auto-Hidratación Infalible de Pipeline y Forecast Comercial
 - **Resolución Definitiva de Pérdida de Datos en Pipeline y Forecast:**

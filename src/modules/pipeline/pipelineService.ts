@@ -12,7 +12,12 @@ import {
 } from './pipelineTypes';
 import { ProcessedEstimateResult, UserSession } from '../../core/types';
 import { savePipelineDeal, bulkSavePipelineDeals, getPipelineDeals } from './pipelineStorage';
-import { parseFlexibleNumber, parseFlexibleDate, normalizeMatchKey } from '../forecast/forecastService';
+import {
+  parseFlexibleNumber,
+  parseFlexibleDate,
+  normalizeMatchKey,
+  formatCommercialDate,
+} from '../forecast/forecastService';
 
 // ----------------------------------------------------------------------------
 // 1. Estadísticas y Agregaciones de Negocio
@@ -641,8 +646,12 @@ export async function importPipelineFromExcel(
     const row = dataRows[i];
     if (!row || row.every((c: any) => !cleanStr(c))) continue;
 
-    const fechaLev = cleanStr(getCol(row, 'fechaLevantamiento', 0));
-    const fechaCot = cleanStr(getCol(row, 'fechaCotizacion', 1));
+    const rawFechaLev = getCol(row, 'fechaLevantamiento', 0);
+    const rawFechaCot = getCol(row, 'fechaCotizacion', 1);
+    const rawPriceProt = getCol(row, 'priceProtectionExpiryDate', 18);
+
+    const fechaLev = formatCommercialDate(rawFechaLev, cleanStr(rawFechaLev));
+    const fechaCot = formatCommercialDate(rawFechaCot, cleanStr(rawFechaCot));
     const marca = cleanStr(getCol(row, 'marca', 2)) || 'Cisco';
     const pm = cleanStr(getCol(row, 'pmResponsable', 3));
     const partner = cleanStr(getCol(row, 'partner', 4));
@@ -659,7 +668,7 @@ export async function importPipelineFromExcel(
     const am = cleanStr(getCol(row, 'am', 15));
     const grupoVentas = cleanStr(getCol(row, 'grupoVentas', 16)) || 'Enterprise';
     const notas = cleanStr(getCol(row, 'notas', 17));
-    const priceProt = cleanStr(getCol(row, 'priceProtectionExpiryDate', 18));
+    const priceProt = formatCommercialDate(rawPriceProt, cleanStr(rawPriceProt));
 
     // Omitir filas sin datos de partner o monto
     if (!partner && endUser === '-' && usd === 0) continue;

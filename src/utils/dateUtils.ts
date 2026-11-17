@@ -700,3 +700,80 @@ export function compareDatesUnknownLast(
   const msB = new Date(isoB).getTime();
   return direction === 'desc' ? msB - msA : msA - msB;
 }
+
+/**
+ * Convierte cualquier fecha en valor representativo comercial limpio (DD/MM/YYYY).
+ * Tolera números de serie de Excel (como 46252 -> 18/08/2026), strings numéricos ("46252"),
+ * fechas ISO (2026-08-18), fechas con slash (18/08/2026 o 8/18/2026), y conserva textos
+ * no interpretables como meses (ej. "Nov-2026", "Q4").
+ */
+export function formatCommercialDate(val: unknown, fallbackEmpty = '-'): string {
+  if (val === undefined || val === null) return fallbackEmpty;
+  const s = String(val).trim();
+  if (!s || s === '-' || s === 'N/A' || s === 'n/a' || s === 'undefined' || s === 'null') {
+    return fallbackEmpty;
+  }
+
+  // 1. Números enteros/flotantes o strings numéricos que representan seriales de Excel (ej. 46252, "46252")
+  if (/^\d{4,6}(\.\d+)?$/.test(s)) {
+    const num = Number(s);
+    // Rango válido de fechas Excel comerciales (año 1954 a 2173)
+    if (num >= 20000 && num <= 100000) {
+      const excelRes = excelSerialToIso(num);
+      if (excelRes && excelRes.iso) {
+        const d = new Date(excelRes.iso);
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const year = d.getUTCFullYear();
+        return `${day}/${month}/${year}`;
+      }
+    }
+  }
+
+  // 2. Fechas DD-MM-YYYY o DD/MM/YYYY
+  const dmyMatch = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmyMatch) {
+    const p1 = parseInt(dmyMatch[1], 10);
+    const p2 = parseInt(dmyMatch[2], 10);
+    const year = dmyMatch[3];
+
+    if (p1 > 12 && p2 <= 12) {
+      return `${String(p1).padStart(2, '0')}/${String(p2).padStart(2, '0')}/${year}`;
+    }
+    if (p2 > 12 && p1 <= 12) {
+      return `${String(p2).padStart(2, '0')}/${String(p1).padStart(2, '0')}/${year}`;
+    }
+    return `${String(p1).padStart(2, '0')}/${String(p2).padStart(2, '0')}/${year}`;
+  }
+
+  // 3. Fechas ISO YYYY-MM-DD
+  const isoMatch = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (isoMatch) {
+    const year = isoMatch[1];
+    const month = String(parseInt(isoMatch[2], 10)).padStart(2, '0');
+    const day = String(parseInt(isoMatch[3], 10)).padStart(2, '0');
+    return `${day}/${month}/${year}`;
+  }
+
+  // 4. Intentar con parseDateBySource general
+  const parsed = parseDateBySource(s);
+  if (parsed.isValid && parsed.iso) {
+    const d = new Date(parsed.iso);
+    const day = String(parsed.isCalendarDateOnly ? d.getUTCDate() : d.getDate()).padStart(2, '0');
+    const month = String((parsed.isCalendarDateOnly ? d.getUTCMonth() : d.getMonth()) + 1).padStart(2, '0');
+    const year = parsed.isCalendarDateOnly ? d.getUTCFullYear() : d.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+
+  // Si es un texto libre como mes ("Noviembre", "Ago-2026", "Cierre Q4"), retornarlo tal cual
+  return s;
+}
+
+/**
+ * Normaliza cualquier formato de fecha a DD-MM-YYYY (estándar de inputs y exportaciones Intcomex).
+ */
+export function formatCommercialDateHyphen(val: unknown, fallbackEmpty = ''): string {
+  const formatted = formatCommercialDate(val, fallbackEmpty);
+  if (!formatted || formatted === '-') return fallbackEmpty;
+  return formatted.replace(/\//g, '-');
+}

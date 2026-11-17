@@ -16,6 +16,13 @@ import { ProcessedEstimateResult } from '../../core/types';
 import { BoOrderTrackingRecord } from '../bo/boTrackingTypes';
 import { DsvModalFormData } from '../dsv/types';
 import { PipelineDealRecord } from '../pipeline/pipelineTypes';
+import {
+  formatCommercialDate,
+  formatCommercialDateHyphen,
+  parseDateBySource,
+} from '../../utils/dateUtils';
+
+export { formatCommercialDate, formatCommercialDateHyphen };
 
 // ----------------------------------------------------------------------------
 // Deduplication & Normalization Match Engine
@@ -650,9 +657,21 @@ export function convertPipelineDealsToForecast(
 // Reminders & Expiration Engine
 // ----------------------------------------------------------------------------
 
-export function parseFlexibleDate(dateStr?: string): Date | null {
-  if (!dateStr) return null;
-  const trimmed = dateStr.trim();
+export function parseFlexibleDate(dateStr?: string | number): Date | null {
+  if (dateStr === undefined || dateStr === null) return null;
+  const trimmed = String(dateStr).trim();
+  if (!trimmed || trimmed === '-' || trimmed === 'N/A') return null;
+
+  // Soporte para números de serie de Excel (ej. 46252, 45846)
+  if (/^\d{4,6}(\.\d+)?$/.test(trimmed)) {
+    const num = Number(trimmed);
+    if (num >= 20000 && num <= 100000) {
+      const ms = Math.round((num - 25569) * 86400 * 1000);
+      const d = new Date(ms);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+
   // Formato DD-MM-YYYY o DD/MM/YYYY
   const dmYMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
   if (dmYMatch) {
@@ -976,7 +995,19 @@ export async function importForecastFromExcel(
 
   const getCol = (row: any[], key: keyof ForecastRecord, fallbackIdx: number): string => {
     const idx = colMap[key] !== undefined ? colMap[key] : fallbackIdx;
-    return cleanStr(row[idx]);
+    const rawVal = row[idx];
+    const isDateCol =
+      key === 'fechaLevantamiento' ||
+      key === 'fechaCotizacion' ||
+      key === 'submittedDate' ||
+      key === 'priceProtectionExpiryDate';
+    if (isDateCol) {
+      return formatCommercialDateHyphen(rawVal, '');
+    }
+    if (key === 'mesFacturacion' && (typeof rawVal === 'number' || (typeof rawVal === 'string' && /^\d{4,6}$/.test(rawVal.trim())))) {
+      return formatCommercialDateHyphen(rawVal, cleanStr(rawVal));
+    }
+    return cleanStr(rawVal);
   };
 
   const getNumCol = (row: any[], key: keyof ForecastRecord, fallbackIdx: number): number => {

@@ -23,7 +23,7 @@ import {
   PIPELINE_STAGE_OPTIONS,
   MESES_ANO,
 } from './pipelineTypes';
-import { parseFlexibleNumber } from '../forecast/forecastService';
+import { parseFlexibleNumber, formatCommercialDate } from '../forecast/forecastService';
 
 interface PipelineDealModalProps {
   isOpen: boolean;
@@ -53,8 +53,8 @@ export function PipelineDealModal({
 
       const initialRec: Partial<PipelineDealRecord> = {
         id: initialDeal?.id || `deal_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-        fechaLevantamiento: initialDeal?.fechaLevantamiento || defaultDate,
-        fechaCotizacion: initialDeal?.fechaCotizacion || defaultDate,
+        fechaLevantamiento: initialDeal?.fechaLevantamiento ? formatCommercialDate(initialDeal.fechaLevantamiento) : defaultDate,
+        fechaCotizacion: initialDeal?.fechaCotizacion ? formatCommercialDate(initialDeal.fechaCotizacion) : defaultDate,
         marca: initialDeal?.marca || 'Cisco',
         pmResponsable: initialDeal?.pmResponsable || 'Raul Cuevas',
         partner: initialDeal?.partner || '',
@@ -71,7 +71,7 @@ export function PipelineDealModal({
         am: initialDeal?.am || '',
         grupoVentas: initialDeal?.grupoVentas || 'Enterprise',
         notas: initialDeal?.notas || '',
-        priceProtectionExpiryDate: initialDeal?.priceProtectionExpiryDate || '',
+        priceProtectionExpiryDate: initialDeal?.priceProtectionExpiryDate ? formatCommercialDate(initialDeal.priceProtectionExpiryDate) : '',
         sourceEstimateId: initialDeal?.sourceEstimateId,
         sourceEstimateVersion: initialDeal?.sourceEstimateVersion,
         createdAt: initialDeal?.createdAt || now.toISOString(),
