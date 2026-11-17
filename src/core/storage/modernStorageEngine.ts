@@ -112,15 +112,28 @@ export async function getModernStorageQuota(): Promise<ModernStorageQuota> {
 const HEAVY_VAULT_KEYS_TO_MIGRATE = [
   'cisco_automated_emergency_vault_backup_v1',
   'cisco_forecast_records_vault_v1',
+  'cisco_forecast_records_cache_v2',
   'cisco_pipeline_deals_vault_v1',
+  'cisco_pipeline_deals_cache_v2',
   'cisco_estimates_permanent_vault_v1',
   'cisco_cloud_estimates_local_mirror_v1',
   'cisco_dsv_permanent_vault_v1',
   'cisco_dsv_backup_cache_v1',
+  'cisco_cloud_dsv_cache_v2',
   'cisco_deal_reminders_vault_v1',
   'cisco_deal_reminders_legacy_v1',
   'cisco_bo_order_tracking_vault_v1',
   'cisco_bo_order_tracking_legacy_v1',
+  'cisco_bo_order_tracking_cache_v2',
+  'cisco_partners_xcl_cache_v2',
+  'cisco_partners_vault_v1',
+  'cisco_bo_sku_catalog_cache_v2',
+  'cisco_bo_sku_catalog_vault_v1',
+  'cisco_shared_sku_rules_cache_v2',
+  'cisco_shared_sku_permanent_vault_v1',
+  'cisco_sku_overrides_v2',
+  'cisco_sku_overrides_vault_v1',
+  'cisco_users_local',
 ];
 
 /**
@@ -186,9 +199,12 @@ export async function optimizeAndMigrateLocalStorage(): Promise<{
         key.includes('emergency_vault') ||
         key.includes('_backup_cache_') ||
         key.includes('_legacy_v1') ||
+        key.includes('cisco_cloud_dsv_cache') ||
+        key.includes('cisco_partners_xcl') ||
+        key.includes('cisco_bo_sku_catalog') ||
         key.startsWith('idb_fallback_');
 
-      if (isHeavyVault && raw.length > 30_000) {
+      if (isHeavyVault && raw.length > 15_000) {
         try {
           const parsed = JSON.parse(raw);
           await idbSet(STORES.KEYVAL, key, parsed);
@@ -197,13 +213,23 @@ export async function optimizeAndMigrateLocalStorage(): Promise<{
         localStorage.removeItem(key);
         migratedKeys++;
         clearedKeys.push(key);
-      } else if (key.includes('cisco_cloud_estimates_cache_v2') && raw.length > 80_000) {
-        // Reducir la copia de LocalStorage a un subset ultra-liviano de las últimas 25 cabeceras sin partidas
+      } else if (raw.length > 30_000) {
+        // Cualquier clave atípica superior a 30 KB se traslada a IndexedDB para proteger el límite de 5 MB de LocalStorage
         try {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 25) {
+          await idbSet(STORES.KEYVAL, key, parsed);
+        } catch (_) {}
+        freedBytes += (key.length + raw.length) * 2;
+        localStorage.removeItem(key);
+        migratedKeys++;
+        clearedKeys.push(key);
+      } else if (key.includes('cisco_cloud_estimates_cache_v2') && raw.length > 40_000) {
+        // Reducir la copia de LocalStorage a un subset ultra-liviano de las últimas 15 cabeceras sin partidas
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 15) {
             await idbSet(STORES.KEYVAL, 'cisco_estimates_full_history_backup', parsed);
-            const trimmed = parsed.slice(0, 25).map((r: any) => ({
+            const trimmed = parsed.slice(0, 15).map((r: any) => ({
               id: r.id,
               estimateId: r.estimateId,
               dealId: r.dealId,
@@ -220,14 +246,33 @@ export async function optimizeAndMigrateLocalStorage(): Promise<{
             freedBytes += (raw.length - trimmedStr.length) * 2;
             localStorage.setItem(key, trimmedStr);
             migratedKeys++;
-            clearedKeys.push(`${key} (compactado a 25 registros)`);
+            clearedKeys.push(`${key} (compactado a 15 registros)`);
           }
         } catch (_) {}
       }
     }
 
-    // 4. Limpiar logs y temporales
+    // 4. Limpiar logs, contraseñas legacy y temporales
     const tempKeys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (
+        key &&
+        (key.startsWith('temp_') ||
+          key.startsWith('cache_log_') ||
+          key.includes('_debug_') ||
+          key === 'cisco_users_local')
+      ) {
+        tempKeys.push(key);
+      }
+    }
+    for (const tk of tempKeys) {
+      const val = localStorage.getItem(tk) || '';
+      freedBytes += (tk.length + val.length) * 2;
+      localStorage.removeItem(tk);
+      migratedKeys++;
+      clearedKeys.push(tk);
+    }
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && (key.startsWith('temp_') || key.startsWith('cache_log_') || key.includes('_debug_'))) {

@@ -665,11 +665,18 @@ export async function restoreAllDatabasesFromSnapshot(
     });
     const merged = Array.from(map.values());
     try {
-      if (typeof localStorage !== 'undefined' && (merged.length > 0 || isReplace)) {
+      // Guardar en motor moderno IndexedDB de alta capacidad para no saturar LocalStorage
+      idbSet(STORES.KEYVAL, 'cisco_cloud_dsv_cache_v2', merged).catch(() => {});
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('cisco_dsv_permanent_vault_v1');
+        localStorage.removeItem('cisco_dsv_backup_cache_v1');
+        // Si el dataset es ultra-ligero (< 20 KB), se puede conservar copia rápida; si es mayor, limpiar
         const serialized = JSON.stringify(merged);
-        localStorage.setItem('cisco_cloud_dsv_cache_v2', serialized);
-        localStorage.setItem('cisco_dsv_permanent_vault_v1', serialized);
-        localStorage.setItem('cisco_dsv_backup_cache_v1', serialized);
+        if (serialized.length < 20_000) {
+          localStorage.setItem('cisco_cloud_dsv_cache_v2', serialized);
+        } else {
+          localStorage.removeItem('cisco_cloud_dsv_cache_v2');
+        }
       }
     } catch (_) {}
     restoredStats.dsvRecords = merged.length;
@@ -731,10 +738,16 @@ export async function restoreAllDatabasesFromSnapshot(
     });
     const merged = Array.from(map.values());
     try {
-      if (typeof localStorage !== 'undefined' && (merged.length > 0 || isReplace)) {
+      // Guardar en motor moderno IndexedDB de alta capacidad para no saturar LocalStorage
+      idbSet(STORES.KEYVAL, LOCAL_STORAGE_PARTNERS_KEY, merged).catch(() => {});
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(LOCAL_STORAGE_PARTNERS_VAULT_KEY);
         const serialized = JSON.stringify(merged);
-        localStorage.setItem(LOCAL_STORAGE_PARTNERS_KEY, serialized);
-        localStorage.setItem(LOCAL_STORAGE_PARTNERS_VAULT_KEY, serialized);
+        if (serialized.length < 20_000) {
+          localStorage.setItem(LOCAL_STORAGE_PARTNERS_KEY, serialized);
+        } else {
+          localStorage.removeItem(LOCAL_STORAGE_PARTNERS_KEY);
+        }
       }
     } catch (_) {}
     restoredStats.partnersXcl = merged.length;

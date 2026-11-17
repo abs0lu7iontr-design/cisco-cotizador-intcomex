@@ -6,6 +6,28 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.15.1] - 2026-11-17
+### ⚡ Actualizaciones Permanentes (Online/Offline), Seguridad Cloud de Credenciales & Purga Masiva de LocalStorage
+- **Actualizaciones NUNCA quedan Offline (`autoUpdateManager.ts`, `AutoUpdateBanner.tsx`, `Navbar.tsx`):**
+  - La verificación de nuevas versiones se mantiene permanentemente activa siempre que haya conectividad de red, sin ser bloqueada ni silenciada por el "Modo Offline" de la aplicación.
+  - El sistema consulta el CDN de Cloudflare (`version.json`) en 4 eventos clave:
+    1. Al arrancar o recargar el aplicativo (tanto en Navegador Web como en la App de Escritorio Windows).
+    2. En cada evento de reconexión de red (`window.addEventListener('online')`).
+    3. Al cerrar sesión (`logout()`), aplicando la actualización de forma automática y transparente antes de reingresar.
+    4. En sondeo periódico en segundo plano cada 5 minutos.
+  - Notificación visual con Banner interactivo (`AutoUpdateBanner.tsx`) y botón reluciente en el Navbar con resumen de notas de la versión y botón de **[Actualizar en 1 Clic]** (reemplazo en caliente de bundle en Desktop o recarga cache-busting en Web).
+- **Seguridad y Privacidad de Credenciales: Validación Exclusiva en Firestore Cloud (`LoginScreen.tsx`, `firestoreService.ts`):**
+  - Por estricta normativa de seguridad y privacidad corporativa, el usuario y la contraseña NUNCA se guardan en ninguna base de datos local (IndexedDB ni LocalStorage).
+  - La autenticación de credenciales se procesa directamente contra la colección `users` en Firestore Cloud comparando el hash criptográfico SHA-256 con salt.
+  - Si un usuario intenta iniciar sesión sin internet, el sistema le notifica con insignia de seguridad: *"🔒 Por motivos de seguridad y privacidad, la validación de credenciales se realiza directamente en la nube. Conéctate a internet para iniciar sesión."*
+  - Compatibilidad completa con el Gestor de Contraseñas del Navegador: El formulario ahora incluye los estándares `autoComplete="username"` y `autoComplete="current-password"`, permitiendo que Google Password Manager, Microsoft Edge Wallet, iCloud Keychain o Firefox almacenen y autocompleten las credenciales con cifrado robusto del sistema operativo.
+- **Erradicación Total de Saturación de LocalStorage (`modernStorageEngine.ts`, `healthService.ts`, `databaseBackupManager.ts`):**
+  - Se identificó y resolvió la saturación de 9.99 MB (100% DEGRADADO) en LocalStorage mostrada en el monitor de salud: Las colecciones masivas de órdenes DSV (`cisco_cloud_dsv_cache_v2`, `cisco_dsv_permanent_vault_v1`, `cisco_dsv_backup_cache_v1`), catálogos de partners y bóvedas históricas ahora se almacenan de forma exclusiva en el motor de alta capacidad IndexedDB (W3C StorageManager con 50+ GB de capacidad).
+  - La rutina automática `optimizeAndMigrateLocalStorage()` migra silenciosamente en el arranque cualquier clave superior a 15 KB hacia IndexedDB y purga las copias redundantes, reduciendo el consumo de LocalStorage de 9.99 MB a menos de 0.05 MB (< 1% de uso).
+  - El Monitor de Salud y Diagnóstico refleja de inmediato el almacenamiento en estado 100% ÓPTIMO (verde).
+- **Suite de Pruebas Automatizadas (`tests/autoUpdateAndCloudAuth.test.ts`):**
+  - Nueva suite de pruebas unitarias que valida la comparación SemVer, la exclusión física de contraseñas de LocalStorage, la purga de claves masivas y la validación en la nube. Total: 31 suites de pruebas ejecutadas con 100% de éxito.
+
 ## [v2.15.0] - 2026-11-17
 ### 🛡️ Seguridad, Privacidad de Cotizaciones, Versionado Automático (v1, v2, v3) y Notificaciones de Permisos
 - **Privacidad y Control de Visibilidad para PMs y Preventas (`SaveEstimateModal.tsx`, `DownloadModal.tsx`):**

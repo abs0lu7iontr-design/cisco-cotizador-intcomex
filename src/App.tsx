@@ -23,6 +23,7 @@ import { isPureLicensingQuote } from './core/exportUtils';
 import { getMotherLineKey } from './core/calculations';
 import { openDesktopFileDialog } from './core/desktopBridge';
 import { PriorAuditDetectedModal } from './components/PriorAuditDetectedModal';
+import { AutoUpdateBanner } from './components/AutoUpdateBanner';
 import {
   MiningAuditModal,
   MiningAlertModal,
@@ -787,6 +788,8 @@ function AppContent() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Banner de Actualización Automática */}
+        <AutoUpdateBanner />
         {/* Navbar */}
         <Navbar
           onUploadClick={handleUploadClick}

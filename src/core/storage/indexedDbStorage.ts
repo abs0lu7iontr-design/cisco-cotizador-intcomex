@@ -229,8 +229,10 @@ function getFallbackKey(storeName: string, key: string): string {
 function fallbackLocalStorageSet<T>(storeName: string, key: string, value: T): void {
   const fbKey = getFallbackKey(storeName, key);
   try {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(fbKey, JSON.stringify(value));
+    const serialized = JSON.stringify(value);
+    // Preservar LocalStorage ultra-ligero (< 25 KB) para evitar saturación del límite de 5 MB
+    if (typeof localStorage !== 'undefined' && serialized.length < 25_000) {
+      localStorage.setItem(fbKey, serialized);
       return;
     }
   } catch {}

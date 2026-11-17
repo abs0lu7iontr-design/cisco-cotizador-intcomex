@@ -283,6 +283,16 @@ export function healEstimatesMirrorVaults(): void {
     );
     if (!best || best.length <= 2) return;
 
+    // Si el payload es grande (> 30 KB), purgar las copias duplicadas de LocalStorage
+    // porque el dataset completo ya se preserva en el store de IndexedDB
+    if (best.length > 30_000) {
+      try {
+        localStorage.removeItem(LOCAL_ESTIMATES_VAULT_KEY);
+        localStorage.removeItem(LOCAL_ESTIMATES_MIRROR_KEY);
+      } catch (_) {}
+      return;
+    }
+
     if (!rawPrimary || rawPrimary.length < best.length) {
       try {
         writeProjectScopedStorage(LOCAL_ESTIMATES_PRIMARY_KEY, best, scopeKey);
@@ -334,9 +344,9 @@ export function saveEstimatesMirrorSnapshot(
     }
 
     const serialized = JSON.stringify(cleanList);
-    // Preserva LocalStorage ultra-ligero (< 150 KB) mientras el payload completo con partidas vive en IndexedDB (Tier 1)
+    // Preserva LocalStorage ultra-ligero (< 30 KB) mientras el payload completo con partidas vive en IndexedDB (Tier 1)
     let payloadForLocalStorage = serialized;
-    if (serialized.length > 200_000) {
+    if (serialized.length > 30_000) {
       const compactList = cleanList.map((rec) => ({
         ...rec,
         items: [],

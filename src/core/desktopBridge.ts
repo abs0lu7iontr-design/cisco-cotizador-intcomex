@@ -3,7 +3,7 @@
 // Capa unificada y tipada para comunicarse con el entorno de escritorio Python/PyWebView
 // ============================================================================
 
-import { APP_VERSION } from './appVersion';
+import { APP_VERSION, isNewerVersion } from './appVersion';
 
 export interface DesktopFileOpenResult {
   success: boolean;
@@ -254,19 +254,27 @@ export async function checkDesktopUpdate(): Promise<DesktopUpdateResult | null> 
       const res = await fetch(`./version.json?t=${Date.now()}`, { cache: 'no-store' });
       if (res.ok) {
         const data = (await res.json()) as any;
+        const remoteVersion = String(data.version || APP_VERSION);
+        const currentVersion = APP_VERSION;
+        const currentCommit = String((window as any).__BUILD_INFO__?.git_commit || '');
+        const remoteCommit = String(data.git_commit || '');
+        const hasUpdate =
+          isNewerVersion(remoteVersion, currentVersion) ||
+          Boolean(remoteCommit && currentCommit && remoteCommit !== currentCommit);
+
         return {
           success: true,
-          has_update: false,
-          current_version: data.version || APP_VERSION,
-          latest_version: data.version || APP_VERSION,
-          current_commit: data.git_commit,
-          latest_commit: data.git_commit,
-          current_timestamp: data.build_timestamp,
-          latest_timestamp: data.build_timestamp,
+          has_update: hasUpdate,
+          current_version: currentVersion,
+          latest_version: remoteVersion,
+          current_commit: currentCommit || remoteCommit,
+          latest_commit: remoteCommit,
+          current_timestamp: (window as any).__BUILD_INFO__?.build_timestamp || '',
+          latest_timestamp: data.build_timestamp || '',
           download_url: data.download_url,
           fallback_url: data.fallback_url,
           release_url: 'https://develop.cisco-automated.pages.dev',
-          release_notes: data.release_notes || 'Aplicación web al día.',
+          release_notes: data.release_notes || (hasUpdate ? 'Nueva actualización disponible en la nube.' : 'Aplicación web al día.'),
           channel: data.channel || 'develop',
         };
       }

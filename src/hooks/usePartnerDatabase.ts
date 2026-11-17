@@ -15,6 +15,7 @@ import {
   captureProjectContext,
   isProjectContextCurrent,
 } from '../modules/cloud/firebaseConfig';
+import { idbSet, STORES } from '../core/storage/indexedDbStorage';
 
 export interface PartnerRecord {
   resellerName: string;
@@ -235,10 +236,16 @@ export function markPendingPartnerWriteSynced(
 
 export function persistPartnersToStorage(list: PartnerRecord[], projectId?: string): void {
   try {
+    // Almacenar en motor IndexedDB de alta capacidad para no saturar los 5 MB de LocalStorage
+    idbSet(STORES.KEYVAL, LOCAL_STORAGE_PARTNERS_KEY, list).catch(() => {});
     if (typeof localStorage === 'undefined') return;
     const serialized = JSON.stringify(list);
-    writeProjectScopedStorage(LOCAL_STORAGE_PARTNERS_KEY, serialized, projectId);
-    writeProjectScopedStorage(LOCAL_STORAGE_PARTNERS_VAULT_KEY, serialized, projectId);
+    if (serialized.length < 20_000) {
+      writeProjectScopedStorage(LOCAL_STORAGE_PARTNERS_KEY, serialized, projectId);
+    } else {
+      localStorage.removeItem(LOCAL_STORAGE_PARTNERS_KEY);
+      localStorage.removeItem(LOCAL_STORAGE_PARTNERS_VAULT_KEY);
+    }
   } catch {
     // Ignore storage quota errors
   }

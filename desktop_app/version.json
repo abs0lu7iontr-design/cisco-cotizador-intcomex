@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.15.0",
-  "git_commit": "6498d78",
+  "version": "2.15.1",
+  "git_commit": "bf029cd",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-17T03:43:03.496Z",
-  "release_notes": "fix(v2.14.1): implement modern high-capacity storage engine with gigabytes quota and purge bloated localstorage vaults",
+  "build_timestamp": "2026-11-17T06:16:20.118Z",
+  "release_notes": "feat(v2.15.0): implement estimate privacy controls, local-only pc storage, auto-versioning, and access notifications",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

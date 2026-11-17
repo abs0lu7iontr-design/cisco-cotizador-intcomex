@@ -53,6 +53,7 @@ import {
   isFlushingOfflineQueueNow,
 } from '../../core/storage/offlineModeManager';
 import { enqueueOfflineAction } from '../../core/storage/offlineSyncQueue';
+import { idbSet, idbGet, STORES } from '../../core/storage/indexedDbStorage';
 
 const ESTIMATES_COLLECTION = 'estimates';
 const DSV_COLLECTION = 'dsv_records';
@@ -126,11 +127,20 @@ function getLocalDsvCache(): CloudDsvRecord[] {
 
 function saveLocalDsvCache(list: CloudDsvRecord[]) {
   try {
-    if (typeof localStorage === 'undefined') return;
     const deletedIds = getDeletedDsvIds();
     const cleanList = list.filter((r) => r && r.id && !deletedIds.has(r.id)).slice(0, 500);
+    // Guardar en motor de alta capacidad IndexedDB (STORES.KEYVAL) para evitar saturación de 5 MB de LocalStorage
+    idbSet(STORES.KEYVAL, LOCAL_DSV_BACKUP_KEY, cleanList).catch(() => {});
+    if (typeof localStorage === 'undefined') return;
     const serialized = JSON.stringify(cleanList);
-    writeProjectScopedStorage(LOCAL_DSV_BACKUP_KEY, serialized);
+    // Solo mantener en LocalStorage si es liviano (< 20 KB)
+    if (serialized.length < 20_000) {
+      writeProjectScopedStorage(LOCAL_DSV_BACKUP_KEY, serialized);
+    } else {
+      localStorage.removeItem(LOCAL_DSV_BACKUP_KEY);
+      localStorage.removeItem(LOCAL_DSV_VAULT_KEY);
+      localStorage.removeItem(LOCAL_DSV_LEGACY_KEY);
+    }
   } catch (_) {}
 }
 
@@ -2656,7 +2666,6 @@ export const DEFAULT_BASE_USERS: CloudUserRecord[] = [
     full_name: 'Administrador del Sistema',
     email: 'admin@cotizador.local',
     role: 'admin',
-    password_hash: '96b9554ea346ec7b66df877239ef74911d3311681fa940e70ca2b73bc2a3a5f8',
     is_active: 1,
     created_at: '2026-08-01T10:00:00.000Z',
   },
@@ -2665,7 +2674,6 @@ export const DEFAULT_BASE_USERS: CloudUserRecord[] = [
     full_name: 'Product Manager Cisco',
     email: 'pm@cotizador.local',
     role: 'pm',
-    password_hash: '96b9554ea346ec7b66df877239ef74911d3311681fa940e70ca2b73bc2a3a5f8',
     is_active: 1,
     created_at: '2026-08-01T10:00:00.000Z',
   },
@@ -2673,27 +2681,146 @@ export const DEFAULT_BASE_USERS: CloudUserRecord[] = [
 
 export function getLocalUsersCache(): CloudUserRecord[] {
   try {
-    const raw = localStorage.getItem(LOCAL_USERS_BACKUP_KEY);
-    if (raw) return JSON.parse(raw);
-    const legacy = localStorage.getItem('cisco_users_local');
-    if (legacy) {
-      const parsed = JSON.parse(legacy);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map((u: any) => ({
-          ...u,
-          password_hash: u.password_hash || '96b9554ea346ec7b66df877239ef74911d3311681fa940e70ca2b73bc2a3a5f8',
-        }));
+    if (typeof localStorage !== 'undefined') {
+      // Purgar de forma definitiva cualquier clave legacy con hashes locales
+      localStorage.removeItem('cisco_users_local');
+      const raw = localStorage.getItem(LOCAL_USERS_BACKUP_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Asegurar que ningún registro devuelto contenga password_hash en local
+          return parsed.map(({ password_hash: _omit, ...rest }) => rest);
+        }
       }
     }
   } catch (_) {}
-  return DEFAULT_BASE_USERS;
+  return DEFAULT_BASE_USERS.map(({ password_hash: _omit, ...rest }) => rest);
 }
 
 export function saveLocalUsersCache(list: CloudUserRecord[]) {
   try {
-    localStorage.setItem(LOCAL_USERS_BACKUP_KEY, JSON.stringify(list));
-    localStorage.setItem('cisco_users_local', JSON.stringify(list));
+    if (typeof localStorage === 'undefined') return;
+    // Mandato de seguridad estricto: Las contraseñas NUNCA se almacenan en BD locales ni LocalStorage
+    const sanitized = list.map(({ password_hash: _omit, ...rest }) => rest);
+    localStorage.setItem(LOCAL_USERS_BACKUP_KEY, JSON.stringify(sanitized));
+    localStorage.removeItem('cisco_users_local');
   } catch (_) {}
+}
+
+export interface CloudAuthResult {
+  success: boolean;
+  user?: CloudUserRecord;
+  error?: string;
+  isOfflineBlocked?: boolean;
+}
+
+/**
+ * Autenticación de usuario directamente contra Firestore Cloud.
+ * Las contraseñas nunca residen en almacenamiento local ni se validan offline.
+ */
+export async function authenticateCloudUser(
+  usernameInput: string,
+  passwordPlain: string
+): Promise<CloudAuthResult> {
+  const cleanUser = usernameInput.trim().toLowerCase();
+  const cleanPass = passwordPlain.trim();
+
+  if (!cleanUser || !cleanPass) {
+    return { success: false, error: 'Por favor complete el usuario y la contraseña.' };
+  }
+
+  // Por política de seguridad, las contraseñas se autentican exclusivamente en la nube
+  if (isAppOffline() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+    return {
+      success: false,
+      isOfflineBlocked: true,
+      error:
+        '🔒 Por motivos de seguridad y privacidad, la validación de credenciales se realiza directamente en la nube. Conéctate a internet para iniciar sesión.',
+    };
+  }
+
+  const { db, isReady, error } = getFirestoreInstance();
+  if (!isReady || !db) {
+    return {
+      success: false,
+      error: error || 'No se pudo conectar con el servidor de autenticación en la nube (Firestore). Verifique su conexión.',
+    };
+  }
+
+  try {
+    // 1. Consultar documento del usuario en Firestore por su identificador único
+    const userDocRef = doc(db, USERS_COLLECTION, cleanUser);
+    const docSnap = await withTimeout(getDoc(userDocRef), 4500);
+
+    let userData: CloudUserRecord | null = null;
+    if (docSnap.exists()) {
+      userData = docSnap.data() as CloudUserRecord;
+    } else {
+      // Consulta de respaldo por el campo 'username'
+      const colRef = collection(db, USERS_COLLECTION);
+      const q = query(colRef, where('username', '==', cleanUser), limit(1));
+      const qSnap = await withTimeout(getDocs(q), 4500);
+      if (!qSnap.empty) {
+        userData = qSnap.docs[0].data() as CloudUserRecord;
+      }
+    }
+
+    // Auto-seed inicial de Firestore si es primera instalación y son usuarios base
+    if (!userData && (cleanUser === 'admin' || cleanUser === 'pm_cisco')) {
+      const defaultUser = DEFAULT_BASE_USERS.find((u) => u.username.toLowerCase() === cleanUser);
+      if (defaultUser) {
+        const defaultHash = await sha256Salted('Intcomex2026!');
+        const seededUser: CloudUserRecord = {
+          ...defaultUser,
+          password_hash: defaultHash,
+        };
+        try {
+          await withTimeout(setDoc(userDocRef, sanitizeForFirestore(seededUser)), 2500);
+          userData = seededUser;
+        } catch (_) {}
+      }
+    }
+
+    if (!userData) {
+      return { success: false, error: 'Usuario o contraseña incorrectos.' };
+    }
+
+    if (userData.is_active === 0) {
+      return {
+        success: false,
+        error: '⚠️ Esta cuenta se encuentra deshabilitada o suspendida. Contacte al Administrador.',
+      };
+    }
+
+    // Validar hash criptográfico con salt
+    const computedHash = await sha256Salted(cleanPass);
+    const isValid =
+      Boolean(userData.password_hash) &&
+      (userData.password_hash === computedHash || userData.password_hash === cleanPass);
+
+    if (!isValid) {
+      return { success: false, error: 'Usuario o contraseña incorrectos.' };
+    }
+
+    // Retornar perfil seguro SIN password_hash
+    const safeUser: CloudUserRecord = {
+      username: (userData.username || cleanUser).toLowerCase(),
+      full_name: userData.full_name,
+      role: userData.role,
+      email: userData.email,
+      is_active: userData.is_active,
+      last_login: new Date().toISOString(),
+      created_at: userData.created_at,
+    };
+
+    return { success: true, user: safeUser };
+  } catch (err: any) {
+    console.error('[authenticateCloudUser] Error:', err);
+    return {
+      success: false,
+      error: `Error al validar credenciales en la nube: ${err?.message || 'Tiempo de espera agotado'}`,
+    };
+  }
 }
 
 export async function getCloudUsers(): Promise<{ success: boolean; data: CloudUserRecord[]; error?: string }> {

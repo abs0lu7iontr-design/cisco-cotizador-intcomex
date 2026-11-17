@@ -277,8 +277,12 @@ export async function checkStorageHealth(): Promise<{
   } else if (modernQuota.pctUsed > 85) {
     status = 'degraded';
     message = `Almacenamiento de alta capacidad cercano al límite (${modernQuota.pctUsed}% usado).`;
-  } else if (ls.pct > 95) {
-    message = `Motor IndexedDB de alta capacidad óptimo (${modernQuota.quotaFormatted}). Bóveda LocalStorage con caché residual (${ls.pct}%); se recomienda optimizar.`;
+  } else if (ls.pct > 80) {
+    message = `Motor IndexedDB de alta capacidad óptimo (${modernQuota.quotaFormatted}). Bóveda LocalStorage con caché residual (${ls.formatted}); optimización automática activa.`;
+    // Disparar auto-migración y limpieza en segundo plano sin bloquear
+    setTimeout(() => {
+      optimizeAndMigrateLocalStorage().catch(() => {});
+    }, 100);
   } else if (queueSummary.total > 15) {
     status = 'degraded';
     message = `Hay ${queueSummary.total} operaciones en cola local esperando sincronización con la nube.`;
@@ -491,15 +495,29 @@ export function repairStorageCache(): { clearedKeys: number; freedBytes: number 
         if (!key) continue;
         const val = localStorage.getItem(key) || '';
 
-        // 1. Claves temporales y de depuración
-        if (key.startsWith('temp_') || key.startsWith('cache_log_') || key.includes('_debug_')) {
+        // 1. Claves temporales, logs y residuales
+        if (
+          key.startsWith('temp_') ||
+          key.startsWith('cache_log_') ||
+          key.includes('_debug_') ||
+          key.startsWith('idb_fallback_') ||
+          key === 'cisco_users_local'
+        ) {
           keysToClear.push(key);
         }
-        // 2. Claves de respaldo masivo o duplicados sobredimensionados (> 50 KB) que ya residen en IndexedDB
+        // 2. Claves de catálogo masivo o bóvedas pesadas (> 15 KB) que deben vivir en IndexedDB
         else if (
+          val.length > 15_000 ||
           key === 'cisco_automated_emergency_vault_backup_v1' ||
-          key.startsWith('idb_fallback_') ||
-          ((key.includes('_vault_') || key.includes('_mirror_') || key.includes('_backup_cache_') || key.includes('emergency_vault')) && val.length > 50_000)
+          ((key.includes('_vault_') ||
+            key.includes('_mirror_') ||
+            key.includes('_backup_cache_') ||
+            key.includes('emergency_vault') ||
+            key.includes('cisco_cloud_dsv_cache') ||
+            key.includes('cisco_partners_xcl') ||
+            key.includes('cisco_bo_sku_catalog') ||
+            key.includes('cisco_shared_sku_rules')) &&
+            val.length > 15_000)
         ) {
           keysToClear.push(key);
         }

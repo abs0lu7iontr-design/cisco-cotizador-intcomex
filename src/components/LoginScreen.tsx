@@ -35,6 +35,7 @@ import {
   getCloudUsers,
   saveCloudUser,
   sha256Salted,
+  authenticateCloudUser,
   getLocalUsersCache,
   DEFAULT_BASE_USERS,
   CloudUserRecord,
@@ -307,27 +308,20 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         }
       }
 
-      // 3. Fast Offline/Cached Local Verification (Zero Lag)
-      let usersList: CloudUserRecord[] = getLocalUsersCache();
-      let foundUser = usersList.find((u) => u.username.toLowerCase() === cleanUser);
+      // 3. Autenticación Segura en la Nube (Las contraseñas NUNCA se guardan en el PC)
+      let foundUser: CloudUserRecord | null = null;
 
-      // Fallback for default initial base users
-      if (!foundUser) {
-        foundUser = DEFAULT_BASE_USERS.find((u) => u.username.toLowerCase() === cleanUser);
-      }
+      const authRes = await authenticateCloudUser(cleanUser, cleanPass);
+      if (!authRes.success || !authRes.user) {
+        if (authRes.isOfflineBlocked) {
+          setErrorMsg(
+            authRes.error ||
+              '🔒 Por motivos de seguridad y privacidad, la validación de credenciales se realiza directamente en la nube. Conéctate a internet para iniciar sesión.'
+          );
+          return;
+        }
 
-      // If still not found and online, try a non-blocking 800ms cloud lookup
-      if (!foundUser && !isOffline) {
-        try {
-          const cloudRes = await withTimeout(getCloudUsers(), 800);
-          if (cloudRes.success && cloudRes.data) {
-            foundUser = cloudRes.data.find((u) => u.username.toLowerCase() === cleanUser);
-          }
-        } catch (_) {}
-      }
-
-      if (!foundUser) {
-        // Register failed attempt (user not found)
+        // Register failed attempt (user not found or invalid password)
         const newFailed = secState.failedAttempts + 1;
         const willLock = newFailed >= MAX_FAILED_ATTEMPTS;
         const lockedUntil = willLock ? now + LOCKOUT_DURATION_MS : 0;
@@ -346,47 +340,35 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           setRemainingLockSeconds(LOCKOUT_DURATION_MS / 1000);
           setErrorMsg('⛔ Acceso restringido temporalmente por motivos de seguridad.');
         } else {
-          setErrorMsg('Usuario o contraseña incorrectos.');
+          setErrorMsg(authRes.error || 'Usuario o contraseña incorrectos.');
         }
         return;
       }
 
-      // Check if user is disabled / expired
-      if (foundUser.is_active === 0) {
-        setErrorMsg('⚠️ Esta cuenta se encuentra deshabilitada o expirada. Contacte al Administrador.');
-        return;
+      foundUser = authRes.user;
+
+      // Reset security state on success
+      saveSecurityState({
+        failedAttempts: 0,
+        lockedUntil: 0,
+        lastAttemptTime: now,
+        recentRequestTimestamps: [],
+      });
+      setFailedCount(0);
+
+      // Guardar preferencia de recordar usuario en este equipo
+      saveLocalPlatformConfig({
+        rememberLastUser: rememberUser,
+        lastUsername: rememberUser ? cleanUser : '',
+      });
+
+      // Update last_login asynchronously in background si está Online
+      if (!isOffline) {
+        saveCloudUser({
+          ...foundUser,
+          last_login: new Date().toISOString(),
+        }).catch(() => {});
       }
-
-      // Compare cryptographic salted hash
-      const computedHash = await sha256Salted(cleanPass);
-
-      const isPasswordValid =
-        Boolean(foundUser.password_hash) &&
-        (foundUser.password_hash === computedHash || foundUser.password_hash === cleanPass);
-
-      if (isPasswordValid) {
-        // Reset security state on success
-        saveSecurityState({
-          failedAttempts: 0,
-          lockedUntil: 0,
-          lastAttemptTime: now,
-          recentRequestTimestamps: [],
-        });
-        setFailedCount(0);
-
-        // Guardar preferencia de recordar usuario en este equipo
-        saveLocalPlatformConfig({
-          rememberLastUser: rememberUser,
-          lastUsername: rememberUser ? cleanUser : '',
-        });
-
-        // Update last_login asynchronously in background si está Online
-        if (!isOffline) {
-          saveCloudUser({
-            ...foundUser,
-            last_login: new Date().toISOString(),
-          }).catch(() => {});
-        }
 
         const userSession: UserSession = {
           username: cleanUser,
@@ -420,30 +402,6 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
         onLoginSuccess(userSession);
         return;
-      } else {
-        // Register failed attempt
-        const newFailed = secState.failedAttempts + 1;
-        const willLock = newFailed >= MAX_FAILED_ATTEMPTS;
-        const lockedUntil = willLock ? now + LOCKOUT_DURATION_MS : 0;
-
-        saveSecurityState({
-          failedAttempts: willLock ? MAX_FAILED_ATTEMPTS : newFailed,
-          lockedUntil,
-          lastAttemptTime: now,
-          recentRequestTimestamps: recentRequests,
-        });
-
-        setFailedCount(newFailed);
-
-        if (willLock) {
-          setIsLocked(true);
-          setRemainingLockSeconds(LOCKOUT_DURATION_MS / 1000);
-          setErrorMsg('⛔ Acceso restringido temporalmente por motivos de seguridad.');
-        } else {
-          setErrorMsg('Usuario o contraseña incorrectos.');
-        }
-        return;
-      }
     } catch (err: any) {
       setErrorMsg('Error de autenticación: ' + (err?.message || 'Fallo de conexión'));
     } finally {
@@ -546,10 +504,10 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           </button>
         </div>
 
-        {/* Clean Login Form (No pre-filling, no suggestions) */}
-        <form onSubmit={handleLogin} className="space-y-4 relative z-10">
+        {/* Formulario de Login (Integrado con el Gestor de Contraseñas del Navegador) */}
+        <form onSubmit={handleLogin} autoComplete="on" className="space-y-4 relative z-10">
           <div>
-            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+            <label htmlFor="username" className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
               Usuario de Sistema
             </label>
             <div className="relative">
@@ -557,11 +515,13 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 <User className="w-4 h-4" />
               </div>
               <input
+                id="username"
+                name="username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Ingrese su usuario..."
-                autoComplete="off"
+                autoComplete="username"
                 spellCheck="false"
                 autoCorrect="off"
                 autoCapitalize="none"
@@ -572,7 +532,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+            <label htmlFor="password" className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
               Contraseña
             </label>
             <div className="relative">
@@ -580,11 +540,13 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 <Lock className="w-4 h-4" />
               </div>
               <input
+                id="password"
+                name="password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••••••"
-                autoComplete="off"
+                autoComplete="current-password"
                 spellCheck="false"
                 disabled={isLocked || isLoading}
                 className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl pl-10 pr-10 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -642,6 +604,11 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               </>
             )}
           </button>
+
+          <div className="flex items-center space-x-1.5 text-[10px] text-slate-400 justify-center pt-1">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>Validación 100% en Firestore Cloud. Las contraseñas no se almacenan en el PC.</span>
+          </div>
         </form>
 
         {/* Footer */}

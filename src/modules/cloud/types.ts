@@ -189,7 +189,7 @@ export interface CloudUserRecord {
   full_name: string;
   email: string;
   role: Role | string;
-  password_hash: string;
+  password_hash?: string;
   is_active: number; // 1 = active, 0 = disabled/expired
   created_at: string;
   last_login?: string;

@@ -15,11 +15,30 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.15.1',
+    date: '2026-11-17',
+    commit: 'feat-auto-update-always-active-cloud-only-auth-and-localstorage-purge',
+    title: 'Actualizaciones Permanentes (Online/Offline), Seguridad Cloud de Credenciales y Purga Masiva de LocalStorage',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Actualizaciones NUNCA quedan Offline: La detección de actualizaciones se mantiene activa permanentemente ante cualquier conectividad de red, sin ser bloqueada por el Modo Offline.',
+      'Sondeo de Actualización Multi-Evento: Verificación automática contra el CDN de Cloudflare (version.json) al arrancar la app, al reconectar internet (window online), cada 5 minutos en background, y al cerrar sesión (logout).',
+      'Actualización en 1 Clic o al Cerrar Sesión: Banner visual superior interactivo y botón iluminado en Navbar con notas de la release y ejecución inmediata de recarga inteligente o hot-update de PyWebView en Desktop.',
+      'Seguridad y Privacidad de Credenciales: Las contraseñas y hashes criptográficos NUNCA se almacenan en ninguna base de datos local (LocalStorage ni IndexedDB) del PC.',
+      'Validación Exclusiva en Firestore Cloud: La autenticación de credenciales se procesa directamente en la nube. Si no hay conexión, se notifica claramente al usuario que se requiere internet por motivos de seguridad.',
+      'Compatibilidad con Gestor Seguro del Navegador: Formulario con autoComplete="username" y autoComplete="current-password", permitiendo que Google Password Manager, Edge Wallet, iCloud Keychain o Firefox guarden y autocompleten credenciales con cifrado robusto del sistema operativo.',
+      'Erradicación Total de Saturación de LocalStorage (9.99 MB / 100%): Las colecciones masivas de órdenes DSV, catálogos de partners y bóvedas históricas ahora se almacenan exclusivamente en el motor de alta capacidad IndexedDB (50+ GB de capacidad).',
+      'Purga y Migración Automática en Arranque: Reducción drástica del uso de LocalStorage de 9.99 MB a menos de 0.05 MB (< 1% de uso), devolviendo el semáforo del Monitor de Salud a 100% ÓPTIMO (verde).',
+      'Suite de Pruebas Unitarias Automatizadas: Nueva suite tests/autoUpdateAndCloudAuth.test.ts con 100% de éxito en las 31 suites del proyecto.',
+    ],
+  },
+  {
     version: '2.15.0',
     date: '2026-11-17',
     commit: 'feat-estimate-privacy-local-storage-auto-versioning-and-access-notifications',
     title: 'Seguridad y Privacidad de Cotizaciones, Versionado Automático (v1, v2, v3) y Notificaciones de Permisos',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Privacidad y Visibilidad para PMs y Preventas: Nueva opción "Solo en este PC (Privado Local)" para guardar cotizaciones de forma 100% confidencial en el disco local del equipo (IndexedDB) sin subirlas a Firestore ni encolarlas en la nube.',

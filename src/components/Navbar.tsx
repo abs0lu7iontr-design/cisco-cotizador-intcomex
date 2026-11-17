@@ -36,6 +36,7 @@ import { getFormattedAppVersion } from '../core/appVersion';
 import { useUiExperience } from '../core/themeEngine';
 import { useOfflineMode } from '../core/storage/offlineModeManager';
 import { AccessNotificationsDropdown } from './AccessNotificationsDropdown';
+import { useAutoUpdate, applyUpdateNow } from '../core/autoUpdateManager';
 
 interface NavbarProps {
   onUploadClick: () => void;
@@ -110,6 +111,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const { mode, changeMode, isAesthetic } = useUiExperience();
   const { isOffline, isNavigatorOffline } = useOfflineMode();
+  const { hasUpdate, latestVersion, isApplying } = useAutoUpdate();
 
   return (
     <header
@@ -275,6 +277,21 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Access Requests & Security Notifications Dropdown */}
           <AccessNotificationsDropdown onOpenEstimateHistory={onOpenEstimateHistory} />
+
+          {/* Quick 1-Click Auto-Update Indicator */}
+          {hasUpdate && (
+            <button
+              id="btn-navbar-auto-update"
+              type="button"
+              onClick={() => applyUpdateNow()}
+              disabled={isApplying}
+              className="inline-flex items-center space-x-1.5 text-xs font-black px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/20 border border-emerald-400/40 animate-pulse cursor-pointer disabled:opacity-50"
+              title={`Nueva versión v${latestVersion} lista. Clic para actualizar ahora.`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-200" />
+              <span>v{latestVersion}</span>
+            </button>
+          )}
 
           {/* Client Mode Privacy Toggle */}
           {onToggleClientMode && (

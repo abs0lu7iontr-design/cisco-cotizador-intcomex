@@ -108,6 +108,37 @@ export function getFormattedAppVersion(prefix: boolean = true): string {
 export function getAppTitle(): string {
   return \`\${APP_DISPLAY_NAME} \${getFormattedAppVersion()} (\${APP_EDITION})\`;
 }
+
+/**
+ * Compara dos versiones SemVer (ej. "2.15.1" vs "2.15.0").
+ * Retorna true si remoteVersion es estrictamente mayor que currentVersion.
+ */
+export function isNewerVersion(remoteVersion: string, currentVersion: string = APP_VERSION): boolean {
+  try {
+    const parse = (v: string) => {
+      const clean = (v || '').replace(/^v/, '').trim();
+      const parts = clean.split('.').map((p) => parseInt(p, 10) || 0);
+      return {
+        major: parts[0] ?? 0,
+        minor: parts[1] ?? 0,
+        patch: parts[2] ?? 0,
+      };
+    };
+
+    const remote = parse(remoteVersion);
+    const current = parse(currentVersion);
+
+    if (remote.major > current.major) return true;
+    if (remote.major < current.major) return false;
+
+    if (remote.minor > current.minor) return true;
+    if (remote.minor < current.minor) return false;
+
+    return remote.patch > current.patch;
+  } catch (_) {
+    return false;
+  }
+}
 `;
   fs.writeFileSync(appVersionPath, appVersionContent, 'utf8');
   console.log(`  ✓ src/core/appVersion.ts actualizado a ${version}`);

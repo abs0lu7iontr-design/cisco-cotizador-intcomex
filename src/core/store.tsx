@@ -59,6 +59,7 @@ import {
   reconstructProcessedResultFromCloudRecord,
   resolveFallbackPartnerAndClient,
 } from './storePersistence';
+import { checkAndApplyUpdateOnLogout } from './autoUpdateManager';
 
 export type NavViewId =
   | 'dashboard'
@@ -1347,6 +1348,8 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         console.warn(e);
       }
     }
+    // Si hay una actualización de versión pendiente, aplicarla de inmediato al cerrar sesión
+    checkAndApplyUpdateOnLogout().catch(() => {});
     setCurrentUser(null);
     setCurrentView('dashboard');
   }, []);
