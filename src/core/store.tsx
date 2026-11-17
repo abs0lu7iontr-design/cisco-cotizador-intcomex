@@ -13,6 +13,10 @@ import {
   PricingParameterMode,
   LineParametersMap,
 } from './types';
+import {
+  getLocalPlatformConfig,
+  saveLocalPlatformConfig,
+} from './storage/localPlatformConfig';
 import { parseEstimateWorkbook } from './excelEngine';
 import { recalculateEstimateResult } from './calculations';
 import { enqueueOfflineAction, initOfflineSyncListeners } from './storage/offlineSyncQueue';
@@ -259,7 +263,17 @@ const CiscoAutomatedContext = createContext<CiscoAutomatedState | null>(null);
 
 export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // 1. Dominio de Sesión y Navegación
-  const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
+  const [currentUser, setCurrentUserState] = useState<UserSession | null>(null);
+
+  const setCurrentUser = useCallback((user: UserSession | null) => {
+    setCurrentUserState(user);
+    if (user?.username) {
+      try {
+        saveLocalPlatformConfig({ lastUsername: user.username });
+      } catch {}
+    }
+  }, []);
+
   const [currentView, setCurrentViewState] = useState<NavViewId>(getInitialNavView);
 
   const setCurrentView = useCallback((view: NavViewId) => {
@@ -288,31 +302,72 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
-  const [isClientMode, setIsClientMode] = useState<boolean>(() => {
+
+  const [isClientMode, setIsClientModeState] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('cisco_client_presentation_mode') === 'true';
+      return getLocalPlatformConfig().isClientMode;
     } catch {
       return false;
     }
   });
 
-  const toggleClientMode = useCallback(() => {
-    setIsClientMode((prev) => !prev);
+  const setIsClientMode = useCallback((valOrUpdater: React.SetStateAction<boolean>) => {
+    setIsClientModeState((prev) => {
+      const next = typeof valOrUpdater === 'function' ? valOrUpdater(prev) : valOrUpdater;
+      try {
+        saveLocalPlatformConfig({ isClientMode: next });
+        localStorage.setItem('cisco_client_presentation_mode', String(next));
+      } catch {}
+      return next;
+    });
   }, []);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('cisco_client_presentation_mode', String(isClientMode));
-    } catch {}
-  }, [isClientMode]);
+  const toggleClientMode = useCallback(() => {
+    setIsClientMode((prev) => !prev);
+  }, [setIsClientMode]);
 
   useEffect(() => {
     const unsub = initOfflineSyncListeners();
     return unsub;
   }, []);
 
-  // 2. Dominio de Parámetros Comerciales (v2.1 defaults)
-  const [params, setParams] = useState<QuoteParameters>(DEFAULT_PARAMS);
+  // 2. Dominio de Parámetros Comerciales (cargados desde configuración local del equipo)
+  const [params, setParamsState] = useState<QuoteParameters>(() => {
+    try {
+      const cfg = getLocalPlatformConfig();
+      if (cfg?.defaultParams) {
+        return {
+          internacionPct: cfg.defaultParams.internacionPct ?? DEFAULT_PARAMS.internacionPct,
+          arancelPct: cfg.defaultParams.arancelPct ?? DEFAULT_PARAMS.arancelPct,
+          margenPct: cfg.defaultParams.margenPct ?? DEFAULT_PARAMS.margenPct,
+          parameterMode: cfg.defaultParams.parameterMode || DEFAULT_PARAMS.parameterMode,
+          lineCustomParams: {},
+        };
+      }
+    } catch {}
+    return DEFAULT_PARAMS;
+  });
+
+  const setParams = useCallback(
+    (newParams: QuoteParameters | ((prev: QuoteParameters) => QuoteParameters)) => {
+      setParamsState((prev) => {
+        const resolved = typeof newParams === 'function' ? newParams(prev) : newParams;
+        try {
+          saveLocalPlatformConfig({
+            defaultParams: {
+              internacionPct: resolved.internacionPct,
+              arancelPct: resolved.arancelPct,
+              margenPct: resolved.margenPct,
+              parameterMode: resolved.parameterMode || 'standard',
+            },
+          });
+        } catch {}
+        return resolved;
+      });
+    },
+    []
+  );
+
   const [detectedPartner, setDetectedPartner] = useState<string>('');
   const [activePartnerProfile, setActivePartnerProfile] = useState<ParamProfileRecord | null>(null);
 
@@ -362,7 +417,21 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
   // 8. Controles de Interfaz
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [activeQuoterTab, setActiveQuoterTab] = useState<'excel' | 'table' | 'calculator'>('excel');
+  const [activeQuoterTab, setActiveQuoterTabState] = useState<'excel' | 'table' | 'calculator'>(() => {
+    try {
+      return getLocalPlatformConfig().activeQuoterTab || 'excel';
+    } catch {
+      return 'excel';
+    }
+  });
+
+  const setActiveQuoterTab = useCallback((tab: 'excel' | 'table' | 'calculator') => {
+    setActiveQuoterTabState(tab);
+    try {
+      saveLocalPlatformConfig({ activeQuoterTab: tab });
+    } catch {}
+  }, []);
+
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
 
   // Sincronización inicial con el puente Desktop (PyWebView) y almacenamiento local fuera de setState

@@ -2605,8 +2605,12 @@ export function saveLocalUsersCache(list: CloudUserRecord[]) {
 
 export async function getCloudUsers(): Promise<{ success: boolean; data: CloudUserRecord[]; error?: string }> {
   try {
-    const { db, isReady, error } = getFirestoreInstance();
     const localUsers = getLocalUsersCache();
+    if (isAppOffline()) {
+      return { success: true, data: localUsers, error: 'Modo Offline activo (autenticación local)' };
+    }
+
+    const { db, isReady, error } = getFirestoreInstance();
 
     if (!isReady || !db) {
       return { success: true, data: localUsers, error: error ? `Modo local (${error})` : undefined };
@@ -2673,6 +2677,10 @@ export async function saveCloudUser(
     const filtered = localList.filter((u) => u.username.toLowerCase() !== cleanUser.username);
     const updatedLocal = [cleanUser, ...filtered];
     saveLocalUsersCache(updatedLocal);
+
+    if (isAppOffline()) {
+      return { success: true };
+    }
 
     // 2. Update Firestore
     const { db, isReady } = getFirestoreInstance();

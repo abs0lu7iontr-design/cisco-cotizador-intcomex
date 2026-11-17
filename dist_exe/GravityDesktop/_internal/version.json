@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.13.2",
-  "git_commit": "4051970",
+  "version": "2.14.0",
+  "git_commit": "b6b662d",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-15T02:32:57.898Z",
-  "release_notes": "fix(v2.13.1): exclude child accessories from equipment demand and stock planner",
+  "build_timestamp": "2026-11-17T02:25:34.389Z",
+  "release_notes": "fix(v2.13.2): implement quotation outlier damping formula to protect stock opportunities and critical stock",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

@@ -17,8 +17,20 @@ import {
   EyeOff,
   Clock,
   Cloud,
+  Wifi,
+  WifiOff,
+  HardDrive,
+  Check,
 } from 'lucide-react';
 import { CISCO_HALLOWEEN_ANIMATED_LOGO_DATA_URI, getSeasonalLoginLogo } from '../core/brandingLogos';
+import {
+  useOfflineMode,
+  setManualOfflineMode,
+} from '../core/storage/offlineModeManager';
+import {
+  getLocalPlatformConfig,
+  saveLocalPlatformConfig,
+} from '../core/storage/localPlatformConfig';
 import {
   getCloudUsers,
   saveCloudUser,
@@ -84,9 +96,16 @@ function saveSecurityState(state: SecurityState) {
 }
 
 export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
-  // Inputs start 100% empty (NO auto-login, NO prefilled credentials)
-  const [username, setUsername] = useState('');
+  const { isOffline, isManualOffline } = useOfflineMode();
+  const localConfig = getLocalPlatformConfig();
+
+  const [username, setUsername] = useState(() => {
+    return (localConfig.rememberLastUser && localConfig.lastUsername) || '';
+  });
   const [password, setPassword] = useState('');
+  const [rememberUser, setRememberUser] = useState<boolean>(() => {
+    return localConfig.rememberLastUser ?? true;
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -106,22 +125,34 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
   // Sync Cloud Users and check security on mount
   useEffect(() => {
-    // 1. Fetch cloud users into local cache in background
-    getCloudUsers().catch((e) => console.warn('Cloud users sync note:', e));
-
-    // Detect Geolocation origin for adaptive 2FA
-    checkGeoLocation()
-      .then((info) => setGeoInfo(info))
-      .catch(() => {
-        setGeoInfo({
-          country: 'CL',
-          city: 'Santiago',
-          region: 'RM',
-          ip: '127.0.0.1',
-          isChile: true,
-          requires2FA: false,
-        });
+    if (isOffline) {
+      // En modo offline asigna inmediatamente la geolocalización local sin realizar llamadas HTTP externas
+      setGeoInfo({
+        country: 'CL',
+        city: 'Santiago',
+        region: 'RM',
+        ip: '127.0.0.1',
+        isChile: true,
+        requires2FA: false,
       });
+    } else {
+      // 1. Fetch cloud users into local cache in background si está Online
+      getCloudUsers().catch((e) => console.warn('Cloud users sync note:', e));
+
+      // Detect Geolocation origin for adaptive 2FA
+      checkGeoLocation()
+        .then((info) => setGeoInfo(info))
+        .catch(() => {
+          setGeoInfo({
+            country: 'CL',
+            city: 'Santiago',
+            region: 'RM',
+            ip: '127.0.0.1',
+            isChile: true,
+            requires2FA: false,
+          });
+        });
+    }
 
     // 2. Clear any stale lock
     const state = loadSecurityState();
@@ -146,7 +177,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         setFailedCount(state.failedAttempts);
       }
     }
-  }, []);
+  }, [isOffline]);
 
   // Interval timer for live countdown
   useEffect(() => {
@@ -233,6 +264,11 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             lastAttemptTime: now,
             recentRequestTimestamps: [],
           });
+          // Guardar preferencia de recordar usuario en este equipo
+          saveLocalPlatformConfig({
+            rememberLastUser: rememberUser,
+            lastUsername: rememberUser ? cleanUser : '',
+          });
           const currentGeo = geoInfo || (await checkGeoLocation());
           if (!geoInfo) setGeoInfo(currentGeo);
           if (currentGeo.requires2FA) {
@@ -280,8 +316,8 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         foundUser = DEFAULT_BASE_USERS.find((u) => u.username.toLowerCase() === cleanUser);
       }
 
-      // If still not found, try a non-blocking 800ms cloud lookup
-      if (!foundUser) {
+      // If still not found and online, try a non-blocking 800ms cloud lookup
+      if (!foundUser && !isOffline) {
         try {
           const cloudRes = await withTimeout(getCloudUsers(), 800);
           if (cloudRes.success && cloudRes.data) {
@@ -338,11 +374,19 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         });
         setFailedCount(0);
 
-        // Update last_login asynchronously in background
-        saveCloudUser({
-          ...foundUser,
-          last_login: new Date().toISOString(),
-        }).catch(() => {});
+        // Guardar preferencia de recordar usuario en este equipo
+        saveLocalPlatformConfig({
+          rememberLastUser: rememberUser,
+          lastUsername: rememberUser ? cleanUser : '',
+        });
+
+        // Update last_login asynchronously in background si está Online
+        if (!isOffline) {
+          saveCloudUser({
+            ...foundUser,
+            last_login: new Date().toISOString(),
+          }).catch(() => {});
+        }
 
         const userSession: UserSession = {
           username: cleanUser,
@@ -351,10 +395,21 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           email: foundUser.email,
         };
 
-        const currentGeo = geoInfo || (await checkGeoLocation());
+        const currentGeo =
+          geoInfo ||
+          (isOffline
+            ? {
+                country: 'CL',
+                city: 'Santiago',
+                region: 'RM',
+                ip: '127.0.0.1',
+                isChile: true,
+                requires2FA: false,
+              }
+            : await checkGeoLocation());
         if (!geoInfo) setGeoInfo(currentGeo);
 
-        if (currentGeo.requires2FA) {
+        if (currentGeo.requires2FA && !isOffline) {
           const otpRes = await sendTwoFactorOtp(cleanUser, foundUser.email || '', currentGeo);
           setPendingUserSession(userSession);
           setPendingOtpSession(otpRes.otpSession);
@@ -452,6 +507,45 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
         
 
+        {/* Device Offline/Online Mode Indicator & Quick Toggle */}
+        <div className="mb-5 p-2.5 bg-slate-950/70 border border-slate-800 rounded-2xl flex items-center justify-between text-xs relative z-10">
+          <div className="flex items-center space-x-2 text-slate-300">
+            <HardDrive className="w-4 h-4 text-slate-400 shrink-0" />
+            <div className="flex flex-col">
+              <span className="text-[11px] font-bold text-slate-200">Perfil de este Computador</span>
+              <span className="text-[10px] text-slate-400">
+                {isOffline ? 'Operación local aislada (sin nube)' : 'Sincronización activa con Firestore'}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setManualOfflineMode(!isManualOffline)}
+            className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black border transition-all cursor-pointer shadow-sm ${
+              isOffline
+                ? 'bg-amber-950/80 text-amber-300 border-amber-500/60 hover:bg-amber-900/90 hover:border-amber-400'
+                : 'bg-emerald-950/80 text-emerald-300 border-emerald-500/60 hover:bg-emerald-900/90 hover:border-emerald-400'
+            }`}
+            title={
+              isOffline
+                ? 'Modo Offline activo en este PC. Clic para pasar a Online.'
+                : 'Conectado a la nube. Clic para activar Modo Offline en este PC.'
+            }
+          >
+            {isOffline ? (
+              <>
+                <WifiOff className="w-3.5 h-3.5 text-amber-400" />
+                <span>MODO OFFLINE</span>
+              </>
+            ) : (
+              <>
+                <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+                <span>ONLINE</span>
+              </>
+            )}
+          </button>
+        </div>
+
         {/* Clean Login Form (No pre-filling, no suggestions) */}
         <form onSubmit={handleLogin} className="space-y-4 relative z-10">
           <div>
@@ -504,6 +598,26 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+          </div>
+
+          {/* Remember User Checkbox on this Device */}
+          <div className="flex items-center justify-between pt-1">
+            <label className="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberUser}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setRememberUser(val);
+                  saveLocalPlatformConfig({
+                    rememberLastUser: val,
+                    lastUsername: val ? username : '',
+                  });
+                }}
+                className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
+              />
+              <span className="text-[11px] text-slate-300 font-medium">Recordar usuario en este computador</span>
+            </label>
           </div>
 
           <button

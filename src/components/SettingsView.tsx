@@ -26,9 +26,26 @@ import {
   Tag,
   ChevronDown,
   ChevronUp,
+  Wifi,
+  WifiOff,
+  Laptop,
+  RotateCcw,
+  Check,
+  UserCheck,
 } from 'lucide-react';
 import { APP_THEMES, getSavedThemeId, useUiExperience } from '../core/themeEngine';
 import { useAppTheme } from '../context/ThemeContext';
+import {
+  useLocalPlatformConfig,
+  saveLocalPlatformConfig,
+  resetLocalPlatformConfig,
+} from '../core/storage/localPlatformConfig';
+import {
+  useOfflineMode,
+  setManualOfflineMode,
+} from '../core/storage/offlineModeManager';
+import { getLocalUsersCache } from '../modules/cloud';
+import { useCiscoAutomatedStore } from '../core/store';
 import { DsvPartnerUploader } from '../modules/dsv/components/DsvPartnerUploader';
 import {
   AiConfigSettings,
@@ -61,6 +78,10 @@ export function SettingsView({
 }: SettingsViewProps) {
   const { theme, toggleTheme } = useAppTheme();
   const { mode: uiMode, changeMode: changeUiMode, isAesthetic } = useUiExperience();
+  const localConfig = useLocalPlatformConfig();
+  const { isOffline, isManualOffline } = useOfflineMode();
+  const { params, setParams } = useCiscoAutomatedStore();
+  const [localFeedbackMsg, setLocalFeedbackMsg] = useState<string | null>(null);
   const [supabaseUrl, setSupabaseUrl] = useState('');
   const [supabaseKey, setSupabaseKey] = useState('');
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -262,6 +283,199 @@ export function SettingsView({
         <p className="text-xs text-slate-400 mt-1">
           Reglas del negocio, base de datos de partners, reclasificación SKU, promociones Fast Track y personalización.
         </p>
+      </div>
+
+      {/* Configuración y Perfil Local de este Equipo (Local-First) */}
+      <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center space-x-2.5 text-cyan-400 font-bold text-xs uppercase tracking-wider">
+            <Laptop className="w-4 h-4" />
+            <span>Configuración y Perfil Local de este Equipo (Local-First)</span>
+          </div>
+          <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-slate-800 text-cyan-300 border border-cyan-800/40">
+            Almacenamiento Local Aislado en este PC
+          </span>
+        </div>
+
+        <p className="text-xs text-slate-400 leading-relaxed">
+          Las preferencias configuradas aquí quedan guardadas de manera permanente en este equipo. Si dejas la aplicación en{' '}
+          <strong className="text-slate-200">Modo Offline</strong>, se mantendrá desconectada incluso al reiniciar el navegador o iniciar sesión nuevamente, sin necesidad de consultar a la nube ni presionar el botón cada vez.
+        </p>
+
+        {localFeedbackMsg && (
+          <div className="p-3 bg-emerald-950/70 border border-emerald-500/50 rounded-xl text-emerald-200 text-xs flex items-center space-x-2 animate-fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{localFeedbackMsg}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Card: Modo de Conexión del Equipo */}
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center space-x-2 text-white font-bold text-xs">
+                  {isOffline ? (
+                    <WifiOff className="w-4 h-4 text-amber-400" />
+                  ) : (
+                    <Wifi className="w-4 h-4 text-emerald-400" />
+                  )}
+                  <span>Estado de Conexión del Equipo</span>
+                </div>
+                <span
+                  className={`text-[9px] font-bold px-2 py-0.5 rounded ${
+                    isOffline
+                      ? 'bg-amber-950/80 text-amber-300 border border-amber-800/60'
+                      : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/60'
+                  }`}
+                >
+                  {isOffline ? 'OFFLINE FIJADO' : 'ONLINE FIJADO'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                {isOffline
+                  ? 'Este equipo está fijado en Modo Offline permanente. Cotiza y opera localmente sin llamadas a Firestore ni bloqueos de red.'
+                  : 'Este equipo opera sincronizado con la nube de Firebase Firestore en tiempo real.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const next = !isManualOffline;
+                setManualOfflineMode(next);
+                setLocalFeedbackMsg(
+                  next
+                    ? '🔒 Modo Offline fijado permanentemente en este equipo.'
+                    : '🌐 Modo Online activado. Conexión a la nube restablecida.'
+                );
+                setTimeout(() => setLocalFeedbackMsg(null), 4000);
+              }}
+              className={`w-full flex items-center justify-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                isOffline
+                  ? 'bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40'
+                  : 'bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/40'
+              }`}
+            >
+              {isOffline ? (
+                <>
+                  <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Pasar a Modo Online en este PC</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Fijar Modo Offline en este PC</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Card: Parámetros Comerciales Predeterminados del PC */}
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center space-x-2 text-white font-bold text-xs">
+                  <HardDrive className="w-4 h-4 text-indigo-400" />
+                  <span>Parámetros Base de Cotización del PC</span>
+                </div>
+                <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 font-mono">
+                  {localConfig.defaultParams.internacionPct}% / {localConfig.defaultParams.arancelPct}% / {localConfig.defaultParams.margenPct}%
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Valores predeterminados cargados al abrir el cotizador en este equipo sin consultar perfiles en la nube:
+                Internación ({localConfig.defaultParams.internacionPct}%), Arancel ({localConfig.defaultParams.arancelPct}%), Margen ({localConfig.defaultParams.margenPct}%).
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  saveLocalPlatformConfig({
+                    defaultParams: {
+                      internacionPct: params.internacionPct,
+                      arancelPct: params.arancelPct,
+                      margenPct: params.margenPct,
+                      parameterMode: params.parameterMode || 'standard',
+                    },
+                  });
+                  setLocalFeedbackMsg(
+                    `💾 Parámetros actuales (${params.internacionPct}% / ${params.arancelPct}% / ${params.margenPct}%) guardados como predeterminados en este PC.`
+                  );
+                  setTimeout(() => setLocalFeedbackMsg(null), 4000);
+                }}
+                className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-bold transition-all cursor-pointer"
+                title="Guarda los parámetros activos actualmente en la barra de cotización como los predeterminados de este computador."
+              >
+                <Check className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Fijar Actuales ({params.margenPct}%)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  resetLocalPlatformConfig();
+                  setParams((prev) => ({
+                    ...prev,
+                    internacionPct: 7.0,
+                    arancelPct: 6.0,
+                    margenPct: 5.0,
+                    parameterMode: 'standard',
+                  }));
+                  setLocalFeedbackMsg('🔄 Configuración local del equipo restablecida a valores de fábrica (7% / 6% / 5%).');
+                  setTimeout(() => setLocalFeedbackMsg(null), 4000);
+                }}
+                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                title="Restablece los parámetros a 7% Internación, 6% Arancel y 5% Margen."
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Resumen de Información Local y Cuentas Disponibles Offline */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+          <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 text-xs space-y-1">
+            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+              Tema y Aspecto en este PC
+            </span>
+            <div className="flex items-center space-x-1.5 text-white font-semibold">
+              <Palette className="w-3.5 h-3.5 text-pink-400" />
+              <span>{currentTheme.name}</span>
+            </div>
+            <span className="text-[10px] text-slate-500 block">
+              {isAesthetic ? '✨ Modo Aesthetic' : '🏛️ Modo Clásico'} &bull; {localConfig.appTheme}
+            </span>
+          </div>
+
+          <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 text-xs space-y-1">
+            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+              Último Usuario Recordado
+            </span>
+            <div className="flex items-center space-x-1.5 text-white font-semibold">
+              <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="font-mono">
+                {localConfig.rememberLastUser ? localConfig.lastUsername || 'Sin asignar' : 'Desactivado'}
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-500 block">
+              {localConfig.rememberLastUser ? 'Autocompletado en Login activado' : 'No recordar usuario'}
+            </span>
+          </div>
+
+          <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800/80 text-xs space-y-1">
+            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+              Cuentas Offline Listas
+            </span>
+            <div className="flex items-center space-x-1.5 text-white font-semibold">
+              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{getLocalUsersCache().length} Usuarios en Caché</span>
+            </div>
+            <span className="text-[10px] text-slate-500 block">
+              Autenticación local instantánea (0 ms)
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Centro de Reglas, Catálogos & Bases del Negocio */}

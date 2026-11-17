@@ -6,6 +6,10 @@
 // ============================================================================
 
 import { useSyncExternalStore } from 'react';
+import {
+  getLocalPlatformConfig,
+  saveLocalPlatformConfig,
+} from './localPlatformConfig';
 
 export const MANUAL_OFFLINE_STORAGE_KEY = 'cisco_manual_offline_mode_v1';
 export const OFFLINE_QUEUE_UPDATED_EVENT = 'cisco-offline-queue-updated';
@@ -17,8 +21,12 @@ let stateVersion = 0;
 let isFlushingQueue = false;
 const listeners = new Set<() => void>();
 
-function readStoredManualOffline(): boolean {
+export function readStoredManualOffline(): boolean {
   try {
+    const config = getLocalPlatformConfig();
+    if (typeof config?.isManualOffline === 'boolean') {
+      return config.isManualOffline;
+    }
     if (typeof localStorage !== 'undefined') {
       return localStorage.getItem(MANUAL_OFFLINE_STORAGE_KEY) === 'true';
     }
@@ -59,11 +67,13 @@ export function isManualOfflineMode(): boolean {
 
 /**
  * Activa o desactiva el Modo Offline manual en el PC.
+ * Persiste permanentemente en la configuración del equipo para mantenerse tras re-login o reinicio.
  */
 export function setManualOfflineMode(enabled: boolean): void {
   const next = Boolean(enabled);
   cachedManualOffline = next;
   try {
+    saveLocalPlatformConfig({ isManualOffline: next });
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(MANUAL_OFFLINE_STORAGE_KEY, String(next));
     }

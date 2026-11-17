@@ -6,6 +6,26 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.14.0] - 2026-11-16
+### 💻 Persistencia Local-First por Computador: Modo Offline Permanente, Temas y Parámetros Comerciales sin Nube
+- **Persistencia Permanente del Modo Offline en este Equipo (`localPlatformConfig.ts`, `offlineModeManager.ts`):**
+  - Si el usuario conmuta la aplicación al Modo Offline, la preferencia se almacena de forma inmutable en el almacenamiento local del equipo (`localStorage` bajo la clave `cisco_local_platform_config_v2`).
+  - Al cerrar sesión, cambiar de cuenta, recargar la página o reiniciar la computadora, la aplicación **se mantiene estrictamente en Modo Offline** sin requerir que el usuario vuelva a presionar el botón cada vez.
+- **Autonomía Local Total sin Dependencia de la Nube (Local-First):**
+  - El inicio de sesión (`LoginScreen.tsx`) en Modo Offline omite llamadas HTTP externas a Firebase Firestore y servicios de geolocalización remota, autenticando al usuario de forma instantánea ($0\text{ ms}$) mediante el caché criptográfico local de credenciales (`getLocalUsersCache`).
+  - La resolución de parámetros de partner (`partnerParamsService.ts`) y la sincronización de usuarios (`firestoreService.ts`) operan en modo local autosuficiente sin bloqueos de red.
+- **Persistencia Local de Temas Visuales y Modos de Experiencia UI:**
+  - La paleta visual seleccionada (`cisco-blue`, `cyber-neon`, etc.), la modalidad de sistema (Cyber HUD vs Enterprise) y el estilo de interfaz (🏛️ Clásico vs ✨ Aesthetic) se almacenan localmente en el perfil del PC y se cargan al instante antes del primer renderizado.
+- **Parámetros Comerciales Base Predeterminados del PC:**
+  - Valores predeterminados de cotización (Internación %, Arancel %, Margen %) configurados en el equipo se recuperan automáticamente al iniciar el cotizador sin requerir perfiles en la nube.
+- **Recordar Usuario en este Computador:**
+  - Nueva opción en la pantalla de inicio de sesión para recordar el usuario en el equipo, facilitando el ingreso rápido y seguro.
+  - Indicador visual prominente del estado de conexión del equipo (`MODO OFFLINE (PC)` vs `ONLINE (Nube)`) con conmutación en 1 clic antes de iniciar sesión.
+- **Nueva Tarjeta en Configuración del Sistema (`SettingsView.tsx`):**
+  - Módulo *"Configuración y Perfil Local de este Equipo (Local-First)"* con estado de conexión en vivo, parámetros base del PC, tema activo, resumen de cuentas offline listas y botón para restablecer a valores de fábrica.
+- **Suite de Pruebas Unitarias Automatizadas (`tests/localPlatformConfig.test.ts`):**
+  - 9 pruebas automáticas cubriendo inicialización, persistencia offline permanente, sincronización bidireccional, parámetros del equipo, observadores reactivos y caché local de usuarios.
+
 ## [v2.13.2] - 2026-11-14
 ### ⚡ Fórmula de Amortiguación de Megadisparos y Protección de Inventario E1 / Hit Rate
 - **Fórmula de Amortiguación Matemática (`dampQuotationQuantity` en `demandIntelligenceService.ts`):**

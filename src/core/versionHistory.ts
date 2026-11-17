@@ -15,11 +15,28 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.14.0',
+    date: '2026-11-16',
+    commit: 'feat-local-first-device-persistence-and-permanent-offline-mode',
+    title: 'Persistencia Local-First por Computador: Modo Offline Permanente, Temas y Parámetros Comerciales sin Nube',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Persistencia Permanente de Modo Offline por Computador: Si el usuario activa el Modo Offline en su PC, el estado queda guardado permanentemente en el equipo (localPlatformConfig). Al cerrar sesión, volver a ingresar con usuario/contraseña o recargar el navegador, la aplicación se mantiene en Modo Offline sin necesidad de volver a presionar el botón.',
+      'Autonomía Local Total sin Nube (Local-First): El inicio de sesión en Modo Offline omite llamadas HTTP externas a Firestore y geolocalización remota, autenticando instantáneamente (0 ms) mediante el caché local criptográfico de credenciales (getLocalUsersCache).',
+      'Persistencia de Temas y Estilos Visuales: La paleta de colores activa (cisco-blue, cyber-neon, etc.), el modo de interfaz (Cyber HUD / Enterprise) y la experiencia de vista (Classic / Aesthetic) quedan guardados localmente en el computador y se aplican de forma inmediata sin consultar la nube.',
+      'Parámetros Comerciales Predeterminados del PC: Guarda los valores base de cotización (Internación %, Arancel %, Margen %) configurados en ese equipo para utilizarlos al cotizar sin depender de perfiles de Firestore.',
+      'Recordar Usuario en este Computador: Casilla opcional en el inicio de sesión que permite guardar el último nombre de usuario utilizado en el PC para agilizar el ingreso futuro.',
+      'Nuevo Módulo en Configuración: Tarjeta "Configuración y Perfil Local de este Equipo (Local-First)" en Configuración con conmutador en 1 clic de estado Offline/Online, fijación de parámetros del PC y resumen de cuentas locales disponibles.',
+      'Suite de Pruebas Unitarias Automatizadas: 9 pruebas dedicadas en tests/localPlatformConfig.test.ts aprobadas al 100%, totalizando 29 suites de pruebas verdes en el proyecto.',
+    ],
+  },
+  {
     version: '2.13.2',
     date: '2026-11-14',
     commit: 'fix-megadeal-outlier-damping-and-stock-protection',
     title: 'Fórmula de Amortiguación de Megadisparos y Protección de Inventario E1 / Hit Rate',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Fórmula de Amortiguación Matemática (dampQuotationQuantity): Amortiguación cóncava sublineal sobre cotizaciones y licitaciones masivas (ej. 20, 50, 100, 300 unidades). Preserva linealidad exacta (1:1) en pedidos normales (<= 8 unidades) y comprime el exceso para evitar inflar artificialmente el stock.',

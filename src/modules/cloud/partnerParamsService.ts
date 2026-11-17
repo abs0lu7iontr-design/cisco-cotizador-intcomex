@@ -9,6 +9,8 @@ import { QuoteParameters } from '../../core/types';
 import { getPartnerDocId } from '../../utils/partnerDbUtils';
 import { getFirestoreInstance } from './firebaseConfig';
 import { sanitizeForFirestore } from './firestoreService';
+import { isAppOffline } from '../../core/storage/offlineModeManager';
+import { getLocalPlatformConfig } from '../../core/storage/localPlatformConfig';
 
 export type ParamProfileScope = 'partner' | 'global';
 export type ParamDurationType = 'permanent' | '15_days' | '30_days' | 'end_of_month';
@@ -305,8 +307,8 @@ export async function resolveActiveParams(partnerName?: string): Promise<{
     };
   }
 
-  // Si no está en caché local, intentar lectura rápida a Firestore
-  if (partnerDocId) {
+  // Si no está en caché local y no estamos en modo offline, intentar lectura rápida a Firestore
+  if (partnerDocId && !isAppOffline()) {
     try {
       const { db, isReady } = getFirestoreInstance();
       if (isReady && db) {
@@ -338,31 +340,41 @@ export async function resolveActiveParams(partnerName?: string): Promise<{
     };
   }
 
-  // Si no está en local, intentar buscar perfil Global en Firestore
-  try {
-    const { db, isReady } = getFirestoreInstance();
-    if (isReady && db) {
-      const globalDocRef = doc(db, 'partner_custom_params', GLOBAL_DOC_ID);
-      const globalSnap = await withFailsafeTimeout(getDoc(globalDocRef), 3500);
+  // Si no está en local y no estamos en modo offline, intentar buscar perfil Global en Firestore
+  if (!isAppOffline()) {
+    try {
+      const { db, isReady } = getFirestoreInstance();
+      if (isReady && db) {
+        const globalDocRef = doc(db, 'partner_custom_params', GLOBAL_DOC_ID);
+        const globalSnap = await withFailsafeTimeout(getDoc(globalDocRef), 3500);
 
-      if (globalSnap && globalSnap.exists()) {
-        const globalCloudData = globalSnap.data() as ParamProfileRecord;
-        if (isProfileActive(globalCloudData)) {
-          cache[GLOBAL_DOC_ID] = globalCloudData;
-          saveLocalProfilesCache(cache);
-          return {
-            params: globalCloudData.params,
-            appliedProfile: globalCloudData,
-            source: 'global_custom',
-          };
+        if (globalSnap && globalSnap.exists()) {
+          const globalCloudData = globalSnap.data() as ParamProfileRecord;
+          if (isProfileActive(globalCloudData)) {
+            cache[GLOBAL_DOC_ID] = globalCloudData;
+            saveLocalProfilesCache(cache);
+            return {
+              params: globalCloudData.params,
+              appliedProfile: globalCloudData,
+              source: 'global_custom',
+            };
+          }
         }
       }
-    }
-  } catch (_) {}
+    } catch (_) {}
+  }
 
-  // 3. Fallback a parámetros por defecto de fábrica (7% Internación, 6% Arancel, 5% Margen)
+  // 3. Fallback a parámetros base guardados localmente en este equipo
+  const localConfig = getLocalPlatformConfig();
+  const effectiveBaseParams: QuoteParameters = {
+    internacionPct: localConfig.defaultParams?.internacionPct ?? DEFAULT_FACTORY_PARAMS.internacionPct,
+    arancelPct: localConfig.defaultParams?.arancelPct ?? DEFAULT_FACTORY_PARAMS.arancelPct,
+    margenPct: localConfig.defaultParams?.margenPct ?? DEFAULT_FACTORY_PARAMS.margenPct,
+    parameterMode: localConfig.defaultParams?.parameterMode || 'standard',
+  };
+
   return {
-    params: DEFAULT_FACTORY_PARAMS,
+    params: effectiveBaseParams,
     appliedProfile: null,
     source: 'factory_default',
   };
