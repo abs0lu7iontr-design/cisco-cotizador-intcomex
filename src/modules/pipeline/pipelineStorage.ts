@@ -134,18 +134,46 @@ async function readDurableDeals(projectScope: string): Promise<PipelineDealRecor
       STORES.KEYVAL,
       `${IDB_PIPELINE_KEY_PREFIX}${projectScope}`
     );
-    if (Array.isArray(idbList)) {
+    if (Array.isArray(idbList) && idbList.length > 0) {
       for (const item of idbList) {
         if (item && item.id && !stones.has(item.id)) {
           map.set(item.id, item);
         }
       }
     }
+
+    // 1b. Si la clave con scope está vacía, buscar en claves alternativas de IndexedDB migrada
+    if (map.size === 0) {
+      const fallbackKeys = [
+        `${IDB_PIPELINE_KEY_PREFIX}default_local`,
+        `${IDB_PIPELINE_KEY_PREFIX}cisco_automated`,
+        LOCAL_PIPELINE_PRIMARY_KEY,
+        LOCAL_PIPELINE_VAULT_KEY,
+        'cisco_pipeline_deals_cache_v2',
+      ];
+      for (const fbKey of fallbackKeys) {
+        try {
+          const fallbackData = await idbGet<PipelineDealRecord[]>(STORES.KEYVAL, fbKey);
+          if (Array.isArray(fallbackData) && fallbackData.length > 0) {
+            for (const item of fallbackData) {
+              if (item && item.id && !stones.has(item.id)) {
+                map.set(item.id, item);
+              }
+            }
+            if (map.size > 0) {
+              // Re-persistir en la clave canónica actual para que en la próxima lectura esté directa
+              idbSet(STORES.KEYVAL, `${IDB_PIPELINE_KEY_PREFIX}${projectScope}`, Array.from(map.values())).catch(() => {});
+              break;
+            }
+          }
+        } catch (_) {}
+      }
+    }
   } catch (err) {
     console.warn('[PipelineStorage] Error leyendo IndexedDB:', err);
   }
 
-  // 2. Reconciliar con localStorage por si existe un registro más reciente
+  // 2. Reconciliar con localStorage por si existe un registro más reciente o pendiente
   const lsList = readLocalStorageDeals(projectScope, stones);
   for (const item of lsList) {
     const existing = map.get(item.id);
@@ -332,21 +360,16 @@ export async function getPipelineDeals(forceRefresh = false): Promise<PipelineDe
   }
 
   let deals = await readDurableDeals(projectScope);
-
-  const alreadySeeded =
-    readProjectScopedStorage(LOCAL_PIPELINE_SEEDED_KEY, projectScope) === 'true';
   const stones = getTombstones(projectScope);
 
-  if (deals.length === 0 && !alreadySeeded) {
-    deals = [...PIPELINE_INITIAL_SEEDS];
+  // BLINDAJE ABSOLUTO:
+  // Si no hay deals y los tombstones no cubren todas las semillas (o son 0),
+  // NUNCA DEJAR LA VISTA EN 0. Auto-hidratar inmediatamente con las 70 oportunidades oficiales Intcomex.
+  if (deals.length === 0 && stones.size < PIPELINE_INITIAL_SEEDS.length) {
+    console.info('[PipelineStorage] Auto-hidratando pipeline con catálogo maestro oficial de 70 oportunidades.');
+    deals = PIPELINE_INITIAL_SEEDS.filter((d) => !stones.has(d.id));
     await persistDurableDeals(deals, projectScope);
     writeProjectScopedStorage(LOCAL_PIPELINE_SEEDED_KEY, 'true', projectScope);
-  } else if (deals.length === 0 && alreadySeeded && stones.size === 0 && !isAppOffline()) {
-    // Auto-recuperación si la cache local quedó vacía pero no hubo borrados explícitos
-    inMemoryPipelineCache = [];
-    inMemoryScopeKey = projectScope;
-    isHydrated = true;
-    return deals;
   }
 
   inMemoryPipelineCache = deals;

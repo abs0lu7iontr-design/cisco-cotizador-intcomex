@@ -12,7 +12,7 @@ import {
   ExchangeRatesHealthMetrics,
 } from './healthTypes';
 import { getFirestoreInstance, getActiveFirebaseConfig } from '../cloud/firebaseConfig';
-import { getIndexedDb, STORES, idbGet } from '../../core/storage/indexedDbStorage';
+import { getIndexedDb, STORES, idbGet, idbSet } from '../../core/storage/indexedDbStorage';
 import { getOfflineQueueSummary } from '../../core/storage/offlineSyncQueue';
 import { isAppOffline, isManualOfflineMode, isNavigatorOffline } from '../../core/storage/offlineModeManager';
 import {
@@ -495,7 +495,7 @@ export function repairStorageCache(): { clearedKeys: number; freedBytes: number 
         if (!key) continue;
         const val = localStorage.getItem(key) || '';
 
-        // 1. Claves temporales, logs y residuales
+        // 1. Claves estrictamente temporales, logs y residuales de depuración
         if (
           key.startsWith('temp_') ||
           key.startsWith('cache_log_') ||
@@ -505,7 +505,7 @@ export function repairStorageCache(): { clearedKeys: number; freedBytes: number 
         ) {
           keysToClear.push(key);
         }
-        // 2. Claves de catálogo masivo o bóvedas pesadas (> 15 KB) que deben vivir en IndexedDB
+        // 2. Claves de catálogo masivo o bóvedas pesadas (> 15 KB) que deben migrarse a IndexedDB
         else if (
           val.length > 15_000 ||
           key === 'cisco_automated_emergency_vault_backup_v1' ||
@@ -519,6 +519,18 @@ export function repairStorageCache(): { clearedKeys: number; freedBytes: number 
             key.includes('cisco_shared_sku_rules')) &&
             val.length > 15_000)
         ) {
+          // Respaldar inmediatamente en IndexedDB antes de remover de LocalStorage
+          try {
+            const parsed = JSON.parse(val);
+            idbSet(STORES.KEYVAL, key, parsed).catch(() => {});
+            if (key.includes('cisco_pipeline_deals') && Array.isArray(parsed) && parsed.length > 0) {
+              idbSet(STORES.KEYVAL, 'pipeline_deals_idb_v1::cisco_automated', parsed).catch(() => {});
+              idbSet(STORES.KEYVAL, 'pipeline_deals_idb_v1::default_local', parsed).catch(() => {});
+            } else if (key.includes('cisco_forecast_records') && Array.isArray(parsed) && parsed.length > 0) {
+              idbSet(STORES.KEYVAL, 'forecast_records_idb_v1::cisco_automated', parsed).catch(() => {});
+              idbSet(STORES.KEYVAL, 'forecast_records_idb_v1::default_local', parsed).catch(() => {});
+            }
+          } catch (_) {}
           keysToClear.push(key);
         }
       }
@@ -531,7 +543,7 @@ export function repairStorageCache(): { clearedKeys: number; freedBytes: number 
       }
     }
 
-    // Ejecutar optimización profunda en background hacia IndexedDB
+    // Ejecutar consolidación profunda en background hacia IndexedDB
     optimizeAndMigrateLocalStorage().catch(() => {});
   } catch (err) {
     console.warn('[HealthService] Error reparando caché:', err);

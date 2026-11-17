@@ -185,13 +185,19 @@ export function ForecastView() {
   const handleResetSeeds = async () => {
     if (
       window.confirm(
-        '¿Restaurar los registros del Forecast al conjunto inicial oficial de Intcomex (158 registros)? Esto mantendrá la base oficial limpia.'
+        '¿Deseas restaurar el Forecast Comercial al catálogo oficial de 158 registros? Esta acción reestablecerá los datos maestros oficiales de Intcomex.'
       )
     ) {
       setIsLoading(true);
-      const seeds = await resetForecastToSeeds();
-      setRecords(seeds);
-      setIsLoading(false);
+      try {
+        const seeds = await resetForecastToSeeds();
+        setRecords(seeds);
+        setCrossSyncStatus('✨ Forecast Comercial restaurado exitosamente al catálogo oficial de 158 registros.');
+      } catch (err: any) {
+        alert(`Error al restaurar Forecast: ${err?.message || err}`);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -387,6 +393,16 @@ export function ForecastView() {
             >
               <RefreshCw className={`w-4 h-4 text-sky-400 ${isSyncingCloud ? 'animate-spin' : ''}`} />
               <span>Nube</span>
+            </button>
+
+            {/* Restore Master Seeds */}
+            <button
+              onClick={handleResetSeeds}
+              disabled={isLoading}
+              className="p-2 rounded-lg bg-slate-800 hover:bg-rose-950/60 border border-slate-700 hover:border-rose-700/50 text-slate-400 hover:text-rose-300 transition-all shadow-sm active:scale-95 cursor-pointer"
+              title="Restaurar al catálogo maestro inicial oficial (158 registros de Forecast)"
+            >
+              <RotateCcw className="w-4 h-4" />
             </button>
 
             {/* Cross-Sync Multi-Module */}

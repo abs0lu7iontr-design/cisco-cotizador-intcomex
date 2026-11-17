@@ -6,6 +6,25 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.16.1] - 2026-11-17
+### 🛡️ Blindaje de Persistencia y Auto-Hidratación Infalible de Pipeline y Forecast Comercial
+- **Resolución Definitiva de Pérdida de Datos en Pipeline y Forecast:**
+  - Corregido el problema visual donde, tras compilar actualizaciones, optimizar el almacenamiento o abrir la aplicación en Modo Offline, las vistas de Pipeline Comercial y Forecast Comercial mostraban `0 DEALS` y `$0 USD`.
+- **Auto-Hidratación Infalible de Catálogos Maestros:**
+  - Tanto `pipelineStorage.ts` como `forecastStorage.ts` cuentan ahora con una regla de protección absoluta: si la base de datos local queda vacía (debido a limpieza de caché, actualización de versión o pérdida de referencias) y no existen tombstones de borrado total, el sistema auto-hidrata de inmediato los 70 deals oficiales del Pipeline (~$21.8M USD) y los 158 registros oficiales del Forecast Comercial de Intcomex.
+- **Corrección de la Trampa de `alreadySeeded`:**
+  - Se eliminó el bloqueo que impedía restaurar las semillas oficiales cuando la clave de inicialización (`LOCAL_PIPELINE_SEEDED_KEY` / `LOCAL_FORECAST_SEEDED_KEY`) persistía en el navegador pero el contenido real en IndexedDB / LocalStorage había sido depurado o migrado.
+- **Búsqueda Multi-Clave y Respaldo Canónico en IndexedDB:**
+  - `readDurableDeals` y `readDurableRecords` ahora buscan y reconcilian datos en las claves con projectScope (`cisco_automated`), en las claves predeterminadas (`default_local`), y en los respaldos migrados por `modernStorageEngine` (`STORES.KEYVAL`), consolidando y re-persistiendo en la clave canónica activa.
+- **Protección de Datos en Reparación de Almacenamiento (`healthService.ts`):**
+  - La función `repairStorageCache()` ahora respalda de forma obligatoria cualquier colección de Pipeline o Forecast en IndexedDB antes de purgar LocalStorage, garantizando que ninguna optimización de espacio elimine registros comerciales del usuario.
+- **Sincronización Bidireccional en `modernStorageEngine.ts`:**
+  - Al trasladar bóvedas pesadas (> 15 KB) de LocalStorage a IndexedDB, el motor guarda simultáneamente copias validadas en las claves canónicas de IDB para que `PipelineView` y `ForecastView` las lean sin interrupciones.
+- **Botón de Restauración de Catálogo Maestro en `ForecastView.tsx`:**
+  - Se agregó el botón `RotateCcw` en la barra de herramientas del Forecast Comercial para permitir al usuario restablecer los 158 registros oficiales de Intcomex con confirmación en un solo clic.
+- **Nueva Suite de Pruebas Unitarias Automatizadas (`tests/pipelineForecastPersistenceArmor.test.ts`):**
+  - Creada suite que verifica la auto-hidratación de 70 deals de Pipeline y 158 registros de Forecast ante base limpia, la preservación de datos tras purga de caché con `repairStorageCache` y `optimizeAndMigrateLocalStorage`, y la gestión de tombstones.
+
 ## [v2.16.0] - 2026-11-17
 ### 🤖 Rebranding a "Preventa IA" & Comparativa Técnica de Homologación de Marcas Rivales
 - **Rebranding Oficial del Módulo a "Preventa IA":**

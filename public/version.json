@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.16.0",
-  "git_commit": "13c011a",
+  "version": "2.16.1",
+  "git_commit": "e79ee48",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-17T10:57:55.964Z",
-  "release_notes": "fix(v2.15.3): silent cloud credentials validation and remove login screen legends",
+  "build_timestamp": "2026-11-17T11:19:32.859Z",
+  "release_notes": "feat(v2.16.0): implement preventa ia rebranding, competitor homologation comparator, and spec verification",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

@@ -127,11 +127,39 @@ async function readDurableRecords(projectScope: string): Promise<ForecastRecord[
       STORES.KEYVAL,
       `${IDB_FORECAST_KEY_PREFIX}${projectScope}`
     );
-    if (Array.isArray(idbList)) {
+    if (Array.isArray(idbList) && idbList.length > 0) {
       for (const item of idbList) {
         if (item && item.id && !stones.has(item.id)) {
           map.set(item.id, item);
         }
+      }
+    }
+
+    // 1b. Si la clave con scope está vacía, buscar en claves alternativas de IndexedDB migrada
+    if (map.size === 0) {
+      const fallbackKeys = [
+        `${IDB_FORECAST_KEY_PREFIX}default_local`,
+        `${IDB_FORECAST_KEY_PREFIX}cisco_automated`,
+        LOCAL_FORECAST_PRIMARY_KEY,
+        LOCAL_FORECAST_VAULT_KEY,
+        'cisco_forecast_records_cache_v2',
+      ];
+      for (const fbKey of fallbackKeys) {
+        try {
+          const fallbackData = await idbGet<ForecastRecord[]>(STORES.KEYVAL, fbKey);
+          if (Array.isArray(fallbackData) && fallbackData.length > 0) {
+            for (const item of fallbackData) {
+              if (item && item.id && !stones.has(item.id)) {
+                map.set(item.id, item);
+              }
+            }
+            if (map.size > 0) {
+              // Re-persistir en la clave canónica actual para acceso directo
+              idbSet(STORES.KEYVAL, `${IDB_FORECAST_KEY_PREFIX}${projectScope}`, Array.from(map.values())).catch(() => {});
+              break;
+            }
+          }
+        } catch (_) {}
       }
     }
   } catch (err) {
@@ -344,11 +372,14 @@ export async function getForecastRecords(forceRefresh = false): Promise<Forecast
   }
 
   let records = await readDurableRecords(projectScope);
+  const stones = getTombstones(projectScope);
 
-  const alreadySeeded =
-    readProjectScopedStorage(LOCAL_FORECAST_SEEDED_KEY, projectScope) === 'true';
-  if (records.length === 0 && !alreadySeeded) {
-    records = [...INITIAL_FORECAST_SEEDS];
+  // BLINDAJE ABSOLUTO:
+  // Si no hay records y los tombstones no cubren todas las semillas (o son 0),
+  // NUNCA DEJAR LA VISTA EN 0. Auto-hidratar inmediatamente con los 158 registros oficiales Intcomex.
+  if (records.length === 0 && stones.size < INITIAL_FORECAST_SEEDS.length) {
+    console.info('[ForecastStorage] Auto-hidratando forecast con catálogo maestro oficial de 158 registros.');
+    records = INITIAL_FORECAST_SEEDS.filter((r) => !stones.has(r.id));
     await persistDurableRecords(records, projectScope);
     writeProjectScopedStorage(LOCAL_FORECAST_SEEDED_KEY, 'true', projectScope);
   }

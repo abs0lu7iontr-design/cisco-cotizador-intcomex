@@ -15,11 +15,28 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.16.1',
+    date: '2026-11-17',
+    commit: 'fix-pipeline-forecast-persistence-armor-and-auto-hydration',
+    title: 'Blindaje Absoluto de Persistencia y Auto-Hidratación Infalible de Pipeline Comercial y Forecast Comercial',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Blindaje Anti-Pérdida en Pipeline y Forecast: Resuelto el problema visual donde el Pipeline Comercial y Forecast Comercial quedaban en 0 deals / $0 USD al compilar actualizaciones o al operar en Modo Offline.',
+      'Auto-Hidratación Infalible de Catálogos Maestros: Si por purga de almacenamiento local, cambio de versión o caché vacía los registros locales están en 0, el motor auto-hidrata de inmediato los 70 deals oficiales de Pipeline (~$21.8M USD) y los 158 registros oficiales de Forecast Intcomex.',
+      'Resolución del Bloqueo por alreadySeeded: Se corrigió la condición restrictiva en pipelineStorage y forecastStorage que impedía recargar las semillas maestras cuando la clave de inicialización persistía pero los datos habían sido optimizados o depurados.',
+      'Búsqueda Multi-Clave y Migración Segura en IndexedDB: readDurableDeals y readDurableRecords ahora inspeccionan tanto las claves canónicas con projectScope como las claves históricas y respaldos migrados por modernStorageEngine (STORES.KEYVAL).',
+      'Protección de Datos en Reparación de Caché: repairStorageCache en healthService ahora respalda obligatoriamente cualquier colección masiva en IndexedDB antes de purgar LocalStorage, evitando la destrucción accidental de registros.',
+      'Botón de Restauración de Catálogo Maestro en ForecastView: Se incorporó en la barra de herramientas el botón de restauración rápida para restablecer los 158 registros oficiales de Forecast con un solo clic.',
+      'Nueva Suite de Pruebas Unitarias Automatizadas: Incorporado tests/pipelineForecastPersistenceArmor.test.ts, garantizando la persistencia duradera, auto-hidratación y preservación de datos ante purgas de caché.',
+    ],
+  },
+  {
     version: '2.16.0',
     date: '2026-11-17',
     commit: 'feat-preventa-ia-competitor-homologation-comparison',
     title: 'Módulo Preventa IA: Comparativa Técnica de Homologación de Marcas Rivales y Rebranding Oficial',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Rebranding Oficial a "Preventa IA": El módulo anteriormente denominado "ConfigurIAtor" pasa a llamarse formalmente "Preventa IA" en toda la interfaz (barra lateral, encabezados, asistentes, tooltips y modales de conectividad).',
