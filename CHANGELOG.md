@@ -6,6 +6,30 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.17.3] - 2026-11-18
+### 🖥️ Auto-Ajuste Responsivo de Pantalla, Densidad Dinámica y Control de Zoom en Historial de Estimates
+- **Auto-Ajuste Responsivo de Pantalla (100% Fit):**
+  - Rediseño integral de la tabla de cotizaciones CCW y órdenes DSV en `EstimatesHistoryView.tsx` para ajustarse automáticamente al ancho disponible y a cualquier resolución de pantalla (laptops 1366x768, monitores estándar 1080p, y pantallas de alta resolución 2K/4K).
+  - Se visualizan las 11 columnas completas de la tabla (incluyendo *Ítems*, *Fecha* y el panel de *Acceso & Acciones* con botón *Cargar*) dentro del viewport visible sin cortes ni scroll horizontal forzado, eliminando la necesidad de que el usuario altere el zoom general del navegador.
+- **Ergonomía de Espaciado Ceñido (Reducción de Padding Muerto):**
+  - Reemplazo de los paddings excesivos `px-5 py-4` por celdas ceñidas y optimizadas (`px-2 py-2` en laptops y `2xl:px-3 2xl:py-2.5` en pantallas grandes), ahorrando más de 250px de espacio horizontal muerto a lo largo de las 11 columnas.
+- **Apilamiento Ergonómico en Columna Estimate / Deal ID:**
+  - La primera columna se reorganizó en dos líneas compactas:
+    - Línea 1: Link directo a Cisco CCW con iconito externo + Badge de versión (`v1`, `v2`, etc.).
+    - Línea 2: Insignia de privacidad ultra compacta (`Solo PC` / `Restringido` / `Público`) + Deal ID en tipografía mono.
+  - Esto previene que una sola celda supere los 280px de ancho y desplace las columnas hacia la derecha.
+- **Selector de Densidad Visual (Auto-Fit, Compacto, Estándar):**
+  - Incorporado en la barra superior un selector de densidad persistente en `localStorage`:
+    - `Auto-Fit`: Modo predeterminado inteligente que balancea el espaciado para encajar al 100% en pantallas modernas.
+    - `Compacto`: Diseñado especialmente para pantallas pequeñas o laptops de 1366x768.
+    - `Estándar`: Para pantallas amplias de 2K / 4K.
+- **Controles de Zoom Local de Tabla Integrados (75% a 115%):**
+  - Botones dedicados `[-] [+]` y porcentaje interactivo en la barra del historial para escalar exclusivamente la tabla a voluntad del usuario, sin alterar el zoom general de Windows ni del navegador.
+- **Coherencia Responsiva en Órdenes DSV:**
+  - Rediseñada la tabla de órdenes DSV (Tab 2) con el mismo criterio responsivo ceñido para sus 9 columnas.
+- **Nueva Suite de Pruebas Unitarias Automatizadas (`tests/estimatesHistoryResponsiveLayout.test.ts`):**
+  - Valida la ergonomía de celdas, apilamiento de Estimate/Deal, persistencia de densidad, controles de zoom dinámico y renderizado sin desborde (39 suites de pruebas del proyecto pasando al 100%).
+
 ## [v2.17.2] - 2026-11-18
 ### 🛡️ Blindaje Estricto de Privacidad Offline, Consentimiento de Subida Nube y Actualización de Versión Mobile
 - **Confirmación y Aislamiento 100% Efectivo en Modo Offline:**

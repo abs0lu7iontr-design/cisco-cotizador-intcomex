@@ -62,6 +62,9 @@ import {
   Layers,
   GitCompare,
   TrendingUp,
+  Monitor,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { formatPartnerName, getUniqueFormattedPartners } from '../utils/partnerDbUtils';
 import {
@@ -146,6 +149,53 @@ export function EstimatesHistoryView() {
   const [sortBy, setSortBy] = useState<'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc'>(
     'date_desc'
   );
+
+  // Table Density & Visual Zoom States (Auto-Fit across resolutions without changing browser zoom)
+  const [tableDensity, setTableDensity] = useState<'auto' | 'compact' | 'normal'>(() => {
+    try {
+      const saved = localStorage.getItem('cisco_estimates_history_density');
+      if (saved === 'auto' || saved === 'compact' || saved === 'normal') return saved;
+    } catch (_) {}
+    return 'auto';
+  });
+
+  const [tableZoom, setTableZoom] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('cisco_estimates_history_zoom');
+      if (saved) {
+        const val = parseInt(saved, 10);
+        if (val >= 75 && val <= 115) return val;
+      }
+    } catch (_) {}
+    return 100;
+  });
+
+  const handleSetTableDensity = (density: 'auto' | 'compact' | 'normal') => {
+    setTableDensity(density);
+    try {
+      localStorage.setItem('cisco_estimates_history_density', density);
+    } catch (_) {}
+  };
+
+  const handleSetTableZoom = (zoomVal: number) => {
+    const clamped = Math.max(75, Math.min(115, zoomVal));
+    setTableZoom(clamped);
+    try {
+      localStorage.setItem('cisco_estimates_history_zoom', String(clamped));
+    } catch (_) {}
+  };
+
+  const headPaddingClass = useMemo(() => {
+    if (tableDensity === 'compact') return 'px-1.5 py-2 text-[10px]';
+    if (tableDensity === 'normal') return 'px-4 py-3.5 text-xs';
+    return 'px-2 py-2.5 2xl:px-3 2xl:py-3 text-[10.5px] 2xl:text-[11px]';
+  }, [tableDensity]);
+
+  const cellPaddingClass = useMemo(() => {
+    if (tableDensity === 'compact') return 'px-1.5 py-1.5';
+    if (tableDensity === 'normal') return 'px-3.5 py-3';
+    return 'px-2 py-2 2xl:px-2.5 2xl:py-2.5';
+  }, [tableDensity]);
 
   // Pagination & Cache State (Item 3)
   const PAGE_SIZE = 50;
@@ -1155,6 +1205,78 @@ export function EstimatesHistoryView() {
                 <span>Limpiar filtros</span>
               </button>
             )}
+
+            {/* Auto-Fit / Screen Resolution Density & Zoom Selector */}
+            <div className="flex items-center space-x-1 bg-slate-950 border border-slate-800 rounded-xl px-2 py-1">
+              <Monitor className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              <span className="text-[10px] text-slate-400 font-semibold mr-0.5 hidden sm:inline">Vista:</span>
+              <button
+                type="button"
+                onClick={() => handleSetTableDensity('auto')}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                  tableDensity === 'auto'
+                    ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Ajuste automático a cualquier pantalla o resolución (100% Fit sin recortar)"
+              >
+                Auto-Fit
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetTableDensity('compact')}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                  tableDensity === 'compact'
+                    ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Vista Compacta: ideal para laptops (1366x768) o ventanas divididas"
+              >
+                Compacto
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetTableDensity('normal')}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                  tableDensity === 'normal'
+                    ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Vista Estándar: para monitores grandes 2K o 4K"
+              >
+                Estándar
+              </button>
+
+              {/* Controles rápidos de Zoom de Tabla */}
+              <div className="flex items-center border-l border-slate-800 pl-1.5 ml-1 space-x-1">
+                <button
+                  type="button"
+                  onClick={() => handleSetTableZoom(tableZoom - 5)}
+                  disabled={tableZoom <= 75}
+                  className="p-1 text-slate-400 hover:text-cyan-300 disabled:opacity-30 cursor-pointer"
+                  title="Reducir escala de tabla (-5%)"
+                >
+                  <ZoomOut className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetTableZoom(100)}
+                  className="font-mono text-[9.5px] font-bold text-cyan-300 hover:underline px-0.5 cursor-pointer"
+                  title="Restablecer escala al 100%"
+                >
+                  {tableZoom}%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetTableZoom(tableZoom + 5)}
+                  disabled={tableZoom >= 115}
+                  className="p-1 text-slate-400 hover:text-cyan-300 disabled:opacity-30 cursor-pointer"
+                  title="Aumentar escala de tabla (+5%)"
+                >
+                  <ZoomIn className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center flex-wrap gap-2 text-[11px] text-slate-400 font-mono">
@@ -1210,21 +1332,24 @@ export function EstimatesHistoryView() {
       {/* TAB 1: ESTIMATES TABLE */}
       {activeTab === 'estimates' && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-xl overflow-hidden">
-          <div className="overflow-x-auto custom-scrollbar">
+          <div
+            className="overflow-x-auto custom-scrollbar transition-all duration-200"
+            style={tableZoom !== 100 ? { zoom: `${tableZoom}%` } : undefined}
+          >
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  <th className="px-5 py-4">Estimate / Deal ID</th>
-                  <th className="px-5 py-4">Creado Por</th>
-                  <th className="px-5 py-4">Partner / Reseller</th>
-                  <th className="px-5 py-4">Cliente Final</th>
-                  <th className="px-5 py-4 text-right">Net Cisco</th>
-                  <th className="px-5 py-4 text-right">Cotizado Intcomex</th>
-                  <th className="px-5 py-4 text-right">Margen $</th>
-                  <th className="px-3 py-4 text-center">Parámetros</th>
-                  <th className="px-4 py-4 text-center">Ítems</th>
-                  <th className="px-5 py-4 text-right">Fecha</th>
-                  <th className="px-5 py-4 text-center">Acceso & Acciones</th>
+                <tr className="bg-slate-950/80 border-b border-slate-800 font-bold text-slate-400 uppercase tracking-wider">
+                  <th className={`${headPaddingClass} min-w-[145px]`}>Estimate / Deal ID</th>
+                  <th className={`${headPaddingClass} min-w-[115px]`}>Creado Por</th>
+                  <th className={`${headPaddingClass} min-w-[110px]`}>Partner / Reseller</th>
+                  <th className={`${headPaddingClass} min-w-[100px]`}>Cliente Final</th>
+                  <th className={`${headPaddingClass} text-right min-w-[90px]`}>Net Cisco</th>
+                  <th className={`${headPaddingClass} text-right min-w-[100px]`}>Cotizado Intcomex</th>
+                  <th className={`${headPaddingClass} text-right min-w-[85px]`}>Margen $</th>
+                  <th className={`${headPaddingClass} text-center min-w-[130px]`}>Parámetros</th>
+                  <th className={`${headPaddingClass} text-center min-w-[45px]`}>Ítems</th>
+                  <th className={`${headPaddingClass} text-right min-w-[80px]`}>Fecha</th>
+                  <th className={`${headPaddingClass} text-center min-w-[125px]`}>Acceso & Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -1272,121 +1397,132 @@ export function EstimatesHistoryView() {
                             : 'hover:bg-slate-800/40'
                         }`}
                       >
-                        <td className="px-5 py-4">
-                          <div className="flex items-center space-x-2">
-                            {isValidEstimateId(est.estimateId) ? (
-                              <a
-                                href={`https://apps.cisco.com/ccw/cpc/estimate/items/${encodeURIComponent(est.estimateId!.trim())}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="group inline-flex items-center gap-1.5 font-mono font-bold text-indigo-300 hover:text-cyan-300 transition-colors"
-                                title={`Abrir Estimate ${est.estimateId} directamente en Cisco CCW (apps.cisco.com)`}
+                        <td className={cellPaddingClass}>
+                          <div className="flex flex-col space-y-1">
+                            <div className="flex items-center space-x-1.5 flex-wrap">
+                              {isValidEstimateId(est.estimateId) ? (
+                                <a
+                                  href={`https://apps.cisco.com/ccw/cpc/estimate/items/${encodeURIComponent(est.estimateId!.trim())}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="group inline-flex items-center gap-1 font-mono font-bold text-indigo-300 hover:text-cyan-300 transition-colors text-xs"
+                                  title={`Abrir Estimate ${est.estimateId} directamente en Cisco CCW (apps.cisco.com)`}
+                                >
+                                  <span className="group-hover:underline underline-offset-2">{est.estimateId}</span>
+                                  <ExternalLink className="w-2.5 h-2.5 text-indigo-400/80 group-hover:text-cyan-300 shrink-0 transition-colors" />
+                                </a>
+                              ) : (
+                                <span className="font-mono font-bold text-slate-500 text-xs">
+                                  {est.estimateId || '—'}
+                                </span>
+                              )}
+                              <span
+                                className={`inline-flex items-center px-1.5 py-0.2 rounded text-[8.5px] font-bold font-mono ${
+                                  est.activeVersion === 0
+                                    ? 'bg-slate-800 text-slate-300 border border-slate-700'
+                                    : est.activeVersion === 1
+                                    ? 'bg-blue-950/80 text-blue-300 border border-blue-700/50'
+                                    : 'bg-purple-950/80 text-purple-300 border border-purple-700/50'
+                                }`}
+                                title={`Versión activa: ${est.activeVersionTag || (est.activeVersion === 0 ? 'v0_RAW' : `v${est.activeVersion ?? 1}`)}${
+                                  est.versionsCount ? ` (${est.versionsCount} versiones)` : ''
+                                }`}
                               >
-                                <span className="group-hover:underline underline-offset-2">{est.estimateId}</span>
-                                <ExternalLink className="w-3 h-3 text-indigo-400/80 group-hover:text-cyan-300 shrink-0 transition-colors" />
-                              </a>
-                            ) : (
-                              <span className="font-mono font-bold text-slate-500">
-                                {est.estimateId || '—'}
+                                {est.activeVersionTag || (est.activeVersion === 0 ? 'v0' : `v${est.activeVersion ?? 1}`)}
                               </span>
+                            </div>
+
+                            <div className="flex items-center space-x-1.5 flex-wrap">
+                              {est.isLocalOnly ? (
+                                <span
+                                  className="inline-flex items-center space-x-0.5 px-1.5 py-0.2 rounded-full text-[8.5px] font-bold bg-purple-950/90 text-purple-300 border border-purple-700/50"
+                                  title="Cotización guardada exclusivamente en el almacenamiento interno de este PC"
+                                >
+                                  <HardDrive className="w-2 h-2 text-purple-400" />
+                                  <span>Solo PC</span>
+                                </span>
+                              ) : est.isRestricted ? (
+                                <span
+                                  className="inline-flex items-center space-x-0.5 px-1.5 py-0.2 rounded-full text-[8.5px] font-bold bg-amber-950/90 text-amber-300 border border-amber-700/50"
+                                  title="Cotización con restricción manual de vista"
+                                >
+                                  <Lock className="w-2 h-2" />
+                                  <span>Restringido</span>
+                                </span>
+                              ) : (
+                                <span
+                                  className="inline-flex items-center space-x-0.5 px-1.5 py-0.2 rounded-full text-[8.5px] font-bold bg-emerald-950/70 text-emerald-300 border border-emerald-700/40"
+                                  title="Visible para todos los usuarios"
+                                >
+                                  <Unlock className="w-2 h-2" />
+                                  <span>Público</span>
+                                </span>
+                              )}
+
+                              {est.dealId && est.dealId !== 'NA' && (
+                                <span className="text-[9.5px] text-slate-500 font-mono truncate max-w-[95px]" title={`Deal ID: ${est.dealId}`}>
+                                  Deal: {est.dealId}
+                                </span>
+                              )}
+                            </div>
+
+                            {est.isRestricted && isAllowed && !isOwner && (
+                              <div className="text-[8.5px] text-emerald-400 font-semibold">
+                                ✓ Permiso aprobado
+                              </div>
                             )}
-                            {est.isLocalOnly ? (
-                              <span
-                                className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-950/90 text-purple-300 border border-purple-700/50"
-                                title="Cotización guardada exclusivamente en el almacenamiento interno de este PC (no compartida en la nube)"
-                              >
-                                <HardDrive className="w-2.5 h-2.5 text-purple-400" />
-                                <span>Solo en este PC</span>
-                              </span>
-                            ) : est.isRestricted ? (
-                              <span
-                                className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-950/90 text-amber-300 border border-amber-700/50"
-                                title="Cotización con restricción manual de vista"
-                              >
-                                <Lock className="w-2.5 h-2.5" />
-                                <span>Restringido</span>
-                              </span>
-                            ) : (
-                              <span
-                                className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-950/70 text-emerald-300 border border-emerald-700/40"
-                                title="Visible para todos los usuarios"
-                              >
-                                <Unlock className="w-2.5 h-2.5" />
-                                <span>Público</span>
-                              </span>
-                            )}
-                            <span
-                              className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold font-mono ${
-                                est.activeVersion === 0
-                                  ? 'bg-slate-800 text-slate-300 border border-slate-700'
-                                  : est.activeVersion === 1
-                                  ? 'bg-blue-950/80 text-blue-300 border border-blue-700/50'
-                                  : 'bg-purple-950/80 text-purple-300 border border-purple-700/50'
-                              }`}
-                              title={`Versión activa: ${est.activeVersionTag || (est.activeVersion === 0 ? 'v0_RAW' : `v${est.activeVersion ?? 1}`)}${
-                                est.versionsCount ? ` (${est.versionsCount} versiones)` : ''
-                              }`}
-                            >
-                              {est.activeVersionTag || (est.activeVersion === 0 ? 'v0' : `v${est.activeVersion ?? 1}`)}
-                            </span>
                           </div>
-                          {est.dealId && est.dealId !== 'NA' && (
-                            <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                              Deal: {est.dealId}
-                            </div>
-                          )}
-                          {est.isRestricted && isAllowed && !isOwner && (
-                            <div className="text-[9px] text-emerald-400 font-semibold mt-0.5">
-                              ✓ Permiso aprobado
-                            </div>
-                          )}
                         </td>
 
-                        <td className="px-5 py-4">
-                          <div className="flex items-center space-x-2">
-                            <div className="w-6 h-6 rounded-full bg-indigo-950 border border-indigo-700/50 flex items-center justify-center text-[10px] font-bold text-indigo-300">
+                        <td className={cellPaddingClass}>
+                          <div className="flex items-center space-x-1.5">
+                            <div className="w-5 h-5 2xl:w-6 2xl:h-6 rounded-full bg-indigo-950 border border-indigo-700/50 flex items-center justify-center text-[9px] 2xl:text-[10px] font-bold text-indigo-300 shrink-0">
                               {(est.creator?.username || 'U').slice(0, 2).toUpperCase()}
                             </div>
-                            <div>
-                              <div className="font-bold text-white text-xs">
+                            <div className="min-w-0">
+                              <div className="font-bold text-white text-[11px] 2xl:text-xs truncate max-w-[95px] 2xl:max-w-[130px]" title={est.creator?.fullName || est.creator?.username || 'mskill'}>
                                 {est.creator?.fullName || est.creator?.username || 'mskill'}
                               </div>
-                              <span className="text-[9px] uppercase px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
+                              <span className="text-[8px] 2xl:text-[9px] uppercase px-1 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
                                 {est.creator?.role || 'PM'}
                               </span>
                             </div>
                           </div>
                         </td>
 
-                        <td className="px-5 py-4 font-semibold text-white">
-                          {formatPartnerName(est.partnerName) || 'Intcomex Chile'}
+                        <td className={`${cellPaddingClass} font-semibold text-white`}>
+                          <span className="block truncate max-w-[105px] 2xl:max-w-[145px] text-[11px] 2xl:text-xs" title={formatPartnerName(est.partnerName) || 'Intcomex Chile'}>
+                            {formatPartnerName(est.partnerName) || 'Intcomex Chile'}
+                          </span>
                         </td>
 
-                        <td className="px-5 py-4 text-slate-300">
-                          {est.clientFinalName || '—'}
+                        <td className={`${cellPaddingClass} text-slate-300`}>
+                          <span className="block truncate max-w-[95px] 2xl:max-w-[135px] text-[11px] 2xl:text-xs" title={est.clientFinalName || '—'}>
+                            {est.clientFinalName || '—'}
+                          </span>
                         </td>
 
-                        <td className="px-5 py-4 text-right font-mono text-slate-400">
+                        <td className={`${cellPaddingClass} text-right font-mono text-slate-400 whitespace-nowrap text-[11px] 2xl:text-xs`}>
                           {hasAccess ? (
                             fmtCurrency(est.financialSummary?.totalNetCisco)
                           ) : (
-                            <span className="text-[10px] text-amber-400/80 font-sans italic">
+                            <span className="text-[9.5px] text-amber-400/80 font-sans italic">
                               🔒 Protegido
                             </span>
                           )}
                         </td>
 
-                        <td className="px-5 py-4 text-right font-mono font-bold text-emerald-400">
+                        <td className={`${cellPaddingClass} text-right font-mono font-bold text-emerald-400 whitespace-nowrap text-[11px] 2xl:text-xs`}>
                           {hasAccess ? (
                             fmtCurrency(est.financialSummary?.totalCotizadoIntcomex)
                           ) : (
-                            <span className="text-[10px] text-amber-400/80 font-sans italic">
+                            <span className="text-[9.5px] text-amber-400/80 font-sans italic">
                               🔒 Solicitar permiso
                             </span>
                           )}
                         </td>
 
-                        <td className="px-5 py-4 text-right font-mono font-bold text-amber-400">
+                        <td className={`${cellPaddingClass} text-right font-mono font-bold text-amber-400 whitespace-nowrap text-[11px] 2xl:text-xs`}>
                           {hasAccess ? (
                             fmtCurrency(est.financialSummary?.gananciaIntcomexUsd)
                           ) : (
@@ -1394,30 +1530,30 @@ export function EstimatesHistoryView() {
                           )}
                         </td>
 
-                        {/* Columna PARÁMETROS: Margen, Internación y Arancel en una sola celda compacta */}
-                        <td className="px-3 py-4 text-center">
+                        {/* Columna PARÁMETROS: Margen, Internación y Arancel en pastilla ceñida */}
+                        <td className={`${cellPaddingClass} text-center`}>
                           {hasAccess ? (
                             (() => {
                               const p = getEstimateParams(est);
                               return (
                                 <div
-                                  className="inline-flex items-center gap-1 font-mono text-[10px] bg-slate-950/90 border border-slate-800/90 px-2 py-1 rounded-xl shadow-inner whitespace-nowrap"
+                                  className="inline-flex items-center gap-0.5 font-mono text-[8.5px] 2xl:text-[9.5px] bg-slate-950/90 border border-slate-800/90 px-1.5 py-0.5 rounded-lg shadow-inner whitespace-nowrap"
                                   title={`Parámetros usados:\n• Margen Intcomex: ${p.margen}%\n• Internación: ${p.internacion}%\n• Arancel: ${p.arancel}%`}
                                 >
                                   <span
-                                    className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 font-bold border border-amber-500/30"
+                                    className="px-1 py-0.2 rounded bg-amber-500/15 text-amber-300 font-bold border border-amber-500/30"
                                     title={`Margen Intcomex: ${p.margen}%`}
                                   >
                                     M:{p.margen}%
                                   </span>
                                   <span
-                                    className="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 font-semibold border border-cyan-500/30"
+                                    className="px-1 py-0.2 rounded bg-cyan-500/15 text-cyan-300 font-semibold border border-cyan-500/30"
                                     title={`Costo Internación: ${p.internacion}%`}
                                   >
                                     Int:{p.internacion}%
                                   </span>
                                   <span
-                                    className="px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300 font-semibold border border-purple-500/30"
+                                    className="px-1 py-0.2 rounded bg-purple-500/15 text-purple-300 font-semibold border border-purple-500/30"
                                     title={`Arancel: ${p.arancel}%`}
                                   >
                                     Ar:{p.arancel}%
@@ -1426,31 +1562,31 @@ export function EstimatesHistoryView() {
                               );
                             })()
                           ) : (
-                            <span className="text-[10px] text-slate-500 font-sans italic">🔒 Protegido</span>
+                            <span className="text-[9.5px] text-slate-500 font-sans italic">🔒 Protegido</span>
                           )}
                         </td>
 
-                        <td className="px-4 py-4 text-center font-mono text-slate-300">
+                        <td className={`${cellPaddingClass} text-center font-mono text-slate-300 text-[11px] 2xl:text-xs`}>
                           {est.itemsCount || est.items?.length || 0}
                         </td>
 
-                        <td className="px-5 py-4 text-right text-[11px]">
+                        <td className={`${cellPaddingClass} text-right text-[10px] 2xl:text-[11px] whitespace-nowrap`}>
                           {(() => {
                             const validIso = normalizeIsoTimestamp(est.createdAt);
                             if (!validIso) {
                               return (
-                                <span className="text-[10px] text-slate-500 italic">
-                                  Fecha desconocida
+                                <span className="text-[9.5px] text-slate-500 italic">
+                                  —
                                 </span>
                               );
                             }
                             const d = new Date(validIso);
                             return (
-                              <div className="flex flex-col items-end">
+                              <div className="flex flex-col items-end leading-tight">
                                 <span className="font-mono text-slate-300 font-semibold">
                                   {d.toLocaleDateString('es-CL')}
                                 </span>
-                                <span className="text-[10px] text-slate-500 font-mono">
+                                <span className="text-[9px] 2xl:text-[10px] text-slate-500 font-mono">
                                   {d.toLocaleTimeString('es-CL', {
                                     hour: '2-digit',
                                     minute: '2-digit',
@@ -1461,56 +1597,56 @@ export function EstimatesHistoryView() {
                           })()}
                         </td>
 
-                        <td className="px-5 py-4 text-center">
-                          <div className="flex items-center justify-center flex-wrap gap-1.5">
+                        <td className={`${cellPaddingClass} text-center`}>
+                          <div className="flex items-center justify-center flex-wrap gap-1">
                             {/* Main Action: Load/View if authorized, or Request Permission if restricted */}
                             {hasAccess ? (
                               <>
                                 <button
                                   onClick={() => handleLoadEstimate(est)}
-                                  className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold shadow-md shadow-indigo-600/20 transition-all cursor-pointer"
+                                  className="inline-flex items-center space-x-1 px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] 2xl:text-[11px] font-bold shadow-sm shadow-indigo-600/20 transition-all cursor-pointer"
                                   title="Restaurar esta cotización completa en el Cotizador CCW con todas sus reglas"
                                 >
-                                  <UploadCloud className="w-3.5 h-3.5" />
+                                  <UploadCloud className="w-3 h-3" />
                                   <span>Cargar</span>
                                 </button>
 
                                 <button
                                   onClick={() => setSelectedEstimateDetail(est)}
-                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                                  className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
                                   title="Ver desglose detallado de ítems y reglas"
                                 >
-                                  <Eye className="w-3.5 h-3.5" />
+                                  <Eye className="w-3 h-3" />
                                 </button>
 
                                 <button
                                   onClick={() => handleSendToPipeline(est)}
-                                  className="p-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/50 transition-colors cursor-pointer"
+                                  className="p-1 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/50 transition-colors cursor-pointer"
                                   title="Vincular esta cotización directamente al Pipeline Comercial"
                                 >
-                                  <Layers className="w-3.5 h-3.5" />
+                                  <Layers className="w-3 h-3" />
                                 </button>
                               </>
                             ) : myRequest?.status === 'pending' ? (
                               <button
                                 onClick={() => handleRequestAccess(est)}
-                                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-amber-950/70 text-amber-300 border border-amber-700/50 text-[10px] font-bold cursor-pointer"
+                                className="inline-flex items-center space-x-1 px-2 py-1 rounded-lg bg-amber-950/70 text-amber-300 border border-amber-700/50 text-[9.5px] font-bold cursor-pointer"
                                 title="Ya solicitaste permiso al creador. Haz clic para reenviar recordatorio."
                               >
-                                <Clock className="w-3.5 h-3.5 text-amber-400" />
-                                <span>Permiso Solicitado</span>
+                                <Clock className="w-3 h-3 text-amber-400" />
+                                <span>Solicitado</span>
                               </button>
                             ) : (
                               <button
                                 onClick={() => handleRequestAccess(est)}
-                                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold shadow-md shadow-amber-600/20 transition-all cursor-pointer"
+                                className="inline-flex items-center space-x-1 px-2 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold shadow-sm shadow-amber-600/20 transition-all cursor-pointer"
                                 title={`Solicitar permiso a ${est.creator?.fullName || est.creator?.username} para ver y cargar esta cotización`}
                               >
-                                <KeyRound className="w-3.5 h-3.5" />
+                                <KeyRound className="w-3 h-3" />
                                 <span>
                                   {myRequest?.status === 'rejected'
-                                    ? 'Re-solicitar Permiso'
-                                    : 'Solicitar Permiso'}
+                                    ? 'Re-solicitar'
+                                    : 'Permiso'}
                                 </span>
                               </button>
                             )}
@@ -1519,11 +1655,11 @@ export function EstimatesHistoryView() {
                             {est.isLocalOnly && isOwner && (
                               <button
                                 onClick={() => handlePublishLocalToCloud(est)}
-                                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-bold shadow-md shadow-cyan-600/20 transition-all cursor-pointer"
+                                className="inline-flex items-center space-x-1 px-1.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[9.5px] font-bold shadow-sm transition-all cursor-pointer"
                                 title="Subir esta cotización privada local a la nube de Firestore (compartir con el equipo)"
                               >
-                                <Cloud className="w-3.5 h-3.5" />
-                                <span>Subir a Nube</span>
+                                <Cloud className="w-3 h-3" />
+                                <span>Nube</span>
                               </button>
                             )}
 
@@ -1531,7 +1667,7 @@ export function EstimatesHistoryView() {
                             {canManagePrivacy && (
                               <button
                                 onClick={() => handleToggleRestriction(est)}
-                                className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                                className={`p-1 rounded-lg border transition-colors cursor-pointer ${
                                   est.isRestricted
                                     ? 'bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 border-amber-700/50'
                                     : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
@@ -1543,9 +1679,9 @@ export function EstimatesHistoryView() {
                                 }
                               >
                                 {est.isRestricted ? (
-                                  <Lock className="w-3.5 h-3.5" />
+                                  <Lock className="w-3 h-3" />
                                 ) : (
-                                  <Unlock className="w-3.5 h-3.5" />
+                                  <Unlock className="w-3 h-3" />
                                 )}
                               </button>
                             )}
@@ -1555,16 +1691,16 @@ export function EstimatesHistoryView() {
                               (est.isRestricted || (est.accessRequests || []).length > 0) && (
                                 <button
                                   onClick={() => setPermissionsModalEstimate(est)}
-                                  className={`relative p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                                  className={`relative p-1 rounded-lg border transition-colors cursor-pointer ${
                                     pendingRequests.length > 0
                                       ? 'bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border-indigo-500/50'
                                       : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
                                   }`}
                                   title="Gestionar permisos y solicitudes de acceso de usuarios"
                                 >
-                                  <KeyRound className="w-3.5 h-3.5" />
+                                  <KeyRound className="w-3 h-3" />
                                   {pendingRequests.length > 0 && (
-                                    <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-500 text-slate-950 text-[9px] font-black flex items-center justify-center">
+                                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 text-slate-950 text-[8px] font-black flex items-center justify-center">
                                       {pendingRequests.length}
                                     </span>
                                   )}
@@ -1575,10 +1711,10 @@ export function EstimatesHistoryView() {
                             {canManagePrivacy && (
                               <button
                                 onClick={() => handleDeleteEstimate(est)}
-                                className="p-1.5 rounded-lg bg-rose-950/30 hover:bg-rose-950/70 text-rose-400 border border-rose-800/30 transition-colors cursor-pointer"
+                                className="p-1 rounded-lg bg-rose-950/30 hover:bg-rose-950/70 text-rose-400 border border-rose-800/30 transition-colors cursor-pointer"
                                 title="Eliminar de la nube"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 className="w-3 h-3" />
                               </button>
                             )}
                           </div>
@@ -1614,19 +1750,22 @@ export function EstimatesHistoryView() {
       {/* TAB 2: DSV RECORDS TABLE */}
       {activeTab === 'dsv' && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-xl overflow-hidden">
-          <div className="overflow-x-auto custom-scrollbar">
+          <div
+            className="overflow-x-auto custom-scrollbar transition-all duration-200"
+            style={tableZoom !== 100 ? { zoom: `${tableZoom}%` } : undefined}
+          >
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  <th className="px-5 py-4">Deal ID / SO / PO</th>
-                  <th className="px-5 py-4">Creado Por</th>
-                  <th className="px-5 py-4">Partner ID / Reseller</th>
-                  <th className="px-5 py-4">Cliente Final</th>
-                  <th className="px-5 py-4 text-right">Reported Net Price</th>
-                  <th className="px-5 py-4 text-center">Ítems Válidos</th>
-                  <th className="px-5 py-4 text-center">Descartados ($0)</th>
-                  <th className="px-5 py-4 text-right">Fecha</th>
-                  <th className="px-5 py-4 text-center">Acciones</th>
+                <tr className="bg-slate-950/80 border-b border-slate-800 font-bold text-slate-400 uppercase tracking-wider">
+                  <th className={`${headPaddingClass} min-w-[135px]`}>Deal ID / SO / PO</th>
+                  <th className={`${headPaddingClass} min-w-[115px]`}>Creado Por</th>
+                  <th className={`${headPaddingClass} min-w-[110px]`}>Partner ID / Reseller</th>
+                  <th className={`${headPaddingClass} min-w-[100px]`}>Cliente Final</th>
+                  <th className={`${headPaddingClass} text-right min-w-[100px]`}>Reported Net Price</th>
+                  <th className={`${headPaddingClass} text-center min-w-[60px]`}>Ítems Válidos</th>
+                  <th className={`${headPaddingClass} text-center min-w-[60px]`}>Descartados ($0)</th>
+                  <th className={`${headPaddingClass} text-right min-w-[80px]`}>Fecha</th>
+                  <th className={`${headPaddingClass} text-center min-w-[80px]`}>Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -1646,63 +1785,67 @@ export function EstimatesHistoryView() {
                 ) : (
                   filteredDsvs.map((dsv, idx) => (
                     <tr key={dsv.id || idx} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="px-5 py-4">
-                        <div className="font-mono font-bold text-amber-300">
+                      <td className={cellPaddingClass}>
+                        <div className="font-mono font-bold text-amber-300 text-xs">
                           Deal: {dsv.dealId || '—'}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono">
+                        <div className="text-[9.5px] text-slate-400 font-mono">
                           SO: {dsv.soNumber} | PO: {dsv.poNumber}
                         </div>
                       </td>
 
-                      <td className="px-5 py-4">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-6 h-6 rounded-full bg-amber-950 border border-amber-700/50 flex items-center justify-center text-[10px] font-bold text-amber-300">
+                      <td className={cellPaddingClass}>
+                        <div className="flex items-center space-x-1.5">
+                          <div className="w-5 h-5 2xl:w-6 2xl:h-6 rounded-full bg-amber-950 border border-amber-700/50 flex items-center justify-center text-[9px] 2xl:text-[10px] font-bold text-amber-300 shrink-0">
                             {(dsv.creator?.username || 'U').slice(0, 2).toUpperCase()}
                           </div>
-                          <div>
-                            <div className="font-bold text-white text-xs">
+                          <div className="min-w-0">
+                            <div className="font-bold text-white text-[11px] 2xl:text-xs truncate max-w-[95px] 2xl:max-w-[130px]" title={dsv.creator?.fullName || dsv.creator?.username || 'mskill'}>
                               {dsv.creator?.fullName || dsv.creator?.username || 'mskill'}
                             </div>
-                            <span className="text-[9px] uppercase px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
+                            <span className="text-[8px] 2xl:text-[9px] uppercase px-1 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
                               {dsv.creator?.role || 'PM'}
                             </span>
                           </div>
                         </div>
                       </td>
 
-                      <td className="px-5 py-4 font-semibold text-white">
-                        {dsv.resellerName}
+                      <td className={`${cellPaddingClass} font-semibold text-white`}>
+                        <span className="block truncate max-w-[105px] 2xl:max-w-[145px] text-[11px] 2xl:text-xs" title={dsv.resellerName}>
+                          {dsv.resellerName}
+                        </span>
                         {dsv.partnerId && (
-                          <div className="text-[10px] text-slate-500 font-mono">
+                          <div className="text-[9.5px] text-slate-500 font-mono">
                             ID: {dsv.partnerId}
                           </div>
                         )}
                       </td>
 
-                      <td className="px-5 py-4 text-slate-300">
-                        {dsv.endCustomerName}
+                      <td className={`${cellPaddingClass} text-slate-300`}>
+                        <span className="block truncate max-w-[95px] 2xl:max-w-[135px] text-[11px] 2xl:text-xs" title={dsv.endCustomerName}>
+                          {dsv.endCustomerName}
+                        </span>
                       </td>
 
-                      <td className="px-5 py-4 text-right font-mono font-bold text-emerald-400">
+                      <td className={`${cellPaddingClass} text-right font-mono font-bold text-emerald-400 whitespace-nowrap text-[11px] 2xl:text-xs`}>
                         {fmtCurrency(dsv.financialSummary?.totalReportedNetPrice)}
                       </td>
 
-                      <td className="px-5 py-4 text-center font-mono text-emerald-300 font-bold">
+                      <td className={`${cellPaddingClass} text-center font-mono text-emerald-300 font-bold text-[11px] 2xl:text-xs`}>
                         {dsv.financialSummary?.totalItems || dsv.items?.length || 0}
                       </td>
 
-                      <td className="px-5 py-4 text-center font-mono text-slate-500">
+                      <td className={`${cellPaddingClass} text-center font-mono text-slate-500 text-[11px] 2xl:text-xs`}>
                         {dsv.financialSummary?.discardedZeroItems || 0}
                       </td>
 
-                      <td className="px-5 py-4 text-right text-[11px]">
+                      <td className={`${cellPaddingClass} text-right text-[10px] 2xl:text-[11px] whitespace-nowrap`}>
                         {dsv.createdAt ? (
-                          <div className="flex flex-col items-end">
+                          <div className="flex flex-col items-end leading-tight">
                             <span className="font-mono text-slate-300 font-semibold">
                               {new Date(normalizeIsoTimestamp(dsv.createdAt)).toLocaleDateString('es-CL')}
                             </span>
-                            <span className="text-[10px] text-slate-500 font-mono">
+                            <span className="text-[9px] 2xl:text-[10px] text-slate-500 font-mono">
                               {new Date(normalizeIsoTimestamp(dsv.createdAt)).toLocaleTimeString('es-CL', {
                                 hour: '2-digit',
                                 minute: '2-digit',
@@ -1714,11 +1857,11 @@ export function EstimatesHistoryView() {
                         )}
                       </td>
 
-                      <td className="px-5 py-4 text-center">
-                        <div className="flex items-center justify-center space-x-1.5">
+                      <td className={`${cellPaddingClass} text-center`}>
+                        <div className="flex items-center justify-center space-x-1">
                           <button
                             onClick={() => setSelectedDsvDetail(dsv)}
-                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                            className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
                             title="Ver desglose DSV"
                           >
                             <Eye className="w-3.5 h-3.5" />
@@ -1726,7 +1869,7 @@ export function EstimatesHistoryView() {
 
                           <button
                             onClick={() => handleDeleteDsv(dsv.id)}
-                            className="p-1.5 rounded-lg bg-rose-950/30 hover:bg-rose-950/70 text-rose-400 border border-rose-800/30 transition-colors cursor-pointer"
+                            className="p-1 rounded-lg bg-rose-950/30 hover:bg-rose-950/70 text-rose-400 border border-rose-800/30 transition-colors cursor-pointer"
                             title="Eliminar registro DSV de la nube"
                           >
                             <Trash2 className="w-3.5 h-3.5" />

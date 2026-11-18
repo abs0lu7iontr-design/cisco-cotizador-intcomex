@@ -15,11 +15,28 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.17.3',
+    date: '2026-11-18',
+    commit: 'fix-responsive-auto-fit-table-layout-estimates-history',
+    title: 'Auto-Ajuste Responsivo de Pantalla, Densidad Dinámica y Control de Zoom en Historial de Estimates',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Auto-Ajuste Responsivo de Pantalla (100% Fit): Rediseño integral del layout de la tabla en Historial de Cotizaciones CCW y Órdenes DSV, permitiendo que las 11 columnas completas se visualicen fluidamente en cualquier navegador y resolución de pantalla (laptops 1366x768, monitores 1080p y 2K/4K) sin necesidad de modificar el zoom del navegador.',
+      'Optimización Ceñida de Espaciado (Padding Reduction): Reducción drástica del padding horizontal excesivo de celdas (de px-5 py-4 a px-2 py-2 / 2xl:px-3 2xl:py-2.5), recuperando más de 250px de espacio horizontal muerto en la tabla.',
+      'Apilamiento Ergonómico en Columna Estimate / Deal ID: Reorganización visual vertical de la primera columna dividida en dos filas concisas (Fila 1: Link CCW + versión vX; Fila 2: Insignia de privacidad + Deal ID), acotando el ancho mínimo sin pérdida de legibilidad ni desborde.',
+      'Selector de Densidad Visual (Auto-Fit, Compacto, Estándar): Incorporado en la barra superior un selector de densidad persistente en localStorage para que el usuario pueda conmutar según su dispositivo (Auto-Fit para adaptación inteligente, Compacto para laptops con pantallas pequeñas, y Estándar para monitores amplios).',
+      'Controles de Zoom Local de Tabla Integrados (75% a 115%): Botones dedicados [-] [+] y porcentaje numérico en la propia interfaz para escalar exclusivamente el contenido de la tabla a voluntad del usuario, sin alterar el zoom general de Windows ni del navegador.',
+      'Consistencia en Órdenes DSV: Aplicada la misma ergonomía responsiva a las 9 columnas de la tabla de órdenes DSV.',
+      'Nueva Suite de Pruebas Unitarias (tests/estimatesHistoryResponsiveLayout.test.ts): Valida la ergonomía de celdas, apilamiento de Deal/Estimate, persistencia de densidad, controles de zoom local y cobertura de 11 columnas CCW y 9 columnas DSV (39 suites pasando al 100%).',
+    ],
+  },
+  {
     version: '2.17.2',
     date: '2026-11-18',
     commit: 'feat-strict-offline-privacy-consent-armor-and-mobile-version-updates',
     title: 'Blindaje Estricto de Privacidad Offline, Consentimiento de Subida Nube y Actualización de Versión Mobile',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Confirmación de Aislamiento 100% Offline: Verificado y blindado que en Modo Offline todos los módulos (Cotizador CCW, CCW-R, DSV, Tracking BO, Pipeline Comercial, Forecast Comercial y Base de Partners) operan de manera estrictamente local en SQLite / OPFS e IndexedDB sin comunicarse ni enviar datos a Firestore.',
