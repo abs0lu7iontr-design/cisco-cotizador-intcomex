@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.16.2",
-  "git_commit": "f24c5f6",
+  "version": "2.17.0",
+  "git_commit": "8077ad6",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-17T20:16:57.186Z",
-  "release_notes": "fix(v2.16.1): implement absolute persistence armor and infallible auto-hydration for pipeline and forecast",
+  "build_timestamp": "2026-11-18T01:56:07.074Z",
+  "release_notes": "fix(v2.16.2): resolve commercial date formatting and excel serial date numbers",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

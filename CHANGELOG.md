@@ -6,6 +6,26 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.17.0] - 2026-11-17
+### 🗄️ Migración a Motor Relacional SQLite Oficial (WASM) & Persistencia Física en Disco OPFS
+- **Migración a Motor Relacional SQLite Oficial:**
+  - Implementado el motor relacional SQLite v3 compilado a WebAssembly (WASM) con persistencia física en disco mediante OPFS (Origin Private File System).
+  - Resuelto el problema de saturación y cuota de 5 MB en LocalStorage mediante almacenamiento nativo en archivos binarios `.sqlite` en disco.
+- **Tablas Relacionales con Esquemas Tipados e Índices:**
+  - Creadas las tablas relacionales `cisco_kv_store`, `cisco_estimates`, `cisco_pipeline_deals`, `cisco_forecast_records`, `cisco_offline_queue` y `cisco_system_metadata` con índices de alto rendimiento.
+- **Consultas SQL en Microsegundos en el Cliente:**
+  - Soporte de transacciones ACID y consultas SQL (`SELECT`, `WHERE`, `GROUP BY`, `SUM`, `ORDER BY`, `VACUUM`) ejecutadas directamente en el cliente en microsegundos sin latencia ni cuotas de red.
+- **Descarga de Base de Datos SQLite (.sqlite) en 1 Clic:**
+  - Incorporado en la tarjeta de Almacenamiento Local del Monitor de Salud el botón para descargar una copia binaria completa de `cisco_automated.sqlite`, permitiendo auditoría, respaldo y consulta externa mediante herramientas como DB Browser for SQLite, DBeaver o scripts en Python.
+- **Optimización y Desfragmentación VACUUM en Caliente:**
+  - Incorporado botón interactivo en el Monitor de Salud para ejecutar `VACUUM;` en SQLite, desfragmentando páginas y reduciendo el tamaño en disco en tiempo real.
+- **Adaptador Unificado Transparente (`indexedDbStorage.ts`):**
+  - Todas las operaciones de almacenamiento de la plataforma (`idbSet`, `idbGet`, `idbDelete`, `idbGetAll`, `idbClear`) ahora operan directamente sobre SQLite WASM como Tier 1, manteniendo total retrocompatibilidad con los módulos de Cotizador CCW, CCW-R, Pipeline, Forecast y Seguimiento BO.
+- **Monitor de Salud con Telemetría SQLite en Verde ÓPTIMO:**
+  - La tarjeta de diagnóstico de almacenamiento local ahora reporta `Motor Relacional SQLite v3 (WASM & Persistencia OPFS)` con telemetría en verde ÓPTIMO, eliminando falsos positivos de almacenamiento degradado.
+- **Nueva Suite de Pruebas Unitarias Automatizadas (`tests/sqliteStorageEngine.test.ts`):**
+  - Suite completa validando inicialización, esquemas relacionales, operaciones CRUD atómicas, consultas SQL avanzadas, compactación VACUUM, exportación binaria con encabezado SQLite v3 y diagnóstico del monitor de salud.
+
 ## [v2.16.2] - 2026-11-17
 ### 📅 Resolución de Fechas Comerciales y Conversión de Números de Serie de Excel
 - **Resolución Universal de Fechas en Tablas Comerciales:**

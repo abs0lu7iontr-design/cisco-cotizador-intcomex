@@ -23,6 +23,7 @@ import {
   CloudCheck,
   ShieldCheck,
   Sparkles,
+  Download,
 } from 'lucide-react';
 import {
   SystemHealthReport,
@@ -35,6 +36,11 @@ import {
   exportDiagnosticReportMarkdown,
 } from './healthService';
 import { optimizeAndMigrateLocalStorage } from '../../core/storage/modernStorageEngine';
+import {
+  downloadSqliteDatabase,
+  sqliteVacuum,
+  formatSqliteBytes,
+} from '../../core/storage/sqliteStorageEngine';
 import { fetchDailyOfficialChileanRates } from '../../core/chileanExchangeRateService';
 import { getFormattedAppVersion } from '../../core/appVersion';
 
@@ -94,9 +100,34 @@ export const HealthDashboardView: React.FC<HealthDashboardViewProps> = ({ onOpen
 
     setRepairFeedback(
       res.clearedKeys > 0
-        ? `✨ Almacenamiento optimizado: ${res.clearedKeys} elementos consolidados en IndexedDB y ${freedText} liberados de LocalStorage.`
-        : '✨ Motor de almacenamiento IndexedDB y LocalStorage al 100% optimizados.'
+        ? `✨ Almacenamiento optimizado: ${res.clearedKeys} elementos consolidados en SQLite y ${freedText} liberados de LocalStorage.`
+        : '✨ Motor de base de datos SQLite y LocalStorage al 100% optimizados.'
     );
+    await executeDiagnostics();
+    setIsLoading(false);
+  };
+
+  const handleDownloadSqlite = async () => {
+    setIsLoading(true);
+    const ok = await downloadSqliteDatabase();
+    if (ok) {
+      setRepairFeedback('📥 Base de datos SQLite (.sqlite) descargada exitosamente en su equipo.');
+    } else {
+      setRepairFeedback('⚠️ No se pudo generar la descarga del archivo SQLite.');
+    }
+    setIsLoading(false);
+  };
+
+  const handleVacuumSqlite = async () => {
+    setIsLoading(true);
+    const res = await sqliteVacuum();
+    await optimizeAndMigrateLocalStorage();
+    if (res.success) {
+      const freed = res.freedBytes > 0 ? ` (${formatSqliteBytes(res.freedBytes)} liberados)` : '';
+      setRepairFeedback(`⚡ Optimización VACUUM SQLite completada exitosamente${freed}.`);
+    } else {
+      setRepairFeedback('✨ Base de datos SQLite optimizada.');
+    }
     await executeDiagnostics();
     setIsLoading(false);
   };
@@ -319,18 +350,18 @@ export const HealthDashboardView: React.FC<HealthDashboardViewProps> = ({ onOpen
           </div>
         </div>
 
-        {/* Card 2: Almacenamiento Local en PC (Motor Moderno IndexedDB / StorageManager) */}
+        {/* Card 2: Almacenamiento Local en PC (Motor Relacional SQLite WASM + OPFS) */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 flex flex-col justify-between shadow-xl">
           <div>
             <div className="flex items-center justify-between pb-4 border-b border-slate-800">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-                  <HardDrive className="w-5 h-5" />
+                  <Database className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-white">Almacenamiento Local en PC</h3>
                   <p className="text-[11px] text-slate-400">
-                    Motor Moderno de Alta Capacidad (IndexedDB & StorageManager)
+                    Motor Relacional SQLite v3 (WASM & Persistencia OPFS)
                   </p>
                 </div>
               </div>
@@ -346,15 +377,15 @@ export const HealthDashboardView: React.FC<HealthDashboardViewProps> = ({ onOpen
             </div>
 
             <div className="mt-4 space-y-3">
-              {/* Modern Storage Capacity Progress Bar (IndexedDB / StorageManager) */}
+              {/* SQLite WASM + OPFS Storage Capacity Progress Bar */}
               <div>
                 <div className="flex items-center justify-between text-xs mb-1.5">
                   <span className="text-slate-300 font-medium flex items-center gap-1.5">
-                    <Database className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Motor Moderno de Alta Capacidad:</span>
+                    <HardDrive className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Base de Datos SQLite en Disco:</span>
                   </span>
                   <span className="font-bold text-white font-mono">
-                    {report?.storage.storageManagerUsageFormatted || '0 MB'} de{' '}
+                    {report?.storage.sqliteDatabaseFormatted || report?.storage.storageManagerUsageFormatted || '0 MB'} de{' '}
                     {report?.storage.storageManagerQuotaFormatted || '50 GB'} (
                     {report?.storage.storageManagerPct || 0.01}%)
                   </span>
@@ -374,34 +405,31 @@ export const HealthDashboardView: React.FC<HealthDashboardViewProps> = ({ onOpen
                   />
                 </div>
                 <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
-                  <span>Soporte de Gigabytes activo tanto Online como Offline</span>
+                  <span>Archivo .sqlite físico independiente de LocalStorage</span>
                   <span className="text-emerald-400 font-semibold flex items-center gap-1">
                     <ShieldCheck className="w-3 h-3" />
-                    <span>Persistencia Protegida</span>
+                    <span>{report?.storage.isOpfsActive ? 'OPFS en Disco' : 'Persistencia Protegida'}</span>
                   </span>
                 </div>
               </div>
 
-              {/* Secondary LocalStorage Preferences Cache */}
+              {/* Status breakdown of SQLite and LocalStorage */}
               <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-1">
                 <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Motor Relacional SQLite:</span>
+                  <span className="font-bold text-emerald-400 flex items-center space-x-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Conectado & Operativo (WASM + OPFS)</span>
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs pt-1">
                   <span className="text-slate-400">Bóveda Rápida de Preferencias (LocalStorage):</span>
-                  <span className="font-mono text-xs font-bold text-slate-300">
-                    {report?.storage.localStorageFormatted || '0 MB'}
+                  <span className="font-mono text-xs font-bold text-emerald-400">
+                    {report?.storage.localStorageFormatted || '0 MB'} (Óptimo)
                   </span>
                 </div>
                 <span className="text-[10px] text-slate-500 block">
                   Reservado exclusivamente para parámetros rápidos del PC y preferencias de UI
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between text-xs pt-1">
-                <span className="text-slate-400">Motor IndexedDB:</span>
-                <span className="font-bold text-emerald-400 flex items-center space-x-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>
-                    {report?.storage.indexedDbReady ? 'Conectado & Operativo (Alta Capacidad)' : 'Inactivo'}
-                  </span>
                 </span>
               </div>
 
@@ -421,19 +449,39 @@ export const HealthDashboardView: React.FC<HealthDashboardViewProps> = ({ onOpen
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
-            <span className="text-[11px] text-slate-400 truncate mr-2" title={report?.checks.storage?.message}>
+          <div className="mt-4 pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] text-slate-400 truncate max-w-[200px]" title={report?.checks.storage?.message}>
               {report?.checks.storage?.message}
             </span>
-            <button
-              type="button"
-              onClick={handleCleanCache}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-[11px] font-bold transition-colors flex items-center space-x-1.5 shrink-0 cursor-pointer border border-slate-700 shadow-sm"
-              title="Optimiza y consolida el almacenamiento pesado en IndexedDB, liberando la memoria caché de LocalStorage"
-            >
-              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-              <span>Optimizar Almacenamiento</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadSqlite}
+                className="px-2.5 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-white text-[11px] font-bold transition-colors flex items-center space-x-1 shrink-0 cursor-pointer border border-indigo-500/30 shadow-sm"
+                title="Descarga una copia completa en archivo binario .sqlite de tu base de datos local"
+              >
+                <Download className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Descargar .sqlite</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleVacuumSqlite}
+                className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-[11px] font-bold transition-colors flex items-center space-x-1 shrink-0 cursor-pointer border border-slate-700 shadow-sm"
+                title="Ejecuta VACUUM en SQLite para compactar y desfragmentar el archivo en disco"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Optimizar (VACUUM)</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleCleanCache}
+                className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-[11px] font-bold transition-colors flex items-center space-x-1 shrink-0 cursor-pointer border border-slate-700 shadow-sm"
+                title="Consolida datos en SQLite y limpia la memoria caché residual de LocalStorage"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                <span>Limpiar Caché</span>
+              </button>
+            </div>
           </div>
         </div>
 

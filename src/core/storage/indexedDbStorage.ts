@@ -1,7 +1,17 @@
 // ============================================================================
-// CISCO AUTOMATED v2.7 - ASYNCHRONOUS INDEXEDDB STORAGE ADAPTER
-// High-capacity local storage (hundreds of MB) with graceful localStorage & memory fallback
+// CISCO AUTOMATED v2.17.0 - UNIFIED STORAGE ADAPTER (SQLITE WASM + OPFS TIER 1)
+// Motor Relacional SQLite WASM + OPFS en disco con espejo secundario IndexedDB
+// Alta capacidad de almacenamiento en Gigabytes, libre de límites de LocalStorage (5 MB)
 // ============================================================================
+
+import {
+  sqliteSet,
+  sqliteGet,
+  sqliteDelete,
+  sqliteGetAll,
+  sqliteClear,
+  getSqliteDb,
+} from './sqliteStorageEngine';
 
 const DB_NAME = 'CiscoAutomatedDB';
 const DB_VERSION = 1;
@@ -23,7 +33,7 @@ function isIndexedDbSupported(): boolean {
 }
 
 /**
- * Abre o inicializa la base de datos IndexedDB local.
+ * Abre o inicializa la base de datos IndexedDB local como respaldo secundario.
  */
 export function getIndexedDb(): Promise<IDBDatabase | null> {
   if (!isIndexedDbSupported()) {
@@ -77,11 +87,25 @@ export function getIndexedDb(): Promise<IDBDatabase | null> {
 }
 
 /**
- * Guarda un valor en el store especificado. Si IndexedDB falla, usa localStorage o memoria como fallback.
+ * Guarda un valor en el store especificado.
+ * Tier 1: SQLite Relacional WASM + OPFS en disco.
+ * Tier 2: Respaldo secundario en IndexedDB / Memoria.
  */
 export async function idbSet<T>(storeName: StoreName, key: string, value: T): Promise<boolean> {
-  const db = await getIndexedDb();
+  // 1. Guardar primero en el motor relacional SQLite WASM
+  try {
+    const sqliteOk = await sqliteSet(storeName, key, value);
+    if (sqliteOk) {
+      // Opcionalmente reflejar en IDB como copia secundaria pasiva si está disponible
+      saveToSecondaryIdb(storeName, key, value).catch(() => {});
+      return true;
+    }
+  } catch (err) {
+    console.warn(`[StorageAdapter] Fallback desde SQLite en set(${storeName}, ${key}):`, err);
+  }
 
+  // 2. Fallback a IndexedDB
+  const db = await getIndexedDb();
   if (db) {
     return new Promise((resolve) => {
       try {
@@ -105,14 +129,34 @@ export async function idbSet<T>(storeName: StoreName, key: string, value: T): Pr
   return true;
 }
 
+async function saveToSecondaryIdb<T>(storeName: StoreName, key: string, value: T): Promise<void> {
+  const db = await getIndexedDb();
+  if (!db) return;
+  try {
+    const tx = db.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    store.put(value, store.keyPath ? undefined : key);
+  } catch {}
+}
+
 /**
  * Recupera un valor del store especificado.
+ * Tier 1: Consulta de microsegundos en SQLite WASM.
+ * Tier 2: Consulta en IndexedDB con auto-migración a SQLite si existe.
  */
 export async function idbGet<T>(storeName: StoreName, key: string): Promise<T | null> {
-  const db = await getIndexedDb();
+  // 1. Intentar primero en SQLite
+  try {
+    const sqliteVal = await sqliteGet<T>(storeName, key);
+    if (sqliteVal !== null && sqliteVal !== undefined) {
+      return sqliteVal;
+    }
+  } catch {}
 
+  // 2. Si no está en SQLite, buscar en IndexedDB heredado
+  const db = await getIndexedDb();
   if (db) {
-    return new Promise((resolve) => {
+    const legacyVal = await new Promise<T | null>((resolve) => {
       try {
         const tx = db.transaction(storeName, 'readonly');
         const store = tx.objectStore(storeName);
@@ -133,17 +177,26 @@ export async function idbGet<T>(storeName: StoreName, key: string): Promise<T | 
         resolve(fallbackLocalStorageGet<T>(storeName, key));
       }
     });
+
+    if (legacyVal !== null && legacyVal !== undefined) {
+      // Auto-migrar silenciosamente a SQLite para futuras consultas
+      sqliteSet(storeName, key, legacyVal).catch(() => {});
+      return legacyVal;
+    }
   }
 
   return fallbackLocalStorageGet<T>(storeName, key);
 }
 
 /**
- * Elimina una clave del store.
+ * Elimina una clave del store en SQLite e IndexedDB.
  */
 export async function idbDelete(storeName: StoreName, key: string): Promise<boolean> {
-  const db = await getIndexedDb();
+  try {
+    await sqliteDelete(storeName, key);
+  } catch {}
 
+  const db = await getIndexedDb();
   if (db) {
     return new Promise((resolve) => {
       try {
@@ -171,13 +224,19 @@ export async function idbDelete(storeName: StoreName, key: string): Promise<bool
 }
 
 /**
- * Obtiene todos los registros de un store.
+ * Obtiene todos los registros de un store (SQLite con fallback a IndexedDB).
  */
 export async function idbGetAll<T>(storeName: StoreName): Promise<T[]> {
-  const db = await getIndexedDb();
+  try {
+    const sqliteRecords = await sqliteGetAll<T>(storeName);
+    if (sqliteRecords.length > 0) {
+      return sqliteRecords;
+    }
+  } catch {}
 
+  const db = await getIndexedDb();
   if (db) {
-    return new Promise((resolve) => {
+    const legacyRecords = await new Promise<T[]>((resolve) => {
       try {
         const tx = db.transaction(storeName, 'readonly');
         const store = tx.objectStore(storeName);
@@ -189,17 +248,31 @@ export async function idbGetAll<T>(storeName: StoreName): Promise<T[]> {
         resolve(fallbackGetAll<T>(storeName));
       }
     });
+
+    if (legacyRecords.length > 0) {
+      // Migrar en bloque a SQLite
+      Promise.all(
+        legacyRecords.map((rec: any, idx: number) => {
+          const k = rec?.id || String(idx);
+          return sqliteSet(storeName, k, rec);
+        })
+      ).catch(() => {});
+      return legacyRecords;
+    }
   }
 
   return fallbackGetAll<T>(storeName);
 }
 
 /**
- * Limpia por completo un store.
+ * Limpia por completo un store en SQLite e IndexedDB.
  */
 export async function idbClear(storeName: StoreName): Promise<boolean> {
-  const db = await getIndexedDb();
+  try {
+    await sqliteClear(storeName);
+  } catch {}
 
+  const db = await getIndexedDb();
   if (db) {
     return new Promise((resolve) => {
       try {

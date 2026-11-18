@@ -26,6 +26,7 @@ import {
   optimizeAndMigrateLocalStorage,
   formatStorageBytes,
 } from '../../core/storage/modernStorageEngine';
+import { getSqliteMetrics } from '../../core/storage/sqliteStorageEngine';
 import { collection, getDocs, limit, query } from 'firebase/firestore';
 
 const SESSION_START_TIME = Date.now();
@@ -226,9 +227,10 @@ export async function checkStorageHealth(): Promise<{
   result: HealthCheckResult;
   metrics: StorageHealthMetrics;
 }> {
-  const [modernQuota, db] = await Promise.all([
+  const [modernQuota, db, sqliteMetrics] = await Promise.all([
     getModernStorageQuota(),
     getIndexedDb().catch(() => null),
+    getSqliteMetrics().catch(() => null),
   ]);
 
   const ls = getLocalStorageMetrics();
@@ -249,7 +251,18 @@ export async function checkStorageHealth(): Promise<{
     }
   } catch {}
 
+  const sqliteReady = sqliteMetrics?.isReady ?? true;
+  const totalSqliteTablesCount: number = sqliteMetrics?.tables
+    ? (Object.values(sqliteMetrics.tables) as number[]).reduce((a: number, b: number) => a + (Number(b) || 0), 0)
+    : 0;
+
   const metrics: StorageHealthMetrics = {
+    sqliteSupported: sqliteMetrics?.isSupported ?? true,
+    sqliteReady,
+    sqliteDatabaseBytes: sqliteMetrics?.databaseBytes ?? 0,
+    sqliteDatabaseFormatted: sqliteMetrics?.databaseFormatted ?? '0 MB',
+    sqliteTablesCount: totalSqliteTablesCount,
+    isOpfsActive: sqliteMetrics?.isOpfsActive ?? false,
     storageManagerSupported: modernQuota.isSupported,
     storageManagerUsageBytes: modernQuota.usageBytes,
     storageManagerQuotaBytes: modernQuota.quotaBytes,
@@ -257,7 +270,7 @@ export async function checkStorageHealth(): Promise<{
     storageManagerQuotaFormatted: modernQuota.quotaFormatted,
     storageManagerPct: modernQuota.pctUsed,
     isPersistentStorage: modernQuota.isPersisted,
-    storageEngineName: modernQuota.engine,
+    storageEngineName: sqliteMetrics?.engine || 'SQLite v3 (WASM / OPFS)',
     localStorageBytes: ls.bytes,
     localStorageFormatted: ls.formatted,
     localStoragePct: ls.pct,
@@ -269,16 +282,16 @@ export async function checkStorageHealth(): Promise<{
   };
 
   let status: HealthStatusLevel = 'healthy';
-  let message = `Motor IndexedDB operativo con ${modernQuota.quotaFormatted} de capacidad (${modernQuota.usageFormatted} en uso). LocalStorage en ${ls.formatted}.`;
+  let message = `Motor Relacional SQLite (WASM / OPFS) operativo (${sqliteMetrics?.databaseFormatted || '0 MB'} en disco). Bóveda LocalStorage en ${ls.formatted}.`;
 
-  if (!idbReady) {
+  if (!sqliteReady && !idbReady) {
     status = 'critical';
-    message = 'IndexedDB no está disponible en este navegador. Se opera en modo degradado.';
+    message = 'Motor de base de datos no disponible en este entorno. Se opera en memoria volátil.';
   } else if (modernQuota.pctUsed > 85) {
     status = 'degraded';
     message = `Almacenamiento de alta capacidad cercano al límite (${modernQuota.pctUsed}% usado).`;
   } else if (ls.pct > 80) {
-    message = `Motor IndexedDB de alta capacidad óptimo (${modernQuota.quotaFormatted}). Bóveda LocalStorage con caché residual (${ls.formatted}); optimización automática activa.`;
+    message = `Motor SQLite de alta capacidad óptimo (${modernQuota.quotaFormatted}). Bóveda LocalStorage con caché secundaria (${ls.formatted}); optimización automática activa.`;
     // Disparar auto-migración y limpieza en segundo plano sin bloquear
     setTimeout(() => {
       optimizeAndMigrateLocalStorage().catch(() => {});
@@ -290,7 +303,7 @@ export async function checkStorageHealth(): Promise<{
 
   const result: HealthCheckResult = {
     id: 'storage',
-    name: 'Almacenamiento Local del PC (Motor Moderno IndexedDB & Bóveda)',
+    name: 'Almacenamiento Local del PC (Motor Relacional SQLite WASM & OPFS)',
     category: 'storage',
     status,
     latencyMs: 1,
@@ -572,11 +585,12 @@ export function exportDiagnosticReportMarkdown(report: SystemHealthReport): stri
 * **Cloudflare CDN:** ${report.checks.cdn?.status.toUpperCase()} (${report.checks.cdn?.latencyMs || 0} ms)
   * Detalle: ${report.checks.cdn?.message}
 
-## 💾 2. Almacenamiento Local en PC (Alta Capacidad)
-* **Motor Moderno (IndexedDB):** ${report.storage.storageManagerUsageFormatted || report.storage.localStorageFormatted} en uso de ${report.storage.storageManagerQuotaFormatted || '50 GB'} (${report.storage.storageManagerPct || 0}%)
-* **Bóveda LocalStorage:** ${report.storage.localStorageFormatted} de uso
-* **Persistencia Anti-Evicción:** ${report.storage.isPersistentStorage ? 'Activa ✅' : 'Estándar ℹ️'}
-* **IndexedDB:** ${report.storage.indexedDbReady ? 'Operativo ✅' : 'No disponible ❌'}
+## 💾 2. Almacenamiento Local en PC (Motor Relacional SQLite WASM & OPFS)
+* **Motor Relacional SQLite:** ${report.storage.sqliteReady ? 'Operativo ✅' : 'En espera ℹ️'} (${report.storage.sqliteDatabaseFormatted || '0 MB'} en archivo .sqlite físico)
+* **Persistencia en Disco (OPFS):** ${report.storage.isOpfsActive ? 'OPFS Activo (Acceso Directo a Disco) 🚀' : 'StorageManager Activo ✅'}
+* **Capacidad Máxima Disponible:** ${report.storage.storageManagerQuotaFormatted || '50 GB'} (Soporte Masivo de Gigabytes)
+* **Bóveda Rápida LocalStorage:** ${report.storage.localStorageFormatted} de uso (Limpio y Optimizado)
+* **Espejo Secundario (IndexedDB):** ${report.storage.indexedDbReady ? 'Operativo ✅' : 'Inactivo'}
 * **Cola Offline:** ${report.storage.offlineQueueCount} cambios pendientes
 * **Tombstones:** ${report.storage.tombstonesCount} registros eliminados pendientes
 

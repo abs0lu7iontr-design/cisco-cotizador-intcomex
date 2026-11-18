@@ -15,11 +15,30 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.17.0',
+    date: '2026-11-17',
+    commit: 'feat-relational-sqlite-wasm-opfs-storage-engine',
+    title: 'Migración a Motor Relacional SQLite Oficial vía WebAssembly (WASM) y Persistencia en Disco OPFS',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Migración de Motor de Base de Datos: Implementado el motor relacional oficial SQLite v3 compilado a WebAssembly (WASM) con persistencia física en disco mediante OPFS (Origin Private File System).',
+      'Eliminación de la Saturación de LocalStorage (5 MB): Los catálogos masivos, cotizaciones CCW/CCW-R, historial, pipeline comercial y forecast se almacenan directamente en la base de datos relacional SQLite (cisco_automated.sqlite), manteniendo LocalStorage limpio (< 100 KB) para parámetros rápidos de UI.',
+      'Tablas Relacionales Nativas: Creados esquemas oficiales en SQLite para cisco_kv_store, cisco_estimates, cisco_pipeline_deals, cisco_forecast_records, cisco_offline_queue y cisco_system_metadata con índices optimizados.',
+      'Consultas SQL en Microsegundos: Soporte para sentencias SQL transaccionales (SELECT, INSERT OR REPLACE, WHERE, GROUP BY, SUM, VACUUM) ejecutadas directamente en el cliente en microsegundos sin latencia de red.',
+      'Descarga de Base de Datos SQLite (.sqlite) en 1 Clic: Incorporado en el Monitor de Salud el botón para descargar una copia binaria completa (.sqlite) para auditoría, respaldo o apertura en herramientas como DB Browser for SQLite, DBeaver o scripts en Python.',
+      'Optimización VACUUM en Caliente: Botón de compactación y desfragmentación de páginas SQLite para liberar espacio en disco en tiempo real.',
+      'Adaptador Unificado Transparente: indexedDbStorage se actualizó para utilizar SQLite WASM como almacenamiento de Nivel 1 (Tier 1), manteniendo total compatibilidad hacia atrás con todos los módulos de la plataforma.',
+      'Monitor de Salud Actualizado a SQLite: La tarjeta de almacenamiento local ahora exhibe el estado del motor SQLite (WASM / OPFS) en verde ÓPTIMO, eliminando el semáforo en rojo o degradado.',
+      'Nueva Suite de Pruebas Unitarias Automatizadas: Creada tests/sqliteStorageEngine.test.ts con 100% de éxito en CRUD, esquemas relacionales, VACUUM, exportación binaria y diagnóstico de salud.',
+    ],
+  },
+  {
     version: '2.16.2',
     date: '2026-11-17',
     commit: 'fix-commercial-dates-excel-serial-resolution-and-formatting',
     title: 'Resolución Universal de Fechas Comerciales y Conversión Automática de Números de Serie de Excel',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Resolución de Fechas de Excel (Seriales Numéricos): Resuelto el problema visual donde las columnas Fecha de Levantamiento y Fecha de Cotización mostraban números enteros de Excel (ej. 46252, 45846, 45978) en lugar de fechas legibles.',

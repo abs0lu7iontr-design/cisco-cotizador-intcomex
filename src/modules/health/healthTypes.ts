@@ -18,6 +18,14 @@ export interface HealthCheckResult {
 }
 
 export interface StorageHealthMetrics {
+  // Motor SQLite Relacional (WASM / OPFS - Gigabytes)
+  sqliteSupported?: boolean;
+  sqliteReady?: boolean;
+  sqliteDatabaseBytes?: number;
+  sqliteDatabaseFormatted?: string;
+  sqliteTablesCount?: number;
+  isOpfsActive?: boolean;
+
   // Motor Moderno de Alta Capacidad (IndexedDB / StorageManager - Gigabytes)
   storageManagerSupported: boolean;
   storageManagerUsageBytes: number;
