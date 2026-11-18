@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.17.0",
-  "git_commit": "8077ad6",
+  "version": "2.17.1",
+  "git_commit": "edcf995",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-18T01:56:07.074Z",
-  "release_notes": "fix(v2.16.2): resolve commercial date formatting and excel serial date numbers",
+  "build_timestamp": "2026-11-18T02:29:22.240Z",
+  "release_notes": "feat(v2.17.0): migrate database to official relational sqlite wasm with opfs disk persistence",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

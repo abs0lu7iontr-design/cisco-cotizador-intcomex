@@ -58,6 +58,7 @@ import {
   generatePipelineReminders,
 } from './pipelineService';
 import { parseFlexibleNumber, formatCommercialDate } from '../forecast/forecastService';
+import { getCurrentMonthName } from '../../utils/dateUtils';
 import { PipelineDealModal } from './PipelineDealModal';
 import { useCiscoAutomatedStore } from '../../core/store';
 
@@ -74,12 +75,12 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
   const [isSyncing, setIsSyncing] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table');
 
-  // Filtros
+  // Filtros - Por defecto se abre en el mes actual para máxima organización y enfoque
   const [filters, setFilters] = useState<PipelineFilterOptions>({
     searchQuery: '',
     pmResponsable: 'ALL',
     grupoVentas: 'ALL',
-    mesCierre: 'ALL',
+    mesCierre: getCurrentMonthName(),
     am: 'ALL',
     porcentajeAvance: 'ALL',
     partner: 'ALL',
@@ -608,18 +609,28 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
             ))}
           </select>
 
-          {/* Mes de Cierre Filter */}
+          {/* Mes de Cierre / Periodo Filter */}
           <select
-            value={filters.mesCierre || 'ALL'}
+            value={filters.mesCierre || getCurrentMonthName()}
             onChange={(e) => setFilters((prev) => ({ ...prev, mesCierre: e.target.value }))}
             className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 focus:border-indigo-500 outline-none"
           >
-            <option value="ALL">Todos los Meses</option>
-            {MESES_ANO.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
+            <option value={getCurrentMonthName()}>Mes Actual ({getCurrentMonthName()})</option>
+            <option value="ALL">Todos los Meses (Histórico Completo)</option>
+            <optgroup label="Trimestres (Q)">
+              <option value="Q1">Q1 (Ene - Mar)</option>
+              <option value="Q2">Q2 (Abr - Jun)</option>
+              <option value="Q3">Q3 (Jul - Sep)</option>
+              <option value="Q4">Q4 (Oct - Dic)</option>
+            </optgroup>
+            <optgroup label="Meses del Año">
+              {MESES_ANO.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </optgroup>
+            <option value="YEAR_CURRENT">Año Actual ({new Date().getFullYear()})</option>
           </select>
 
           {/* % Avance Filter */}
@@ -977,8 +988,17 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
           </div>
 
           {filteredDeals.length === 0 && (
-            <div className="text-center py-16 text-slate-500 text-xs">
-              No se encontraron oportunidades con los filtros seleccionados.
+            <div className="text-center py-16 text-slate-500 text-xs flex flex-col items-center justify-center space-y-2">
+              <p>No se encontraron oportunidades con los filtros seleccionados.</p>
+              {Boolean(filters.mesCierre && deals.length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => setFilters((prev) => ({ ...prev, mesCierre: '' }))}
+                  className="px-3 py-1 bg-cyan-950/60 border border-cyan-700/60 hover:bg-cyan-900/60 text-cyan-300 rounded-lg text-xs font-medium transition cursor-pointer"
+                >
+                  Ver todos los meses ({deals.length} deals totales)
+                </button>
+              )}
             </div>
           )}
         </div>

@@ -777,3 +777,201 @@ export function formatCommercialDateHyphen(val: unknown, fallbackEmpty = ''): st
   if (!formatted || formatted === '-') return fallbackEmpty;
   return formatted.replace(/\//g, '-');
 }
+
+// ============================================================================
+// PERIOD & MONTH RANGE UTILITIES (PIPELINE, FORECAST, ESTIMATE HISTORY)
+// ============================================================================
+
+export const SPANISH_MONTH_NAMES = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
+] as const;
+
+/**
+ * Retorna el nombre en español del mes actual según el reloj del sistema (ej. "Noviembre").
+ * Si el mes cambia en el reloj del sistema, avanza automáticamente al nuevo mes.
+ */
+export function getCurrentMonthName(): string {
+  const m = new Date().getMonth();
+  return SPANISH_MONTH_NAMES[m] || 'Enero';
+}
+
+/**
+ * Retorna el periodo del mes actual en formato "YYYY-MM" (ej. "2026-11").
+ */
+export function getCurrentYearMonth(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+/**
+ * Retorna el trimestre actual ("Q1", "Q2", "Q3", "Q4").
+ */
+export function getCurrentQuarter(): 'Q1' | 'Q2' | 'Q3' | 'Q4' {
+  const month1Based = new Date().getMonth() + 1;
+  if (month1Based <= 3) return 'Q1';
+  if (month1Based <= 6) return 'Q2';
+  if (month1Based <= 9) return 'Q3';
+  return 'Q4';
+}
+
+/**
+ * Retorna la lista de nombres de mes de un trimestre.
+ */
+export function getQuarterMonthNames(quarter: string): string[] {
+  switch (quarter.toUpperCase()) {
+    case 'Q1':
+      return ['Enero', 'Febrero', 'Marzo'];
+    case 'Q2':
+      return ['Abril', 'Mayo', 'Junio'];
+    case 'Q3':
+      return ['Julio', 'Agosto', 'Septiembre'];
+    case 'Q4':
+      return ['Octubre', 'Noviembre', 'Diciembre'];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Extrae el mes (1-12) y año de cualquier string de fecha o valor comercial (incluso seriales de Excel o nombres de mes).
+ */
+export function extractMonthAndYearFromCommercialValue(
+  val: unknown
+): { month: number; year: number } | null {
+  if (val === undefined || val === null) return null;
+  const s = String(val).trim();
+  if (!s || s === '-' || s === '—' || s === 'N/A') return null;
+
+  // 1. Nombre de mes en español directo (ej. "Noviembre", "Julio")
+  for (let idx = 0; idx < SPANISH_MONTH_NAMES.length; idx++) {
+    if (s.toLowerCase().includes(SPANISH_MONTH_NAMES[idx].toLowerCase())) {
+      const yearMatch = s.match(/\b(20\d{2})\b/);
+      const year = yearMatch ? parseInt(yearMatch[1], 10) : new Date().getFullYear();
+      return { month: idx + 1, year };
+    }
+  }
+
+  // 2. Serial de Excel numérico
+  if (/^\d{4,6}(\.\d+)?$/.test(s)) {
+    const num = Number(s);
+    if (num >= 20000 && num <= 100000) {
+      const excelRes = excelSerialToIso(num);
+      if (excelRes && excelRes.iso) {
+        const d = new Date(excelRes.iso);
+        return { month: d.getUTCMonth() + 1, year: d.getUTCFullYear() };
+      }
+    }
+  }
+
+  // 3. DD-MM-YYYY o DD/MM/YYYY
+  const dmyMatch = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmyMatch) {
+    const p1 = parseInt(dmyMatch[1], 10);
+    const p2 = parseInt(dmyMatch[2], 10);
+    const year = parseInt(dmyMatch[3], 10);
+    const month = p1 > 12 && p2 <= 12 ? p2 : p2 > 12 && p1 <= 12 ? p1 : p2;
+    return { month, year };
+  }
+
+  // 4. ISO YYYY-MM o YYYY-MM-DD
+  const isoMatch = s.match(/^(\d{4})[-/](\d{1,2})/);
+  if (isoMatch) {
+    return { year: parseInt(isoMatch[1], 10), month: parseInt(isoMatch[2], 10) };
+  }
+
+  // 5. Intento general
+  const parsed = parseDateBySource(s);
+  if (parsed.isValid && parsed.iso) {
+    const d = new Date(parsed.iso);
+    return {
+      month: (parsed.isCalendarDateOnly ? d.getUTCDate() : d.getMonth()) + 1,
+      year: parsed.isCalendarDateOnly ? d.getUTCFullYear() : d.getFullYear(),
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Comprueba si un registro o fecha coincide con un periodo de filtro seleccionado.
+ * period puede ser:
+ *  - "ALL" o "all": siempre true
+ *  - "CURRENT_MONTH": coincide con el mes calendario actual (ej. Noviembre)
+ *  - Nombre de mes: "Enero" ... "Diciembre"
+ *  - Trimestre: "Q1", "Q2", "Q3", "Q4"
+ *  - Año: "YEAR_CURRENT" o "YEAR_2026"
+ *  - Clave YYYY-MM: ej. "2026-11"
+ */
+export function matchesPeriodFilter(dateValue: unknown, period: string): boolean {
+  if (!period || period === 'ALL' || period === 'all') return true;
+
+  const currentYear = new Date().getFullYear();
+  const currentMonthName = getCurrentMonthName();
+
+  // Si el filtro es CURRENT_MONTH, resolver al mes actual
+  const targetPeriod =
+    period === 'CURRENT_MONTH' || period === 'current_month' ? currentMonthName : period;
+
+  const extracted = extractMonthAndYearFromCommercialValue(dateValue);
+  if (!extracted) {
+    // Si no se pudo extraer fecha numérica, comprobar coincidencia textual directa de nombre de mes
+    if (typeof dateValue === 'string') {
+      const lower = dateValue.toLowerCase();
+      if (
+        SPANISH_MONTH_NAMES.some(
+          (m) => targetPeriod.toLowerCase().includes(m.toLowerCase()) && lower.includes(m.toLowerCase())
+        )
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Caso A: Filtro por Trimestre (Q1, Q2, Q3, Q4)
+  if (/^Q[1-4]$/i.test(targetPeriod)) {
+    const qNum = parseInt(targetPeriod.slice(1), 10);
+    const startMonth = (qNum - 1) * 3 + 1;
+    const endMonth = startMonth + 2;
+    return extracted.month >= startMonth && extracted.month <= endMonth;
+  }
+
+  // Caso B: Filtro por Año Actual
+  if (
+    targetPeriod === 'YEAR_CURRENT' ||
+    targetPeriod === 'year_current' ||
+    targetPeriod === `YEAR_${currentYear}`
+  ) {
+    return extracted.year === currentYear;
+  }
+
+  // Caso C: Filtro por clave "YYYY-MM"
+  if (/^\d{4}-\d{2}$/.test(targetPeriod)) {
+    const [filterY, filterM] = targetPeriod.split('-').map(Number);
+    return extracted.year === filterY && extracted.month === filterM;
+  }
+
+  // Caso D: Filtro por Nombre de Mes ("Noviembre", etc.)
+  for (let idx = 0; idx < SPANISH_MONTH_NAMES.length; idx++) {
+    const mName = SPANISH_MONTH_NAMES[idx];
+    if (targetPeriod.toLowerCase().includes(mName.toLowerCase())) {
+      return extracted.month === idx + 1;
+    }
+  }
+
+  return false;
+}
+

@@ -68,6 +68,9 @@ import {
   normalizeIsoTimestamp,
   extractYearMonth,
   compareDatesUnknownLast,
+  getCurrentYearMonth,
+  getCurrentMonthName,
+  matchesPeriodFilter,
 } from '../utils/dateUtils';
 import {
   searchDesktopStorage,
@@ -134,7 +137,7 @@ export function EstimatesHistoryView() {
 
   // Existing + Enhanced Filter States
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => getCurrentYearMonth());
   const [selectedCreator, setSelectedCreator] = useState<string>('all');
   const [selectedPartner, setSelectedPartner] = useState<string>('all');
   const [visibilityFilter, setVisibilityFilter] = useState<
@@ -483,7 +486,12 @@ export function EstimatesHistoryView() {
         (e.originalFileName || '').toLowerCase().includes(q);
 
       const matchesMonth =
-        selectedMonth === 'all' || Boolean(e.createdAt && extractYearMonth(e.createdAt) === selectedMonth);
+        selectedMonth === 'all' ||
+        Boolean(
+          e.createdAt &&
+            (extractYearMonth(e.createdAt) === selectedMonth ||
+              matchesPeriodFilter(e.createdAt, selectedMonth))
+        );
 
       const creatorUserLower = (e.creator?.username || '').trim().toLowerCase();
       const matchesCreator =
@@ -581,7 +589,12 @@ export function EstimatesHistoryView() {
         (d.creator?.username || '').toLowerCase().includes(q);
 
       const matchesMonth =
-        selectedMonth === 'all' || (d.createdAt && extractYearMonth(d.createdAt) === selectedMonth);
+        selectedMonth === 'all' ||
+        Boolean(
+          d.createdAt &&
+            (extractYearMonth(d.createdAt) === selectedMonth ||
+              matchesPeriodFilter(d.createdAt, selectedMonth))
+        );
 
       const creatorUserLower = (d.creator?.username || '').trim().toLowerCase();
       const matchesCreator =
@@ -994,22 +1007,34 @@ export function EstimatesHistoryView() {
               )}
             </div>
 
-            {/* Existing Month Filter */}
+            {/* Month / Period Filter */}
             <div className="flex items-center space-x-1.5 bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs">
               <Calendar className="w-3.5 h-3.5 text-cyan-400" />
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
                 className="bg-transparent text-slate-200 focus:outline-none cursor-pointer"
+                title="Filtrar por Mes o Periodo Comercial"
               >
-                <option value="all" className="bg-slate-900">
-                  Todos los meses
+                <option value={getCurrentYearMonth()} className="bg-slate-900 font-bold text-cyan-300">
+                  📅 Mes Actual ({getCurrentMonthName()} {new Date().getFullYear()})
                 </option>
-                {availableMonths.map((m) => (
-                  <option key={m} value={m} className="bg-slate-900">
-                    {m}
-                  </option>
-                ))}
+                <option value="all" className="bg-slate-900">
+                  Todos los meses (Histórico)
+                </option>
+                <optgroup label="── Trimestres ──" className="bg-slate-900 text-slate-400">
+                  <option value="Q1" className="bg-slate-900 text-slate-200">Q1 (Ene - Mar)</option>
+                  <option value="Q2" className="bg-slate-900 text-slate-200">Q2 (Abr - Jun)</option>
+                  <option value="Q3" className="bg-slate-900 text-slate-200">Q3 (Jul - Sep)</option>
+                  <option value="Q4" className="bg-slate-900 text-slate-200">Q4 (Oct - Dic)</option>
+                </optgroup>
+                <optgroup label="── Meses Registrados ──" className="bg-slate-900 text-slate-400">
+                  {availableMonths.map((m) => (
+                    <option key={m} value={m} className="bg-slate-900 text-slate-200">
+                      {m}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </div>
           </div>
@@ -1212,7 +1237,18 @@ export function EstimatesHistoryView() {
                           <span>Cargando cotizaciones desde la nube...</span>
                         </div>
                       ) : (
-                        'No se encontraron cotizaciones con los filtros actuales en el historial compartido.'
+                        <div className="flex flex-col items-center justify-center space-y-2">
+                          <p>No se encontraron cotizaciones con los filtros actuales en el historial compartido.</p>
+                          {selectedMonth !== 'all' && estimates.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedMonth('all')}
+                              className="px-3 py-1 bg-cyan-950/60 border border-cyan-700/60 hover:bg-cyan-900/60 text-cyan-300 rounded-lg text-xs font-medium transition cursor-pointer"
+                            >
+                              Ver todo el histórico de meses ({estimates.length} cotizaciones)
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                   </tr>

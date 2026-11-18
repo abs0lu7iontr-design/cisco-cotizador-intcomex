@@ -178,6 +178,7 @@ export interface ForecastFilterOptions {
   grupoVentas?: string;
   credit?: string;
   am?: string;
+  periodoMes?: string;
   onlyWithReminders?: boolean;
 }
 

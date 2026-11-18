@@ -20,6 +20,7 @@ import {
   formatCommercialDate,
   formatCommercialDateHyphen,
   parseDateBySource,
+  matchesPeriodFilter,
 } from '../../utils/dateUtils';
 
 export { formatCommercialDate, formatCommercialDateHyphen };
@@ -326,6 +327,15 @@ export function filterForecastRecords(
       if (r.am.toLowerCase() !== filters.am.toLowerCase()) {
         return false;
       }
+    }
+
+    // Filtro por Periodo / Mes (Mes Actual por defecto, Trimestres Q1-Q4, Año Actual)
+    if (filters.periodoMes && filters.periodoMes !== 'ALL' && filters.periodoMes !== 'all') {
+      const match =
+        matchesPeriodFilter(r.mesFacturacion, filters.periodoMes) ||
+        matchesPeriodFilter(r.fechaCotizacion, filters.periodoMes) ||
+        matchesPeriodFilter(r.fechaLevantamiento, filters.periodoMes);
+      if (!match) return false;
     }
 
     if (filters.onlyWithReminders) {

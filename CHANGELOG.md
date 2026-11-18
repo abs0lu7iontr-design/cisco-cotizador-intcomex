@@ -6,6 +6,27 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.17.1] - 2026-11-17
+### 📅 Filtros Dinámicos Mensuales por Defecto en Pipeline, Forecast e Historial con Soporte de Trimestres (Q) y Año
+- **Apertura Mensual Dinámica por Defecto en Módulos Comerciales:**
+  - Configurado el filtrado temporal en **Pipeline Comercial**, **Forecast Comercial** e **Historial de Estimates** para abrir de forma predeterminada en el **Mes Actual** (ej. *Noviembre 2026*).
+  - La interfaz se mantiene limpia, ordenada y concentrada en las oportunidades y cotizaciones del periodo en curso, eliminando la sobrecarga cognitiva de visualizar cientos de registros históricos al mismo tiempo.
+- **Transición Automática Mes a Mes:**
+  - El mes activo se resuelve dinámicamente mediante el reloj del sistema (`getCurrentMonthName()`, `getCurrentYearMonth()`); al avanzar el calendario (ej. paso de Noviembre a Diciembre), el filtro inicial progresa automáticamente al mes subsiguiente sin intervención manual ni reinicio de configuración.
+- **Soporte Integral de Periodos Comerciales (Trimestres, Años y Meses):**
+  - Los selectores de filtro en Pipeline, Forecast e Historial ahora incluyen:
+    - `Mes Actual` (con nombre de mes dinámico y año).
+    - `Todos los Meses` (Histórico Completo).
+    - `Trimestres`: `Q1 (Ene - Mar)`, `Q2 (Abr - Jun)`, `Q3 (Jul - Sep)` y `Q4 (Oct - Dic)`.
+    - Meses individuales del calendario gregoriano.
+    - `Año Actual` (`YEAR_CURRENT`).
+- **Evaluador Temporal Universal (`matchesPeriodFilter` en `dateUtils.ts`):**
+  - Motor de matching unificado y tipado capaz de correlacionar fechas en formatos ISO (`YYYY-MM-DD`), cadenas con nombres de meses en español (`Noviembre`, `Diciembre`), claves `YYYY-MM`, trimestres y números de serie de Excel (ej. `46252` correlacionado a Agosto y Q3).
+- **Acción Rápida en Estado Vacío:**
+  - Cuando un módulo abre en el mes actual y aún no existen cotizaciones u oportunidades registradas para ese mes, se ofrece un botón interactivo para alternar a *"Ver todos los meses / histórico completo"* en 1 solo clic.
+- **Nueva Suite de Pruebas Unitarias Automatizadas (`tests/commercialPeriodFiltering.test.ts`):**
+  - Suite exhaustiva validando resolución de mes y trimestre dinámico, filtrado multiformato con seriales de Excel y filtros comerciales en Pipeline y Forecast (37 suites del proyecto pasando al 100%).
+
 ## [v2.17.0] - 2026-11-17
 ### 🗄️ Migración a Motor Relacional SQLite Oficial (WASM) & Persistencia Física en Disco OPFS
 - **Migración a Motor Relacional SQLite Oficial:**

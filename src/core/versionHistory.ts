@@ -15,11 +15,27 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.17.1',
+    date: '2026-11-17',
+    commit: 'feat-dynamic-monthly-default-filters-pipeline-forecast-estimates',
+    title: 'Filtros Dinámicos Mensuales por Defecto en Pipeline, Forecast e Historial con Soporte de Trimestres (Q) y Año',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Apertura Mensual Dinámica por Defecto: Pipeline Comercial, Forecast Comercial e Historial de Estimates ahora se inicializan y abren automáticamente en el Mes Actual del calendario (ej. Noviembre 2026), garantizando una experiencia visual limpia, ordenada y enfocada en el periodo en curso.',
+      'Transición Automática Mes a Mes: La plataforma calcula en tiempo de ejecución el mes actual según el reloj del sistema; cuando el calendario avanza de mes, la vista por defecto progresa automáticamente al siguiente mes sin requerir ajustes manuales.',
+      'Soporte Completo de Periodos Comerciales: Los selectores de filtro ahora permiten alternar fluidamente entre Mes Actual, Todos los Meses (Histórico Completo), Trimestres (Q1: Ene-Mar, Q2: Abr-Jun, Q3: Jul-Sep, Q4: Oct-Dic), Meses individuales y Año Actual.',
+      'Evaluador Temporal Universal (matchesPeriodFilter): Función unificada en dateUtils capaz de correlacionar fechas en formato ISO, nombres de mes en español, claves YYYY-MM, trimestres y números de serie de Excel con el periodo comercial seleccionado.',
+      'Acción Rápida en Estado Vacío: Si el mes actual aún no contiene registros en Pipeline, Forecast o Historial, se despliega un botón inteligente para conmutar a "Ver todos los meses / histórico completo" en 1 solo clic.',
+      'Nueva Suite de Pruebas Unitarias (tests/commercialPeriodFiltering.test.ts): Valida la resolución dinámica de fechas, filtrado mensual, trimestral y anual en Pipeline y Forecast, con 37 suites de pruebas del proyecto pasando al 100%.',
+    ],
+  },
+  {
     version: '2.17.0',
     date: '2026-11-17',
     commit: 'feat-relational-sqlite-wasm-opfs-storage-engine',
     title: 'Migración a Motor Relacional SQLite Oficial vía WebAssembly (WASM) y Persistencia en Disco OPFS',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Migración de Motor de Base de Datos: Implementado el motor relacional oficial SQLite v3 compilado a WebAssembly (WASM) con persistencia física en disco mediante OPFS (Origin Private File System).',

@@ -33,6 +33,7 @@ import {
   Truck,
   ExternalLink,
   RotateCcw,
+  Calendar,
 } from 'lucide-react';
 import { isAppOffline } from '../../core/storage/offlineModeManager';
 import {
@@ -67,6 +68,7 @@ import {
   formatCommercialDate,
 } from './forecastService';
 import { ForecastModal } from './ForecastModal';
+import { getCurrentMonthName, SPANISH_MONTH_NAMES } from '../../utils/dateUtils';
 import { useCiscoAutomatedStore } from '../../core/store';
 import { getPipelineDeals } from '../pipeline/pipelineStorage';
 import { getBoTrackings } from '../bo/boTrackingService';
@@ -83,6 +85,7 @@ export function ForecastView() {
     grupoVentas: 'ALL',
     credit: 'ALL',
     am: 'ALL',
+    periodoMes: getCurrentMonthName(),
     onlyWithReminders: false,
   });
 
@@ -541,6 +544,39 @@ export function ForecastView() {
             />
           </div>
 
+          {/* Period / Month Filter */}
+          <div className="flex items-center space-x-1.5 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5">
+            <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <select
+              value={filters.periodoMes || getCurrentMonthName()}
+              onChange={(e) => setFilters((prev) => ({ ...prev, periodoMes: e.target.value }))}
+              className="bg-transparent text-xs text-slate-200 focus:outline-none cursor-pointer"
+            >
+              <option value={getCurrentMonthName()} className="bg-slate-900">
+                Mes Actual ({getCurrentMonthName()})
+              </option>
+              <option value="ALL" className="bg-slate-900">
+                Todos los Periodos (Histórico Completo)
+              </option>
+              <optgroup label="Trimestres (Q)" className="bg-slate-900">
+                <option value="Q1" className="bg-slate-900">Q1 (Ene - Mar)</option>
+                <option value="Q2" className="bg-slate-900">Q2 (Abr - Jun)</option>
+                <option value="Q3" className="bg-slate-900">Q3 (Jul - Sep)</option>
+                <option value="Q4" className="bg-slate-900">Q4 (Oct - Dic)</option>
+              </optgroup>
+              <optgroup label="Meses del Año" className="bg-slate-900">
+                {SPANISH_MONTH_NAMES.map((m) => (
+                  <option key={m} value={m} className="bg-slate-900">
+                    {m}
+                  </option>
+                ))}
+              </optgroup>
+              <option value="YEAR_CURRENT" className="bg-slate-900">
+                Año Actual ({new Date().getFullYear()})
+              </option>
+            </select>
+          </div>
+
           {/* PM Filter */}
           <select
             value={filters.pmResponsable || 'ALL'}
@@ -677,6 +713,15 @@ export function ForecastView() {
                       <p className="text-xs text-slate-500">
                         Ajusta los filtros o haz clic en "Cruzar con Módulos" para auto-cargar datos desde CCW o BO.
                       </p>
+                      {Boolean(filters.periodoMes && records.length > 0) && (
+                        <button
+                          type="button"
+                          onClick={() => setFilters((prev) => ({ ...prev, periodoMes: '' }))}
+                          className="mt-2 px-3 py-1 bg-cyan-950/60 border border-cyan-700/60 hover:bg-cyan-900/60 text-cyan-300 rounded-lg text-xs font-medium transition cursor-pointer"
+                        >
+                          Ver todos los meses ({records.length} registros totales)
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

@@ -18,6 +18,7 @@ import {
   normalizeMatchKey,
   formatCommercialDate,
 } from '../forecast/forecastService';
+import { matchesPeriodFilter } from '../../utils/dateUtils';
 
 // ----------------------------------------------------------------------------
 // 1. Estadísticas y Agregaciones de Negocio
@@ -123,9 +124,13 @@ export function filterPipelineDeals(
       if (deal.grupoVentas !== options.grupoVentas) return false;
     }
 
-    // 4. Filtro por Mes de Cierre
-    if (options.mesCierre && options.mesCierre !== 'ALL') {
-      if ((deal.mesCierre || '').toLowerCase() !== options.mesCierre.toLowerCase()) return false;
+    // 4. Filtro por Mes de Cierre / Periodo (Mes Actual, Trimestres Q1-Q4, Año Actual)
+    if (options.mesCierre && options.mesCierre !== 'ALL' && options.mesCierre !== 'all') {
+      const match =
+        matchesPeriodFilter(deal.mesCierre, options.mesCierre) ||
+        matchesPeriodFilter(deal.fechaCotizacion, options.mesCierre) ||
+        matchesPeriodFilter(deal.fechaLevantamiento, options.mesCierre);
+      if (!match) return false;
     }
 
     // 5. Filtro por AM
