@@ -16,6 +16,7 @@ import {
   isProjectContextCurrent,
 } from '../modules/cloud/firebaseConfig';
 import { idbSet, STORES } from '../core/storage/indexedDbStorage';
+import { isAppOffline } from '../core/storage/offlineModeManager';
 
 export interface PartnerRecord {
   resellerName: string;
@@ -274,6 +275,9 @@ export async function flushPendingPartnerWrites(
   const capturedCtx = captureProjectContext();
   const pendingMap = getPendingPartnerWrites(capturedCtx.projectId);
   const entries = Object.values(pendingMap);
+  if (isAppOffline()) {
+    return { synced: 0, remaining: entries.length };
+  }
   if (entries.length === 0) {
     return { synced: 0, remaining: 0 };
   }
@@ -342,6 +346,11 @@ export function usePartnerDatabase(originalBomName: string) {
 
   // 1. Suscripción a Firestore + sincronización de escrituras pendientes al recuperar red
   useEffect(() => {
+    if (isAppOffline()) {
+      // Modo Offline: mantener base de partners 100% en local sin consultar ni subir a Firestore
+      return;
+    }
+
     let db: Firestore | null = null;
     const capturedCtx = captureProjectContext();
     try {
@@ -353,23 +362,8 @@ export function usePartnerDatabase(originalBomName: string) {
       db = null;
     }
 
-    const handleOnline = () => {
-      flushPendingPartnerWrites().catch(() => {});
-    };
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('online', handleOnline);
-    }
-
-    // Intentar sincronizar pendientes al montar
-    flushPendingPartnerWrites().catch(() => {});
-
     if (!db) {
-      return () => {
-        if (typeof window !== 'undefined') {
-          window.removeEventListener('online', handleOnline);
-        }
-      };
+      return;
     }
 
     try {
@@ -415,17 +409,10 @@ export function usePartnerDatabase(originalBomName: string) {
       return () => {
         unregisterListener();
         rawUnsubscribe();
-        if (typeof window !== 'undefined') {
-          window.removeEventListener('online', handleOnline);
-        }
       };
     } catch (err) {
       console.warn('[usePartnerDatabase Note]: Firestore listener failed to attach:', err);
-      return () => {
-        if (typeof window !== 'undefined') {
-          window.removeEventListener('online', handleOnline);
-        }
-      };
+      return () => {};
     }
   }, []);
 

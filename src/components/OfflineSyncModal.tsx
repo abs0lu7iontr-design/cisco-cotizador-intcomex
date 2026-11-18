@@ -93,6 +93,7 @@ export const OfflineSyncModal: React.FC<OfflineSyncModalProps> = ({
     try {
       const result = await flushOfflineQueue({
         forceEvenIfManualOffline: true,
+        hasUserConsent: true,
         onProgress: (processed, total, currentItem) => {
           setProgress({
             processed,

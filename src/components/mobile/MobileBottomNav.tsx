@@ -17,6 +17,7 @@ interface MobileBottomNavProps {
   onLogout: () => void;
   activeBoCount?: number;
   unreadFeedbackCount?: number;
+  pendingOfflineCount?: number;
   hasActiveEstimate?: boolean;
   onUploadClick?: () => void;
   onDsvClick?: () => void;
@@ -34,6 +35,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   onLogout,
   activeBoCount = 0,
   unreadFeedbackCount = 0,
+  pendingOfflineCount = 0,
   hasActiveEstimate = false,
   onUploadClick,
   onDsvClick,
@@ -59,7 +61,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
     },
     {
       id: 'configuriator' as NavViewId,
-      label: 'ConfigurIAtor',
+      label: 'Preventa IA',
       icon: Bot,
       pill: 'IA',
     },
@@ -164,6 +166,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         currentUser={currentUser}
         onLogout={onLogout}
         unreadFeedbackCount={unreadFeedbackCount}
+        pendingOfflineCount={pendingOfflineCount}
         onUploadClick={onUploadClick}
         onDsvClick={onDsvClick}
         onOpenRules={onOpenRules}

@@ -328,9 +328,12 @@ async function executeQueuedItem(item: OfflineQueueItem): Promise<{ ok: boolean;
 
 /**
  * Procesa y envía a Firestore todos los registros encolados en IndexedDB.
+ * Requiere consentimiento explícito del usuario (`hasUserConsent: true`).
+ * NUNCA sube datos automáticamente sin autorización.
  */
 export async function flushOfflineQueue(options?: {
   forceEvenIfManualOffline?: boolean;
+  hasUserConsent?: boolean;
   onProgress?: (processed: number, total: number, currentItem?: OfflineQueueItem) => void;
 }): Promise<{
   successCount: number;
@@ -338,6 +341,20 @@ export async function flushOfflineQueue(options?: {
   remainingCount: number;
   errors: string[];
 }> {
+  // Blindaje Estricto de Consentimiento del Usuario
+  if (!options?.hasUserConsent) {
+    const pending = await getPendingOfflineActions();
+    console.warn(
+      '[OfflineQueue] Subida bloqueada: Se requiere consentimiento explícito del usuario para enviar datos a la nube.'
+    );
+    return {
+      successCount: 0,
+      failedCount: 0,
+      remainingCount: pending.length,
+      errors: ['Se requiere confirmación o consentimiento explícito del usuario para sincronizar con la nube.'],
+    };
+  }
+
   if (isNavigatorOffline()) {
     const pending = await getPendingOfflineActions();
     return {
@@ -411,32 +428,21 @@ export async function flushOfflineQueue(options?: {
 
 /**
  * Inicializa los listeners nativos de online/offline.
- * Respeta el Modo Offline manual: NO sube cambios automáticamente si el usuario activó el botón Offline.
+ * NUNCA sube cambios automáticamente a la nube.
+ * Al reconectar o cambiar de red, únicamente notifica al frontend para actualizar insignias
+ * y preservar todos los datos localmente en el PC hasta que el usuario decida subirlos con su consentimiento.
  */
-export function initOfflineSyncListeners(onSyncSuccess?: (count: number) => void): () => void {
+export function initOfflineSyncListeners(_onSyncSuccess?: (count: number) => void): () => void {
   if (typeof window === 'undefined') return () => {};
 
   const handleOnline = async () => {
-    if (isAppOffline()) {
-      console.log('[OfflineQueue] Modo Offline manual activo; subida en pausa hasta confirmación del usuario.');
-      return;
-    }
-    console.log('[OfflineQueue] Conexión a internet activa. Verificando cola pendiente...');
-    try {
-      const res = await flushOfflineQueue();
-      if (res.successCount > 0 && onSyncSuccess) {
-        onSyncSuccess(res.successCount);
-      }
-    } catch (err) {
-      console.warn('[OfflineQueue] Error al procesar cola online:', err);
-    }
+    console.log(
+      '[OfflineQueue] Conexión de red detectada. Cola offline se mantiene local protegida a la espera de consentimiento explícito del usuario.'
+    );
+    notifyOfflineQueueChanged();
   };
 
   window.addEventListener('online', handleOnline);
-
-  if (typeof navigator !== 'undefined' && navigator.onLine && !isManualOfflineMode()) {
-    setTimeout(handleOnline, 3000);
-  }
 
   return () => {
     window.removeEventListener('online', handleOnline);

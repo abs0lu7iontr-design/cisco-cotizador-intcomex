@@ -6,6 +6,27 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.17.2] - 2026-11-18
+### 🛡️ Blindaje Estricto de Privacidad Offline, Consentimiento de Subida Nube y Actualización de Versión Mobile
+- **Confirmación y Aislamiento 100% Efectivo en Modo Offline:**
+  - Verificado que en Modo Offline todos los módulos comerciales (Cotizador CCW, Cotizador CCW-R de Servicios, Generador DSV, Seguimiento Tracking BO, Pipeline Comercial, Forecast Comercial y Registro de Partners) operan de manera 100% aislada en el PC, escribiendo exclusivamente en SQLite / OPFS e IndexedDB sin contactar ni transferir datos a Firestore.
+- **Conexiones a Internet Habilitadas Exclusivas y Específicas:**
+  - Se confirma y garantiza que únicamente tres funcionalidades específicas tienen conectividad de red autorizada:
+    1. **Actualizaciones de la Aplicación:** Monitoreo y descarga de nuevas versiones y notas de release desde la CDN de Cloudflare Pages (`/version.json`), permitiendo actualizar en caliente en 1 clic.
+    2. **Autenticación y Login en la Nube:** Validación de credenciales de usuario contra Firestore Cloud al contar con conexión física a Internet, sin guardar contraseñas ni hashes en el equipo local.
+    3. **Preventa IA:** Consultas de homologación y análisis técnico asistido por IA (Google Gemini API), previa solicitud o consentimiento del usuario.
+- **Cero Subidas sin Consentimiento Explícito (Incluso al Volver a Online):**
+  - Eliminado de raíz el vaciado automático de la cola offline (`flushOfflineQueue`) en eventos de reconexión de red (`window 'online'`) o tras pasar de Offline a Online.
+  - La función `flushOfflineQueue` ahora exige obligatoriamente el parámetro `hasUserConsent: true`. Si no se cuenta con la autorización expresa del usuario, la subida se bloquea inmediatamente y los datos se mantienen resguardados en el PC.
+  - El usuario dispone de control soberano en el modal de sincronización (`OfflineSyncModal.tsx`) para revisar sus acciones pendientes y decidir explícitamente entre: `[Subir a la Nube (Consentimiento)]`, `[Pasar a Online sin Subir (Mantener Local)]` o `[Descartar Cambios del PC]`.
+- **Actualización Integral de la Experiencia Móvil (Mobile PWA & Touch):**
+  - `MobileBottomNav.tsx`: Pestaña 2 actualizada oficialmente a **"Preventa IA"** con icono `Bot` e insignia `IA`.
+  - `MobileMenuDrawer.tsx`: Enriquecido con accesos directos a los módulos de **"Demanda & Stock E1"** (Bodega E1 Santiago) y **"Monitor de Salud & SQLite"** (diagnóstico de almacenamiento WASM y VACUUM).
+  - Indicador interactivo en el encabezado móvil mostrando en tiempo real el estado `OFFLINE` / `ONLINE` y el conteo de cambios pendientes en disco local.
+  - Actualizada la etiqueta del catálogo local a "Catálogo Fast Track (SQLite / Local)".
+- **Nueva Suite de Pruebas Unitarias Automatizadas (`tests/offlineConsentAndMobileVersion.test.ts`):**
+  - Cobertura completa en el bloqueo de subidas no consentidas, aislamiento de red y coherencia de navegación móvil (38 suites de pruebas del proyecto pasando al 100%).
+
 ## [v2.17.1] - 2026-11-17
 ### 📅 Filtros Dinámicos Mensuales por Defecto en Pipeline, Forecast e Historial con Soporte de Trimestres (Q) y Año
 - **Apertura Mensual Dinámica por Defecto en Módulos Comerciales:**

@@ -18,10 +18,17 @@ import {
   TrendingUp,
   ShieldCheck,
   Table,
+  Boxes,
+  Activity,
+  Bot,
+  Wifi,
+  WifiOff,
+  HardDrive,
 } from 'lucide-react';
 import { NavViewId } from '../../core/store';
 import { UserSession } from '../../core/types';
 import { getFormattedAppVersion } from '../../core/appVersion';
+import { useOfflineMode } from '../../core/storage/offlineModeManager';
 
 interface MobileMenuDrawerProps {
   isOpen: boolean;
@@ -31,6 +38,7 @@ interface MobileMenuDrawerProps {
   currentUser: UserSession;
   onLogout: () => void;
   unreadFeedbackCount?: number;
+  pendingOfflineCount?: number;
   onUploadClick?: () => void;
   onDsvClick?: () => void;
   onOpenRules?: () => void;
@@ -46,6 +54,7 @@ export const MobileMenuDrawer: React.FC<MobileMenuDrawerProps> = ({
   currentUser,
   onLogout,
   unreadFeedbackCount = 0,
+  pendingOfflineCount = 0,
   onUploadClick,
   onDsvClick,
   onOpenRules,
@@ -59,6 +68,7 @@ export const MobileMenuDrawer: React.FC<MobileMenuDrawerProps> = ({
     onClose();
   };
 
+  const { isOffline } = useOfflineMode();
   const isAdmin = currentUser.role === 'admin';
 
   return (
@@ -83,10 +93,29 @@ export const MobileMenuDrawer: React.FC<MobileMenuDrawerProps> = ({
                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider bg-indigo-950 text-indigo-300 border border-indigo-700/40">
                   {currentUser.role}
                 </span>
+                {isOffline ? (
+                  <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-500/40">
+                    <WifiOff className="w-2.5 h-2.5" />
+                    <span>OFFLINE</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-500/40">
+                    <Wifi className="w-2.5 h-2.5" />
+                    <span>ONLINE</span>
+                  </span>
+                )}
               </div>
-              <span className="text-[10px] text-slate-400 font-mono">
-                Cisco Automated {getFormattedAppVersion()}
-              </span>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[10px] text-slate-400 font-mono">
+                  Cisco Automated {getFormattedAppVersion()}
+                </span>
+                {pendingOfflineCount > 0 && (
+                  <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-400">
+                    <HardDrive className="w-2.5 h-2.5" />
+                    <span>{pendingOfflineCount} en cola PC</span>
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -152,6 +181,23 @@ export const MobileMenuDrawer: React.FC<MobileMenuDrawerProps> = ({
             </button>
 
             <button
+              onClick={() => handleNav('configuriator')}
+              className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-colors cursor-pointer ${
+                currentView === 'configuriator'
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'text-slate-300 hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Bot className="w-4 h-4 text-cyan-400" />
+                <span>Preventa IA</span>
+              </div>
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-cyan-950 text-cyan-300 border border-cyan-700/50">
+                IA
+              </span>
+            </button>
+
+            <button
               onClick={() => handleNav('pipeline')}
               className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-colors cursor-pointer ${
                 currentView === 'pipeline'
@@ -177,6 +223,23 @@ export const MobileMenuDrawer: React.FC<MobileMenuDrawerProps> = ({
                 <Table className="w-4 h-4 text-sky-400" />
                 <span>Forecast Comercial</span>
               </div>
+            </button>
+
+            <button
+              onClick={() => handleNav('stock_intelligence')}
+              className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-colors cursor-pointer ${
+                currentView === 'stock_intelligence'
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'text-slate-300 hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Boxes className="w-4 h-4 text-amber-400" />
+                <span>Demanda & Stock E1</span>
+              </div>
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-700/50">
+                Bodega E1
+              </span>
             </button>
 
             <button
@@ -242,7 +305,7 @@ export const MobileMenuDrawer: React.FC<MobileMenuDrawerProps> = ({
                 className="w-full flex items-center gap-2.5 p-2.5 rounded-xl text-xs text-slate-300 hover:bg-slate-800/60 transition-colors cursor-pointer"
               >
                 <Zap className="w-4 h-4 text-amber-400" />
-                <span>Catálogo Fast Track (IndexedDB)</span>
+                <span>Catálogo Fast Track (SQLite / Local)</span>
               </button>
             )}
 
@@ -306,6 +369,23 @@ export const MobileMenuDrawer: React.FC<MobileMenuDrawerProps> = ({
                 </button>
               </>
             )}
+
+            <button
+              onClick={() => handleNav('health')}
+              className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-colors cursor-pointer ${
+                currentView === 'health'
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'text-slate-300 hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Activity className="w-4 h-4 text-emerald-400" />
+                <span>Monitor de Salud & SQLite</span>
+              </div>
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/50">
+                WASM
+              </span>
+            </button>
 
             <button
               onClick={() => handleNav('settings')}

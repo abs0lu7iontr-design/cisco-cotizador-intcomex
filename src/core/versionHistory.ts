@@ -15,11 +15,28 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.17.2',
+    date: '2026-11-18',
+    commit: 'feat-strict-offline-privacy-consent-armor-and-mobile-version-updates',
+    title: 'Blindaje Estricto de Privacidad Offline, Consentimiento de Subida Nube y Actualización de Versión Mobile',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Confirmación de Aislamiento 100% Offline: Verificado y blindado que en Modo Offline todos los módulos (Cotizador CCW, CCW-R, DSV, Tracking BO, Pipeline Comercial, Forecast Comercial y Base de Partners) operan de manera estrictamente local en SQLite / OPFS e IndexedDB sin comunicarse ni enviar datos a Firestore.',
+      'Únicas Funciones Conectadas a la Red: Confirmado que únicamente permanecen habilitadas online: 1) Verificación y descarga de Actualizaciones desde CDN Cloudflare, 2) Autenticación segura de credenciales contra Firestore Cloud (sin contraseñas guardadas en el PC), y 3) Modelos de IA en vivo de Preventa IA (Gemini API) previa confirmación.',
+      'Cero Subidas sin Consentimiento Explícito: Eliminado de raíz el vaciado automático de la cola offline al recuperar conexión a Internet o conmutar de offline a online. Los registros encolados se mantienen seguros en el PC hasta que el usuario decida y autorice manualmente su subida desde el modal de sincronización.',
+      'Guardas de Consentimiento en flushOfflineQueue: La función de sincronización exige el parámetro hasUserConsent para procesar cualquier registro hacia la nube, rechazando intentos automáticos en segundo plano.',
+      'Actualización Integral de la Versión Mobile: MobileBottomNav actualizado renombrando el módulo de IA a "Preventa IA" (pestaña 2 con icono Bot e insignia "IA").',
+      'Cajón Móvil (MobileMenuDrawer) Enriquecido: Incorporados los módulos "Demanda & Stock E1" (Bodega E1 Santiago), "Monitor de Salud & SQLite" (diagnóstico de almacenamiento WASM y VACUUM) y "Preventa IA", junto con el indicador interactivo del estado Offline / Online en el encabezado móvil.',
+      'Nueva Suite de Pruebas Unitarias (tests/offlineConsentAndMobileVersion.test.ts): Cobertura del 100% en aislamiento offline, rechazo de subidas no consentidas, preservación de cola local tras reconexión y navegación móvil (38 suites de tests aprobadas al 100%).',
+    ],
+  },
+  {
     version: '2.17.1',
     date: '2026-11-17',
     commit: 'feat-dynamic-monthly-default-filters-pipeline-forecast-estimates',
     title: 'Filtros Dinámicos Mensuales por Defecto en Pipeline, Forecast e Historial con Soporte de Trimestres (Q) y Año',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Apertura Mensual Dinámica por Defecto: Pipeline Comercial, Forecast Comercial e Historial de Estimates ahora se inicializan y abren automáticamente en el Mes Actual del calendario (ej. Noviembre 2026), garantizando una experiencia visual limpia, ordenada y enfocada en el periodo en curso.',

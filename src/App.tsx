@@ -1349,6 +1349,7 @@ function AppContent() {
         onLogout={logout}
         activeBoCount={activeBoCount}
         unreadFeedbackCount={unreadFeedbackCount}
+        pendingOfflineCount={pendingOfflineCount}
         hasActiveEstimate={Boolean(processedResult)}
         onUploadClick={handleUploadClick}
         onDsvClick={handleDsvClick}
