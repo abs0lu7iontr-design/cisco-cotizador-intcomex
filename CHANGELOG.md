@@ -6,6 +6,24 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.17.4] - 2026-11-18
+### 🔐 Erradicación de Usuario Predeterminado Residual y Soporte Transparente de Credenciales Guardadas en Pantalla de Login
+- **Erradicación Definitiva del Usuario Residual `pm_cisco`:**
+  - Eliminado el valor de prueba predeterminado hardcodeado `"pm_cisco"` en `FACTORY_DEFAULT_PLATFORM_CONFIG` dentro de `localPlatformConfig.ts`.
+  - Si el usuario no ha guardado previamente credenciales en el equipo, los campos de entrada **"Usuario de Sistema"** y **"Contraseña"** inician de manera 100% limpia y vacía.
+- **Saneamiento Automático de LocalStorage:**
+  - Implementada una rutina de auto-curación en `getLocalPlatformConfig()`: si existe una clave legacy con `lastUsername === 'pm_cisco'`, se sanea automáticamente a `''` y se sincroniza la corrección en `localStorage` al arrancar la app.
+  - Esto evita que el Gestor de Contraseñas del navegador (Chrome, Edge, PyWebView2) detecte el usuario predeterminado `"pm_cisco"` y autoinyecte contraseñas no deseadas.
+- **Soporte Transparente y Seguro de Credenciales Recordadas:**
+  - Si el usuario activa la opción *"Recordar usuario en este computador"*, el sistema persiste de forma segura y discreta su propio usuario y contraseña en el almacenamiento local protegido (`cisco_local_saved_pass_v1`).
+  - Al cargar la aplicación, si el usuario tiene credenciales guardadas conscientemente, se muestran sus datos legítimos (ej. `mskill`), permitiendo un inicio de sesión expedito en 1 solo clic.
+- **Purga Instantánea de Seguridad al Desmarcar:**
+  - Al desmarcar la casilla *"Recordar usuario en este computador"*, tanto el usuario como el token de contraseña almacenados en el PC se eliminan de inmediato.
+- **Aislamiento de Cambios de Usuario:**
+  - Al modificar o borrar manualmente el campo de usuario, la contraseña asociada se limpia de inmediato para prevenir incongruencias o accesos erróneos.
+- **Nueva Suite de Pruebas Unitarias Automatizadas (`tests/savedCredentialsAndLoginClean.test.ts`):**
+  - Valida la configuración de fábrica limpia, saneamiento de remanentes legacy, autocompletado de credenciales guardadas y purga en desmarcado (40 suites de prueba del proyecto pasando al 100%).
+
 ## [v2.17.3] - 2026-11-18
 ### 🖥️ Auto-Ajuste Responsivo de Pantalla, Densidad Dinámica y Control de Zoom en Historial de Estimates
 - **Auto-Ajuste Responsivo de Pantalla (100% Fit):**

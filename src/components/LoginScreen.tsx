@@ -61,10 +61,27 @@ interface SecurityState {
 }
 
 const SECURITY_STORAGE_KEY = 'cisco_auth_security_state';
+const SAVED_PASSWORD_STORAGE_KEY = 'cisco_local_saved_pass_v1';
 const MAX_FAILED_ATTEMPTS = 3;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 const FLOOD_WINDOW_MS = 10 * 1000; // 10 seconds
 const MAX_FLOOD_REQUESTS = 4;
+
+function encodePasswordToken(pass: string): string {
+  try {
+    return btoa(encodeURIComponent(pass));
+  } catch {
+    return '';
+  }
+}
+
+function decodePasswordToken(token: string): string {
+  try {
+    return decodeURIComponent(atob(token));
+  } catch {
+    return '';
+  }
+}
 
 function loadSecurityState(): SecurityState {
   try {
@@ -100,9 +117,27 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const localConfig = getLocalPlatformConfig();
 
   const [username, setUsername] = useState(() => {
-    return (localConfig.rememberLastUser && localConfig.lastUsername) || '';
+    if (!localConfig.rememberLastUser) return '';
+    const rawUser = (localConfig.lastUsername || '').trim();
+    // Jamás autocompletar con 'pm_cisco' por defecto; solo mostrar si es un usuario legítimo guardado por el usuario
+    return rawUser.toLowerCase() === 'pm_cisco' ? '' : rawUser;
   });
-  const [password, setPassword] = useState('');
+
+  const [password, setPassword] = useState(() => {
+    if (!localConfig.rememberLastUser) return '';
+    const rawUser = (localConfig.lastUsername || '').trim();
+    if (!rawUser || rawUser.toLowerCase() === 'pm_cisco') return '';
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const stored = localStorage.getItem(SAVED_PASSWORD_STORAGE_KEY);
+        if (stored) {
+          return decodePasswordToken(stored);
+        }
+      }
+    } catch {}
+    return '';
+  });
+
   const [rememberUser, setRememberUser] = useState<boolean>(() => {
     return localConfig.rememberLastUser ?? true;
   });
@@ -264,11 +299,28 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             lastAttemptTime: now,
             recentRequestTimestamps: [],
           });
-          // Guardar preferencia de recordar usuario en este equipo
-          saveLocalPlatformConfig({
-            rememberLastUser: rememberUser,
-            lastUsername: rememberUser ? cleanUser : '',
-          });
+          // Guardar preferencia de recordar usuario y contraseña en este equipo
+          if (rememberUser && cleanUser) {
+            saveLocalPlatformConfig({
+              rememberLastUser: true,
+              lastUsername: cleanUser,
+            });
+            try {
+              if (typeof localStorage !== 'undefined' && cleanPass) {
+                localStorage.setItem(SAVED_PASSWORD_STORAGE_KEY, encodePasswordToken(cleanPass));
+              }
+            } catch {}
+          } else {
+            saveLocalPlatformConfig({
+              rememberLastUser: false,
+              lastUsername: '',
+            });
+            try {
+              if (typeof localStorage !== 'undefined') {
+                localStorage.removeItem(SAVED_PASSWORD_STORAGE_KEY);
+              }
+            } catch {}
+          }
           const currentGeo = geoInfo || (await checkGeoLocation());
           if (!geoInfo) setGeoInfo(currentGeo);
           if (currentGeo.requires2FA) {
@@ -352,11 +404,28 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       });
       setFailedCount(0);
 
-      // Guardar preferencia de recordar usuario en este equipo
-      saveLocalPlatformConfig({
-        rememberLastUser: rememberUser,
-        lastUsername: rememberUser ? cleanUser : '',
-      });
+      // Guardar preferencia de recordar usuario y contraseña en este equipo
+      if (rememberUser && cleanUser) {
+        saveLocalPlatformConfig({
+          rememberLastUser: true,
+          lastUsername: cleanUser,
+        });
+        try {
+          if (typeof localStorage !== 'undefined' && cleanPass) {
+            localStorage.setItem(SAVED_PASSWORD_STORAGE_KEY, encodePasswordToken(cleanPass));
+          }
+        } catch {}
+      } else {
+        saveLocalPlatformConfig({
+          rememberLastUser: false,
+          lastUsername: '',
+        });
+        try {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem(SAVED_PASSWORD_STORAGE_KEY);
+          }
+        } catch {}
+      }
 
       // Update last_login asynchronously in background si está Online
       if (!isOffline) {
@@ -515,7 +584,17 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 name="username"
                 type="text"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setUsername(val);
+                  // Si el usuario borra o cambia el username y había contraseña guardada, limpiarla
+                  if (!val.trim() && password) {
+                    setPassword('');
+                    try {
+                      localStorage.removeItem(SAVED_PASSWORD_STORAGE_KEY);
+                    } catch {}
+                  }
+                }}
                 placeholder="Ingrese su usuario..."
                 autoComplete="username"
                 spellCheck="false"
@@ -567,10 +646,25 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 onChange={(e) => {
                   const val = e.target.checked;
                   setRememberUser(val);
-                  saveLocalPlatformConfig({
-                    rememberLastUser: val,
-                    lastUsername: val ? username : '',
-                  });
+                  if (val) {
+                    saveLocalPlatformConfig({
+                      rememberLastUser: true,
+                      lastUsername: username.trim(),
+                    });
+                    if (password) {
+                      try {
+                        localStorage.setItem(SAVED_PASSWORD_STORAGE_KEY, encodePasswordToken(password));
+                      } catch {}
+                    }
+                  } else {
+                    saveLocalPlatformConfig({
+                      rememberLastUser: false,
+                      lastUsername: '',
+                    });
+                    try {
+                      localStorage.removeItem(SAVED_PASSWORD_STORAGE_KEY);
+                    } catch {}
+                  }
                 }}
                 className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
               />

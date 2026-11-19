@@ -280,7 +280,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     setCurrentUserState(user);
     if (user?.username) {
       try {
-        saveLocalPlatformConfig({ lastUsername: user.username });
+        const localCfg = getLocalPlatformConfig();
+        if (localCfg.rememberLastUser) {
+          saveLocalPlatformConfig({ lastUsername: user.username });
+        }
       } catch {}
     }
   }, []);

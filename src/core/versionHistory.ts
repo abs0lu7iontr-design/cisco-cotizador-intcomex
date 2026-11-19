@@ -15,11 +15,27 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.17.4',
+    date: '2026-11-18',
+    commit: 'fix-login-clean-default-credentials-and-remove-pm-cisco',
+    title: 'Erradicación de Usuario Predeterminado Residual y Soporte Transparente de Credenciales Guardadas en Pantalla de Login',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Erradicación Definitiva del Usuario Residual pm_cisco: Eliminado el valor de prueba predeterminado hardcodeado "pm_cisco" en FACTORY_DEFAULT_PLATFORM_CONFIG. Si no existen credenciales guardadas expresamente por el usuario, los campos "Usuario de Sistema" y "Contraseña" inician 100% limpios y vacíos.',
+      'Saneamiento Automático de LocalStorage: Rutina de auto-curación integrada en getLocalPlatformConfig() que detecta al arrancar cualquier remanente legacy del usuario "pm_cisco" en localStorage y lo purga a cadena vacía, evitando que el administrador de contraseñas de navegadores (Chrome, Edge, WebView) autoinyecte credenciales ajenas.',
+      'Soporte Transparente y Seguro de Credenciales Recordadas: Si el usuario activa "Recordar usuario en este computador", el sistema recuerda de forma segura y discreta su propio usuario y contraseña legítimos (ej. mskill), permitiendo ingreso rápido en 1 solo clic y autocompletado fluido.',
+      'Purga Instantánea de Seguridad al Desmarcar: Si el usuario desmarca la casilla "Recordar usuario en este computador", tanto el usuario como el token de contraseña almacenados localmente se eliminan de inmediato del equipo.',
+      'Aislamiento de Cambios de Usuario: Si el usuario modifica o borra el campo de usuario, la contraseña asociada se limpia de inmediato para evitar inconsistencias o intentos de acceso cruzado.',
+      'Nueva Suite de Pruebas Unitarias Automatizadas (tests/savedCredentialsAndLoginClean.test.ts): Valida la inicialización limpia en blanco, auto-curación de datos residuales, retención segura de credenciales recordadas y purga inmediata (40 suites de prueba del proyecto pasando al 100%).',
+    ],
+  },
+  {
     version: '2.17.3',
     date: '2026-11-18',
     commit: 'fix-responsive-auto-fit-table-layout-estimates-history',
     title: 'Auto-Ajuste Responsivo de Pantalla, Densidad Dinámica y Control de Zoom en Historial de Estimates',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Auto-Ajuste Responsivo de Pantalla (100% Fit): Rediseño integral del layout de la tabla en Historial de Cotizaciones CCW y Órdenes DSV, permitiendo que las 11 columnas completas se visualicen fluidamente en cualquier navegador y resolución de pantalla (laptops 1366x768, monitores 1080p y 2K/4K) sin necesidad de modificar el zoom del navegador.',

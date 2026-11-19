@@ -48,7 +48,7 @@ export const FACTORY_DEFAULT_PLATFORM_CONFIG: LocalPlatformConfig = {
     parameterMode: 'standard',
   },
   rememberLastUser: true,
-  lastUsername: 'pm_cisco',
+  lastUsername: '',
   isClientMode: false,
   activeQuoterTab: 'excel',
   navSidebarOpen: true,
@@ -82,14 +82,24 @@ export function getLocalPlatformConfig(): LocalPlatformConfig {
       const raw = localStorage.getItem(LOCAL_PLATFORM_CONFIG_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
+        // Saneamiento obligatorio: limpiar 'pm_cisco' heredado de valores de prueba anteriores
+        const cleanLastUsername = parsed.lastUsername === 'pm_cisco' ? '' : (parsed.lastUsername || '');
         memoryConfigCache = {
           ...FACTORY_DEFAULT_PLATFORM_CONFIG,
           ...parsed,
+          lastUsername: cleanLastUsername,
           defaultParams: {
             ...FACTORY_DEFAULT_PLATFORM_CONFIG.defaultParams,
             ...(parsed.defaultParams || {}),
           },
         };
+
+        // Si se saneó 'pm_cisco', actualizar de inmediato la persistencia en disco
+        if (parsed.lastUsername === 'pm_cisco') {
+          try {
+            localStorage.setItem(LOCAL_PLATFORM_CONFIG_STORAGE_KEY, JSON.stringify(memoryConfigCache));
+          } catch {}
+        }
         return memoryConfigCache;
       }
 

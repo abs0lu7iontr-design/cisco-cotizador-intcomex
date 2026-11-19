@@ -100,7 +100,7 @@ export function SharedSkuManagerModal({
 
     setIsLoading(true);
     const author = {
-      username: currentUser?.username || 'pm_cisco',
+      username: currentUser?.username || 'pm_user',
       fullName: currentUser?.full_name || 'Product Manager',
       role: (currentUser?.role as string) || 'pm',
     };
