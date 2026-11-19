@@ -16,6 +16,7 @@ import {
   readProjectScopedStorage,
   writeProjectScopedStorage,
 } from '../cloud/firebaseConfig';
+import { formatShortUserFirstName } from '../../utils/userNameUtils';
 
 const CCWR_STORAGE_KEY = 'cisco_ccwr_processed_quotes_v1';
 const IDB_CCWR_KEY_PREFIX = 'ccwr_quotes_idb_v1::';
@@ -126,7 +127,7 @@ export async function linkCcwrToForecast(
     fechaLevantamiento: quote.headerInfo.quoteDate || nowIso.slice(0, 10),
     fechaCotizacion: quote.headerInfo.quoteDate || nowIso.slice(0, 10),
     marca: 'CISCO',
-    pmResponsable: quote.params.sellerName || 'Mauricio Skill',
+    pmResponsable: formatShortUserFirstName(quote.params.sellerName || 'Mauricio'),
     partner: partnerName,
     ejecutivoPartner: 'Preventa Cisco',
     endUser: clientName,
@@ -206,7 +207,7 @@ export async function linkCcwrToPipeline(
     fechaLevantamiento: quote.headerInfo.quoteDate || now.slice(0, 10),
     fechaCotizacion: quote.headerInfo.quoteDate || now.slice(0, 10),
     marca: 'Cisco',
-    pmResponsable: quote.params.sellerName || 'Mauricio Skill',
+    pmResponsable: formatShortUserFirstName(quote.params.sellerName || 'Mauricio'),
     partner: partnerName,
     ejecutivoPartner: 'Preventa Cisco',
     endUser: clientName,

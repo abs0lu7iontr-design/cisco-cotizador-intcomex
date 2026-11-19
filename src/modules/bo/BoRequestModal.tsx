@@ -28,6 +28,7 @@ import {
   getLocalBoSkuCache,
 } from './boSkuCatalogService';
 import { syncBoOrderFromEstimateModal } from './boTrackingService';
+import { formatShortUserFirstName } from '../../utils/userNameUtils';
 import { BoOrderTrackingRecord } from './boTrackingTypes';
 import { ProcessedEstimateResult } from '../../core/types';
 import { openDesktopEmailClient } from '../../core/desktopBridge';
@@ -457,7 +458,7 @@ export const BoRequestModal: React.FC<Props> = ({
       clientName: `${clientName} (Línea ${motherKey}${currentPo ? ` - OC ${currentPo}` : ''})`,
       lines: linesToSync,
       bodega: currentBodega,
-      author: currentUser?.full_name || currentUser?.username || 'Usuario',
+      author: formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio'),
       partnerName: detectedPartner,
       actionSource: 'COPY_HTML',
     });
@@ -512,7 +513,7 @@ export const BoRequestModal: React.FC<Props> = ({
       clientName: selectedLineFilter !== 'ALL' ? `${clientName} (Línea ${selectedLineFilter}${poDesc})` : clientName,
       lines: linesToSync,
       bodega: currentBodega,
-      author: currentUser?.full_name || currentUser?.username || 'Usuario',
+      author: formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio'),
       partnerName: detectedPartner,
       actionSource: 'COPY_HTML',
     });
@@ -564,7 +565,7 @@ export const BoRequestModal: React.FC<Props> = ({
       clientName: selectedLineFilter !== 'ALL' ? `${clientName} (Línea ${selectedLineFilter}${poDesc})` : clientName,
       lines: linesToSync,
       bodega: currentBodega,
-      author: currentUser?.full_name || currentUser?.username || 'Usuario',
+      author: formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio'),
       partnerName: detectedPartner,
       actionSource: 'OPEN_OUTLOOK',
     });
@@ -1444,7 +1445,7 @@ export const BoRequestModal: React.FC<Props> = ({
                     clientName,
                     lines: linesWithCurrentBodega,
                     bodega: currentBodega,
-                    author: currentUser?.full_name || currentUser?.username || 'Usuario',
+                    author: formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio'),
                     partnerName: detectedPartner,
                     actionSource: 'MODAL_ACTION',
                   });

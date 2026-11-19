@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.20.0",
-  "git_commit": "a8a0ba5",
+  "version": "2.21.0",
+  "git_commit": "794aed4",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-19T03:08:56.885Z",
-  "release_notes": "feat(v2.19.0): dsv excluded items visibility panel and optional force-inclusion (bo style)",
+  "build_timestamp": "2026-11-19T03:43:31.754Z",
+  "release_notes": "feat(v2.20.0): dsv auto-save persistence armor and bo individual history audit module",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

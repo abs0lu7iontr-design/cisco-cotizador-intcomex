@@ -21,6 +21,7 @@ import { parseEstimateWorkbook } from './excelEngine';
 import { recalculateEstimateResult } from './calculations';
 import { enqueueOfflineAction, initOfflineSyncListeners } from './storage/offlineSyncQueue';
 import { resolveEffectiveQuoteRates } from './exportUtils';
+import { formatShortUserFirstName } from '../utils/userNameUtils';
 import {
   auditEstimateWithFastTrack,
   FastTrackAuditResult,
@@ -1117,7 +1118,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         currentAmount: totalVenta,
         creator: {
           username: currentUser?.username || 'anonymous',
-          fullName: currentUser?.full_name || 'Usuario Intcomex',
+          fullName: formatShortUserFirstName(currentUser?.full_name || 'Mauricio'),
           role: currentUser?.role || 'pm',
           email: currentUser?.email || '',
         },

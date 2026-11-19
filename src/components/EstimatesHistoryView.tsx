@@ -29,6 +29,7 @@ import {
 } from '../modules/cloud';
 import { useCiscoAutomatedStore } from '../core/store';
 import { savePipelineDeal, PipelineDealRecord, MESES_ANO } from '../modules/pipeline';
+import { formatShortUserFirstName } from '../utils/userNameUtils';
 import {
   Search,
   RefreshCw,
@@ -470,13 +471,13 @@ export function EstimatesHistoryView() {
     estimates.forEach((e) => {
       const u = (e.creator?.username || '').trim();
       if (u) {
-        map.set(u.toLowerCase(), e.creator?.fullName ? `${e.creator.fullName} (${u})` : u);
+        map.set(u.toLowerCase(), formatShortUserFirstName(e.creator?.fullName || u));
       }
     });
     dsvRecords.forEach((d) => {
       const u = (d.creator?.username || '').trim();
       if (u && !map.has(u.toLowerCase())) {
-        map.set(u.toLowerCase(), d.creator?.fullName ? `${d.creator.fullName} (${u})` : u);
+        map.set(u.toLowerCase(), formatShortUserFirstName(d.creator?.fullName || u));
       }
     });
     return Array.from(map.entries()); // [usernameLower, label]
@@ -1518,11 +1519,11 @@ export function EstimatesHistoryView() {
                         <td className={cellPaddingClass}>
                           <div className="flex items-center space-x-1.5">
                             <div className="w-5 h-5 2xl:w-6 2xl:h-6 rounded-full bg-indigo-950 border border-indigo-700/50 flex items-center justify-center text-[9px] 2xl:text-[10px] font-bold text-indigo-300 shrink-0">
-                              {(est.creator?.username || 'U').slice(0, 2).toUpperCase()}
+                              {formatShortUserFirstName(est.creator?.fullName || est.creator?.username).slice(0, 2).toUpperCase()}
                             </div>
                             <div className="min-w-0">
-                              <div className="font-bold text-white text-[11px] 2xl:text-xs truncate max-w-[95px] 2xl:max-w-[130px]" title={est.creator?.fullName || est.creator?.username || 'mskill'}>
-                                {est.creator?.fullName || est.creator?.username || 'mskill'}
+                              <div className="font-bold text-white text-[11px] 2xl:text-xs truncate max-w-[85px] 2xl:max-w-[120px]" title={est.creator?.fullName || est.creator?.username || 'mskill'}>
+                                {formatShortUserFirstName(est.creator?.fullName || est.creator?.username)}
                               </div>
                               <span className="text-[8px] 2xl:text-[9px] uppercase px-1 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
                                 {est.creator?.role || 'PM'}
@@ -1840,11 +1841,11 @@ export function EstimatesHistoryView() {
                       <td className={cellPaddingClass}>
                         <div className="flex items-center space-x-1.5">
                           <div className="w-5 h-5 2xl:w-6 2xl:h-6 rounded-full bg-amber-950 border border-amber-700/50 flex items-center justify-center text-[9px] 2xl:text-[10px] font-bold text-amber-300 shrink-0">
-                            {(dsv.creator?.username || 'U').slice(0, 2).toUpperCase()}
+                            {formatShortUserFirstName(dsv.creator?.fullName || dsv.creator?.username).slice(0, 2).toUpperCase()}
                           </div>
                           <div className="min-w-0">
-                            <div className="font-bold text-white text-[11px] 2xl:text-xs truncate max-w-[95px] 2xl:max-w-[130px]" title={dsv.creator?.fullName || dsv.creator?.username || 'mskill'}>
-                              {dsv.creator?.fullName || dsv.creator?.username || 'mskill'}
+                            <div className="font-bold text-white text-[11px] 2xl:text-xs truncate max-w-[85px] 2xl:max-w-[120px]" title={dsv.creator?.fullName || dsv.creator?.username || 'mskill'}>
+                              {formatShortUserFirstName(dsv.creator?.fullName || dsv.creator?.username)}
                             </div>
                             <span className="text-[8px] 2xl:text-[9px] uppercase px-1 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
                               {dsv.creator?.role || 'PM'}
@@ -2198,7 +2199,7 @@ export function EstimatesHistoryView() {
                     <strong className="text-slate-200">
                       {formatPartnerName(selectedEstimateDetail.partnerName) || 'Intcomex Chile'}
                     </strong> &bull; Creado por:{' '}
-                    {selectedEstimateDetail.creator?.fullName} (
+                    {formatShortUserFirstName(selectedEstimateDetail.creator?.fullName || selectedEstimateDetail.creator?.username)} (
                     {selectedEstimateDetail.creator?.role?.toUpperCase()})
                   </p>
                 </div>

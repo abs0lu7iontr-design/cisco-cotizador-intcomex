@@ -45,6 +45,7 @@ import {
 import { TableDensityMode } from '../../hooks/useTableDensityAndZoom';
 import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
 import { downloadContentSafe } from '../../utils/downloadHelper';
+import { formatShortUserFirstName } from '../../utils/userNameUtils';
 
 interface Props {
   orders: BoOrderTrackingRecord[];
@@ -899,7 +900,7 @@ export const BoIndividualHistoryView: React.FC<Props> = ({
                       >
                         <div className="flex items-center justify-between text-[10px] text-slate-400">
                           <span className="font-semibold text-indigo-300">
-                            {note.author} ({note.stage})
+                            {formatShortUserFirstName(note.author)} ({note.stage})
                           </span>
                           <span className="font-mono">
                             {formatChileDateOnly(note.date)} {formatChileTimeOnly(note.date)}

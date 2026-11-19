@@ -19,7 +19,7 @@ export const SEED_DSV_RECORDS: CloudDsvRecord[] = [
     createdAt: '2026-09-21T03:18:00.000Z',
     creator: {
       username: 'mskill',
-      fullName: 'Mauricio Skill (Administrador)',
+      fullName: 'Mauricio',
       role: 'ADMIN',
       email: 'mskill@intcomex.com',
     },
@@ -72,7 +72,7 @@ export const SEED_DSV_RECORDS: CloudDsvRecord[] = [
     createdAt: '2026-10-02T14:30:00.000Z',
     creator: {
       username: 'pm_cisco',
-      fullName: 'Mauricio Skill (Administrador)',
+      fullName: 'Mauricio',
       role: 'ADMIN',
       email: 'mskill@intcomex.com',
     },
@@ -116,7 +116,7 @@ export const SEED_DSV_RECORDS: CloudDsvRecord[] = [
     createdAt: '2026-09-28T16:45:00.000Z',
     creator: {
       username: 'lburgos',
-      fullName: 'Luis Burgos',
+      fullName: 'Luis',
       role: 'PREVENTA',
       email: 'lburgos@intcomex.com',
     },

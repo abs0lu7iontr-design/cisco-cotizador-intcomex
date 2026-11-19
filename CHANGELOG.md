@@ -6,6 +6,31 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.21.0] - 2026-11-19
+### 👤 Optimización y Ajuste de Celdas: Nombres de Pila Concisos en Toda la Plataforma
+- **Formateador Universal de Nombres (`userNameUtils.ts`):**
+  - Implementada la función `formatShortUserFirstName` y `getShortDisplayName` para normalizar nombres extensos y roles redundantes a nombres de pila concisos y legibles:
+    - `"Mauricio Skill (Administrador)"` / `"mskill"` / `"pm_cisco"` ➔ **`"Mauricio"`**
+    - `"Luis Burgos (Preventa)"` / `"lburgos"` ➔ **`"Luis"`**
+    - `"Johana Valencia"` / `"jvalencia"` ➔ **`"Johana"`**
+    - `"Marta Adasme"` / `"madasme"` ➔ **`"Marta"`**
+    - `"Raul Cuevas"` / `"Raúl Cuevas"` / `"rcuevas"` ➔ **`"Raul"`**
+- **Optimización de Celdas en Historial de Cotizaciones CCW y Órdenes DSV (`EstimatesHistoryView.tsx`):**
+  - La columna **"Creado Por"** ahora muestra el nombre de pila conciso (`Mauricio`, `Luis`, `Johana`, etc.), reduciendo el ancho horizontal necesario y evitando desbordamientos o elipsis forzadas en monitores estándar y portátiles.
+  - El nombre completo, rol y correo se preservan de manera íntegra e intuitiva en el atributo `title` (tooltip nativo al pasar el cursor).
+  - Los avatares visuales ahora calculan las iniciales directas sobre el nombre normalizado.
+  - El filtro desplegable de usuarios en la barra de herramientas ahora exhibe los nombres limpios y concisos.
+- **Guardado y Normalización en Creación de Cotizaciones y Órdenes (`store.tsx`, `DsvModal.tsx`, `DsvView.tsx`):**
+  - Al generar un nuevo Estimate en la nube (`saveEstimateToCloud`), exportar un DSV oficial o registrar una orden de tracking, el creador almacena el nombre conciso manteniendo total compatibilidad con las búsquedas y reglas de seguridad.
+- **Homologación en Módulos Comerciales y Logísticos:**
+  - **Pipeline Comercial (`PipelineView.tsx` y `PipelineDealModal.tsx`):** La columna de PM Responsable en la vista tabular y tarjetas Kanban despliega el nombre de pila conciso con tooltip de detalle completo.
+  - **Forecast Comercial (`ForecastView.tsx` y `ForecastModal.tsx`):** La columna `pmResponsable` de las 36 columnas oficiales renderiza el nombre conciso.
+  - **Historial Individual BO (`BoIndividualHistoryView.tsx` & `BoTrackingView.tsx`):** Las bitácoras de notas, transiciones de etapas y autores muestran nombres concisos.
+  - **Dashboard Analítico (`DashboardView.tsx`):** Agrupación y tabla de actividad por usuario renderiza el nombre conciso.
+- **Nueva Suite de Pruebas Unitarias (`tests/userFirstNameCellFit.test.ts`):**
+  - 5 pruebas unitarias automatizadas verificando la normalización de cuentas, longitud acotada (<= 12 caracteres) para el ajuste de celdas y compatibilidad general.
+  - Total de suites de pruebas automáticas exitosas en la plataforma elevado a 45 suites (100% pasando).
+
 ## [v2.20.0] - 2026-11-18
 ### 🛡️ Auto-Guardado Permanente en Historial DSV, Blindaje de BD y Nuevo Módulo de Historial Individual BO
 - **Auto-Guardado Obligatorio al Generar/Descargar Plantilla DSV (`DsvModal.tsx` & `DsvView.tsx`):**

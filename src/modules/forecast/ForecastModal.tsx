@@ -27,6 +27,7 @@ import {
   FORECAST_CREDIT_STATUSES,
 } from './forecastTypes';
 import { parseFlexibleNumber, formatCommercialDateHyphen } from './forecastService';
+import { formatShortUserFirstName } from '../../utils/userNameUtils';
 
 interface ForecastModalProps {
   isOpen: boolean;
@@ -316,7 +317,7 @@ export function ForecastModal({
                 >
                   {FORECAST_PM_LIST.map((pm) => (
                     <option key={pm} value={pm}>
-                      {pm}
+                      {formatShortUserFirstName(pm)}
                     </option>
                   ))}
                 </select>

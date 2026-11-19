@@ -55,6 +55,7 @@ import { copyDealReminderToClipboard, getDealTimeGreeting } from './dealEmailHel
 import { DealReminderAlertModal } from './DealReminderAlertModal';
 import { useCiscoAutomatedStore } from '../../core/store';
 import { downloadContentSafe } from '../../utils/downloadHelper';
+import { formatShortUserFirstName } from '../../utils/userNameUtils';
 
 interface DealReminderViewProps {
   onConvertToBo?: (deal: DealReminderRecord) => void;
@@ -166,7 +167,7 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
     }
 
     const nowIso = new Date().toISOString();
-    const author = currentUser?.full_name || currentUser?.username || 'Usuario';
+    const author = formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio');
     const id = `DEAL-REM-${cleanDealId.replace(/[^A-Za-z0-9_-]/g, '')}-${Date.now().toString().slice(-4)}`;
 
     const newDeal: DealReminderRecord = {
@@ -208,7 +209,7 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
 
   // Copiar recordatorio para Outlook (registra lastReminderCopiedAt, NO envío confirmado)
   const handleCopyEmailReminder = async (deal: DealReminderRecord) => {
-    const author = currentUser?.full_name || currentUser?.username || 'Usuario';
+    const author = formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio');
     const result = await copyDealReminderToClipboard(deal);
 
     if (result.success) {
@@ -229,7 +230,7 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
 
   // Confirmar manualmente que el recordatorio fue enviado por correo
   const handleConfirmReminderSent = async (deal: DealReminderRecord) => {
-    const author = currentUser?.full_name || currentUser?.username || 'Usuario';
+    const author = formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio');
     await confirmDealReminderSent(deal.id, author, 'MANUAL_CONFIRMATION');
     await loadData();
     showToast(`✅ Envío de recordatorio confirmado para Deal ${deal.dealId}.`, 'success');
@@ -237,7 +238,7 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
 
   // Cambiar estado rápido
   const handleStatusChange = async (deal: DealReminderRecord, newStatus: DealReminderStatus) => {
-    const author = currentUser?.full_name || currentUser?.username || 'Usuario';
+    const author = formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio');
     await updateDealReminderStatus(deal.id, newStatus, author);
     await loadData();
   };
@@ -245,7 +246,7 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
   // Agregar nota
   const handleAddNote = async () => {
     if (!selectedDealForNotes || !newNoteText.trim()) return;
-    const author = currentUser?.full_name || currentUser?.username || 'Usuario';
+    const author = formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio');
     await addDealHistoryNote(selectedDealForNotes.id, author, newNoteText.trim());
     setNewNoteText('');
     await loadData();
@@ -1091,7 +1092,9 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
                 selectedDealForNotes.history.map((hist) => (
                   <div key={hist.id} className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 text-xs">
                     <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
-                      <span className="font-semibold text-indigo-300">{hist.author}</span>
+                      <span className="font-semibold text-indigo-300" title={hist.author}>
+                        {formatShortUserFirstName(hist.author)}
+                      </span>
                       <span>{new Date(hist.date).toLocaleString('es-CL')}</span>
                     </div>
                     <p className="text-slate-200 leading-relaxed">{hist.comment}</p>

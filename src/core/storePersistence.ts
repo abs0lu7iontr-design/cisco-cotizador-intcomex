@@ -19,6 +19,7 @@ import {
   SharedSkuOverrideRecord,
 } from '../modules/cloud';
 import { formatPartnerName } from '../utils/partnerDbUtils';
+import { formatShortUserFirstName } from '../utils/userNameUtils';
 
 export const SKU_OVERRIDES_STORAGE_KEY = 'cisco_sku_overrides_v2';
 export const LOCAL_ESTIMATES_HISTORY_KEY = 'cisco_estimates_history_v2';
@@ -294,7 +295,7 @@ export function buildRawV0EstimatePayload(
     currentAmount: baseV0Cost,
     creator: {
       username: currentUser?.username || 'system',
-      fullName: currentUser?.full_name || 'Cisco CCW Import',
+      fullName: currentUser?.full_name ? formatShortUserFirstName(currentUser.full_name) : 'Cisco CCW Import',
       role: currentUser?.role || 'pm',
       email: currentUser?.email || '',
     },

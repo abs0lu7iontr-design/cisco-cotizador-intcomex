@@ -6,6 +6,7 @@
 import { useSyncExternalStore } from 'react';
 import { type CloudEstimateRecord, deduplicateAccessRequests } from '../modules/cloud/types';
 import { normalizeIsoTimestamp, compareDatesUnknownLast } from '../utils/dateUtils';
+import { formatShortUserFirstName } from '../utils/userNameUtils';
 import {
   getActiveProjectScopeKey,
   readProjectScopedStorage,
@@ -217,7 +218,7 @@ export function getEstimatesMirrorSnapshot(): CloudEstimateRecord[] {
           createdAt,
           creator: {
             username: String(leg.username || 'mskill'),
-            fullName: String(leg.username || 'Usuario Intcomex'),
+            fullName: formatShortUserFirstName(String(leg.username || 'Mauricio')),
             role: 'pm',
           },
           financialSummary: {

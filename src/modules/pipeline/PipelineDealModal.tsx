@@ -24,6 +24,7 @@ import {
   MESES_ANO,
 } from './pipelineTypes';
 import { parseFlexibleNumber, formatCommercialDate } from '../forecast/forecastService';
+import { formatShortUserFirstName } from '../../utils/userNameUtils';
 
 interface PipelineDealModalProps {
   isOpen: boolean;
@@ -205,7 +206,7 @@ export function PipelineDealModal({
               >
                 {PIPELINE_PM_LIST.map((pm) => (
                   <option key={pm} value={pm}>
-                    {pm}
+                    {formatShortUserFirstName(pm)}
                   </option>
                 ))}
               </select>

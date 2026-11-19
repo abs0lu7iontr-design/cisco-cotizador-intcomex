@@ -33,6 +33,7 @@ import { useCiscoAutomatedStore } from '../../core/store';
 import { openDesktopFileDialog } from '../../core/desktopBridge';
 import { useTableDensityAndZoom } from '../../hooks/useTableDensityAndZoom';
 import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
+import { formatShortUserFirstName } from '../../utils/userNameUtils';
 
 interface ContextMenuState {
   visible: boolean;
@@ -382,7 +383,7 @@ export const DsvView: React.FC = () => {
         createdAt: new Date().toISOString(),
         creator: {
           username: currentUser?.username || 'anonymous',
-          fullName: currentUser?.full_name || 'Usuario Intcomex',
+          fullName: formatShortUserFirstName(currentUser?.full_name || 'Mauricio'),
           role: currentUser?.role || 'pm',
           email: currentUser?.email || '',
         },
@@ -408,7 +409,7 @@ export const DsvView: React.FC = () => {
           itemsCount: summary.validDsvItems,
           bodegaDestino: resolvedBodega,
           dsvRows: summary.rows,
-          author: currentUser?.full_name || currentUser?.username || 'Usuario Intcomex',
+          author: formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio'),
           notesComment: `Registro DSV guardado (${resolvedBodega}) con Deal ${dealVal} (${summary.validDsvItems} ítems) y sincronizado con Tracking.`,
         }).catch((err) => console.warn('[DsvView] Error sincronizando con bo_order_tracking:', err));
 

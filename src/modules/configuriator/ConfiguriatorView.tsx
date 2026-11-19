@@ -93,6 +93,7 @@ import {
   PsirtAdvisory,
 } from '../ciscoApi';
 import { useCiscoAutomatedStore } from '../../core/store';
+import { formatShortUserFirstName } from '../../utils/userNameUtils';
 import { checkIsIntangible, checkLlevaArancel, formatLeadTime } from '../../core/calculations';
 import { CloudEstimateRecord } from '../cloud';
 import { saveDesktopExcelFile, isDesktopApp } from '../../core/desktopBridge';
@@ -972,7 +973,7 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
       createdAt: new Date().toISOString(),
       creator: {
         username: currentUser?.username || 'preventa',
-        fullName: currentUser?.full_name || 'Arquitecto Cisco',
+        fullName: formatShortUserFirstName(currentUser?.full_name || 'Mauricio'),
         email: currentUser?.email || '',
         role: currentUser?.role || 'admin',
       },

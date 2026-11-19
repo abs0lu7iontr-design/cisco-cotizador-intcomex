@@ -35,6 +35,7 @@ import {
 } from './dealReminderService';
 import { copyDealReminderToClipboard } from './dealEmailHelper';
 import { useCiscoAutomatedStore } from '../../core/store';
+import { formatShortUserFirstName } from '../../utils/userNameUtils';
 
 interface DealReminderAlertModalProps {
   deals: DealReminderRecord[];
@@ -67,7 +68,7 @@ export function DealReminderAlertModal({
   const popupInfo = checkDealPopupDue(currentDeal);
   const channelMeta = DEAL_ESCALATION_METADATA[currentDeal.escalationChannel];
   const isVF = currentDeal.escalationChannel === 'VELOCITY_HUB';
-  const author = currentUser?.full_name || currentUser?.username || 'Usuario';
+  const author = formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio');
 
   // 1. Manejo de "Recordar más tarde" o Cerrar con 'X' (Snooze al siguiente horario)
   const handleSnooze = async (customHours?: number) => {

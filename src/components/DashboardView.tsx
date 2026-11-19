@@ -13,6 +13,7 @@ import {
 } from '../modules/cloud';
 import { useCiscoAutomatedStore } from '../core/store';
 import { getFormattedAppVersion } from '../core/appVersion';
+import { formatShortUserFirstName } from '../utils/userNameUtils';
 import {
   TrendingUp,
   FileSpreadsheet,
@@ -203,7 +204,7 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
     mirrorEstimates.forEach((e) => {
       const u = (e.creator?.username || '').trim();
       if (u) {
-        map.set(u.toLowerCase(), e.creator?.fullName ? `${e.creator.fullName} (${u})` : u);
+        map.set(u.toLowerCase(), formatShortUserFirstName(e.creator?.fullName || u));
       }
     });
     return Array.from(map.entries());
@@ -375,7 +376,7 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
       const uKey = (est.creator?.username || 'pm').trim().toLowerCase();
       if (!creatorMap[uKey]) {
         creatorMap[uKey] = {
-          fullName: est.creator?.fullName || est.creator?.username || 'Product Manager',
+          fullName: formatShortUserFirstName(est.creator?.fullName || est.creator?.username || 'Mauricio'),
           role: est.creator?.role || 'pm',
           count: 0,
           revenue: 0,
@@ -1361,9 +1362,9 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
                         )}
                       </td>
 
-                      <td className="px-5 py-3.5">
+                      <td className="px-5 py-3.5" title={e.creator?.fullName || e.creator?.username || 'Mauricio'}>
                         <div className="font-semibold text-white text-xs">
-                          {e.creator?.fullName || e.creator?.username || 'mskill'}
+                          {formatShortUserFirstName(e.creator?.fullName || e.creator?.username || 'Mauricio')}
                         </div>
                         <div className="text-[10px] text-slate-500 font-mono">
                           @{e.creator?.username || 'pm'}

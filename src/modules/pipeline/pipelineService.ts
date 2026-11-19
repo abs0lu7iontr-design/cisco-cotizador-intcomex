@@ -19,6 +19,7 @@ import {
   formatCommercialDate,
 } from '../forecast/forecastService';
 import { matchesPeriodFilter } from '../../utils/dateUtils';
+import { formatShortUserFirstName } from '../../utils/userNameUtils';
 
 // ----------------------------------------------------------------------------
 // 1. Estadísticas y Agregaciones de Negocio

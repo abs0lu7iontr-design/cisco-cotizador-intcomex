@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { useTableDensityAndZoom } from '../../hooks/useTableDensityAndZoom';
 import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
+import { formatShortUserFirstName } from '../../utils/userNameUtils';
 import { isAppOffline } from '../../core/storage/offlineModeManager';
 import {
   PipelineDealRecord,
@@ -605,7 +606,7 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
             <option value="ALL">Todos los PMs</option>
             {PIPELINE_PM_LIST.map((pm) => (
               <option key={pm} value={pm}>
-                {pm}
+                {formatShortUserFirstName(pm)}
               </option>
             ))}
           </select>
@@ -825,7 +826,7 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
                       </div>
 
                       <div className="pt-2 border-t border-slate-900 flex items-center justify-between text-[11px] text-slate-500">
-                        <span className="truncate max-w-[120px]">PM: {deal.pmResponsable}</span>
+                        <span className="truncate max-w-[120px]" title={deal.pmResponsable}>PM: {formatShortUserFirstName(deal.pmResponsable)}</span>
                         <span>{deal.mesCierre}</span>
                       </div>
 
@@ -918,7 +919,7 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
                     >
                       <td className={`${cellPaddingClass} font-mono text-slate-400`}>{formatCommercialDate(deal.fechaLevantamiento)}</td>
                       <td className={`${cellPaddingClass} font-mono text-slate-400`}>{formatCommercialDate(deal.fechaCotizacion)}</td>
-                      <td className={`${cellPaddingClass} font-medium text-slate-300`}>{deal.pmResponsable}</td>
+                      <td className={`${cellPaddingClass} font-medium text-slate-300`} title={deal.pmResponsable}>{formatShortUserFirstName(deal.pmResponsable)}</td>
                       <td className={`${cellPaddingClass} font-bold text-white group-hover:text-indigo-300 transition-colors`}>
                         {deal.partner}
                       </td>

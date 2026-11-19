@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { useTableDensityAndZoom } from '../../hooks/useTableDensityAndZoom';
 import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
+import { formatShortUserFirstName } from '../../utils/userNameUtils';
 import { isAppOffline } from '../../core/storage/offlineModeManager';
 import {
   ForecastRecord,
@@ -601,7 +602,7 @@ export function ForecastView() {
             <option value="ALL">Todos los PMs</option>
             {FORECAST_PM_LIST.map((pm) => (
               <option key={pm} value={pm}>
-                {pm}
+                {formatShortUserFirstName(pm)}
               </option>
             ))}
           </select>
@@ -888,16 +889,19 @@ export function ForecastView() {
                           );
                         }
 
-                        // Protect any unexpected serial numbers in cells
+                        // Protect any unexpected serial numbers in cells and format PM name to concise first name
+                        const isPmCol = col.key === 'pmResponsable';
                         const displayVal =
                           typeof val === 'number' && val >= 30000 && val <= 70000 && col.key.toLowerCase().includes('fecha')
                             ? formatCommercialDate(val)
+                            : isPmCol && val
+                            ? formatShortUserFirstName(String(val))
                             : val !== undefined && val !== null && String(val).trim() !== ''
                             ? String(val)
                             : '-';
 
                         return (
-                          <td key={col.key} className={cellClass}>
+                          <td key={col.key} className={cellClass} title={isPmCol && val ? String(val) : undefined}>
                             {displayVal !== '-' ? (
                               displayVal
                             ) : (

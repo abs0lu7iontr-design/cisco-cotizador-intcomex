@@ -15,11 +15,27 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.21.0',
+    date: '2026-11-19',
+    commit: 'feat-user-short-first-name-compact-table-cell-fit',
+    title: 'Optimización y Ajuste de Celdas: Nombres de Pila Concisos en Toda la Plataforma',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Formateador Universal de Nombres (userNameUtils.ts): Implementación de la utilidad global formatShortUserFirstName y getShortDisplayName para normalizar nombres extensos, cargos y cuentas administrativas a nombres de pila directos y legibles (ej. "Mauricio Skill (Administrador)" -> "Mauricio", "Luis Burgos" -> "Luis", "Johana Valencia" -> "Johana", "Marta Adasme" -> "Marta", "Raul Cuevas" -> "Raul").',
+      'Optimización de Celdas en Historial de Cotizaciones CCW y Órdenes DSV (EstimatesHistoryView.tsx): La columna "Creado Por" ahora renderiza exclusivamente el primer nombre conciso con avatar de iniciales optimizado, garantizando que las tablas se ajusten sin desbordar ni recortar texto en cualquier resolución de pantalla o laptop.',
+      'Preservación de Auditoría con Tooltip Nativo: El nombre completo original, rol en el sistema y nombre de usuario se mantienen accesibles en el atributo nativo title de la celda al pasar el cursor.',
+      'Normalización al Guardar en la Nube y Base de Datos (store.tsx, DsvModal.tsx, DsvView.tsx): Al guardar un nuevo Estimate o generar una orden DSV, el campo creator.fullName se almacena de forma concisa manteniendo perfecta trazabilidad y búsquedas multicriterio.',
+      'Homologación en Módulos Comerciales y Logísticos: Adaptación integral de la visualización en Pipeline Comercial (columna y tarjetas Kanban de PM Responsable), Forecast Comercial (columna pmResponsable de las 36 columnas oficiales), Historial Individual BO y Dashboard Analítico.',
+      'Nueva Suite de Pruebas Unitarias Automatizadas (tests/userFirstNameCellFit.test.ts): Valida la normalización de usuarios conocidos, nombres compuestos generales, tolerancia a nulos y longitud acotada (<= 12 caracteres) para el ajuste ergonómico de celdas (45 suites pasando al 100%).',
+    ],
+  },
+  {
     version: '2.20.0',
     date: '2026-11-18',
     commit: 'feat-dsv-auto-save-persistence-armor-bo-individual-history',
     title: 'Auto-Guardado Permanente en Historial DSV, Blindaje de BD y Nuevo Módulo de Historial Individual BO',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Auto-Guardado Obligatorio en Historial de Órdenes DSV (DsvModal.tsx y DsvView.tsx): Corrección estructural en el flujo de exportación DSV donde la generación del archivo Excel de 48 columnas ahora invoca de forma automática e inmediata saveDsvToCloud(...) y syncBoOrderFromDsvRecord(...), garantizando que toda gestión DSV quede registrada permanentemente en el historial compartido y en el tablero logístico sin requerir acciones manuales adicionales.',

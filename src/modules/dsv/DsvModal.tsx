@@ -32,6 +32,7 @@ import { DsvDiscrepancyModal } from './DsvDiscrepancyModal';
 import { usePartnerDatabase } from '../../hooks/usePartnerDatabase';
 import { syncBoOrderFromDsvRecord, detectBodegaFromDsvRows } from '../bo/boTrackingService';
 import { saveDsvToCloud } from '../cloud/firestoreService';
+import { formatShortUserFirstName } from '../../utils/userNameUtils';
 
 interface DsvModalProps {
   isOpen: boolean;
@@ -296,7 +297,7 @@ export const DsvModal: React.FC<DsvModalProps> = ({
         createdAt: new Date().toISOString(),
         creator: {
           username: currentUser?.username || 'pm_cisco',
-          fullName: currentUser?.full_name || currentUser?.fullName || 'Mauricio Skill (Administrador)',
+          fullName: formatShortUserFirstName(currentUser?.full_name || currentUser?.fullName || 'Mauricio'),
           role: currentUser?.role || 'ADMIN',
           email: currentUser?.email || '',
         },
@@ -323,7 +324,7 @@ export const DsvModal: React.FC<DsvModalProps> = ({
         itemsCount: validDsvItems,
         bodegaDestino: resolvedBodega,
         dsvRows: rows,
-        author: currentUser?.full_name || currentUser?.username || 'Usuario Intcomex',
+        author: formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio'),
         notesComment: `DSV oficial (48 columnas) exportado en Excel (${resolvedBodega === 'E1' ? 'Hardware E1' : 'Intangibles ED'}) con SO Cisco ${formData.so || 'Pendiente'} y PO Cliente ${formData.po || 'Pendiente'}.`,
       }).catch((err) => {
         console.warn('[DsvModal] Error sincronizando con bo_order_tracking:', err);

@@ -62,6 +62,7 @@ import { useCiscoAutomatedStore } from '../../core/store';
 import { downloadContentSafe } from '../../utils/downloadHelper';
 import { useTableDensityAndZoom } from '../../hooks/useTableDensityAndZoom';
 import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
+import { formatShortUserFirstName } from '../../utils/userNameUtils';
 
 export function BoTrackingView() {
   const { currentUser, processedResult, detectedPartner } = useCiscoAutomatedStore();
@@ -217,7 +218,7 @@ export function BoTrackingView() {
     if (nextIdx < 0 || nextIdx >= ORDERED_BO_STAGES.length) return;
 
     const nextStage = ORDERED_BO_STAGES[nextIdx];
-    const author = currentUser?.full_name || currentUser?.username || 'Usuario';
+    const author = formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio');
     const noteText = `Etapa cambiada a: ${BO_STAGES_METADATA[nextStage].title}`;
 
     await updateBoTrackingStage(order.id, nextStage, author, noteText);
@@ -227,7 +228,7 @@ export function BoTrackingView() {
   // Handler para agregar nota a bitácora
   const handleAddNote = async () => {
     if (!selectedOrderForNotes || !newNoteText.trim()) return;
-    const author = currentUser?.full_name || currentUser?.username || 'Usuario';
+    const author = formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio');
     await addBoDailyNote(selectedOrderForNotes.id, author, newNoteText.trim());
     setNewNoteText('');
     await loadData();
@@ -263,7 +264,7 @@ export function BoTrackingView() {
     const estId = (newOrderForm.estimateId || 'OE-MANUAL').trim();
     const trackingId = `BO-${cleanPo.replace(/[^A-Za-z0-9_-]/g, '')}-${estId}`;
     const nowIso = new Date().toISOString();
-    const author = currentUser?.full_name || currentUser?.username || 'Usuario';
+    const author = formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio');
 
     const newRecord: BoOrderTrackingRecord = {
       id: trackingId,
@@ -1074,7 +1075,9 @@ export function BoTrackingView() {
                     <div key={note.id} className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs">
                       <div className="flex items-center justify-between mb-1.5">
                         <div className="flex items-center space-x-2">
-                          <span className="font-bold text-white">{note.author}</span>
+                          <span className="font-bold text-white" title={note.author}>
+                            {formatShortUserFirstName(note.author)}
+                          </span>
                           <span className={`text-[9px] font-bold px-2 py-0.2 rounded-full border ${meta.badgeBg} ${meta.badgeText}`}>
                             {meta.shortLabel}
                           </span>
