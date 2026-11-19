@@ -261,7 +261,8 @@ export function transformRawBomToDsv(
   rawBom: RawBomParsedResult,
   form: DsvModalFormData,
   overrides: Record<string, SkuCategoryType> = {},
-  allowExportAll: boolean = false
+  allowExportAll: boolean = false,
+  forceIncludedLineNumbers: Set<string> | string[] = []
 ): DsvTransformationSummary {
   const dsvDate = getFormattedDsvDate();
 
@@ -271,17 +272,27 @@ export function transformRawBomToDsv(
   const cleanPartnerId = sanitizeTrim(form.partnerId);
   const cleanEndCustomerAddress = sanitizeTrim(form.endCustomerAddress);
 
+  const forceIncludedSet =
+    forceIncludedLineNumbers instanceof Set
+      ? forceIncludedLineNumbers
+      : new Set(forceIncludedLineNumbers || []);
+
   let discardedCount = 0;
+  const discardedRows: RawBomItem[] = [];
   const dsvRows: Dsv48LineItem[] = [];
 
   for (const item of rawBom.items) {
-    // Filtro de valor cero (Columna O: LIST_PRICE <= 0)
-    if (!allowExportAll && isZeroValueBomItem(item)) {
+    const itemLineKey = sanitizeTrim(item.lineNumber);
+    const isZeroValue = isZeroValueBomItem(item);
+    const isForced = forceIncludedSet.has(itemLineKey);
+
+    // Filtro de valor cero (Columna O: LIST_PRICE <= 0), salvo que allowExportAll sea true o haya sido forzado por el usuario
+    if (!allowExportAll && isZeroValue && !isForced) {
       discardedCount++;
+      discardedRows.push(item);
       continue;
     }
 
-    const itemLineKey = sanitizeTrim(item.lineNumber);
     const itemOverride = overrides[itemLineKey];
 
     // Lógica Financiera Columnas J y K con Doble Verificación
@@ -379,6 +390,7 @@ export function transformRawBomToDsv(
       detectedType: effectiveCategory,
       overrideType: itemOverride,
       discrepancy,
+      isForcedIncluded: isForced && isZeroValue,
     };
 
     dsvRows.push(dsvRow);
@@ -393,6 +405,7 @@ export function transformRawBomToDsv(
     validDsvItems: dsvRows.length,
     discardedZeroItems: discardedCount,
     rows: dsvRows,
+    discardedRows,
     discrepancies: discrepanciesList,
   };
 }

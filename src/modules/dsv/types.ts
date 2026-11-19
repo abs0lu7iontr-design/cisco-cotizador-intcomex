@@ -15,6 +15,7 @@ export interface DsvModalFormData {
 }
 
 import type { DsvDiscrepancy } from './dsvEngine';
+import type { RawBomItem } from './dsvBomParser';
 
 export interface Dsv48LineItem {
   status: string;                               // Col A (1): "NEW"
@@ -73,6 +74,7 @@ export interface Dsv48LineItem {
   detectedType: SkuCategoryType;
   overrideType?: SkuCategoryType;
   discrepancy?: DsvDiscrepancy | null;
+  isForcedIncluded?: boolean;
 }
 
 export interface DsvTransformationSummary {
@@ -80,6 +82,7 @@ export interface DsvTransformationSummary {
   validDsvItems: number;
   discardedZeroItems: number;
   rows: Dsv48LineItem[];
+  discardedRows?: RawBomItem[];
   discrepancies?: DsvDiscrepancy[];
 }
 

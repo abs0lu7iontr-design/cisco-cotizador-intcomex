@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.18.0",
-  "git_commit": "5c6b865",
+  "version": "2.19.0",
+  "git_commit": "b4baf18",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-19T02:14:21.140Z",
-  "release_notes": "fix(v2.17.5): deduplicate estimate access requests and eliminate double notifications",
+  "build_timestamp": "2026-11-19T02:38:02.596Z",
+  "release_notes": "feat(v2.18.0): global multi-screen auto-fit resolution optimization across all modules",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

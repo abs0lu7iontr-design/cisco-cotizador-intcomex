@@ -18,8 +18,11 @@ import {
   Wrench,
   RotateCcw,
   FolderSync,
+  ChevronDown,
+  ChevronUp,
+  Plus,
 } from 'lucide-react';
-import { parseRawDealBom, RawBomParsedResult } from './dsvBomParser';
+import { parseRawDealBom, RawBomParsedResult, RawBomItem, sanitizeTrim } from './dsvBomParser';
 import { DsvModal } from './DsvModal';
 import { isZeroValueBomItem, calculateDsvPrices, transformRawBomToDsv } from './dsvEngine';
 import { SkuCategoryType, DsvModalFormData } from './types';
@@ -63,6 +66,10 @@ export const DsvView: React.FC = () => {
 
   // Manual Overrides Map: lineNumber -> SkuCategoryType
   const [overrides, setOverrides] = useState<Record<string, SkuCategoryType>>({});
+
+  // Forced Inclusions for originally excluded/zero-value lines (P/N Descartados)
+  const [forceIncludedLines, setForceIncludedLines] = useState<Set<string>>(new Set());
+  const [isDiscardedExpanded, setIsDiscardedExpanded] = useState<boolean>(false);
 
   // Tab State: manual vs onedrive ingestion
   const [activeTab, setActiveTab] = useState<'manual' | 'onedrive'>('manual');
@@ -178,6 +185,8 @@ export const DsvView: React.FC = () => {
           const parsed = await parseRawDealBom(desktopRes.buffer, desktopRes.filename);
           setRawBom(parsed);
           setOverrides({});
+          setForceIncludedLines(new Set());
+          setIsDiscardedExpanded(false);
         } catch (err: any) {
           console.error('Error cargando BOM para DSV:', err);
           setErrorMessage(err?.message || 'Error cargando archivo Deal BOM.');
@@ -206,6 +215,8 @@ export const DsvView: React.FC = () => {
       const parsed = await parseRawDealBom(buffer, file.name);
       setRawBom(parsed);
       setOverrides({});
+      setForceIncludedLines(new Set());
+      setIsDiscardedExpanded(false);
     } catch (err: any) {
       console.error('Error cargando BOM:', err);
       setErrorMessage(
@@ -222,8 +233,70 @@ export const DsvView: React.FC = () => {
   const handleClearBom = () => {
     setRawBom(null);
     setOverrides({});
+    setForceIncludedLines(new Set());
+    setIsDiscardedExpanded(false);
     setErrorMessage(null);
     setExportNotification(null);
+  };
+
+  const handleIncludeDiscardedLine = (lineNumber: string) => {
+    const key = sanitizeTrim(lineNumber);
+    setForceIncludedLines((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+  };
+
+  const handleExcludeLine = (lineNumber: string) => {
+    const key = sanitizeTrim(lineNumber);
+    setForceIncludedLines((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
+
+  const handleIncludeAllDiscarded = () => {
+    if (!rawBom) return;
+    setForceIncludedLines((prev) => {
+      const next = new Set(prev);
+      rawBom.items.forEach((item) => {
+        if (isZeroValueBomItem(item)) {
+          next.add(sanitizeTrim(item.lineNumber));
+        }
+      });
+      return next;
+    });
+  };
+
+  const handleRestoreDefaultExclusions = () => {
+    setForceIncludedLines(new Set());
+  };
+
+  const handleDownloadDiscardedCsv = () => {
+    if (discardedItems.length === 0) return;
+    const headers = 'Línea,Part Number / SKU,Descripción,Cantidad,List Price (USD),Motivo de Exclusión\n';
+    const rows = discardedItems
+      .map((it) => {
+        const sku = `"${(it.ciscoSku || it.partNumber || '').replace(/"/g, '""')}"`;
+        const desc = `"${(it.description || '').replace(/"/g, '""')}"`;
+        const reason = (it.listPrice <= 0)
+          ? '"Precio de lista $0.00 USD (Componente/Licencia sin costo en BOM)"'
+          : '"Cantidad menor o igual a cero"';
+        return `"${it.lineNumber}",${sku},${desc},${it.qty || 0},${(it.listPrice || 0).toFixed(2)},${reason}`;
+      })
+      .join('\n');
+    const blob = new Blob(['\uFEFF' + headers + rows], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const cleanDeal = rawBom?.dealIdFromBom || rawBom?.authorizationNumber || 'DSV';
+    a.download = `PN_Descartados_DSV_Deal_${cleanDeal}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleRowContextMenu = (e: React.MouseEvent, lineNumber: string, sku: string) => {
@@ -291,7 +364,8 @@ export const DsvView: React.FC = () => {
           endCustomerName: customerVal,
         },
         overrides,
-        false
+        false,
+        forceIncludedLines
       );
 
       const totalReportedNet = summary.rows.reduce((acc, r) => acc + (r.reportedNetPrice || 0), 0);
@@ -349,9 +423,25 @@ export const DsvView: React.FC = () => {
     }
   };
 
-  // Compute stats
-  const validItems = rawBom ? rawBom.items.filter((i) => !isZeroValueBomItem(i)) : [];
-  const discardedItems = rawBom ? rawBom.items.filter((i) => isZeroValueBomItem(i)) : [];
+  // Compute dynamic valid and discarded items respecting forceIncludedLines
+  const { validItems, discardedItems } = useMemo(() => {
+    if (!rawBom || !rawBom.items) return { validItems: [], discardedItems: [] };
+    const valid: Array<RawBomItem & { isForced?: boolean }> = [];
+    const discarded: RawBomItem[] = [];
+
+    for (const item of rawBom.items) {
+      const lineKey = sanitizeTrim(item.lineNumber);
+      const isZero = isZeroValueBomItem(item);
+      const isForced = forceIncludedLines.has(lineKey);
+
+      if (!isZero || isForced) {
+        valid.push({ ...item, isForced: isZero && isForced });
+      } else {
+        discarded.push(item);
+      }
+    }
+    return { validItems: valid, discardedItems: discarded };
+  }, [rawBom, forceIncludedLines]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300 relative">
@@ -371,6 +461,16 @@ export const DsvView: React.FC = () => {
         rawBom={rawBom}
         overrides={overrides}
         initialFormData={ingestedFormData}
+        forceIncludedLines={forceIncludedLines}
+        onToggleForceIncludeLine={(ln) => {
+          if (forceIncludedLines.has(sanitizeTrim(ln))) {
+            handleExcludeLine(ln);
+          } else {
+            handleIncludeDiscardedLine(ln);
+          }
+        }}
+        onIncludeAllLines={handleIncludeAllDiscarded}
+        onResetExclusions={handleRestoreDefaultExclusions}
         onSuccess={(filename) => {
           setExportNotification(`Plantilla DSV de 48 columnas exportada con éxito: ${filename}`);
         }}
@@ -610,14 +710,32 @@ export const DsvView: React.FC = () => {
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Válidos DSV</span>
               <span className="text-xs font-bold text-emerald-400 mt-1 flex items-center gap-1">
                 <Sparkles className="w-3 h-3" />
-                <span>{validItems.length} (List &gt; $0)</span>
+                <span>
+                  {validItems.length}
+                  {forceIncludedLines.size > 0 && (
+                    <span className="text-[10px] text-amber-300 font-normal ml-1">
+                      (+{forceIncludedLines.size} forzados)
+                    </span>
+                  )}
+                </span>
               </span>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Descartados</span>
+            <div
+              onClick={() => setIsDiscardedExpanded((prev) => !prev)}
+              className="p-3.5 rounded-2xl bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 flex flex-col cursor-pointer transition-colors"
+              title="Haz clic para ver la lista de P/N descartados"
+            >
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                <span>Descartados</span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-slate-400 transition-transform ${
+                    isDiscardedExpanded ? 'rotate-180' : ''
+                  }`}
+                />
+              </span>
               <span className="text-xs font-bold text-rose-400 mt-1 truncate">
-                {discardedItems.length} ($0.00)
+                {discardedItems.length} {discardedItems.length === 1 ? 'línea' : 'líneas'} ($0.00)
               </span>
             </div>
           </div>
@@ -672,6 +790,7 @@ export const DsvView: React.FC = () => {
                     <th className={`${headPaddingClass} text-right`}>List Price (O)</th>
                     <th className={`${headPaddingClass} text-right text-amber-300`}>Col J (Rep. Unit)</th>
                     <th className={`${headPaddingClass} text-right text-indigo-300`}>Col K (Net Price)</th>
+                    <th className={`${headPaddingClass} text-center w-20`}>Acción</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-mono">
@@ -715,11 +834,25 @@ export const DsvView: React.FC = () => {
                       <tr
                         key={idx}
                         onContextMenu={(e) => handleRowContextMenu(e, item.lineNumber, item.ciscoSku)}
-                        className="hover:bg-slate-800/50 transition-colors cursor-context-menu select-none"
+                        className={`hover:bg-slate-800/50 transition-colors cursor-context-menu select-none ${
+                          item.isForced ? 'bg-amber-950/15' : ''
+                        }`}
                         title="Haz clic derecho para cambiar entre Hardware, Suscripción o Servicio"
                       >
                         <td className={`${cellPaddingClass} text-center text-slate-400 font-semibold`}>{item.lineNumber}</td>
-                        <td className={`${cellPaddingClass} font-bold text-white`}>{item.ciscoSku}</td>
+                        <td className={`${cellPaddingClass} font-bold text-white`}>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{item.ciscoSku}</span>
+                            {item.isForced && (
+                              <span
+                                className="px-1.5 py-0.2 rounded text-[9px] bg-amber-950/90 text-amber-300 border border-amber-600/60 font-sans font-bold"
+                                title="Este P/N tiene List Price $0.00 USD y fue forzado para ser incluido en el DSV"
+                              >
+                                + Forzado
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className={`${cellPaddingClass} text-slate-400 text-[11px]`}>{item.magicKey || '-'}</td>
                         <td className={`${cellPaddingClass} text-center font-sans`}>
                           {effectiveCategory === 'service' ? (
@@ -783,12 +916,159 @@ export const DsvView: React.FC = () => {
                             </span>
                           )}
                         </td>
+                        <td className={`${cellPaddingClass} text-center font-sans`}>
+                          {item.isForced ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleExcludeLine(item.lineNumber);
+                              }}
+                              className="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-950/60 hover:bg-rose-950/90 text-rose-300 border border-rose-800/40 transition-colors cursor-pointer"
+                              title="Quitar este P/N del DSV y devolverlo a la sección de descartados"
+                            >
+                              Quitar
+                            </button>
+                          ) : (
+                            <span className="text-slate-600 text-[10px]">-</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* SECCIÓN DE P/N DESCARTADOS / EXCLUIDOS DEL DSV (ESTILO BO) */}
+          <div className="border border-slate-800/80 rounded-3xl bg-slate-950/70 overflow-hidden shadow-xl">
+            <div className="bg-slate-900/90 px-4 py-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsDiscardedExpanded(!isDiscardedExpanded)}
+                  className="flex items-center gap-2 text-xs font-bold text-slate-200 hover:text-white cursor-pointer transition-colors"
+                >
+                  {isDiscardedExpanded ? (
+                    <ChevronUp className="w-4 h-4 text-blue-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                  )}
+                  <span>
+                    P/N Descartados / Excluidos del DSV ($0.00 USD)
+                  </span>
+                </button>
+                <span className="text-[10px] bg-slate-800 text-slate-300 font-mono px-2.5 py-0.5 rounded-full border border-slate-700">
+                  {discardedItems.length} {discardedItems.length === 1 ? 'línea excluida' : 'líneas excluidas'}
+                </span>
+                {forceIncludedLines.size > 0 && (
+                  <span className="text-[10px] bg-amber-950/80 text-amber-300 font-mono px-2.5 py-0.5 rounded-full border border-amber-600/60 font-bold">
+                    {forceIncludedLines.size} {forceIncludedLines.size === 1 ? 'forzado incluido en DSV' : 'forzados incluidos en DSV'}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {discardedItems.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadDiscardedCsv}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl transition-colors cursor-pointer"
+                    title="Descargar listado de P/N descartados en formato CSV"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Descargar CSV</span>
+                  </button>
+                )}
+
+                {discardedItems.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleIncludeAllDiscarded}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 rounded-xl transition-colors cursor-pointer"
+                    title="Forzar la inclusión de todos los P/N descartados en la exportación DSV de 48 columnas"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Incluir Todos en DSV</span>
+                  </button>
+                )}
+
+                {forceIncludedLines.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleRestoreDefaultExclusions}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-rose-950/40 hover:bg-rose-950/70 text-rose-300 border border-rose-800/40 rounded-xl transition-colors cursor-pointer"
+                    title="Restablecer exclusiones por defecto (remover forzados)"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Restablecer Exclusiones</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {isDiscardedExpanded && (
+              <div className="p-4">
+                {discardedItems.length === 0 ? (
+                  <div className="text-xs text-slate-400 text-center py-6 font-sans">
+                    {forceIncludedLines.size > 0
+                      ? 'Todos los P/N del BOM han sido incluidos en el DSV (se han forzado las líneas con $0.00 USD).'
+                      : 'No hay líneas descartadas (todos los P/N del BOM tienen precio de lista mayor a $0 USD y están en la tabla principal de DSV).'}
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-slate-800 rounded-2xl">
+                    <table className="w-full text-left text-xs text-slate-300">
+                      <thead className="bg-slate-900 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                        <tr>
+                          <th className="p-2.5 text-center w-20">Line # (D)</th>
+                          <th className="p-2.5">Part Number / Cisco SKU (E)</th>
+                          <th className="p-2.5">Descripción</th>
+                          <th className="p-2.5 text-center w-16">Cant. (I)</th>
+                          <th className="p-2.5 text-right w-28">List Price (O)</th>
+                          <th className="p-2.5 text-center w-48">Motivo de Exclusión</th>
+                          <th className="p-2.5 text-center w-36">Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                        {discardedItems.map((dItem, dIdx) => {
+                          const isZero = (dItem.listPrice || 0) <= 0;
+                          return (
+                            <tr key={dIdx} className="hover:bg-slate-900/50 transition-colors">
+                              <td className="p-2.5 text-center text-slate-400 font-semibold">{dItem.lineNumber}</td>
+                              <td className="p-2.5 font-bold text-white">{dItem.ciscoSku || dItem.partNumber}</td>
+                              <td className="p-2.5 text-slate-400 truncate max-w-xs font-sans text-xs" title={dItem.description}>
+                                {dItem.description || '-'}
+                              </td>
+                              <td className="p-2.5 text-center text-slate-300">{dItem.qty || 0}</td>
+                              <td className="p-2.5 text-right text-rose-300 font-bold">
+                                ${(dItem.listPrice || 0).toFixed(2)}
+                              </td>
+                              <td className="p-2.5 text-center font-sans">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-950/60 text-rose-300 border border-rose-800/50">
+                                  {isZero ? 'Precio de Lista $0.00' : 'Cantidad <= 0'}
+                                </span>
+                              </td>
+                              <td className="p-2.5 text-center font-sans">
+                                <button
+                                  type="button"
+                                  onClick={() => handleIncludeDiscardedLine(dItem.lineNumber)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg transition-colors cursor-pointer"
+                                  title="Forzar la inclusión de este P/N en la exportación DSV"
+                                >
+                                  <Plus className="w-3 h-3 text-amber-400" />
+                                  <span>+ Incluir en DSV</span>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -14,6 +14,9 @@ import {
   CheckCircle2,
   MapPin,
   IdCard,
+  ChevronDown,
+  ChevronUp,
+  Plus,
 } from 'lucide-react';
 import { RawBomParsedResult } from './dsvBomParser';
 import { DsvModalFormData, SkuCategoryType, Dsv48LineItem } from './types';
@@ -36,6 +39,10 @@ interface DsvModalProps {
   overrides?: Record<string, SkuCategoryType>;
   onSuccess?: (filepathOrFilename: string) => void;
   initialFormData?: Partial<DsvModalFormData>;
+  forceIncludedLines?: Set<string>;
+  onToggleForceIncludeLine?: (lineNumber: string) => void;
+  onIncludeAllLines?: () => void;
+  onResetExclusions?: () => void;
 }
 
 export const DsvModal: React.FC<DsvModalProps> = ({
@@ -45,6 +52,10 @@ export const DsvModal: React.FC<DsvModalProps> = ({
   overrides = {},
   onSuccess,
   initialFormData,
+  forceIncludedLines,
+  onToggleForceIncludeLine,
+  onIncludeAllLines,
+  onResetExclusions,
 }) => {
   const [formData, setFormData] = useState<DsvModalFormData>({
     so: '',
@@ -60,6 +71,7 @@ export const DsvModal: React.FC<DsvModalProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [pendingDiscrepancies, setPendingDiscrepancies] = useState<DsvDiscrepancy[]>([]);
   const [isDiscrepancyModalOpen, setIsDiscrepancyModalOpen] = useState(false);
+  const [isDiscardedModalExpanded, setIsDiscardedModalExpanded] = useState(false);
 
   // Pre-fill Deal ID, Partner Name and End Customer Name when modal opens
   useEffect(() => {
@@ -114,18 +126,23 @@ export const DsvModal: React.FC<DsvModalProps> = ({
 
   // Statistics of items
   const stats = useMemo(() => {
-    if (!rawBom || !rawBom.items) return { valid: 0, discarded: 0, total: 0 };
+    if (!rawBom || !rawBom.items) return { valid: 0, discarded: 0, total: 0, forced: 0 };
     let valid = 0;
     let discarded = 0;
+    let forced = 0;
+    const forceSet = forceIncludedLines || new Set<string>();
     rawBom.items.forEach((item) => {
-      if (isZeroValueBomItem(item)) {
-        discarded++;
-      } else {
+      const isZero = isZeroValueBomItem(item);
+      const isForced = forceSet.has(item.lineNumber);
+      if (!isZero || isForced) {
         valid++;
+        if (isZero && isForced) forced++;
+      } else {
+        discarded++;
       }
     });
-    return { valid, discarded, total: rawBom.items.length };
-  }, [rawBom]);
+    return { valid, discarded, total: rawBom.items.length, forced };
+  }, [rawBom, forceIncludedLines]);
 
   // Validation checks according to Section 7
   const isSoValid = formData.so.length === 9;
@@ -196,7 +213,7 @@ export const DsvModal: React.FC<DsvModalProps> = ({
       partnerName: originalBomName || formData.partnerName,
       partnerId: cleanXcl,
     };
-    const summary = transformRawBomToDsv(rawBom, exportFormData, overrides, false);
+    const summary = transformRawBomToDsv(rawBom, exportFormData, overrides, false, forceIncludedLines);
 
     // 2. Conciliación Financiera: Si hay discrepancias activas (> $0.02 USD), retener descarga y mostrar modal
     const discrepancies = summary.rows
@@ -227,7 +244,7 @@ export const DsvModal: React.FC<DsvModalProps> = ({
       partnerName: originalBomName || formData.partnerName,
       partnerId: cleanXcl,
     };
-    const summary = transformRawBomToDsv(rawBom, exportFormData, overrides, false);
+    const summary = transformRawBomToDsv(rawBom, exportFormData, overrides, false, forceIncludedLines);
 
     if (decision === 'MATH') {
       // Sobrescribir colK con calculatedPrice en las filas afectadas
@@ -382,14 +399,98 @@ export const DsvModal: React.FC<DsvModalProps> = ({
               <strong className="text-sm font-bold text-white">{stats.total}</strong>
             </div>
             <div className="p-2 rounded-xl bg-emerald-950/40 border border-emerald-500/20">
-              <span className="text-[11px] text-emerald-300 block">Válidos (List Price &gt; $0)</span>
-              <strong className="text-sm font-bold text-emerald-400">{stats.valid}</strong>
+              <span className="text-[11px] text-emerald-300 block">Válidos (Exportar)</span>
+              <strong className="text-sm font-bold text-emerald-400">
+                {stats.valid}
+                {stats.forced > 0 && (
+                  <span className="text-[10px] text-amber-300 font-normal ml-1">
+                    (+{stats.forced} forzados)
+                  </span>
+                )}
+              </strong>
             </div>
-            <div className="p-2 rounded-xl bg-rose-950/40 border border-rose-500/20">
-              <span className="text-[11px] text-rose-300 block">Descartados ($0.00)</span>
+            <button
+              type="button"
+              onClick={() => setIsDiscardedModalExpanded((prev) => !prev)}
+              className="p-2 rounded-xl bg-rose-950/40 hover:bg-rose-950/70 border border-rose-500/20 transition-colors cursor-pointer text-center"
+              title="Haz clic para ver o incluir P/N descartados ($0.00 USD)"
+            >
+              <span className="text-[11px] text-rose-300 flex items-center justify-center gap-1">
+                <span>Descartados ($0.00)</span>
+                {isDiscardedModalExpanded ? (
+                  <ChevronUp className="w-3 h-3 text-rose-300" />
+                ) : (
+                  <ChevronDown className="w-3 h-3 text-rose-300" />
+                )}
+              </span>
               <strong className="text-sm font-bold text-rose-400">{stats.discarded}</strong>
-            </div>
+            </button>
           </div>
+
+          {/* Collapsible Discarded Section in Modal */}
+          {isDiscardedModalExpanded && (
+            <div className="border border-slate-800/90 rounded-2xl bg-slate-950/90 p-3 space-y-2 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-slate-300">
+                <span className="flex items-center gap-1.5 text-rose-300">
+                  <span>P/N Descartados de la exportación DSV (List Price $0.00 USD):</span>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {onIncludeAllLines && stats.discarded > 0 && (
+                    <button
+                      type="button"
+                      onClick={onIncludeAllLines}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Incluir Todos en DSV</span>
+                    </button>
+                  )}
+                  {onResetExclusions && stats.forced > 0 && (
+                    <button
+                      type="button"
+                      onClick={onResetExclusions}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold bg-rose-950/60 hover:bg-rose-950/90 text-rose-300 border border-rose-700/50 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <span>Restablecer</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="max-h-40 overflow-y-auto space-y-1.5 custom-scrollbar divide-y divide-slate-800/40">
+                {rawBom?.items
+                  .filter((it) => isZeroValueBomItem(it) && !forceIncludedLines?.has(it.lineNumber))
+                  .map((it, idx) => (
+                    <div key={idx} className="pt-1.5 flex items-center justify-between gap-2 text-[11px] font-mono">
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="text-slate-500">L#{it.lineNumber}</span>
+                        <span className="font-bold text-white">{it.ciscoSku || it.partNumber}</span>
+                        <span className="text-slate-400 font-sans truncate max-w-[140px] text-[10px]" title={it.description}>
+                          {it.description || '-'}
+                        </span>
+                        <span className="text-slate-400">Qty:{it.qty}</span>
+                        <span className="text-rose-400 font-bold">$0.00</span>
+                      </div>
+                      {onToggleForceIncludeLine && (
+                        <button
+                          type="button"
+                          onClick={() => onToggleForceIncludeLine(it.lineNumber)}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg transition-colors shrink-0 cursor-pointer"
+                          title="Forzar inclusión de este P/N en el DSV"
+                        >
+                          <Plus className="w-2.5 h-2.5" />
+                          <span>+ Incluir</span>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                {rawBom?.items.filter((it) => isZeroValueBomItem(it) && !forceIncludedLines?.has(it.lineNumber)).length === 0 && (
+                  <div className="text-center py-2 text-slate-500 text-[11px]">
+                    No hay líneas descartadas (todos los P/N están incluidos en el DSV).
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Form */}
           <div className="space-y-4">

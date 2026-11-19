@@ -15,11 +15,28 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.19.0',
+    date: '2026-11-18',
+    commit: 'feat-dsv-excluded-items-panel-and-force-include',
+    title: 'Visibilidad de P/N Excluidos del DSV y Opción Ergonómica de Inclusión Forzada (Estilo BO)',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Visibilidad Completa de P/N Descartados / Excluidos del DSV: Implementación de la sección desplegable con diseño ergonómico homologado al módulo BO (Back Order), permitiendo a los usuarios visualizar con total transparencia todas las líneas con precio de lista $0.00 USD, componentes o licencias sin costo del BOM que originalmente no entran en la plantilla DSV de 48 columnas.',
+      'Control de Inclusión Opcional en 1 Clic (+ Incluir en DSV): Cada línea descartada cuenta con un botón interactivo para forzar su inclusión en el DSV si el negocio así lo requiere, con opción complementaria "Incluir Todos en DSV" y "Restaurar Exclusiones".',
+      'Preservación Estricta de la Lógica Financiera y Cálculos: Las fórmulas matemáticas consolidadas de precios (Hardware -42%, Suscripciones, Servicios y Contratos CON-) se mantienen 100% inalteradas. Para los ítems forzados de costo $0, el motor calcula rigurosamente $0.00 USD en Reported Unit Price (Col J) y Reported Net Price (Col K) sin corromper totales ni producir valores anómalos.',
+      'Identificación Visual y Descarte Reversible: Las líneas forzadas en la tabla activa se identifican con la insignia ámbar "+ Forzado" y disponen del botón "Quitar" para revertir la inclusión y devolverlas al panel de descartados de forma inmediata.',
+      'Exportación en Archivo CSV de P/N Descartados: Botón directo para descargar en UTF-8 con BOM la lista detallada de componentes excluidos (Línea, Part Number, Descripción, Cantidad, List Price y Motivo de Exclusión).',
+      'Integración Reactiva en Modal de Exportación (DsvModal): El diálogo de generación DSV refleja en tiempo real los ítems forzados (+X forzados), recalcula métricas válidas/descartadas y ofrece un visor interactivo de P/N descartados previo a la descarga de la matriz de 48 columnas.',
+      'Nueva Suite de Pruebas Unitarias Automatizadas (tests/dsvExcludedItemsVisualAndForceInclude.test.ts): Valida la clasificación de valor cero, exclusión por defecto, inclusión forzada individual y masiva, preservación financiera y componentes visuales en DsvView y DsvModal (43 suites de prueba pasando al 100%).',
+    ],
+  },
+  {
     version: '2.18.0',
     date: '2026-11-18',
     commit: 'feat-multi-screen-auto-fit-resolution-optimization',
     title: 'Auto-Ajuste Inteligente Multiresolución, Densidad Adaptativa y Zoom Local en Todos los Módulos',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Hook Universal de Densidad y Zoom (useTableDensityAndZoom): Centraliza la lógica adaptativa con detección automática de pantalla en tiempo de ejecución (isSmallScreen < 1440px), 3 modos de densidad (Auto-Fit inteligente, Compacto para laptops y Estándar para pantallas amplias) y zoom local clampeado entre 75% y 115% con persistencia en localStorage.',

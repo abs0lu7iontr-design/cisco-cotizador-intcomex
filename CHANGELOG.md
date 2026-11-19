@@ -6,6 +6,27 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.19.0] - 2026-11-18
+### 📦 Visibilidad de P/N Excluidos del DSV y Opción Ergonómica de Inclusión Forzada (Estilo BO)
+- **Panel Desplegable de P/N Descartados / Excluidos del DSV (Estilo BO):**
+  - Implementado un panel colapsable en `DsvView.tsx` homologado con la ergonomía visual del módulo de Back Order (`BoRequestModal.tsx`).
+  - Muestra la lista completa de ítems del BOM que por defecto no se incorporan a la matriz DSV (aquellos con precio de lista `$0.00 USD`, licencias o componentes sin costo).
+  - Incluye badges con conteo en tiempo real (`X líneas excluidas`, `Y forzados incluidos en DSV`) y cabecera interactiva con `ChevronUp` / `ChevronDown`.
+- **Inclusión Forzada Opcional en 1 Clic (`+ Incluir en DSV`):**
+  - Cada fila descartada cuenta con un botón dedicado `+ Incluir en DSV` para incorporarla a la exportación oficial si el negocio o el partner lo requiere.
+  - Opciones de acción masiva en cabecera: `Incluir Todos en DSV` y `Restaurar Exclusiones` (para revertir forzados con 1 solo clic).
+- **Preservación Rigurosa de Cálculos Financieros:**
+  - Las fórmulas matemáticas consolidadas de precios (Hardware -42%, Suscripciones periódicas, Servicios escalonados y contratos CON-) se conservan 100% inalteradas.
+  - En los ítems forzados de costo cero, el motor calcula limpia y transparentemente `$0.00 USD` en Reported Unit Price (Col J) y Reported Net Price (Col K), garantizando integridad numérica y cero distorsión en totales.
+- **Trazabilidad Visual en Tabla Activa y Descarte Reversible:**
+  - Los productos forzados que suben a la tabla activa de vista previa se destacan con la insignia ámbar `+ Forzado` y cuentan con un botón `Quitar` en la columna de acción para devolverlos a la sección de descartados en cualquier momento.
+- **Descarga de Lista Descartada en CSV:**
+  - Botón integrado `Descargar CSV` que exporta un archivo delimitado por comas con codificación UTF-8 con BOM conteniendo: Línea, Part Number / SKU, Descripción, Cantidad, List Price USD y Motivo de Exclusión.
+- **Sincronización con Modal de Exportación (`DsvModal`):**
+  - El modal de generación de las 48 columnas reconoce las líneas forzadas, recalcula dinámicamente las métricas de exportación (`+X forzados`), e incorpora un visor desplegable interactivo previo a la descarga del archivo Excel final.
+- **Nueva Suite de Pruebas Unitarias Automatizadas (`tests/dsvExcludedItemsVisualAndForceInclude.test.ts`):**
+  - 7 pruebas unitarias automáticas que validan la exclusión por defecto, retorno de `discardedRows`, inclusión forzada sin distorsión de precios, persistencia en modal y vista (43 suites de prueba pasando al 100%).
+
 ## [v2.18.0] - 2026-11-18
 ### 🖥️ Auto-Ajuste Inteligente Multiresolución, Densidad Adaptativa y Zoom Local en Todos los Módulos
 - **Hook Universal de Densidad y Zoom (`useTableDensityAndZoom`):**
