@@ -15,11 +15,32 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.18.0',
+    date: '2026-11-18',
+    commit: 'feat-multi-screen-auto-fit-resolution-optimization',
+    title: 'Auto-Ajuste Inteligente Multiresolución, Densidad Adaptativa y Zoom Local en Todos los Módulos',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Hook Universal de Densidad y Zoom (useTableDensityAndZoom): Centraliza la lógica adaptativa con detección automática de pantalla en tiempo de ejecución (isSmallScreen < 1440px), 3 modos de densidad (Auto-Fit inteligente, Compacto para laptops y Estándar para pantallas amplias) y zoom local clampeado entre 75% y 115% con persistencia en localStorage.',
+      'Control Visual Unificado (TableDensityZoomControls): Componente interactivo y responsivo integrado en las barras de herramientas de todos los módulos, permitiendo alternar densidad y ajustar el zoom de tablas con botones dedicados ([-], %, [+]) sin alterar el zoom general del navegador ni del sistema operativo Windows.',
+      'Forecast Comercial Cisco & Intcomex (36 columnas): Integración de auto-ajuste y zoom local con estilo emerald, reducción drástica de espaciado en celdas y cabeceras, tarjetas KPI adaptativas en grilla flexible (2 cols en móvil, 3 en tablet y 6 en desktop) y filtros con auto-envoltura limpia.',
+      'Pipeline Comercial & Oportunidades: Soporte completo de densidad dinámica y zoom tanto en vista Tabla (18 columnas) como en tablero Kanban de 5 columnas, con barra de filtros no rompible y KPIs fluidos con badge de etapa.',
+      'Back Order Tracking (Órdenes Intcomex & Cisco): Zoom local y densidad ceñida integrados en vista Tabla y Kanban, optimizando la visibilidad de los 14 estados y previniendo desbordes en laptops de 1366x768 o 1080p escalados al 125%/150%.',
+      'Cotizador Cisco CCW & Summary Cards: Densidad compacta/auto en la tabla virtualizada de 12 columnas y tipografía fluida en las tarjetas de resumen (text-lg sm:text-xl xl:text-2xl) para montos grandes en USD/CLP/UF sin cortes ni truncamientos indeseados.',
+      'Cotizador CCW-R de Servicios & SmartNet: Densidad adaptativa y control de zoom en vista de cotización de servicios, ribbon de métricas optimizado y tablas de ítems ceñidas.',
+      'Demanda & Stock E1 y Generador DSV: Controles de zoom y densidad aplicados a la consulta de almacenes y a la tabla de vista previa de 48 columnas DSV, eliminando scroll horizontal descontrolado.',
+      'Preventa IA ConfiguriAtor: Reorganización fluida a 2 columnas apilables limpiamente en pantallas < 1280px (columna de chat e histórico a ancho completo en laptops) con min-w-0 para evitar compresión excesiva.',
+      'Blindaje Estructural en Layout Principal (App.tsx & Navbar): Eliminado de raíz el desborde horizontal de la ventana completa mediante min-w-0 y overflow-x-hidden en <main>, con textos secundarios condensados en Navbar para evitar saltos verticales en pantallas compactas.',
+      'Nueva Suite de Pruebas Unitarias Automatizadas (tests/multiScreenResolutionAutoFit.test.ts): Valida los modos de densidad, el rango de zoom, el hook, el componente UI y la integración en los 9 módulos clave (42 suites de prueba del proyecto pasando al 100%).',
+    ],
+  },
+  {
     version: '2.17.5',
     date: '2026-11-18',
     commit: 'fix-deduplicate-estimate-access-requests-and-notifications',
     title: 'Deduplicación Estricta de Solicitudes y Notificaciones de Permiso en Historial de Estimates',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Deduplicación Integral en Cruce de Storage Tiers: Corrección de fondo en useEstimatesMirror (mergeAndDeduplicateEstimates), donde la fusión de registros entre IndexedDB, Primary Cache y Vaults locales concatenaba arrays de accessRequests produciendo múltiples entradas idénticas para un mismo usuario. Ahora se utiliza deduplicateAccessRequests preservando estrictamente la solicitud más reciente.',

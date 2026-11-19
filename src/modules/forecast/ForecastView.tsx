@@ -35,6 +35,8 @@ import {
   RotateCcw,
   Calendar,
 } from 'lucide-react';
+import { useTableDensityAndZoom } from '../../hooks/useTableDensityAndZoom';
+import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
 import { isAppOffline } from '../../core/storage/offlineModeManager';
 import {
   ForecastRecord,
@@ -87,6 +89,19 @@ export function ForecastView() {
     am: 'ALL',
     periodoMes: getCurrentMonthName(),
     onlyWithReminders: false,
+  });
+
+  // Table Density & Visual Zoom States (Auto-Fit across resolutions without changing browser zoom)
+  const {
+    tableDensity,
+    tableZoom,
+    headPaddingClass,
+    cellPaddingClass,
+    zoomStyle,
+    handleSetTableDensity,
+    handleSetTableZoom,
+  } = useTableDensityAndZoom({
+    storageKeyPrefix: 'cisco_forecast',
   });
 
   // Modal State
@@ -468,7 +483,7 @@ export function ForecastView() {
         )}
 
         {/* KPI Summary Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5 sm:gap-3 mt-4">
           <div className="bg-slate-950/60 border border-slate-800 rounded-lg p-3">
             <span className="text-[11px] font-medium text-slate-400 block">Total USD Intcomex</span>
             <div className="text-lg font-bold text-emerald-400 mt-0.5 truncate">
@@ -531,9 +546,9 @@ export function ForecastView() {
         </div>
 
         {/* Filters Toolbar */}
-        <div className="flex flex-wrap items-center gap-3 mt-4 pt-3 border-t border-slate-800/80">
+        <div className="flex flex-wrap items-center gap-2.5 mt-4 pt-3 border-t border-slate-800/80">
           {/* Search Input */}
-          <div className="relative flex-1 min-w-[220px]">
+          <div className="relative flex-1 min-w-[180px] max-w-sm">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -654,23 +669,37 @@ export function ForecastView() {
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
+
+          {/* Auto-Fit Density and Table Zoom Controls */}
+          <div className="ml-auto">
+            <TableDensityZoomControls
+              density={tableDensity}
+              onDensityChange={handleSetTableDensity}
+              zoom={tableZoom}
+              onZoomChange={handleSetTableZoom}
+              colorTheme="emerald"
+            />
+          </div>
         </div>
       </div>
 
       {/* Main Table Container with Dark Slate / Cyber Aesthetic */}
-      <div className="flex-1 overflow-auto bg-slate-950 p-4">
-        <div className="inline-block min-w-full align-middle border border-slate-800 rounded-xl overflow-hidden shadow-2xl bg-slate-900 text-slate-200">
-          <table className="w-full text-left text-[11px] border-collapse font-sans">
+      <div className="flex-1 overflow-auto bg-slate-950 p-2 sm:p-4 custom-scrollbar">
+        <div
+          className="inline-block min-w-full align-middle border border-slate-800 rounded-xl overflow-hidden shadow-2xl bg-slate-900 text-slate-200 transition-all duration-200"
+          style={zoomStyle}
+        >
+          <table className="w-full text-left border-collapse font-sans">
             {/* Table Headers */}
             <thead className="sticky top-0 z-20 shadow-lg bg-slate-900 border-b-2 border-emerald-500/40">
-              <tr className="uppercase tracking-wider text-[10px]">
+              <tr className="uppercase tracking-wider">
                 {/* Actions Header */}
-                <th className="sticky left-0 z-30 bg-slate-900 px-3 py-2.5 text-center border-r border-slate-800 text-emerald-400 font-bold w-16">
+                <th className={`sticky left-0 z-30 bg-slate-900 ${headPaddingClass} text-center border-r border-slate-800 text-emerald-400 font-bold w-16`}>
                   Acción
                 </th>
 
                 {/* ID Sticky Header */}
-                <th className="sticky left-16 z-30 bg-slate-900 px-3 py-2.5 border-r border-slate-800 text-emerald-400 font-bold w-24">
+                <th className={`sticky left-16 z-30 bg-slate-900 ${headPaddingClass} border-r border-slate-800 text-emerald-400 font-bold w-24`}>
                   ID
                 </th>
 
@@ -680,7 +709,7 @@ export function ForecastView() {
                   return (
                     <th
                       key={col.key}
-                      className={`px-3 py-2 border-r border-slate-800 whitespace-nowrap font-bold text-center ${col.minWidth} ${
+                      className={`${headPaddingClass} border-r border-slate-800 whitespace-nowrap font-bold text-center ${col.minWidth} ${
                         isSubmitted
                           ? 'bg-sky-950/80 text-sky-300 border-r border-sky-800/60'
                           : 'bg-slate-900 text-slate-200'
@@ -694,7 +723,7 @@ export function ForecastView() {
                         >
                           Col {col.colIndex}
                         </span>
-                        <span className="text-[11px] font-semibold tracking-tight">{col.label}</span>
+                        <span className="font-semibold tracking-tight">{col.label}</span>
                       </div>
                     </th>
                   );
@@ -747,7 +776,7 @@ export function ForecastView() {
                       {/* Actions Sticky Column */}
                       <td
                         onClick={(e) => e.stopPropagation()}
-                        className={`sticky left-0 z-10 px-2 py-1.5 text-center border-r border-slate-800 w-16 ${
+                        className={`sticky left-0 z-10 ${cellPaddingClass} text-center border-r border-slate-800 w-16 ${
                           isEven ? 'bg-slate-950' : 'bg-slate-900'
                         }`}
                       >
@@ -771,7 +800,7 @@ export function ForecastView() {
 
                       {/* ID Sticky Column */}
                       <td
-                        className={`sticky left-16 z-10 px-3 py-1.5 font-mono text-xs font-semibold border-r border-slate-800 w-24 ${
+                        className={`sticky left-16 z-10 ${cellPaddingClass} font-mono font-semibold border-r border-slate-800 w-24 ${
                           isEven ? 'bg-slate-950' : 'bg-slate-900'
                         }`}
                       >
@@ -792,7 +821,7 @@ export function ForecastView() {
 
                         // Base cell class
                         let cellClass =
-                          'px-3 py-1.5 border-r border-slate-800/60 text-slate-300 whitespace-nowrap text-xs font-sans ';
+                          `${cellPaddingClass} border-r border-slate-800/60 text-slate-300 whitespace-nowrap font-sans `;
 
                         if (col.align === 'right') cellClass += 'text-right ';
                         else if (col.align === 'center') cellClass += 'text-center ';

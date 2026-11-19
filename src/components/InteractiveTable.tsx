@@ -38,6 +38,8 @@ import { idbGet, idbSet, STORES } from '../core/storage/indexedDbStorage';
 import { EyeOff } from 'lucide-react';
 import { validateCiscoBom } from '../core/bomValidator';
 import { BomValidatorModal } from './BomValidatorModal';
+import { useTableDensityAndZoom } from '../hooks/useTableDensityAndZoom';
+import { TableDensityZoomControls } from './TableDensityZoomControls';
 
 export type InteractiveTableFilterType = 'all' | 'intangible' | 'tangible' | 'arancel';
 
@@ -200,6 +202,21 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<InteractiveTableFilterType>('all');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Table Density & Visual Zoom States (Auto-Fit across resolutions without changing browser zoom)
+  const {
+    tableDensity,
+    tableZoom,
+    effectiveDensity,
+    headPaddingClass,
+    cellPaddingClass,
+    zoomStyle,
+    handleSetTableDensity,
+    handleSetTableZoom,
+  } = useTableDensityAndZoom({
+    storageKeyPrefix: 'cisco_quoter',
+  });
+
   const [selectedRowIdx, setSelectedRowIdx] = useState<number | null>(null);
   const [scrollTop, setScrollTop] = useState<number>(0);
   const [viewportHeight, setViewportHeight] = useState<number>(VIRTUAL_VIEWPORT_MAX_HEIGHT_PX);
@@ -658,6 +675,14 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
           Mostrando {filteredItems.length} de {items.length} ítems
             {virtualWindow.isVirtualized ? ` (Ventana activa: ${virtualWindow.startIndex + 1}-${virtualWindow.endIndex})` : ''}
           </span>
+
+          <TableDensityZoomControls
+            density={tableDensity}
+            onDensityChange={handleSetTableDensity}
+            zoom={tableZoom}
+            onZoomChange={handleSetTableZoom}
+            colorTheme="indigo"
+          />
         </div>
       </div>
 
@@ -675,28 +700,29 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        style={
-          virtualWindow.isVirtualized
+        style={{
+          ...(virtualWindow.isVirtualized
             ? { maxHeight: `${VIRTUAL_VIEWPORT_MAX_HEIGHT_PX}px`, overflowY: 'auto' }
-            : undefined
-        }
-        className="hidden md:block overflow-x-auto"
+            : {}),
+          ...zoomStyle,
+        }}
+        className="hidden md:block overflow-x-auto custom-scrollbar transition-all duration-200"
       >
-        <table className={`w-full text-left border-collapse text-xs ${isAesthetic ? `density-${studioConfig.density}` : ''}`}>
+        <table className={`w-full text-left border-collapse ${effectiveDensity === 'compact' ? 'text-[11px]' : 'text-xs'} ${isAesthetic ? `density-${studioConfig.density}` : ''}`}>
           <thead className={virtualWindow.isVirtualized ? 'sticky top-0 z-10' : undefined}>
-            <tr className="bg-slate-950 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
-              <th className="p-3 text-center w-14">Línea</th>
-              <th className="p-3">Part Number</th>
-              <th className="p-3">Descripción</th>
-              <th className="p-3 text-center w-14">Cant.</th>
-              {!isClientMode && <th className="p-3 text-right">Net Cisco (U)</th>}
-              {!isClientMode && <th className="p-3 text-right">Internación</th>}
-              {!isClientMode && <th className="p-3 text-right">Arancel</th>}
-              {!isClientMode && <th className="p-3 text-right">Costo Total (U)</th>}
-              <th className="p-3 text-right font-bold text-indigo-300 bg-indigo-950/20">PV Unitario</th>
-              <th className="p-3 text-right font-bold text-emerald-400 bg-emerald-950/20">PV Extendido</th>
-              <th className="p-3 text-center">Tipo / Regla</th>
-              <th className="p-3 text-center">Lead Time</th>
+            <tr className="bg-slate-950 text-slate-400 uppercase font-bold border-b border-slate-800">
+              <th className={`${headPaddingClass} text-center w-12`}>Línea</th>
+              <th className={headPaddingClass}>Part Number</th>
+              <th className={headPaddingClass}>Descripción</th>
+              <th className={`${headPaddingClass} text-center w-12`}>Cant.</th>
+              {!isClientMode && <th className={`${headPaddingClass} text-right`}>Net Cisco (U)</th>}
+              {!isClientMode && <th className={`${headPaddingClass} text-right`}>Internación</th>}
+              {!isClientMode && <th className={`${headPaddingClass} text-right`}>Arancel</th>}
+              {!isClientMode && <th className={`${headPaddingClass} text-right`}>Costo Total (U)</th>}
+              <th className={`${headPaddingClass} text-right font-bold text-indigo-300 bg-indigo-950/20`}>PV Unitario</th>
+              <th className={`${headPaddingClass} text-right font-bold text-emerald-400 bg-emerald-950/20`}>PV Extendido</th>
+              <th className={`${headPaddingClass} text-center`}>Tipo / Regla</th>
+              <th className={`${headPaddingClass} text-center`}>Lead Time</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 font-sans">
@@ -753,7 +779,7 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                       }`}
                     >
                       <td
-                        className={`p-3 text-center font-mono ${
+                        className={`${cellPaddingClass} text-center font-mono ${
                           isMain ? 'font-bold text-white' : 'font-normal text-slate-400'
                         }`}
                       >
@@ -768,7 +794,7 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                         )}
                       </td>
                       <td
-                        className={`p-3 font-mono whitespace-nowrap ${
+                        className={`${cellPaddingClass} font-mono whitespace-nowrap ${
                           isMain ? 'font-bold text-white' : 'font-normal text-slate-300 pl-6'
                         }`}
                       >
@@ -827,21 +853,21 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                         )}
                       </td>
                       <td
-                        className={`p-3 text-slate-300 max-w-xs truncate ${isMain ? '' : 'pl-6'}`}
+                        className={`${cellPaddingClass} text-slate-300 max-w-xs truncate ${isMain ? '' : 'pl-6'}`}
                         title={item.description}
                       >
                         {item.description}
                       </td>
-                      <td className="p-3 text-center font-bold text-slate-200">
+                      <td className={`${cellPaddingClass} text-center font-bold text-slate-200`}>
                         {item.qty}
                       </td>
                       {!isClientMode && (
-                        <td className="p-3 text-right font-mono text-slate-300">
+                        <td className={`${cellPaddingClass} text-right font-mono text-slate-300`}>
                           {formatCurrency(item.netCiscoUnit)}
                         </td>
                       )}
                       {!isClientMode && (
-                        <td className="p-3 text-right font-mono text-slate-400">
+                        <td className={`${cellPaddingClass} text-right font-mono text-slate-400`}>
                           {item.isIntangible ? (
                             <span className="text-slate-600">-</span>
                           ) : (
@@ -855,7 +881,7 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                         </td>
                       )}
                       {!isClientMode && (
-                        <td className="p-3 text-right font-mono text-slate-400">
+                        <td className={`${cellPaddingClass} text-right font-mono text-slate-400`}>
                           {item.llevaArancel ? (
                             <span
                               className="text-purple-400 font-bold"
@@ -869,12 +895,12 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                         </td>
                       )}
                       {!isClientMode && (
-                        <td className="p-3 text-right font-mono text-slate-200 font-semibold">
+                        <td className={`${cellPaddingClass} text-right font-mono text-slate-200 font-semibold`}>
                           {formatCurrency(item.costoTotalUnitario)}
                         </td>
                       )}
                       <td
-                        className={`p-3 text-right font-mono font-bold text-indigo-300 bg-indigo-950/20 ${
+                        className={`${cellPaddingClass} text-right font-mono font-bold text-indigo-300 bg-indigo-950/20 ${
                           item.isCustomParamApplied ? "ring-1 ring-inset ring-indigo-500/40" : ""
                         }`}
                         title={item.isCustomParamApplied ? `Margen de bloque: ${item.effectiveMargenPct}%` : undefined}
@@ -882,14 +908,14 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                         {formatCurrency(item.precioVentaUnitario)}
                       </td>
                       <td
-                        className={`p-3 text-right font-mono font-bold text-emerald-400 bg-emerald-950/20 ${
+                        className={`${cellPaddingClass} text-right font-mono font-bold text-emerald-400 bg-emerald-950/20 ${
                           item.isCustomParamApplied ? "ring-1 ring-inset ring-emerald-500/40" : ""
                         }`}
                         title={item.isCustomParamApplied ? `Margen de bloque: ${item.effectiveMargenPct}%` : undefined}
                       >
                         {formatCurrency(item.precioVentaExtendido)}
                       </td>
-                      <td className="p-3 text-center">
+                      <td className={`${cellPaddingClass} text-center`}>
                         <button
                           onClick={(e) => handleRowContextMenu(e, item)}
                           className={`text-[9px] font-bold px-2.5 py-0.5 rounded-full border cursor-pointer transition-transform hover:scale-105 inline-flex items-center gap-1.5 ${
@@ -914,7 +940,7 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
                           <span>{item.isIntangible ? 'INTANGIBLE' : item.llevaArancel ? 'ARANCEL (=)' : 'HARDWARE'}</span>
                         </button>
                       </td>
-                      <td className="p-3 text-center text-[11px] text-slate-400 whitespace-nowrap">
+                      <td className={`${cellPaddingClass} text-center text-[11px] text-slate-400 whitespace-nowrap`}>
                         {item.transformedLeadTime || '-'}
                       </td>
                     </tr>

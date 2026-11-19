@@ -33,6 +33,8 @@ import {
   Clock,
   RotateCcw,
 } from 'lucide-react';
+import { useTableDensityAndZoom } from '../../hooks/useTableDensityAndZoom';
+import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
 import { isAppOffline } from '../../core/storage/offlineModeManager';
 import {
   PipelineDealRecord,
@@ -84,6 +86,19 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
     am: 'ALL',
     porcentajeAvance: 'ALL',
     partner: 'ALL',
+  });
+
+  // Table Density & Visual Zoom States (Auto-Fit across resolutions without changing browser zoom)
+  const {
+    tableDensity,
+    tableZoom,
+    headPaddingClass,
+    cellPaddingClass,
+    zoomStyle,
+    handleSetTableDensity,
+    handleSetTableZoom,
+  } = useTableDensityAndZoom({
+    storageKeyPrefix: 'cisco_pipeline',
   });
 
   // Modales
@@ -433,7 +448,7 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
       )}
 
       {/* KPI Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-3.5">
         {/* Total Pipeline */}
         <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-lg flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider">
@@ -566,11 +581,11 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
       </div>
 
       {/* Filter and View Toggle Bar */}
-      <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-3 shadow-md">
+      <div className="p-3 sm:p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 shadow-md">
         {/* Left: Search & Filters */}
-        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
           {/* Search Input */}
-          <div className="relative min-w-[220px] max-w-sm flex-1">
+          <div className="relative min-w-[180px] max-w-sm flex-1">
             <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
             <input
               type="text"
@@ -690,37 +705,50 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
           )}
         </div>
 
-        {/* Right: View Toggle (Table / Kanban) */}
-        <div className="flex items-center space-x-1 p-1 bg-slate-950 rounded-xl border border-slate-800 shrink-0">
-          <button
-            onClick={() => setViewMode('table')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
-              viewMode === 'table'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <TableIcon className="w-3.5 h-3.5" />
-            <span>Tabla</span>
-          </button>
-          <button
-            onClick={() => setViewMode('kanban')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
-              viewMode === 'kanban'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Kanban className="w-3.5 h-3.5" />
-            <span>Tablero</span>
-          </button>
+        {/* Right: Auto-Fit Density, Zoom & View Toggle (Table / Kanban) */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <TableDensityZoomControls
+            density={tableDensity}
+            onDensityChange={handleSetTableDensity}
+            zoom={tableZoom}
+            onZoomChange={handleSetTableZoom}
+            colorTheme="indigo"
+          />
+
+          <div className="flex items-center space-x-1 p-1 bg-slate-950 rounded-xl border border-slate-800 shrink-0">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <TableIcon className="w-3.5 h-3.5" />
+              <span>Tabla</span>
+            </button>
+            <button
+              onClick={() => setViewMode('kanban')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer ${
+                viewMode === 'kanban'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Kanban className="w-3.5 h-3.5" />
+              <span>Tablero</span>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Main Content: Table or Kanban */}
       {viewMode === 'kanban' ? (
         /* KANBAN BOARD VIEW */
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 overflow-x-auto pb-4">
+        <div
+          className="grid grid-cols-1 md:grid-cols-5 gap-3 sm:gap-4 overflow-x-auto pb-4 transition-all duration-200"
+          style={zoomStyle}
+        >
           {[20, 30, 50, 70, 100].map((stage) => {
             const stageDeals = filteredDeals.filter((d) => d.porcentajeAvance === stage);
             const stageTotal = stageDeals.reduce((sum, d) => sum + parseFlexibleNumber(d.usd), 0);
@@ -851,28 +879,28 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
       ) : (
         /* TABLE VIEW */
         <div className="p-1 rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden">
-          <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full text-left text-xs whitespace-nowrap">
+          <div className="overflow-x-auto custom-scrollbar transition-all duration-200" style={zoomStyle}>
+            <table className="w-full text-left whitespace-nowrap">
               <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/70 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                  <th className="py-3 px-3">Fecha Lev.</th>
-                  <th className="py-3 px-3">Fecha Cot.</th>
-                  <th className="py-3 px-3">PM Resp.</th>
-                  <th className="py-3 px-4">Partner / Reseller</th>
-                  <th className="py-3 px-3">Ejecutivo Partner</th>
-                  <th className="py-3 px-4">End User (Cliente Final)</th>
-                  <th className="py-3 px-3 text-right">Monto USD</th>
-                  <th className="py-3 px-3">Mes Cierre</th>
-                  <th className="py-3 px-3 text-center">% Avance</th>
-                  <th className="py-3 px-3"># Reg. Oportunidad</th>
-                  <th className="py-3 px-3 text-right">Prod + Sub</th>
-                  <th className="py-3 px-3 text-right">Servicios</th>
-                  <th className="py-3 px-3 text-right">Meraki</th>
-                  <th className="py-3 px-3">AM</th>
-                  <th className="py-3 px-3">Grupo</th>
-                  <th className="py-3 px-4">Notas</th>
-                  <th className="py-3 px-3">Price Protection</th>
-                  <th className="py-3 px-3 text-center">Acciones</th>
+                <tr className="border-b border-slate-800 bg-slate-950/70 text-slate-400 font-bold uppercase tracking-wider">
+                  <th className={headPaddingClass}>Fecha Lev.</th>
+                  <th className={headPaddingClass}>Fecha Cot.</th>
+                  <th className={headPaddingClass}>PM Resp.</th>
+                  <th className={headPaddingClass}>Partner / Reseller</th>
+                  <th className={headPaddingClass}>Ejecutivo Partner</th>
+                  <th className={headPaddingClass}>End User (Cliente Final)</th>
+                  <th className={`${headPaddingClass} text-right`}>Monto USD</th>
+                  <th className={headPaddingClass}>Mes Cierre</th>
+                  <th className={`${headPaddingClass} text-center`}>% Avance</th>
+                  <th className={headPaddingClass}># Reg. Oportunidad</th>
+                  <th className={`${headPaddingClass} text-right`}>Prod + Sub</th>
+                  <th className={`${headPaddingClass} text-right`}>Servicios</th>
+                  <th className={`${headPaddingClass} text-right`}>Meraki</th>
+                  <th className={headPaddingClass}>AM</th>
+                  <th className={headPaddingClass}>Grupo</th>
+                  <th className={headPaddingClass}>Notas</th>
+                  <th className={headPaddingClass}>Price Protection</th>
+                  <th className={`${headPaddingClass} text-center`}>Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -888,19 +916,19 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
                       }}
                       className="hover:bg-slate-800/50 transition-colors cursor-pointer group"
                     >
-                      <td className="py-3 px-3 font-mono text-slate-400">{formatCommercialDate(deal.fechaLevantamiento)}</td>
-                      <td className="py-3 px-3 font-mono text-slate-400">{formatCommercialDate(deal.fechaCotizacion)}</td>
-                      <td className="py-3 px-3 font-medium text-slate-300">{deal.pmResponsable}</td>
-                      <td className="py-3 px-4 font-bold text-white group-hover:text-indigo-300 transition-colors">
+                      <td className={`${cellPaddingClass} font-mono text-slate-400`}>{formatCommercialDate(deal.fechaLevantamiento)}</td>
+                      <td className={`${cellPaddingClass} font-mono text-slate-400`}>{formatCommercialDate(deal.fechaCotizacion)}</td>
+                      <td className={`${cellPaddingClass} font-medium text-slate-300`}>{deal.pmResponsable}</td>
+                      <td className={`${cellPaddingClass} font-bold text-white group-hover:text-indigo-300 transition-colors`}>
                         {deal.partner}
                       </td>
-                      <td className="py-3 px-3 text-slate-400">{deal.ejecutivoPartner || '-'}</td>
-                      <td className="py-3 px-4 font-semibold text-slate-200">{deal.endUser}</td>
-                      <td className="py-3 px-3 text-right font-mono font-bold text-amber-400 text-sm">
+                      <td className={`${cellPaddingClass} text-slate-400`}>{deal.ejecutivoPartner || '-'}</td>
+                      <td className={`${cellPaddingClass} font-semibold text-slate-200`}>{deal.endUser}</td>
+                      <td className={`${cellPaddingClass} text-right font-mono font-bold text-amber-400`}>
                         {formatCurrency(deal.usd)}
                       </td>
-                      <td className="py-3 px-3 text-slate-300 font-medium">{deal.mesCierre}</td>
-                      <td className="py-3 px-3 text-center">
+                      <td className={`${cellPaddingClass} text-slate-300 font-medium`}>{deal.mesCierre}</td>
+                      <td className={`${cellPaddingClass} text-center`}>
                         <span
                           className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
                             stageMeta?.bg || 'bg-slate-800'
@@ -911,29 +939,29 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
                           {deal.porcentajeAvance}%
                         </span>
                       </td>
-                      <td className="py-3 px-3 font-mono text-indigo-300">{deal.dealId || '-'}</td>
-                      <td className="py-3 px-3 text-right font-mono text-slate-300">
+                      <td className={`${cellPaddingClass} font-mono text-indigo-300`}>{deal.dealId || '-'}</td>
+                      <td className={`${cellPaddingClass} text-right font-mono text-slate-300`}>
                         {deal.productosSuscripciones > 0 ? formatCurrency(deal.productosSuscripciones) : '-'}
                       </td>
-                      <td className="py-3 px-3 text-right font-mono text-purple-300">
+                      <td className={`${cellPaddingClass} text-right font-mono text-purple-300`}>
                         {deal.servicios > 0 ? formatCurrency(deal.servicios) : '-'}
                       </td>
-                      <td className="py-3 px-3 text-right font-mono text-emerald-300">
+                      <td className={`${cellPaddingClass} text-right font-mono text-emerald-300`}>
                         {deal.meraki > 0 ? formatCurrency(deal.meraki) : '-'}
                       </td>
-                      <td className="py-3 px-3 text-slate-400">{deal.am || '-'}</td>
-                      <td className="py-3 px-3">
+                      <td className={`${cellPaddingClass} text-slate-400`}>{deal.am || '-'}</td>
+                      <td className={cellPaddingClass}>
                         <span className="px-2 py-0.5 rounded text-[10px] bg-slate-950 text-slate-300 border border-slate-800">
                           {deal.grupoVentas || 'Enterprise'}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-slate-400 max-w-xs truncate" title={deal.notas}>
+                      <td className={`${cellPaddingClass} text-slate-400 max-w-xs truncate`} title={deal.notas}>
                         {deal.notas || '-'}
                       </td>
-                      <td className="py-3 px-3 font-mono text-amber-300">
+                      <td className={`${cellPaddingClass} font-mono text-amber-300`}>
                         {formatCommercialDate(deal.priceProtectionExpiryDate)}
                       </td>
-                      <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                      <td className={`${cellPaddingClass} text-center`} onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center space-x-1">
                           <button
                             type="button"

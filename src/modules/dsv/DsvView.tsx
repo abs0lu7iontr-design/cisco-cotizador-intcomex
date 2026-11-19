@@ -28,6 +28,8 @@ import { saveDsvToCloud, getCloudDsvs, CloudDsvRecord } from '../cloud';
 import { syncBoOrderFromDsvRecord, detectBodegaFromDsvRows } from '../bo/boTrackingService';
 import { useCiscoAutomatedStore } from '../../core/store';
 import { openDesktopFileDialog } from '../../core/desktopBridge';
+import { useTableDensityAndZoom } from '../../hooks/useTableDensityAndZoom';
+import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
 
 interface ContextMenuState {
   visible: boolean;
@@ -45,6 +47,20 @@ export const DsvView: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [exportNotification, setExportNotification] = useState<string | null>(null);
+
+  // Table Density & Visual Zoom States (Auto-Fit across resolutions without changing browser zoom)
+  const {
+    tableDensity,
+    tableZoom,
+    headPaddingClass,
+    cellPaddingClass,
+    zoomStyle,
+    handleSetTableDensity,
+    handleSetTableZoom,
+  } = useTableDensityAndZoom({
+    storageKeyPrefix: 'cisco_dsv',
+  });
+
   // Manual Overrides Map: lineNumber -> SkuCategoryType
   const [overrides, setOverrides] = useState<Record<string, SkuCategoryType>>({});
 
@@ -561,7 +577,7 @@ export const DsvView: React.FC = () => {
       ) : (
         <div className="space-y-4">
           {/* Summary Metric Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5 sm:gap-3">
             <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Archivo BOM</span>
               <span className="text-xs font-bold text-white mt-1 truncate" title={rawBom.fileName}>
@@ -624,28 +640,38 @@ export const DsvView: React.FC = () => {
 
           {/* Line Items Table with Right-Click */}
           <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-            <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-300">
-                Vista Previa de Productos a Exportar ({validItems.length} filas continuas sin renumerar)
-              </span>
-              <span className="text-[11px] text-slate-500 font-mono">
-                Matriz 48 Columnas (A - AV) | Clic derecho para cambiar regla
-              </span>
+            <div className="p-3 sm:p-4 bg-slate-950/80 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
+              <div>
+                <span className="text-xs font-bold text-slate-300 block">
+                  Vista Previa de Productos a Exportar ({validItems.length} filas continuas sin renumerar)
+                </span>
+                <span className="text-[11px] text-slate-500 font-mono hidden sm:inline">
+                  Matriz 48 Columnas (A - AV) | Clic derecho para cambiar regla
+                </span>
+              </div>
+
+              <TableDensityZoomControls
+                density={tableDensity}
+                onDensityChange={handleSetTableDensity}
+                zoom={tableZoom}
+                onZoomChange={handleSetTableZoom}
+                colorTheme="amber"
+              />
             </div>
 
-            <div className="overflow-x-auto max-h-[520px] custom-scrollbar">
+            <div className="overflow-x-auto max-h-[520px] custom-scrollbar transition-all duration-200" style={zoomStyle}>
               <table className="w-full text-left text-xs text-slate-300">
                 <thead className="bg-slate-950 text-[11px] font-bold uppercase tracking-wider text-slate-400 sticky top-0 z-10 border-b border-slate-800">
                   <tr>
-                    <th className="p-3 text-center w-14">Line # (D)</th>
-                    <th className="p-3">Cisco SKU (E)</th>
-                    <th className="p-3">Magic Key (M)</th>
-                    <th className="p-3 text-center">Categoría (Clic Derecho)</th>
-                    <th className="p-3 text-center">Duración</th>
-                    <th className="p-3 text-center">Cant. (I)</th>
-                    <th className="p-3 text-right">List Price (O)</th>
-                    <th className="p-3 text-right text-amber-300">Col J (Rep. Unit)</th>
-                    <th className="p-3 text-right text-indigo-300">Col K (Net Price)</th>
+                    <th className={`${headPaddingClass} text-center w-14`}>Line # (D)</th>
+                    <th className={headPaddingClass}>Cisco SKU (E)</th>
+                    <th className={headPaddingClass}>Magic Key (M)</th>
+                    <th className={`${headPaddingClass} text-center`}>Categoría (Clic Derecho)</th>
+                    <th className={`${headPaddingClass} text-center`}>Duración</th>
+                    <th className={`${headPaddingClass} text-center`}>Cant. (I)</th>
+                    <th className={`${headPaddingClass} text-right`}>List Price (O)</th>
+                    <th className={`${headPaddingClass} text-right text-amber-300`}>Col J (Rep. Unit)</th>
+                    <th className={`${headPaddingClass} text-right text-indigo-300`}>Col K (Net Price)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-mono">
@@ -692,10 +718,10 @@ export const DsvView: React.FC = () => {
                         className="hover:bg-slate-800/50 transition-colors cursor-context-menu select-none"
                         title="Haz clic derecho para cambiar entre Hardware, Suscripción o Servicio"
                       >
-                        <td className="p-3 text-center text-slate-400 font-semibold">{item.lineNumber}</td>
-                        <td className="p-3 font-bold text-white">{item.ciscoSku}</td>
-                        <td className="p-3 text-slate-400 text-[11px]">{item.magicKey || '-'}</td>
-                        <td className="p-3 text-center font-sans">
+                        <td className={`${cellPaddingClass} text-center text-slate-400 font-semibold`}>{item.lineNumber}</td>
+                        <td className={`${cellPaddingClass} font-bold text-white`}>{item.ciscoSku}</td>
+                        <td className={`${cellPaddingClass} text-slate-400 text-[11px]`}>{item.magicKey || '-'}</td>
+                        <td className={`${cellPaddingClass} text-center font-sans`}>
                           {effectiveCategory === 'service' ? (
                             <span
                               className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
@@ -731,11 +757,11 @@ export const DsvView: React.FC = () => {
                             </span>
                           )}
                         </td>
-                        <td className="p-3 text-center text-slate-400">
+                        <td className={`${cellPaddingClass} text-center text-slate-400`}>
                           {durationDisplay || (item.durationMonths > 0 ? `${item.durationMonths}m` : '-')}
                         </td>
-                        <td className="p-3 text-center font-bold text-white">{item.qty}</td>
-                        <td className="p-3 text-right text-slate-400">
+                        <td className={`${cellPaddingClass} text-center font-bold text-white`}>{item.qty}</td>
+                        <td className={`${cellPaddingClass} text-right text-slate-400`}>
                           ${unitListPriceFullTerm ? unitListPriceFullTerm.toFixed(2) : item.listPrice.toFixed(2)}
                           {isPeriodicSubscription && (
                             <span className="block text-[9px] text-blue-400 font-sans">
@@ -743,10 +769,10 @@ export const DsvView: React.FC = () => {
                             </span>
                           )}
                         </td>
-                        <td className="p-3 text-right font-bold text-amber-300">
+                        <td className={`${cellPaddingClass} text-right font-bold text-amber-300`}>
                           ${reportedProductUnitPrice.toFixed(2)}
                         </td>
-                        <td className="p-3 text-right font-bold text-indigo-300">
+                        <td className={`${cellPaddingClass} text-right font-bold text-indigo-300`}>
                           ${reportedNetPrice.toFixed(2)}
                           {discrepancy && (
                             <span

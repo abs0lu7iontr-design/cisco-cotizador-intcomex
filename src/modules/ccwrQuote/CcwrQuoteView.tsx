@@ -40,6 +40,8 @@ import {
   ProcessedCcwrQuote,
   DEFAULT_CCWR_PARAMS,
 } from './ccwrTypes';
+import { useTableDensityAndZoom } from '../../hooks/useTableDensityAndZoom';
+import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
 import { parseCcwrWorkbook } from './ccwrParser';
 import { recalculateCcwrQuote, calculateCcwrGoalSeekMargin } from './ccwrPricingEngine';
 import { generateCcwrQuoteExcel, generateCcwrEmailHtml, calculateContractDurationMonths } from './ccwrExcelExporter';
@@ -61,6 +63,20 @@ export function CcwrQuoteView() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [onlyServicesWithCost, setOnlyServicesWithCost] = useState<boolean>(true);
+
+  // Table Density & Visual Zoom States (Auto-Fit across resolutions without changing browser zoom)
+  const {
+    tableDensity,
+    tableZoom,
+    headPaddingClass,
+    cellPaddingClass,
+    zoomStyle,
+    handleSetTableDensity,
+    handleSetTableZoom,
+  } = useTableDensityAndZoom({
+    storageKeyPrefix: 'cisco_ccwr',
+  });
+
   const [goalSeekTarget, setGoalSeekTarget] = useState<string>('');
   const [feedbackMessage, setFeedbackMessage] = useState<{ text: string; type: 'success' | 'info' | 'error' } | null>(null);
   const [isCopiedEmail, setIsCopiedEmail] = useState<boolean>(false);
@@ -456,7 +472,7 @@ export function CcwrQuoteView() {
         {/* Left/Center: Dashboard Cards + Table */}
         <div className="flex-1 flex flex-col min-h-0 p-4 space-y-2.5 overflow-hidden">
           {/* KPI Summary Cards (Compact Executive Ribbon) */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 shrink-0">
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2.5 shrink-0">
             {/* Total Sale Price */}
             <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 shadow-sm relative overflow-hidden">
               <div className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">
@@ -695,6 +711,14 @@ export function CcwrQuoteView() {
               <span className="text-xs text-slate-400 font-mono">
                 {filteredItems.length} {filteredItems.length === 1 ? 'ítem' : 'ítems'}
               </span>
+
+              <TableDensityZoomControls
+                density={tableDensity}
+                onDensityChange={handleSetTableDensity}
+                zoom={tableZoom}
+                onZoomChange={handleSetTableZoom}
+                colorTheme="emerald"
+              />
             </div>
           </div>
 
@@ -718,22 +742,22 @@ export function CcwrQuoteView() {
             </div>
           ) : (
             <div className="flex-1 min-h-[380px] bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-lg flex flex-col">
-              <div className="flex-1 overflow-auto custom-scrollbar">
+              <div className="flex-1 overflow-auto custom-scrollbar transition-all duration-200" style={zoomStyle}>
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="bg-[#D9D9D9] text-slate-950 sticky top-0 z-20 font-bold border-b border-slate-400 shadow-sm">
                     <tr>
-                      <th className="py-2 px-3 text-center w-12 border-r border-slate-400">#</th>
-                      <th className="py-2 px-3 border-r border-slate-400">Número de Producto</th>
-                      <th className="py-2 px-3 border-r border-slate-400">Descripción del Producto</th>
-                      <th className="py-2 px-3 border-r border-slate-400">Número de Serie / PAK</th>
-                      <th className="py-2 px-3 border-r border-slate-400 text-center">Nivel de Servicio</th>
-                      <th className="py-2 px-3 border-r border-slate-400">SKU del Servicio</th>
-                      <th className="py-2 px-3 border-r border-slate-400 text-center">Inicio</th>
-                      <th className="py-2 px-3 border-r border-slate-400 text-center">Término</th>
-                      <th className="py-2 px-3 border-r border-slate-400 text-center w-14">Cantidad</th>
-                      <th className="py-2 px-3 border-r border-slate-400 text-right">Costo Neto (Z)</th>
-                      <th className="py-2 px-3 border-r border-slate-400 text-right">Precio Unitario (USD)</th>
-                      <th className="py-2 px-3 text-right">Total Venta</th>
+                      <th className={`${headPaddingClass} text-center w-12 border-r border-slate-400`}>#</th>
+                      <th className={`${headPaddingClass} border-r border-slate-400`}>Número de Producto</th>
+                      <th className={`${headPaddingClass} border-r border-slate-400`}>Descripción del Producto</th>
+                      <th className={`${headPaddingClass} border-r border-slate-400`}>Número de Serie / PAK</th>
+                      <th className={`${headPaddingClass} border-r border-slate-400 text-center`}>Nivel de Servicio</th>
+                      <th className={`${headPaddingClass} border-r border-slate-400`}>SKU del Servicio</th>
+                      <th className={`${headPaddingClass} border-r border-slate-400 text-center`}>Inicio</th>
+                      <th className={`${headPaddingClass} border-r border-slate-400 text-center`}>Término</th>
+                      <th className={`${headPaddingClass} border-r border-slate-400 text-center w-14`}>Cantidad</th>
+                      <th className={`${headPaddingClass} border-r border-slate-400 text-right`}>Costo Neto (Z)</th>
+                      <th className={`${headPaddingClass} border-r border-slate-400 text-right`}>Precio Unitario (USD)</th>
+                      <th className={`${headPaddingClass} text-right`}>Total Venta</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
@@ -744,42 +768,42 @@ export function CcwrQuoteView() {
                           idx % 2 === 0 ? 'bg-slate-950/40' : 'bg-slate-900/30'
                         }`}
                       >
-                        <td className="py-1.5 px-3 text-center text-slate-500 font-mono text-[11px]">
+                        <td className={`${cellPaddingClass} text-center text-slate-500 font-mono text-[11px]`}>
                           {it.lineNumber}
                         </td>
-                        <td className="py-1.5 px-3 font-mono font-medium text-slate-200">
+                        <td className={`${cellPaddingClass} font-mono font-medium text-slate-200`}>
                           {it.productNumber}
                         </td>
-                        <td className="py-1.5 px-3 text-slate-300 max-w-xs truncate" title={it.productDescription}>
+                        <td className={`${cellPaddingClass} text-slate-300 max-w-xs truncate`} title={it.productDescription}>
                           {it.productDescription}
                         </td>
-                        <td className="py-1.5 px-3 font-mono text-emerald-400 font-semibold select-all">
+                        <td className={`${cellPaddingClass} font-mono text-emerald-400 font-semibold select-all`}>
                           {it.serialNumber || '-'}
                         </td>
-                        <td className="py-1.5 px-3 text-center text-slate-300">
+                        <td className={`${cellPaddingClass} text-center text-slate-300`}>
                           <span className="px-1.5 py-0.5 rounded bg-slate-800 text-[10px] font-semibold text-slate-300">
                             {it.serviceLevel || 'SNT'}
                           </span>
                         </td>
-                        <td className="py-1.5 px-3 font-mono text-slate-200">
+                        <td className={`${cellPaddingClass} font-mono text-slate-200`}>
                           {it.serviceSku || '-'}
                         </td>
-                        <td className="py-1.5 px-3 text-center text-slate-400 text-[11px]">
+                        <td className={`${cellPaddingClass} text-center text-slate-400 text-[11px]`}>
                           {it.startDate || '-'}
                         </td>
-                        <td className="py-1.5 px-3 text-center text-slate-400 text-[11px]">
+                        <td className={`${cellPaddingClass} text-center text-slate-400 text-[11px]`}>
                           {it.endDate || '-'}
                         </td>
-                        <td className="py-1.5 px-3 text-center font-bold text-slate-200">
+                        <td className={`${cellPaddingClass} text-center font-bold text-slate-200`}>
                           {it.quantity}
                         </td>
-                        <td className="py-1.5 px-3 text-right font-mono text-sky-300">
+                        <td className={`${cellPaddingClass} text-right font-mono text-sky-300`}>
                           ${it.unitNetPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="py-1.5 px-3 text-right font-mono font-bold text-emerald-400">
+                        <td className={`${cellPaddingClass} text-right font-mono font-bold text-emerald-400`}>
                           ${it.precioVentaUnitario.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="py-1.5 px-3 text-right font-mono font-bold text-white">
+                        <td className={`${cellPaddingClass} text-right font-mono font-bold text-white`}>
                           ${it.precioVentaExtendido.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </tr>

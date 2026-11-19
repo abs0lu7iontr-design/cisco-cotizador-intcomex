@@ -58,6 +58,8 @@ import { DealReminderView } from './DealReminderView';
 import { DealReminderRecord } from './dealReminderTypes';
 import { useCiscoAutomatedStore } from '../../core/store';
 import { downloadContentSafe } from '../../utils/downloadHelper';
+import { useTableDensityAndZoom } from '../../hooks/useTableDensityAndZoom';
+import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
 
 export function BoTrackingView() {
   const { currentUser, processedResult, detectedPartner } = useCiscoAutomatedStore();
@@ -69,6 +71,19 @@ export function BoTrackingView() {
   const [stageFilter, setStageFilter] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
   const [onlyNeedsAttention, setOnlyNeedsAttention] = useState(false);
+
+  // Table Density & Visual Zoom States (Auto-Fit across resolutions without changing browser zoom)
+  const {
+    tableDensity,
+    tableZoom,
+    headPaddingClass,
+    cellPaddingClass,
+    zoomStyle,
+    handleSetTableDensity,
+    handleSetTableZoom,
+  } = useTableDensityAndZoom({
+    storageKeyPrefix: 'cisco_bo',
+  });
 
   // Modales
   const [selectedOrderForNotes, setSelectedOrderForNotes] = useState<BoOrderTrackingRecord | null>(null);
@@ -453,6 +468,15 @@ export function BoTrackingView() {
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
             </button>
 
+            {/* Auto-Fit Density and Zoom Controls */}
+            <TableDensityZoomControls
+              density={tableDensity}
+              onDensityChange={handleSetTableDensity}
+              zoom={tableZoom}
+              onZoomChange={handleSetTableZoom}
+              colorTheme="amber"
+            />
+
             {/* Toggle View Mode (Kanban vs Table) */}
             <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl p-0.5">
               <button
@@ -480,7 +504,7 @@ export function BoTrackingView() {
         </div>
 
         {/* KPI Summary Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5 sm:gap-3 mt-5">
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 shadow-sm">
             <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">
               Órdenes Activas
@@ -623,7 +647,7 @@ export function BoTrackingView() {
           </div>
         ) : viewMode === 'kanban' ? (
           /* Kanban Board View */
-          <div className="flex gap-4 overflow-x-auto pb-6">
+          <div className="flex gap-4 overflow-x-auto pb-6 transition-all duration-200" style={zoomStyle}>
             {ORDERED_BO_STAGES.map((stageKey) => {
               const meta = BO_STAGES_METADATA[stageKey];
               const columnOrders = filteredOrders.filter((o) => o.currentStage === stageKey);
@@ -829,19 +853,19 @@ export function BoTrackingView() {
         ) : (
           /* Table View */
           <div className="bg-slate-900/60 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-950 text-slate-400 uppercase font-bold text-[10px] border-b border-slate-800">
+            <div className="overflow-x-auto custom-scrollbar transition-all duration-200" style={zoomStyle}>
+              <table className="w-full text-left">
+                <thead className="bg-slate-950 text-slate-400 uppercase font-bold border-b border-slate-800">
                   <tr>
-                    <th className="py-3.5 px-4">Salud</th>
-                    <th className="py-3.5 px-4">Estimate / Deal</th>
-                    <th className="py-3.5 px-4">Partner & Cliente</th>
-                    <th className="py-3.5 px-4">OC / SO Cisco</th>
-                    <th className="py-3.5 px-4">Etapa Actual</th>
-                    <th className="py-3.5 px-4">Courier / Tracking</th>
-                    <th className="py-3.5 px-4 text-right">Venta Total</th>
-                    <th className="py-3.5 px-4">Bodega</th>
-                    <th className="py-3.5 px-4 text-center">Acciones</th>
+                    <th className={headPaddingClass}>Salud</th>
+                    <th className={headPaddingClass}>Estimate / Deal</th>
+                    <th className={headPaddingClass}>Partner & Cliente</th>
+                    <th className={headPaddingClass}>OC / SO Cisco</th>
+                    <th className={headPaddingClass}>Etapa Actual</th>
+                    <th className={headPaddingClass}>Courier / Tracking</th>
+                    <th className={`${headPaddingClass} text-right`}>Venta Total</th>
+                    <th className={headPaddingClass}>Bodega</th>
+                    <th className={`${headPaddingClass} text-center`}>Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800 text-slate-300">
@@ -851,12 +875,12 @@ export function BoTrackingView() {
 
                     return (
                       <tr key={order.id} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="py-3 px-4">
+                        <td className={cellPaddingClass}>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${health.badgeClass}`}>
                             {health.label}
                           </span>
                         </td>
-                        <td className="py-3 px-4">
+                        <td className={cellPaddingClass}>
                           <div className="flex items-center space-x-1.5">
                             <span className="font-mono font-bold text-amber-400">{order.estimateId}</span>
                             <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-700/40">
@@ -865,11 +889,11 @@ export function BoTrackingView() {
                           </div>
                           <span className="text-[11px] text-indigo-300 font-mono block">{order.dealId}</span>
                         </td>
-                        <td className="py-3 px-4">
+                        <td className={cellPaddingClass}>
                           <span className="font-bold text-white block">{order.endCustomerName}</span>
                           <span className="text-slate-400 text-[11px] block">{order.partnerName}</span>
                         </td>
-                        <td className="py-3 px-4 font-mono">
+                        <td className={`${cellPaddingClass} font-mono`}>
                           <div className="flex items-center space-x-1.5 flex-wrap">
                             <span className="text-slate-500 text-[10px]">OC:</span>
                             <span className="font-bold text-slate-200">{order.clientPoNumber}</span>
@@ -897,12 +921,12 @@ export function BoTrackingView() {
                             </div>
                           )}
                         </td>
-                        <td className="py-3 px-4">
+                        <td className={cellPaddingClass}>
                           <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${meta.badgeBg} ${meta.badgeText}`}>
                             {meta.stepNumber}. {meta.shortLabel}
                           </span>
                         </td>
-                        <td className="py-3 px-4">
+                        <td className={cellPaddingClass}>
                           {order.courierTrackingNumber ? (
                             <a
                               href={order.courierTrackingUrl}
@@ -922,13 +946,13 @@ export function BoTrackingView() {
                             </button>
                           )}
                         </td>
-                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400">
+                        <td className={`${cellPaddingClass} text-right font-mono font-bold text-emerald-400`}>
                           ${order.totalSaleUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </td>
-                        <td className="py-3 px-4 font-bold text-slate-300">
+                        <td className={`${cellPaddingClass} font-bold text-slate-300`}>
                           {order.bodegaDestino === 'ED' ? 'ED' : 'E1'}
                         </td>
-                        <td className="py-3 px-4 text-center">
+                        <td className={`${cellPaddingClass} text-center`}>
                           <div className="flex items-center justify-center space-x-1.5">
                             <button
                               onClick={() => setSelectedOrderForNotes(order)}

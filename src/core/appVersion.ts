@@ -6,13 +6,13 @@
 
 export const APP_NAME = 'cisco-automated';
 export const APP_DISPLAY_NAME = 'Cisco Automated';
-export const APP_VERSION = '2.17.5';
+export const APP_VERSION = '2.18.0';
 export const APP_CHANNEL = 'develop';
 export const APP_EDITION = 'Enterprise Suite (Cloud & Desktop Ready)';
-export const APP_ENGINE_VERSION = 'ExcelJS CCW Engine v2.17';
+export const APP_ENGINE_VERSION = 'ExcelJS CCW Engine v2.18';
 
 /**
- * Returns formatted version string, e.g. "v2.17.5"
+ * Returns formatted version string, e.g. "v2.18.0"
  */
 export function getFormattedAppVersion(prefix: boolean = true): string {
   return prefix ? `v${APP_VERSION}` : APP_VERSION;

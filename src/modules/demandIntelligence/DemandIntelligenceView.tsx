@@ -33,6 +33,8 @@ import {
   exportStockProposalToExcel,
 } from './demandIntelligenceService';
 import { getFormattedAppVersion } from '../../core/appVersion';
+import { useTableDensityAndZoom } from '../../hooks/useTableDensityAndZoom';
+import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
 
 export const DemandIntelligenceView: React.FC = () => {
   const [summary, setSummary] = useState<DemandIntelligenceSummary | null>(null);
@@ -40,6 +42,20 @@ export const DemandIntelligenceView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'hardware' | 'licenses' | 'comparison' | 'stockPlan'>('stockPlan');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedFamily, setSelectedFamily] = useState<string>('all');
+
+  // Table Density & Visual Zoom States (Auto-Fit across resolutions without changing browser zoom)
+  const {
+    tableDensity,
+    tableZoom,
+    headPaddingClass,
+    cellPaddingClass,
+    zoomStyle,
+    handleSetTableDensity,
+    handleSetTableZoom,
+  } = useTableDensityAndZoom({
+    storageKeyPrefix: 'cisco_demand',
+  });
+
   const [isExportingExcel, setIsExportingExcel] = useState<boolean>(false);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
 
@@ -217,7 +233,7 @@ export const DemandIntelligenceView: React.FC = () => {
       </div>
 
       {/* 4 Executive KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3.5">
         {/* KPI 1: Ventas Reales Hardware */}
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
           <div className="flex items-center justify-between text-slate-400 mb-2">
@@ -348,16 +364,26 @@ export const DemandIntelligenceView: React.FC = () => {
             </button>
           </div>
 
-          {/* Search Bar */}
+          {/* Search Bar & Auto-Fit Density Zoom Controls */}
           {activeTab !== 'comparison' && (
-            <div className="relative min-w-[240px]">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar Part Number, modelo..."
-                className="w-full pl-9 pr-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative min-w-[200px] flex-1 max-w-sm">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Buscar Part Number, modelo..."
+                  className="w-full pl-9 pr-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <TableDensityZoomControls
+                density={tableDensity}
+                onDensityChange={handleSetTableDensity}
+                zoom={tableZoom}
+                onZoomChange={handleSetTableZoom}
+                colorTheme="indigo"
               />
             </div>
           )}
@@ -396,26 +422,26 @@ export const DemandIntelligenceView: React.FC = () => {
 
         {/* Tab 1, 2, 4 Table View */}
         {activeTab !== 'comparison' && (
-          <div className="overflow-x-auto rounded-2xl border border-slate-800">
+          <div className="overflow-x-auto rounded-2xl border border-slate-800 custom-scrollbar transition-all duration-200" style={zoomStyle}>
             <table className="w-full text-left text-xs text-slate-300">
               <thead className="bg-slate-950/80 text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-800">
                 <tr>
-                  <th className="py-3 px-4">{activeTab === 'licenses' ? 'Part Number / SKU' : 'Part Number (Equipo Principal)'}</th>
-                  <th className="py-3 px-4">Descripción</th>
-                  <th className="py-3 px-4">Familia</th>
-                  <th className="py-3 px-4 text-center">Ventas Reales</th>
-                  <th className="py-3 px-4 text-center">Demanda Cotizada</th>
-                  <th className="py-3 px-4 text-center">Hit Rate %</th>
+                  <th className={headPaddingClass}>{activeTab === 'licenses' ? 'Part Number / SKU' : 'Part Number (Equipo Principal)'}</th>
+                  <th className={headPaddingClass}>Descripción</th>
+                  <th className={headPaddingClass}>Familia</th>
+                  <th className={`${headPaddingClass} text-center`}>Ventas Reales</th>
+                  <th className={`${headPaddingClass} text-center`}>Demanda Cotizada</th>
+                  <th className={`${headPaddingClass} text-center`}>Hit Rate %</th>
                   {activeTab === 'stockPlan' ? (
                     <>
-                      <th className="py-3 px-4 text-center">Prioridad</th>
-                      <th className="py-3 px-4 text-center">Stock Sugerido</th>
-                      <th className="py-3 px-4 text-right">Inversión Estimada</th>
+                      <th className={`${headPaddingClass} text-center`}>Prioridad</th>
+                      <th className={`${headPaddingClass} text-center`}>Stock Sugerido</th>
+                      <th className={`${headPaddingClass} text-right`}>Inversión Estimada</th>
                     </>
                   ) : (
                     <>
-                      <th className="py-3 px-4 text-right">Total USD Demanda</th>
-                      <th className="py-3 px-4 text-center">Deals/Órdenes</th>
+                      <th className={`${headPaddingClass} text-right`}>Total USD Demanda</th>
+                      <th className={`${headPaddingClass} text-center`}>Deals/Órdenes</th>
                     </>
                   )}
                 </tr>
@@ -435,7 +461,7 @@ export const DemandIntelligenceView: React.FC = () => {
                         key={`${item.partNumber}-${idx}`}
                         className="hover:bg-slate-800/40 transition-colors"
                       >
-                        <td className="py-3 px-4 font-mono font-bold text-white">
+                        <td className={`${cellPaddingClass} font-mono font-bold text-white`}>
                           <div className="flex items-center space-x-1.5">
                             <span>{item.partNumber}</span>
                             {item.isMegadealOutlier && (
@@ -448,13 +474,13 @@ export const DemandIntelligenceView: React.FC = () => {
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-4 max-w-xs truncate text-slate-300" title={item.description}>
+                        <td className={`${cellPaddingClass} max-w-xs truncate text-slate-300`} title={item.description}>
                           {item.description}
                         </td>
-                        <td className="py-3 px-4 text-slate-400 whitespace-nowrap">
+                        <td className={`${cellPaddingClass} text-slate-400 whitespace-nowrap`}>
                           {item.family}
                         </td>
-                        <td className="py-3 px-4 text-center">
+                        <td className={`${cellPaddingClass} text-center`}>
                           <span className="font-bold text-emerald-400">
                             {item.realSoldUnits} und
                           </span>
@@ -462,7 +488,7 @@ export const DemandIntelligenceView: React.FC = () => {
                             {fmtCurrency(item.realSoldUsd)}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-center">
+                        <td className={`${cellPaddingClass} text-center`}>
                           <span className="font-bold text-slate-300">
                             {item.quotedUnits} und
                           </span>
@@ -479,7 +505,7 @@ export const DemandIntelligenceView: React.FC = () => {
                               </span>
                             )}
                         </td>
-                        <td className="py-3 px-4 text-center">
+                        <td className={`${cellPaddingClass} text-center`}>
                           <span
                             className={`font-mono font-bold px-2 py-0.5 rounded-full text-[11px] ${
                               item.conversionRatePct >= 50
@@ -495,19 +521,19 @@ export const DemandIntelligenceView: React.FC = () => {
 
                         {activeTab === 'stockPlan' ? (
                           <>
-                            <td className="py-3 px-4 text-center whitespace-nowrap">
+                            <td className={`${cellPaddingClass} text-center whitespace-nowrap`}>
                               <span
                                 className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full border ${badge.bg}`}
                               >
                                 {badge.label}
                               </span>
                             </td>
-                            <td className="py-3 px-4 text-center font-black text-amber-400 text-sm">
+                            <td className={`${cellPaddingClass} text-center font-black text-amber-400 text-sm`}>
                               {item.stockRecommendation.suggestedUnits > 0
                                 ? `${item.stockRecommendation.suggestedUnits} und (E1)`
                                 : '—'}
                             </td>
-                            <td className="py-3 px-4 text-right font-mono font-bold text-white">
+                            <td className={`${cellPaddingClass} text-right font-mono font-bold text-white`}>
                               {item.stockRecommendation.estimatedTotalInvestmentUsd > 0
                                 ? fmtCurrency(item.stockRecommendation.estimatedTotalInvestmentUsd)
                                 : '—'}
@@ -515,10 +541,10 @@ export const DemandIntelligenceView: React.FC = () => {
                           </>
                         ) : (
                           <>
-                            <td className="py-3 px-4 text-right font-mono font-bold text-white">
+                            <td className={`${cellPaddingClass} text-right font-mono font-bold text-white`}>
                               {fmtCurrency(item.totalDemandUsd)}
                             </td>
-                            <td className="py-3 px-4 text-center text-slate-400">
+                            <td className={`${cellPaddingClass} text-center text-slate-400`}>
                               {item.ordersCount}
                             </td>
                           </>

@@ -1449,10 +1449,10 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
       )}
 
       {/* Grilla Principal: Panel de Entrada IA (Izquierda) + Vista Previa Madre-Hijo CCW (Derecha) */}
-      <div className={isPromptPanelOpen ? 'grid grid-cols-1 lg:grid-cols-12 gap-6 items-start' : 'space-y-6'}>
+      <div className={isPromptPanelOpen ? 'grid grid-cols-1 xl:grid-cols-12 gap-5 items-start' : 'space-y-6'}>
         {/* COLUMNA IZQUIERDA: Entrada Multimodal IA */}
         {isPromptPanelOpen && (
-          <div className="lg:col-span-5 bg-slate-900/95 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
+          <div className="xl:col-span-5 bg-slate-900/95 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <h3 className="text-xs font-extrabold uppercase tracking-wider text-indigo-300 flex items-center gap-2">
@@ -1766,7 +1766,7 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
         )}
 
         {/* COLUMNA DERECHA: Estructura Madre-Hijo, Calculadora PoE, Pre-Cotización USD y Tabla 10 Columnas CCW */}
-        <div className={isPromptPanelOpen ? 'lg:col-span-7 space-y-5' : 'w-full space-y-5'}>
+        <div className={`min-w-0 ${isPromptPanelOpen ? 'xl:col-span-7 space-y-5' : 'w-full space-y-5'}`}>
           {/* Toast de confirmación de acciones ejecutivas */}
           {actionToast && (
             <div className="p-3 rounded-xl bg-emerald-950/90 border border-emerald-500/50 text-emerald-200 text-xs font-bold flex items-center justify-between gap-2 shadow-lg animate-fade-in">

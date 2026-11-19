@@ -879,7 +879,7 @@ function AppContent() {
         )}
 
         {/* Scrollable View Container */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-6 pb-24 md:pb-6 custom-scrollbar">
+        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-3 sm:p-6 pb-24 md:pb-6 custom-scrollbar">
           {/* Offline Working Mode Temporary Notice (auto-dismisses after 6s & has manual close) */}
           {isOffline && showOfflineBanner && (
             <div className="mb-4 px-4 py-3 rounded-2xl bg-amber-950/80 border border-amber-500/50 text-amber-100 text-xs flex flex-wrap items-center justify-between gap-3 shadow-xl animate-fade-in transition-all">

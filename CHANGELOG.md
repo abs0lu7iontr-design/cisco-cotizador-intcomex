@@ -6,6 +6,41 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.18.0] - 2026-11-18
+### 🖥️ Auto-Ajuste Inteligente Multiresolución, Densidad Adaptativa y Zoom Local en Todos los Módulos
+- **Hook Universal de Densidad y Zoom (`useTableDensityAndZoom`):**
+  - Creado un hook centralizado que detecta automáticamente el ancho de viewport del usuario (`isSmallScreen < 1440px`), ofreciendo 3 modos de densidad: `Auto-Fit` (adaptación inteligente según dispositivo), `Compacto` (ergonomía ceñida para laptops y pantallas escaladas) y `Estándar` (espaciado aireado para pantallas grandes).
+  - Incluye zoom local de tabla clampeado entre 75% y 115% mediante CSS `zoom: N%`, permitiendo a los usuarios ajustar la escala de visualización de cada módulo de forma independiente sin tocar el zoom nativo de Windows ni del navegador web.
+  - Persistencia reactiva del modo de densidad y nivel de zoom en `localStorage` con prefijo configurable por módulo (`storageKeyPrefix`).
+- **Componente Visual Unificado (`TableDensityZoomControls`):**
+  - Barra de herramientas compacta y responsiva con botones `Auto-Fit`, `Compacto`, `Estándar` e interactores de zoom `[-]`, `%` (con reset a 100% en un clic) y `[+]`.
+  - Diseñado con soporte multitema visual (`emerald`, `indigo`, `amber`, `cyan`, `sky`, `teal`) para una integración visual armónica con la paleta de cada módulo.
+- **Forecast Comercial Cisco & Intcomex (36 Columnas):**
+  - Integrado control de densidad y zoom local con tema esmeralda en la barra de herramientas superior.
+  - Espaciado de celdas y cabeceras reducido para maximizar la cantidad de columnas visibles simultáneamente.
+  - Tarjetas KPI adaptadas a grilla responsiva fluida (`grid-cols-2 sm:grid-cols-3 xl:grid-cols-6`) y barra de filtros con auto-envoltura limpia sin desbordes.
+- **Pipeline Comercial & Oportunidades (18 Columnas & Tablero Kanban):**
+  - Densidad compacta y zoom local integrados tanto en la vista Tabla como en el tablero Kanban de 5 columnas.
+  - Filtros flexibles con `min-w-0` y tarjetas de métricas auto-ajustables a cualquier ancho de pantalla.
+- **Back Order Tracking (Órdenes Intcomex & Cisco):**
+  - Control de densidad y zoom aplicado tanto a la vista de tabla extendida como a las columnas Kanban de los 14 estados logísticos.
+  - Erradicación de recortes en laptops de 1366x768 o pantallas con escalado de Windows al 125%/150%.
+- **Cotizador Cisco CCW & Summary Cards:**
+  - Control de densidad y zoom local añadido en el banner auxiliar del cotizador.
+  - Celdas y cabeceras con padding dinámico en la tabla virtualizada de 12 columnas.
+  - Tipografía fluida en las tarjetas de resumen (`text-lg sm:text-xl xl:text-2xl font-black font-mono tracking-tight`) garantizando la visualización íntegra de cifras grandes en USD, CLP y UF.
+- **Cotizador CCW-R de Servicios & SmartNet:**
+  - Densidad ceñida y control de zoom local en la vista de cotización de servicios, ribbon de métricas optimizado y tablas de ítems compactadas.
+- **Demanda & Stock E1 y Generador DSV:**
+  - Controles de zoom y auto-ajuste integrados en la consulta de almacenes E1 y en la tabla de vista previa de 48 columnas DSV, previniendo scroll horizontal descontrolado.
+- **Preventa IA ConfiguriAtor:**
+  - Layout de 2 columnas reestructurado para apilarse limpiamente en pantallas menores a 1280px (`xl:grid-cols-12` con `xl:col-span-5` y `xl:col-span-7`), eliminando el apretamiento excesivo del panel de chat y del historial en notebooks.
+- **Blindaje Estructural en Layout Principal (`App.tsx` & `Navbar.tsx`):**
+  - Eliminado de raíz el desborde horizontal de la ventana completa configurando `<main>` con `flex-1 min-w-0 overflow-y-auto overflow-x-hidden`.
+  - Textos secundarios en la barra de navegación superior condensados con visualización condicional para prevenir saltos de línea verticales en resoluciones compactas.
+- **Nueva Suite de Pruebas Unitarias Automatizadas (`tests/multiScreenResolutionAutoFit.test.ts`):**
+  - 11 pruebas unitarias automáticas que validan la existencia y lógica del hook, el componente de controles, el rango de zoom, y la correcta integración en todos los módulos (42 suites de prueba pasando al 100%).
+
 ## [v2.17.5] - 2026-11-18
 ### 🔔 Deduplicación Estricta de Solicitudes y Notificaciones de Permiso en Historial de Estimates
 - **Deduplicación Integral en Cruce de Storage Tiers (`useEstimatesMirror`):**

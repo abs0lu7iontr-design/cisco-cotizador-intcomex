@@ -157,7 +157,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {getFormattedAppVersion()}
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 hidden sm:block">
+            <p className="text-[11px] text-slate-400 hidden lg:block">
               Motor de Cotizaciones Cisco CCW &bull; Reglas Intcomex
             </p>
           </div>
@@ -368,7 +368,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               title="Personalizar en Caliente (colores, blur, densidad y esquinas a tu gusto)"
             >
               <Palette className="w-3.5 h-3.5 text-purple-400" />
-              <span>Custom en Caliente</span>
+              <span className="hidden xl:inline">Custom en Caliente</span>
+              <span className="xl:hidden">Custom</span>
             </button>
           )}
 

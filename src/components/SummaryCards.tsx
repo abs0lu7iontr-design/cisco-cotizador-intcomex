@@ -306,11 +306,11 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
         </div>
       )}
 
-      <div id="summary-kpis" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div id="summary-kpis" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-3.5">
         {isClientMode ? (
           <>
             {/* CLIENT MODE - KPI 1: Hardware & Infrastructure */}
-            <div className={isAesthetic ? 'aesthetic-card rounded-2xl p-4 shadow-xl space-y-2 border relative overflow-hidden backdrop-blur-md' : 'bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2'}>
+            <div className={isAesthetic ? 'aesthetic-card rounded-2xl p-3.5 sm:p-4 shadow-xl space-y-2 border relative overflow-hidden backdrop-blur-md' : 'bg-slate-900 border border-slate-800 rounded-2xl p-3.5 sm:p-4 shadow-md space-y-2'}>
               <div className="flex items-center justify-between text-teal-400 text-[11px] font-bold uppercase tracking-wider">
                 <span>Infraestructura &amp; Hardware</span>
                 <div className="p-1.5 rounded-lg bg-teal-500/10 text-teal-400 border border-teal-500/20">
@@ -318,7 +318,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
                 </div>
               </div>
               <div>
-                <span className="text-xl font-black font-mono text-white tracking-tight">
+                <span className="text-lg sm:text-xl xl:text-2xl font-black font-mono text-white tracking-tight truncate block">
                   {formatCurrency(categories.hardwareTotal)}
                 </span>
               </div>
@@ -328,7 +328,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             </div>
 
             {/* CLIENT MODE - KPI 2: Software & Cloud */}
-            <div className={isAesthetic ? 'aesthetic-card rounded-2xl p-4 shadow-xl space-y-2 border relative overflow-hidden backdrop-blur-md' : 'bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2'}>
+            <div className={isAesthetic ? 'aesthetic-card rounded-2xl p-3.5 sm:p-4 shadow-xl space-y-2 border relative overflow-hidden backdrop-blur-md' : 'bg-slate-900 border border-slate-800 rounded-2xl p-3.5 sm:p-4 shadow-md space-y-2'}>
               <div className="flex items-center justify-between text-indigo-400 text-[11px] font-bold uppercase tracking-wider">
                 <span>Software &amp; Licencias Cloud</span>
                 <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
@@ -336,7 +336,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
                 </div>
               </div>
               <div>
-                <span className="text-xl font-black font-mono text-indigo-300 tracking-tight">
+                <span className="text-lg sm:text-xl xl:text-2xl font-black font-mono text-indigo-300 tracking-tight truncate block">
                   {formatCurrency(categories.softwareTotal)}
                 </span>
               </div>
@@ -346,7 +346,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             </div>
 
             {/* CLIENT MODE - KPI 3: Services & SmartNet */}
-            <div className={isAesthetic ? 'aesthetic-card rounded-2xl p-4 shadow-xl space-y-2 border relative overflow-hidden backdrop-blur-md' : 'bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2'}>
+            <div className={isAesthetic ? 'aesthetic-card rounded-2xl p-3.5 sm:p-4 shadow-xl space-y-2 border relative overflow-hidden backdrop-blur-md' : 'bg-slate-900 border border-slate-800 rounded-2xl p-3.5 sm:p-4 shadow-md space-y-2'}>
               <div className="flex items-center justify-between text-amber-400 text-[11px] font-bold uppercase tracking-wider">
                 <span>Soporte SmartNet (SNT)</span>
                 <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
@@ -354,7 +354,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
                 </div>
               </div>
               <div>
-                <span className="text-xl font-black font-mono text-amber-300 tracking-tight">
+                <span className="text-lg sm:text-xl xl:text-2xl font-black font-mono text-amber-300 tracking-tight truncate block">
                   {formatCurrency(categories.servicesTotal)}
                 </span>
               </div>
@@ -364,7 +364,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             </div>
 
             {/* CLIENT MODE - KPI 4: Total Sugerido Solución */}
-            <div className={isAesthetic ? 'aesthetic-card bg-gradient-to-br from-indigo-950/70 via-slate-900/90 to-slate-900/90 border border-indigo-500/40 rounded-2xl p-4 shadow-xl space-y-2 relative overflow-hidden backdrop-blur-md' : 'bg-gradient-to-br from-indigo-950/80 to-slate-900 border border-indigo-500/40 rounded-2xl p-4 shadow-md space-y-2'}>
+            <div className={isAesthetic ? 'aesthetic-card bg-gradient-to-br from-indigo-950/70 via-slate-900/90 to-slate-900/90 border border-indigo-500/40 rounded-2xl p-3.5 sm:p-4 shadow-xl space-y-2 relative overflow-hidden backdrop-blur-md' : 'bg-gradient-to-br from-indigo-950/80 to-slate-900 border border-indigo-500/40 rounded-2xl p-3.5 sm:p-4 shadow-md space-y-2'}>
               <div className="flex items-center justify-between text-indigo-300 text-[11px] font-bold uppercase tracking-wider">
                 <span>Total Solución Sugerido</span>
                 <div className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg border border-emerald-500/30">
@@ -372,7 +372,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
                 </div>
               </div>
               <div>
-                <span className="text-xl font-black font-mono text-emerald-400 tracking-tight">
+                <span className="text-lg sm:text-xl xl:text-2xl font-black font-mono text-emerald-400 tracking-tight truncate block">
                   {formatCurrency(data.calculatedProductTotal)}
                 </span>
               </div>
@@ -387,8 +387,8 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
         <div
           className={
             isAesthetic
-              ? 'aesthetic-card rounded-2xl p-4 shadow-xl space-y-2 border transition-all duration-300 hover:shadow-indigo-500/10 hover:border-indigo-500/40 hover:-translate-y-0.5 relative overflow-hidden backdrop-blur-md'
-              : 'bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2'
+              ? 'aesthetic-card rounded-2xl p-3.5 sm:p-4 shadow-xl space-y-2 border transition-all duration-300 hover:shadow-indigo-500/10 hover:border-indigo-500/40 hover:-translate-y-0.5 relative overflow-hidden backdrop-blur-md'
+              : 'bg-slate-900 border border-slate-800 rounded-2xl p-3.5 sm:p-4 shadow-md space-y-2'
           }
         >
           <div className="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider">
@@ -398,7 +398,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             </div>
           </div>
           <div>
-            <span className="text-xl font-black font-mono text-white tracking-tight">
+            <span className="text-lg sm:text-xl xl:text-2xl font-black font-mono text-white tracking-tight truncate block">
               {formatCurrency(data.originalProductTotal)}
             </span>
           </div>
@@ -411,8 +411,8 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
         <div
           className={
             isAesthetic
-              ? 'aesthetic-card bg-gradient-to-br from-indigo-950/70 via-slate-900/90 to-slate-900/90 border border-indigo-500/40 rounded-2xl p-4 shadow-xl space-y-2 relative overflow-hidden transition-all duration-300 hover:shadow-indigo-500/20 hover:border-indigo-400/60 hover:-translate-y-0.5 backdrop-blur-md'
-              : 'bg-gradient-to-br from-indigo-950/80 to-slate-900 border border-indigo-500/40 rounded-2xl p-4 shadow-md space-y-2 relative overflow-hidden'
+              ? 'aesthetic-card bg-gradient-to-br from-indigo-950/70 via-slate-900/90 to-slate-900/90 border border-indigo-500/40 rounded-2xl p-3.5 sm:p-4 shadow-xl space-y-2 relative overflow-hidden transition-all duration-300 hover:shadow-indigo-500/20 hover:border-indigo-400/60 hover:-translate-y-0.5 backdrop-blur-md'
+              : 'bg-gradient-to-br from-indigo-950/80 to-slate-900 border border-indigo-500/40 rounded-2xl p-3.5 sm:p-4 shadow-md space-y-2 relative overflow-hidden'
           }
         >
           <div className="flex items-center justify-between text-indigo-300 text-[11px] font-bold uppercase tracking-wider">
@@ -422,7 +422,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             </div>
           </div>
           <div>
-            <span className="text-xl font-black font-mono text-emerald-400 tracking-tight">
+            <span className="text-lg sm:text-xl xl:text-2xl font-black font-mono text-emerald-400 tracking-tight truncate block">
               {formatCurrency(data.calculatedProductTotal)}
             </span>
           </div>
@@ -440,8 +440,8 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
         <div
           className={
             isAesthetic
-              ? 'aesthetic-card rounded-2xl p-4 shadow-xl space-y-2 border transition-all duration-300 hover:shadow-amber-500/10 hover:border-amber-500/40 hover:-translate-y-0.5 relative overflow-hidden backdrop-blur-md'
-              : 'bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md space-y-2'
+              ? 'aesthetic-card rounded-2xl p-3.5 sm:p-4 shadow-xl space-y-2 border transition-all duration-300 hover:shadow-amber-500/10 hover:border-amber-500/40 hover:-translate-y-0.5 relative overflow-hidden backdrop-blur-md'
+              : 'bg-slate-900 border border-slate-800 rounded-2xl p-3.5 sm:p-4 shadow-md space-y-2'
           }
         >
           <div className="flex items-center justify-between text-amber-400 text-[11px] font-bold uppercase tracking-wider">
@@ -451,7 +451,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             </div>
           </div>
           <div className="flex items-baseline space-x-2">
-            <span className="text-xl font-black font-mono text-amber-400 tracking-tight">
+            <span className="text-lg sm:text-xl xl:text-2xl font-black font-mono text-amber-400 tracking-tight truncate block">
               {formatCurrency(netProfit)}
             </span>
             <span className="text-[11px] font-bold text-emerald-400 font-mono">
