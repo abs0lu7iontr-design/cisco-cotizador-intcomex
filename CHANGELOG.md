@@ -6,6 +6,23 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.17.5] - 2026-11-18
+### 🔔 Deduplicación Estricta de Solicitudes y Notificaciones de Permiso en Historial de Estimates
+- **Deduplicación Integral en Cruce de Storage Tiers (`useEstimatesMirror`):**
+  - Identificada y corregida la causa raíz en `mergeAndDeduplicateEstimates`: al fusionar las cotizaciones almacenadas a través de los múltiples niveles locales (IndexedDB Tier 1, Primary Cache, Vault y Mirror), las listas de `accessRequests` se concatenaban (`[...(existing.accessRequests), ...(cleanRecord.accessRequests)]`) sin deduplicar por usuario. Esto provocaba que si un usuario solicitaba acceso una sola vez, la solicitud se duplicara en memoria y disco al leer de múltiples tiers.
+  - Implementada la función `deduplicateAccessRequests` que consolida las solicitudes por nombre de usuario (sin distinción de mayúsculas/minúsculas) y conserva deterministamente la solicitud más reciente o activa.
+- **Blindaje de Notificaciones en Banners y Badges de Interfaz:**
+  - `getPendingAccessRequestsForUser`, `actionablePendingRequests` y `myPendingRequestsCount` ahora aplican deduplicación obligatoria por el par clave `estimateId::username`.
+  - Se erradica por completo la aparición de tarjetas dobles en el banner de *"Tienes X solicitud(es) de permiso pendiente(s)"* y contadores erróneos (como marcar 2 cuando solo existe 1 petición real).
+- **Protección contra Disparos Concurrentes en UI (In-Flight Locking):**
+  - Añadido bloqueo en vuelo en `handleRequestAccess` con `requestingAccessKeys` y desactivación temporal de los botones `[Permiso]` / `[Re-solicitar]`, impidiendo envíos dobles por doble-clic rápido del usuario.
+- **Saneamiento Idempotente en Firestore Cloud:**
+  - `requestEstimateAccess` y `resolveEstimateAccessRequest` purgan cualquier entrada previa del mismo usuario antes de guardar en la nube o en caché local.
+- **Auto-Curación Transparente de Registros Previos:**
+  - Al abrir o sincronizar el Historial, cualquier registro local con solicitudes duplicadas existentes se auto-repara de forma inmediata y silenciosa.
+- **Nueva Suite de Pruebas Unitarias Automatizadas (`tests/estimateAccessNotificationDedup.test.ts`):**
+  - Valida la purga de duplicados, la fusión segura de storage tiers, la emisión de 1 sola notificación y la resolución idempotente (41 suites de prueba pasando al 100%).
+
 ## [v2.17.4] - 2026-11-18
 ### 🔐 Erradicación de Usuario Predeterminado Residual y Soporte Transparente de Credenciales Guardadas en Pantalla de Login
 - **Erradicación Definitiva del Usuario Residual `pm_cisco`:**

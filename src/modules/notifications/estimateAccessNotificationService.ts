@@ -9,7 +9,7 @@
  * 4. Notificar al solicitante cuando su solicitud fue aprobada.
  */
 
-import { CloudEstimateRecord, EstimateAccessRequest } from '../cloud/types';
+import { CloudEstimateRecord, EstimateAccessRequest, deduplicateAccessRequests } from '../cloud/types';
 import { resolveEstimateAccessRequest } from '../cloud/firestoreService';
 
 export interface PendingAccessNotification {
@@ -65,28 +65,37 @@ export function getPendingAccessRequestsForUser(
   const normUser = currentUsername.trim().toLowerCase();
 
   const notifications: PendingAccessNotification[] = [];
+  const seenNotifKeys = new Set<string>();
 
   for (const est of estimates) {
     const creatorUser = (est.creator?.username || '').trim().toLowerCase();
     // Solo si el usuario actual es el creador
     if (creatorUser !== normUser) continue;
 
+    const estIdKey = (est.estimateId && est.estimateId !== 'NA')
+      ? est.estimateId.trim().toUpperCase()
+      : (est.id || '');
     const docId = est.id || `est_${est.estimateId}`;
-    const requests = Array.isArray(est.accessRequests) ? est.accessRequests : [];
+    const requests = deduplicateAccessRequests(est.accessRequests);
 
     for (const req of requests) {
       if (req.status === 'pending') {
-        notifications.push({
-          docId,
-          estimateId: est.estimateId || 'NA',
-          partnerName: est.partnerName || 'Partner',
-          clientFinalName: est.clientFinalName || 'Cliente Final',
-          totalCotizadoIntcomex: est.financialSummary?.totalCotizadoIntcomex,
-          requesterUsername: req.username,
-          requesterFullName: req.fullName || req.username,
-          requesterRole: req.role || 'pm',
-          requestedAt: req.requestedAt,
-        });
+        const reqUser = (req.username || '').trim().toLowerCase();
+        const notifKey = `${estIdKey}::${reqUser}`;
+        if (!seenNotifKeys.has(notifKey)) {
+          seenNotifKeys.add(notifKey);
+          notifications.push({
+            docId,
+            estimateId: est.estimateId || 'NA',
+            partnerName: est.partnerName || 'Partner',
+            clientFinalName: est.clientFinalName || 'Cliente Final',
+            totalCotizadoIntcomex: est.financialSummary?.totalCotizadoIntcomex,
+            requesterUsername: req.username,
+            requesterFullName: req.fullName || req.username,
+            requesterRole: req.role || 'pm',
+            requestedAt: req.requestedAt,
+          });
+        }
       }
     }
   }
@@ -110,15 +119,21 @@ export function getMyAccessResolutionNotices(
   const dismissed = getDismissedResolutions();
 
   const notices: MyAccessResolutionNotice[] = [];
+  const seenNoticeKeys = new Set<string>();
 
   for (const est of estimates) {
+    const estIdKey = (est.estimateId && est.estimateId !== 'NA')
+      ? est.estimateId.trim().toUpperCase()
+      : (est.id || '');
     const docId = est.id || `est_${est.estimateId}`;
-    const requests = Array.isArray(est.accessRequests) ? est.accessRequests : [];
+    const requests = deduplicateAccessRequests(est.accessRequests);
 
     for (const req of requests) {
       if (req.username.trim().toLowerCase() === normUser && req.status !== 'pending') {
-        const key = `${docId}::${req.status}::${req.resolvedAt || ''}`;
-        if (!dismissed.has(key)) {
+        const uniqueKey = `${estIdKey}::${req.status}`;
+        const dismissKey = `${docId}::${req.status}::${req.resolvedAt || ''}`;
+        if (!dismissed.has(dismissKey) && !seenNoticeKeys.has(uniqueKey)) {
+          seenNoticeKeys.add(uniqueKey);
           notices.push({
             docId,
             estimateId: est.estimateId || 'NA',

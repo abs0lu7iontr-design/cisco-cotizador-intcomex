@@ -4,7 +4,7 @@
 // ============================================================================
 
 import { useSyncExternalStore } from 'react';
-import type { CloudEstimateRecord } from '../modules/cloud/types';
+import { type CloudEstimateRecord, deduplicateAccessRequests } from '../modules/cloud/types';
 import { normalizeIsoTimestamp, compareDatesUnknownLast } from '../utils/dateUtils';
 import {
   getActiveProjectScopeKey,
@@ -63,7 +63,7 @@ export function getLastEstimatesMirrorWarning(): string | null {
  * Deduplicates and merges multiple estimate arrays by Estimate ID, Deal ID, or document ID.
  * Prefers records that have more metadata or newer update timestamps.
  */
-function mergeAndDeduplicateEstimates(records: CloudEstimateRecord[]): CloudEstimateRecord[] {
+export function mergeAndDeduplicateEstimates(records: CloudEstimateRecord[]): CloudEstimateRecord[] {
   const map = new Map<string, CloudEstimateRecord>();
   const deletedIds = getDeletedEstimateIds();
 
@@ -111,8 +111,8 @@ function mergeAndDeduplicateEstimates(records: CloudEstimateRecord[]): CloudEsti
       createdAt: normalizedCreatedAt,
       updatedAt: normalizedUpdatedAt,
       isRestricted: Boolean(r.isRestricted),
-      allowedUsers: Array.isArray(r.allowedUsers) ? r.allowedUsers : [],
-      accessRequests: Array.isArray(r.accessRequests) ? r.accessRequests : [],
+      allowedUsers: Array.from(new Set(Array.isArray(r.allowedUsers) ? r.allowedUsers : [])),
+      accessRequests: deduplicateAccessRequests(r.accessRequests),
     };
 
     if (!existing) {
@@ -128,10 +128,10 @@ function mergeAndDeduplicateEstimates(records: CloudEstimateRecord[]): CloudEsti
         new Set([...(existing.allowedUsers || []), ...(cleanRecord.allowedUsers || [])])
       );
 
-      const mergedRequests = [
+      const mergedRequests = deduplicateAccessRequests([
         ...(existing.accessRequests || []),
         ...(cleanRecord.accessRequests || []),
-      ];
+      ]);
 
       const winner =
         candidateHasItems && !existingHasItems

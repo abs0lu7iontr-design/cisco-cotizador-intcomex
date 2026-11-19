@@ -28,6 +28,7 @@ import {
 import {
   CloudEstimateRecord,
   EstimateAccessRequest,
+  deduplicateAccessRequests,
   CloudDsvRecord,
   CloudUserRecord,
   SharedSkuOverrideRecord,
@@ -736,8 +737,8 @@ export async function saveEstimateToCloud(
     isLocalOnly,
     storageScope: isLocalOnly ? 'local_only' : 'cloud',
     privacyLevel: isLocalOnly ? 'local_only' : record.isRestricted ? 'restricted' : 'public',
-    allowedUsers: record.allowedUsers ?? existingLocal?.allowedUsers ?? [],
-    accessRequests: record.accessRequests ?? existingLocal?.accessRequests ?? [],
+    allowedUsers: Array.from(new Set(record.allowedUsers ?? existingLocal?.allowedUsers ?? [])),
+    accessRequests: deduplicateAccessRequests(record.accessRequests ?? existingLocal?.accessRequests ?? []),
     syncedToCloud: !isLocalOnly && false,
     syncStatus: isLocalOnly ? 'LOCAL_ONLY' : 'PENDING_SYNC',
     lastOperationId: operationId,
@@ -1704,10 +1705,8 @@ export async function getCloudEstimates(
             versionsCount,
             versionsSummary: data.versionsSummary || [],
             isRestricted: Boolean(data.isRestricted),
-            allowedUsers: Array.isArray(data.allowedUsers) ? data.allowedUsers : [],
-            accessRequests: Array.isArray(data.accessRequests)
-              ? data.accessRequests
-              : [],
+            allowedUsers: Array.from(new Set(Array.isArray(data.allowedUsers) ? data.allowedUsers : [])),
+            accessRequests: deduplicateAccessRequests(data.accessRequests),
             syncedToCloud: true,
           });
         });
@@ -1760,10 +1759,8 @@ export async function getCloudEstimates(
           versionsCount,
           versionsSummary: data.versionsSummary || [],
           isRestricted: Boolean(data.isRestricted),
-          allowedUsers: Array.isArray(data.allowedUsers) ? data.allowedUsers : [],
-          accessRequests: Array.isArray(data.accessRequests)
-            ? data.accessRequests
-            : [],
+          allowedUsers: Array.from(new Set(Array.isArray(data.allowedUsers) ? data.allowedUsers : [])),
+          accessRequests: deduplicateAccessRequests(data.accessRequests),
           syncedToCloud: true,
         });
       });
@@ -1784,12 +1781,10 @@ export async function getCloudEstimates(
         const mergedAllowed = Array.from(
           new Set([...(existing.allowedUsers || []), ...(r.allowedUsers || [])])
         );
-        const mergedReqsMap = new Map<string, EstimateAccessRequest>();
-        for (const req of [...(r.accessRequests || []), ...(existing.accessRequests || [])]) {
-          if (req?.username && !mergedReqsMap.has(req.username.toLowerCase())) {
-            mergedReqsMap.set(req.username.toLowerCase(), req);
-          }
-        }
+        const mergedRequests = deduplicateAccessRequests([
+          ...(r.accessRequests || []),
+          ...(existing.accessRequests || []),
+        ]);
         const winner = candidateTime > existingTime ? r : existing;
         const highestVer = Math.max(existing.activeVersion ?? 1, r.activeVersion ?? 1);
         const resolvedBaseline =
@@ -1820,7 +1815,7 @@ export async function getCloudEstimates(
           versionsSummary: mergedSummaries,
           isRestricted: Boolean(existing.isRestricted || r.isRestricted),
           allowedUsers: mergedAllowed,
-          accessRequests: Array.from(mergedReqsMap.values()),
+          accessRequests: mergedRequests,
         });
       }
     }
@@ -2010,9 +2005,9 @@ export async function requestEstimateAccess(
       (x) => x.id === docId || (estimateId && estimateId !== 'NA' && x.estimateId === estimateId)
     );
 
-    const existingRequests: EstimateAccessRequest[] = Array.isArray(targetRecord?.accessRequests)
-      ? [...targetRecord!.accessRequests!]
-      : [];
+    const existingRequests: EstimateAccessRequest[] = deduplicateAccessRequests(
+      targetRecord?.accessRequests || []
+    );
 
     const newReq: EstimateAccessRequest = {
       username: requester.username,
@@ -2022,22 +2017,58 @@ export async function requestEstimateAccess(
       status: 'pending',
     };
 
-    const existingIdx = existingRequests.findIndex(
-      (r) => r.username.trim().toLowerCase() === normUsername
+    // Filter out any prior request for this user to guarantee at most 1 active request
+    const cleanedRequests = existingRequests.filter(
+      (r) => (r.username || '').trim().toLowerCase() !== normUsername
     );
-    if (existingIdx >= 0) {
-      existingRequests[existingIdx] = newReq;
-    } else {
-      existingRequests.push(newReq);
-    }
+    cleanedRequests.push(newReq);
+    const finalRequests = deduplicateAccessRequests(cleanedRequests);
 
     // Update local cache
+    let foundInLocal = false;
     const updatedLocal = localList.map((item) => {
       if (item.id === docId || (estimateId && estimateId !== 'NA' && item.estimateId === estimateId)) {
-        return { ...item, accessRequests: existingRequests, updatedAt: nowIso };
+        foundInLocal = true;
+        return { ...item, accessRequests: finalRequests, updatedAt: nowIso };
       }
       return item;
     });
+    if (!foundInLocal) {
+      updatedLocal.push({
+        id: docId,
+        estimateId: estimateId || 'NA',
+        dealId: 'NA',
+        partnerName: 'Partner',
+        clientFinalName: 'Cliente Final',
+        originalFileName: `${estimateId}.xlsx`,
+        createdAt: nowIso,
+        creator: { username: 'autor', fullName: 'Autor', role: 'pm' },
+        accessRequests: finalRequests,
+        itemsCount: 0,
+        items: [],
+        customOverrideMap: {},
+        financialSummary: {
+          totalNetCisco: 0,
+          totalCotizadoIntcomex: 0,
+          gananciaIntcomexUsd: 0,
+          margenPct: 0,
+          currency: 'USD',
+          params: { internacionPct: 7, arancelPct: 6, margenPct: 5 },
+        },
+        headerInfo: {
+          customerName: 'Cliente Final',
+          companyName: 'Partner',
+          address: '',
+          city: 'Santiago',
+          country: 'Chile',
+          phone: '',
+          estimateId: estimateId || 'NA',
+          dealId: 'NA',
+          priceList: 'Global Price List',
+          date: nowIso.slice(0, 10),
+        },
+      });
+    }
     saveLocalEstimatesCache(updatedLocal);
 
     // Update Firestore
@@ -2047,12 +2078,29 @@ export async function requestEstimateAccess(
         ? buildEstimateDocId(estimateId)
         : docId;
       const docRef = doc(db, ESTIMATES_COLLECTION, targetDocId);
+
+      // Clean remote requests before merging to avoid duplicate accumulation in remote doc
+      let remoteMergedRequests = finalRequests;
+      try {
+        const snap = await withTimeout(getDoc(docRef), 2000);
+        if (snap.exists()) {
+          const remoteData = snap.data();
+          if (Array.isArray(remoteData?.accessRequests)) {
+            const remoteCleaned = deduplicateAccessRequests(remoteData.accessRequests).filter(
+              (r) => (r.username || '').trim().toLowerCase() !== normUsername
+            );
+            remoteCleaned.push(newReq);
+            remoteMergedRequests = deduplicateAccessRequests(remoteCleaned);
+          }
+        }
+      } catch (_) {}
+
       await withTimeout(
         setDoc(
           docRef,
           sanitizeForFirestore({
             estimateId: estimateId || 'NA',
-            accessRequests: existingRequests,
+            accessRequests: remoteMergedRequests,
             updatedAt: nowIso,
           }),
           { merge: true }
@@ -2061,7 +2109,7 @@ export async function requestEstimateAccess(
       );
     }
 
-    return { success: true, updatedRequests: existingRequests };
+    return { success: true, updatedRequests: finalRequests };
   } catch (err: any) {
     console.warn('[Firestore Cloud Warning - requestEstimateAccess]:', err);
     return { success: false, error: err?.message || 'Error enviando solicitud de permiso' };
@@ -2102,30 +2150,70 @@ export async function resolveEstimateAccessRequest(
     }
     const updatedAllowed = Array.from(currentAllowed);
 
-    const updatedRequests: EstimateAccessRequest[] = (targetRecord?.accessRequests || []).map((req) => {
+    const updatedRequests: EstimateAccessRequest[] = deduplicateAccessRequests(targetRecord?.accessRequests || []).map((req): EstimateAccessRequest => {
       if (req.username.trim().toLowerCase() === normTarget) {
         return {
           ...req,
-          status: approve ? 'approved' : 'rejected',
+          status: approve ? ('approved' as const) : ('rejected' as const),
           resolvedAt: nowIso,
           resolvedBy: resolverUsername,
         };
       }
       return req;
     });
+    const finalRequests = deduplicateAccessRequests(updatedRequests);
 
     // Update local cache
+    let foundInLocal = false;
     const updatedLocal = localList.map((item) => {
       if (item.id === docId || (estimateId && estimateId !== 'NA' && item.estimateId === estimateId)) {
+        foundInLocal = true;
         return {
           ...item,
           allowedUsers: updatedAllowed,
-          accessRequests: updatedRequests,
+          accessRequests: finalRequests,
           updatedAt: nowIso,
         };
       }
       return item;
     });
+    if (!foundInLocal) {
+      updatedLocal.push({
+        id: docId,
+        estimateId: estimateId || 'NA',
+        dealId: 'NA',
+        partnerName: 'Partner',
+        clientFinalName: 'Cliente Final',
+        originalFileName: `${estimateId}.xlsx`,
+        createdAt: nowIso,
+        creator: { username: resolverUsername, fullName: resolverUsername, role: 'pm' },
+        allowedUsers: updatedAllowed,
+        accessRequests: finalRequests,
+        itemsCount: 0,
+        items: [],
+        customOverrideMap: {},
+        financialSummary: {
+          totalNetCisco: 0,
+          totalCotizadoIntcomex: 0,
+          gananciaIntcomexUsd: 0,
+          margenPct: 0,
+          currency: 'USD',
+          params: { internacionPct: 7, arancelPct: 6, margenPct: 5 },
+        },
+        headerInfo: {
+          customerName: 'Cliente Final',
+          companyName: 'Partner',
+          address: '',
+          city: 'Santiago',
+          country: 'Chile',
+          phone: '',
+          estimateId: estimateId || 'NA',
+          dealId: 'NA',
+          priceList: 'Global Price List',
+          date: nowIso.slice(0, 10),
+        },
+      });
+    }
     saveLocalEstimatesCache(updatedLocal);
 
     // Update Firestore
@@ -2141,7 +2229,7 @@ export async function resolveEstimateAccessRequest(
           sanitizeForFirestore({
             estimateId: estimateId || 'NA',
             allowedUsers: updatedAllowed,
-            accessRequests: updatedRequests,
+            accessRequests: finalRequests,
             updatedAt: nowIso,
           }),
           { merge: true }
@@ -2153,7 +2241,7 @@ export async function resolveEstimateAccessRequest(
     return {
       success: true,
       allowedUsers: updatedAllowed,
-      accessRequests: updatedRequests,
+      accessRequests: finalRequests,
     };
   } catch (err: any) {
     console.warn('[Firestore Cloud Warning - resolveEstimateAccessRequest]:', err);

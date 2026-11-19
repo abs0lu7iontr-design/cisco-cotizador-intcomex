@@ -8,6 +8,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   CloudEstimateRecord,
   EstimateAccessRequest,
+  deduplicateAccessRequests,
   CloudDsvRecord,
   getCloudEstimates,
   useEstimatesMirror,
@@ -211,6 +212,7 @@ export function EstimatesHistoryView() {
     type: 'success' | 'error';
   } | null>(null);
   const [cloudStatusNote, setCloudStatusNote] = useState<string | null>(null);
+  const [requestingAccessKeys, setRequestingAccessKeys] = useState<Set<string>>(new Set());
 
   // Detail & Permission Management Modals
   const [selectedEstimateDetail, setSelectedEstimateDetail] =
@@ -371,10 +373,11 @@ export function EstimatesHistoryView() {
       ? isOwner || isAdmin
       : !est.isRestricted || isOwner || isAdmin || isAllowed;
 
-    const myRequest: EstimateAccessRequest | undefined = (est.accessRequests || []).find(
+    const sanitizedRequests = deduplicateAccessRequests(est.accessRequests);
+    const myRequest: EstimateAccessRequest | undefined = sanitizedRequests.find(
       (r) => (r.username || '').trim().toLowerCase() === myUsername
     );
-    const pendingRequests: EstimateAccessRequest[] = (est.accessRequests || []).filter(
+    const pendingRequests: EstimateAccessRequest[] = sanitizedRequests.filter(
       (r) => r.status === 'pending'
     );
 
@@ -484,14 +487,23 @@ export function EstimatesHistoryView() {
     return getUniqueFormattedPartners(estimates);
   }, [estimates]);
 
-  // Pending Access Requests directed to current user (or admin)
+  // Pending Access Requests directed to current user (or admin) - deduplicadas por estimate y usuario
   const actionablePendingRequests = useMemo(() => {
     const list: Array<{ est: CloudEstimateRecord; req: EstimateAccessRequest }> = [];
+    const seen = new Set<string>();
     for (const est of estimates) {
       const { canManagePrivacy, pendingRequests } = evaluateAccess(est);
       if (canManagePrivacy && pendingRequests.length > 0) {
+        const estKey = (est.estimateId && est.estimateId !== 'NA')
+          ? est.estimateId.trim().toUpperCase()
+          : (est.id || '');
         for (const req of pendingRequests) {
-          list.push({ est, req });
+          const reqUser = (req.username || '').trim().toLowerCase();
+          const key = `${estKey}::${reqUser}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            list.push({ est, req });
+          }
         }
       }
     }
@@ -612,12 +624,27 @@ export function EstimatesHistoryView() {
   const myPendingRequestsCount = useMemo(() => {
     const myUsername = (currentUser?.username || '').trim().toLowerCase();
     if (!myUsername) return 0;
-    return estimates.reduce((count, est) => {
+    const seen = new Set<string>();
+    let count = 0;
+    for (const est of estimates) {
       const creatorUsername = (est.creator?.username || '').trim().toLowerCase();
-      if (creatorUsername !== myUsername) return count;
-      const pending = (est.accessRequests || []).filter((r) => r.status === 'pending');
-      return count + pending.length;
-    }, 0);
+      if (creatorUsername !== myUsername) continue;
+      const estKey = (est.estimateId && est.estimateId !== 'NA')
+        ? est.estimateId.trim().toUpperCase()
+        : (est.id || '');
+      const requests = deduplicateAccessRequests(est.accessRequests);
+      for (const r of requests) {
+        if (r.status === 'pending') {
+          const reqUser = (r.username || '').trim().toLowerCase();
+          const key = `${estKey}::${reqUser}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            count++;
+          }
+        }
+      }
+    }
+    return count;
   }, [estimates, currentUser]);
 
   const hasMoreEstimates = visibleCount < filteredEstimates.length;
@@ -783,23 +810,37 @@ export function EstimatesHistoryView() {
     }
   };
 
-  // Handle Requesting Permission
+  // Handle Requesting Permission (protección contra doble-clic y deduplicación en vuelo)
   const handleRequestAccess = async (est: CloudEstimateRecord) => {
     if (!currentUser) return;
-    const docId = est.id || `est_${est.estimateId}`;
-    const res = await requestEstimateAccess(docId, est.estimateId, {
-      username: currentUser.username,
-      fullName: currentUser.full_name || currentUser.username,
-      role: currentUser.role,
-    });
+    const estKey = (est.estimateId && est.estimateId !== 'NA')
+      ? est.estimateId.trim().toUpperCase()
+      : (est.id || '');
+    if (requestingAccessKeys.has(estKey)) return;
 
-    if (res.success) {
-      showToast(
-        `🔑 Solicitud de permiso enviada a ${est.creator?.fullName || est.creator?.username}.`,
-        'success'
-      );
-    } else {
-      showToast(res.error || 'No se pudo enviar la solicitud.', 'error');
+    setRequestingAccessKeys((prev) => new Set(prev).add(estKey));
+    try {
+      const docId = est.id || `est_${est.estimateId}`;
+      const res = await requestEstimateAccess(docId, est.estimateId, {
+        username: currentUser.username,
+        fullName: currentUser.full_name || currentUser.username,
+        role: currentUser.role,
+      });
+
+      if (res.success) {
+        showToast(
+          `🔑 Solicitud de permiso enviada a ${est.creator?.fullName || est.creator?.username}.`,
+          'success'
+        );
+      } else {
+        showToast(res.error || 'No se pudo enviar la solicitud.', 'error');
+      }
+    } finally {
+      setRequestingAccessKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(estKey);
+        return next;
+      });
     }
   };
 
@@ -1630,7 +1671,8 @@ export function EstimatesHistoryView() {
                             ) : myRequest?.status === 'pending' ? (
                               <button
                                 onClick={() => handleRequestAccess(est)}
-                                className="inline-flex items-center space-x-1 px-2 py-1 rounded-lg bg-amber-950/70 text-amber-300 border border-amber-700/50 text-[9.5px] font-bold cursor-pointer"
+                                disabled={requestingAccessKeys.has((est.estimateId && est.estimateId !== 'NA') ? est.estimateId.trim().toUpperCase() : (est.id || ''))}
+                                className="inline-flex items-center space-x-1 px-2 py-1 rounded-lg bg-amber-950/70 text-amber-300 border border-amber-700/50 text-[9.5px] font-bold cursor-pointer disabled:opacity-50"
                                 title="Ya solicitaste permiso al creador. Haz clic para reenviar recordatorio."
                               >
                                 <Clock className="w-3 h-3 text-amber-400" />
@@ -1639,7 +1681,8 @@ export function EstimatesHistoryView() {
                             ) : (
                               <button
                                 onClick={() => handleRequestAccess(est)}
-                                className="inline-flex items-center space-x-1 px-2 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold shadow-sm shadow-amber-600/20 transition-all cursor-pointer"
+                                disabled={requestingAccessKeys.has((est.estimateId && est.estimateId !== 'NA') ? est.estimateId.trim().toUpperCase() : (est.id || ''))}
+                                className="inline-flex items-center space-x-1 px-2 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold shadow-sm shadow-amber-600/20 transition-all cursor-pointer disabled:opacity-50"
                                 title={`Solicitar permiso a ${est.creator?.fullName || est.creator?.username} para ver y cargar esta cotización`}
                               >
                                 <KeyRound className="w-3 h-3" />
@@ -2394,7 +2437,8 @@ export function EstimatesHistoryView() {
                           <button
                             type="button"
                             onClick={() => handleRequestAccess(selectedEstimateDetail)}
-                            className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+                            disabled={requestingAccessKeys.has((selectedEstimateDetail.estimateId && selectedEstimateDetail.estimateId !== 'NA') ? selectedEstimateDetail.estimateId.trim().toUpperCase() : (selectedEstimateDetail.id || ''))}
+                            className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-lg shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50"
                           >
                             <KeyRound className="w-4 h-4" />
                             <span>Solicitar Permiso al PM</span>

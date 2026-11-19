@@ -67,6 +67,47 @@ export interface EstimateAccessRequest {
   resolvedBy?: string;
 }
 
+/**
+ * Deduplicates an array of EstimateAccessRequest objects by username (case-insensitive).
+ * When multiple requests exist for the same username, preserves the most authoritative
+ * and latest request (preferring active 'pending' status or newer requestedAt/resolvedAt timestamp).
+ */
+export function deduplicateAccessRequests(
+  requests?: EstimateAccessRequest[] | null
+): EstimateAccessRequest[] {
+  if (!Array.isArray(requests) || requests.length === 0) return [];
+  if (requests.length === 1) {
+    const single = requests[0];
+    return single && single.username ? [single] : [];
+  }
+
+  const map = new Map<string, EstimateAccessRequest>();
+
+  for (const req of requests) {
+    if (!req || !req.username) continue;
+    const normUser = String(req.username).trim().toLowerCase();
+    if (!normUser) continue;
+
+    const existing = map.get(normUser);
+    if (!existing) {
+      map.set(normUser, req);
+    } else {
+      const existingTime = existing.resolvedAt || existing.requestedAt || '';
+      const candidateTime = req.resolvedAt || req.requestedAt || '';
+
+      if (req.status === 'pending' && existing.status !== 'pending') {
+        map.set(normUser, req);
+      } else if (existing.status === 'pending' && req.status !== 'pending') {
+        // Keep existing pending
+      } else if (candidateTime >= existingTime) {
+        map.set(normUser, req);
+      }
+    }
+  }
+
+  return Array.from(map.values());
+}
+
 export interface CloudEstimateRecord {
   id?: string;
   dealId: string;

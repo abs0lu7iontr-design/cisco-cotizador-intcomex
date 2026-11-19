@@ -15,11 +15,27 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.17.5',
+    date: '2026-11-18',
+    commit: 'fix-deduplicate-estimate-access-requests-and-notifications',
+    title: 'Deduplicación Estricta de Solicitudes y Notificaciones de Permiso en Historial de Estimates',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Deduplicación Integral en Cruce de Storage Tiers: Corrección de fondo en useEstimatesMirror (mergeAndDeduplicateEstimates), donde la fusión de registros entre IndexedDB, Primary Cache y Vaults locales concatenaba arrays de accessRequests produciendo múltiples entradas idénticas para un mismo usuario. Ahora se utiliza deduplicateAccessRequests preservando estrictamente la solicitud más reciente.',
+      'Blindaje de Notificaciones en Banners y Badges: getPendingAccessRequestsForUser y actionablePendingRequests aplican deduplicación estricta por par estimate-solicitante (estId::username), eliminando de raíz las tarjetas duplicadas en el banner del Historial y badges erróneos (contador 2 cuando debía ser 1).',
+      'Protección contra Peticiones Concurrentes en UI: handleRequestAccess incorpora in-flight locking con requestingAccessKeys, inhabilitando el botón de solicitud mientras la petición está en curso y evitando disparos múltiples por doble-clic.',
+      'Saneamiento Idempotente en Firestore Cloud: requestEstimateAccess y resolveEstimateAccessRequest purgan preventivamente cualquier registro previo del mismo usuario antes de guardar o sincronizar en Firestore.',
+      'Auto-Curación Transparente: Al cargar el historial, cualquier registro local previo con solicitudes duplicadas se sanea de forma automática e inmediata en memoria y disco.',
+      'Nueva Suite de Pruebas Unitarias Automatizadas (tests/estimateAccessNotificationDedup.test.ts): Valida la fusión de storage tiers, unicidad en notificaciones para el PM, bloqueo de solicitudes repetidas y resolución determinista (41 suites de prueba del proyecto pasando al 100%).',
+    ],
+  },
+  {
     version: '2.17.4',
     date: '2026-11-18',
     commit: 'fix-login-clean-default-credentials-and-remove-pm-cisco',
     title: 'Erradicación de Usuario Predeterminado Residual y Soporte Transparente de Credenciales Guardadas en Pantalla de Login',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Erradicación Definitiva del Usuario Residual pm_cisco: Eliminado el valor de prueba predeterminado hardcodeado "pm_cisco" en FACTORY_DEFAULT_PLATFORM_CONFIG. Si no existen credenciales guardadas expresamente por el usuario, los campos "Usuario de Sistema" y "Contraseña" inician 100% limpios y vacíos.',
