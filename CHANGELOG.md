@@ -6,6 +6,29 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.20.0] - 2026-11-18
+### 🛡️ Auto-Guardado Permanente en Historial DSV, Blindaje de BD y Nuevo Módulo de Historial Individual BO
+- **Auto-Guardado Obligatorio al Generar/Descargar Plantilla DSV (`DsvModal.tsx` & `DsvView.tsx`):**
+  - Corrección de fondo en el flujo de exportación DSV donde anteriormente la descarga del archivo Excel de 48 columnas no guardaba el registro en Firestore ni en la base local.
+  - Ahora, en cada exportación se ejecuta automáticamente `saveDsvToCloud(...)` y `syncBoOrderFromDsvRecord(...)`, garantizando que todas las gestiones comerciales DSV queden respaldadas en la nube y en el almacenamiento local permanente sin depender de un guardado manual.
+- **Blindaje Anti-Purga y Cero Pérdida de BD en Registros DSV (`firestoreService.ts`):**
+  - Eliminado el bug crítico que ejecutaba `localStorage.removeItem` cuando el JSON serializado de órdenes DSV superaba los 20 KB.
+  - Implementado motor de almacenamiento redundante multi-nivel: caché en memoria ultra-rápida, persistencia asíncrona en IndexedDB de alta capacidad (`STORES.KEYVAL`), respaldo dual en bóveda local y carga resiliente de semillas maestras (`dsvSeeds.ts`, incluyendo Infocorp Deal 86146758, Sonda 8899201, Telefónica Tech 7744102 y Entel 6612984).
+- **Nuevo Módulo: Historial Individual de Órdenes BO (`BoIndividualHistoryView.tsx`):**
+  - Incorporada una nueva pestaña principal en el módulo Back Order (Tracking BO) titulada **"Historial Individual de Órdenes BO"**.
+  - Ofrece un registro maestro estructurado de todas las órdenes BO individuales creadas desde el Cotizador CCW (Estimates), Outlook o DSV, independiente del tablero Kanban de flujo de despacho.
+  - Incluye ficha de detalle completa con desglose financiero (Venta Total USD, Margen Bruto, Margen %, Internación, Arancel), datos de cliente, partner, bodega (E1 física vs ED digital), guía de courier y bitácora cronológica de notas y transiciones de etapa.
+- **Filtro Mensual por Defecto con Avance Continuo e Historial Completo:**
+  - El nuevo módulo de historial individual BO se abre automáticamente en el mes en curso (`Mes Actual`) y permite consultar cualquier mes histórico, trimestres o la totalidad de los registros acumulados.
+- **Auto-Ajuste Multiresolución con Zoom Local en Historial BO:**
+  - Integrado el componente `TableDensityZoomControls` con hook `useTableDensityAndZoom` para adaptar automáticamente el tamaño de fuentes, paddings y zoom visual a cualquier resolución o pantalla portátil sin alterar el navegador.
+- **Blindaje de Persistencia y Bóveda Permanente en Tracking BO (`boTrackingService.ts`):**
+  - Protección de datos idéntica a Pipeline y Forecast con escritura paralela en `LOCAL_BO_TRACKING_VAULT_KEY` y auto-hidratación que previene estados vacíos en modo offline o limpiezas accidentales del caché del navegador.
+- **Exportación a Excel / CSV del Historial BO:**
+  - Botón integrado para descargar en UTF-8 con BOM la bitácora completa de órdenes BO con sus 21 columnas maestras.
+- **Nueva Suite de Pruebas Unitarias Automatizadas (`tests/dsvBoHistoryPersistenceArmor.test.ts`):**
+  - 6 pruebas automáticas pasando al 100%, totalizando 44 suites de pruebas unitarias exitosas en toda la plataforma.
+
 ## [v2.19.0] - 2026-11-18
 ### 📦 Visibilidad de P/N Excluidos del DSV y Opción Ergonómica de Inclusión Forzada (Estilo BO)
 - **Panel Desplegable de P/N Descartados / Excluidos del DSV (Estilo BO):**

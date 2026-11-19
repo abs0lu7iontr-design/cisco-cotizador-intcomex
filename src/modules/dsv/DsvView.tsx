@@ -461,6 +461,7 @@ export const DsvView: React.FC = () => {
         rawBom={rawBom}
         overrides={overrides}
         initialFormData={ingestedFormData}
+        currentUser={currentUser}
         forceIncludedLines={forceIncludedLines}
         onToggleForceIncludeLine={(ln) => {
           if (forceIncludedLines.has(sanitizeTrim(ln))) {

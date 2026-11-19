@@ -31,6 +31,7 @@ import {
 import { DsvDiscrepancyModal } from './DsvDiscrepancyModal';
 import { usePartnerDatabase } from '../../hooks/usePartnerDatabase';
 import { syncBoOrderFromDsvRecord, detectBodegaFromDsvRows } from '../bo/boTrackingService';
+import { saveDsvToCloud } from '../cloud/firestoreService';
 
 interface DsvModalProps {
   isOpen: boolean;
@@ -39,6 +40,7 @@ interface DsvModalProps {
   overrides?: Record<string, SkuCategoryType>;
   onSuccess?: (filepathOrFilename: string) => void;
   initialFormData?: Partial<DsvModalFormData>;
+  currentUser?: any;
   forceIncludedLines?: Set<string>;
   onToggleForceIncludeLine?: (lineNumber: string) => void;
   onIncludeAllLines?: () => void;
@@ -52,6 +54,7 @@ export const DsvModal: React.FC<DsvModalProps> = ({
   overrides = {},
   onSuccess,
   initialFormData,
+  currentUser,
   forceIncludedLines,
   onToggleForceIncludeLine,
   onIncludeAllLines,
@@ -280,7 +283,35 @@ export const DsvModal: React.FC<DsvModalProps> = ({
       const validDsvItems = rows.length;
       const resolvedBodega = detectBodegaFromDsvRows(rows) || 'E1';
 
-      // Sincronizar automáticamente la orden DSV con el Tablero de Tracking (bo_order_tracking),
+      // 1. Auto-guardar inmediatamente en Base de Datos DSV (Firestore + IndexedDB + Vault Local)
+      saveDsvToCloud({
+        dealId: formData.dealId || originalBomName,
+        soNumber: formData.so || formData.dealId || 'SO-PENDING',
+        poNumber: formData.po || 'PO-PENDING',
+        partnerId: formData.partnerName,
+        resellerName: formData.partnerName,
+        endCustomerName: formData.endCustomerName,
+        endCustomerAddress: formData.endCustomerAddress || 'Chile',
+        originalFileName: originalBomName,
+        createdAt: new Date().toISOString(),
+        creator: {
+          username: currentUser?.username || 'pm_cisco',
+          fullName: currentUser?.full_name || currentUser?.fullName || 'Mauricio Skill (Administrador)',
+          role: currentUser?.role || 'ADMIN',
+          email: currentUser?.email || '',
+        },
+        financialSummary: {
+          totalReportedNetPrice: totalReportedNet,
+          totalItems: validDsvItems,
+          discardedZeroItems: stats.discarded,
+        },
+        items: rows,
+        overrides,
+      }).catch((cloudErr) => {
+        console.warn('[DsvModal] Error en auto-guardado en la nube DSV:', cloudErr);
+      });
+
+      // 2. Sincronizar automáticamente la orden DSV con el Tablero de Tracking (bo_order_tracking),
       // asignando Bodega E1 si contiene hardware o ED únicamente si son 100% intangibles
       syncBoOrderFromDsvRecord({
         dealId: formData.dealId,
@@ -292,7 +323,7 @@ export const DsvModal: React.FC<DsvModalProps> = ({
         itemsCount: validDsvItems,
         bodegaDestino: resolvedBodega,
         dsvRows: rows,
-        author: 'Usuario Intcomex',
+        author: currentUser?.full_name || currentUser?.username || 'Usuario Intcomex',
         notesComment: `DSV oficial (48 columnas) exportado en Excel (${resolvedBodega === 'E1' ? 'Hardware E1' : 'Intangibles ED'}) con SO Cisco ${formData.so || 'Pendiente'} y PO Cliente ${formData.po || 'Pendiente'}.`,
       }).catch((err) => {
         console.warn('[DsvModal] Error sincronizando con bo_order_tracking:', err);

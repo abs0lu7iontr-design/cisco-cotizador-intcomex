@@ -55,6 +55,7 @@ import {
 } from '../../core/storage/offlineModeManager';
 import { enqueueOfflineAction } from '../../core/storage/offlineSyncQueue';
 import { idbSet, idbGet, STORES } from '../../core/storage/indexedDbStorage';
+import { SEED_DSV_RECORDS } from '../dsv/dsvSeeds';
 
 const ESTIMATES_COLLECTION = 'estimates';
 const DSV_COLLECTION = 'dsv_records';
@@ -103,26 +104,72 @@ export function saveLocalEstimatesCache(list: CloudEstimateRecord[], markSyncedN
 // Re-export mirror snapshot helpers for backwards-compatible consumers
 export { getEstimatesMirrorSnapshot, getMirrorLastSyncTimestamp, getDeletedEstimateIds, addDeletedEstimateId };
 
+let inMemoryDsvCache: CloudDsvRecord[] = [];
+let isDsvHydratedFromIdb = false;
+
+/**
+ * Hidratación asíncrona de caché DSV desde IndexedDB (STORES.KEYVAL) para máxima resiliencia.
+ */
+export async function hydrateDsvCacheFromIndexedDb(): Promise<CloudDsvRecord[]> {
+  try {
+    const idbRecords = await idbGet<CloudDsvRecord[]>(STORES.KEYVAL, LOCAL_DSV_BACKUP_KEY);
+    if (Array.isArray(idbRecords) && idbRecords.length > 0) {
+      const deletedIds = getDeletedDsvIds();
+      const clean = idbRecords.filter((r) => r && r.id && !deletedIds.has(r.id));
+      if (clean.length > 0) {
+        inMemoryDsvCache = clean;
+        isDsvHydratedFromIdb = true;
+        return clean;
+      }
+    }
+  } catch (_) {}
+  return inMemoryDsvCache;
+}
+
 function getLocalDsvCache(): CloudDsvRecord[] {
   try {
-    if (typeof localStorage === 'undefined') return [];
     const deletedIds = getDeletedDsvIds();
-    const rawV2 = readProjectScopedStorage(LOCAL_DSV_BACKUP_KEY);
-    const rawVault = readProjectScopedStorage(LOCAL_DSV_VAULT_KEY);
-    const rawLegacy = readProjectScopedStorage(LOCAL_DSV_LEGACY_KEY);
-
-    const listV2: CloudDsvRecord[] = rawV2 ? JSON.parse(rawV2) : [];
-    const listVault: CloudDsvRecord[] = rawVault ? JSON.parse(rawVault) : [];
-    const listLegacy: CloudDsvRecord[] = rawLegacy ? JSON.parse(rawLegacy) : [];
-
     const map = new Map<string, CloudDsvRecord>();
-    for (const r of [...listLegacy, ...listVault, ...listV2]) {
-      if (!r || !r.id || deletedIds.has(r.id)) continue;
-      map.set(r.id, r);
+
+    // 1. Memoria rápida
+    for (const r of inMemoryDsvCache) {
+      if (r && r.id && !deletedIds.has(r.id)) {
+        map.set(r.id, r);
+      }
     }
-    return Array.from(map.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+    // 2. LocalStorage y Bóvedas de Respaldo
+    if (typeof localStorage !== 'undefined') {
+      const rawV2 = readProjectScopedStorage(LOCAL_DSV_BACKUP_KEY);
+      const rawVault = readProjectScopedStorage(LOCAL_DSV_VAULT_KEY);
+      const rawLegacy = readProjectScopedStorage(LOCAL_DSV_LEGACY_KEY);
+
+      const listV2: CloudDsvRecord[] = rawV2 ? JSON.parse(rawV2) : [];
+      const listVault: CloudDsvRecord[] = rawVault ? JSON.parse(rawVault) : [];
+      const listLegacy: CloudDsvRecord[] = rawLegacy ? JSON.parse(rawLegacy) : [];
+
+      for (const r of [...listLegacy, ...listVault, ...listV2]) {
+        if (!r || !r.id || deletedIds.has(r.id)) continue;
+        if (!map.has(r.id)) {
+          map.set(r.id, r);
+        }
+      }
+    }
+
+    // 3. Semillas maestras iniciales (si no hay registros y el usuario no los eliminó explícitamente)
+    if (map.size === 0 && deletedIds.size === 0) {
+      for (const seed of SEED_DSV_RECORDS) {
+        map.set(seed.id, seed);
+      }
+    }
+
+    const result = Array.from(map.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    if (inMemoryDsvCache.length === 0 && result.length > 0) {
+      inMemoryDsvCache = result;
+    }
+    return result;
   } catch (_) {
-    return [];
+    return inMemoryDsvCache.length > 0 ? inMemoryDsvCache : SEED_DSV_RECORDS;
   }
 }
 
@@ -130,17 +177,29 @@ function saveLocalDsvCache(list: CloudDsvRecord[]) {
   try {
     const deletedIds = getDeletedDsvIds();
     const cleanList = list.filter((r) => r && r.id && !deletedIds.has(r.id)).slice(0, 500);
-    // Guardar en motor de alta capacidad IndexedDB (STORES.KEYVAL) para evitar saturación de 5 MB de LocalStorage
+    inMemoryDsvCache = cleanList;
+
+    // Guardar siempre en motor de alta capacidad IndexedDB (STORES.KEYVAL) sin riesgo de saturación
     idbSet(STORES.KEYVAL, LOCAL_DSV_BACKUP_KEY, cleanList).catch(() => {});
+    
     if (typeof localStorage === 'undefined') return;
-    const serialized = JSON.stringify(cleanList);
-    // Solo mantener en LocalStorage si es liviano (< 20 KB)
-    if (serialized.length < 20_000) {
+
+    // Guardar en LocalStorage con bóveda redundante sin purgar destructivamente nunca
+    try {
+      const serialized = JSON.stringify(cleanList);
       writeProjectScopedStorage(LOCAL_DSV_BACKUP_KEY, serialized);
-    } else {
-      localStorage.removeItem(LOCAL_DSV_BACKUP_KEY);
-      localStorage.removeItem(LOCAL_DSV_VAULT_KEY);
-      localStorage.removeItem(LOCAL_DSV_LEGACY_KEY);
+      writeProjectScopedStorage(LOCAL_DSV_VAULT_KEY, serialized);
+    } catch (_) {
+      // Si el JSON completo supera la cuota de localStorage (5 MB), preservar metadata y líneas principales
+      try {
+        const lightweight = cleanList.map((rec) => ({
+          ...rec,
+          items: Array.isArray(rec.items) ? rec.items.slice(0, 5) : [],
+        }));
+        const lightSerialized = JSON.stringify(lightweight);
+        writeProjectScopedStorage(LOCAL_DSV_BACKUP_KEY, lightSerialized);
+        writeProjectScopedStorage(LOCAL_DSV_VAULT_KEY, lightSerialized);
+      } catch (__) {}
     }
   } catch (_) {}
 }
@@ -2636,6 +2695,9 @@ export async function getCloudDsvs(
   limitCount: number = 200
 ): Promise<{ success: boolean; data: CloudDsvRecord[]; error?: string }> {
   try {
+    if (inMemoryDsvCache.length === 0) {
+      await hydrateDsvCacheFromIndexedDb();
+    }
     const { db, isReady, error } = getFirestoreInstance();
     const localCache = getLocalDsvCache();
     const deletedIds = getDeletedDsvIds();

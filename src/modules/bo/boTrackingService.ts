@@ -406,6 +406,7 @@ export function saveLocalBoTrackingCache(
     if (typeof localStorage !== 'undefined') {
       const json = JSON.stringify(cleanRecords);
       writeProjectScopedStorage(LOCAL_BO_TRACKING_PRIMARY_KEY, json, scopeKey);
+      writeProjectScopedStorage(LOCAL_BO_TRACKING_VAULT_KEY, json, scopeKey);
       writeProjectScopedStorage(LOCAL_BO_TRACKING_INIT_KEY, 'true', scopeKey);
     }
   } catch (_) {}
@@ -580,9 +581,9 @@ export async function getBoTrackings(): Promise<BoOrderTrackingRecord[]> {
     if (localRecords.length > 0) {
       return localRecords;
     }
-    const isInitializedOffline =
-      typeof localStorage !== 'undefined' && readProjectScopedStorage(LOCAL_BO_TRACKING_INIT_KEY, scopeKey);
-    if (!isInitializedOffline) {
+    // Protección anti-pérdida de BD: si la caché está vacía pero no hay eliminaciones totales, auto-hidratar con semillas maestras
+    const hasUserDeletedAllSeedsOffline = SEED_BO_ORDERS.length > 0 && SEED_BO_ORDERS.every((s) => deletedIds.has(s.id));
+    if (!hasUserDeletedAllSeedsOffline) {
       saveLocalBoTrackingCache(SEED_BO_ORDERS, scopeKey);
       return SEED_BO_ORDERS;
     }
@@ -691,14 +692,24 @@ export async function getBoTrackings(): Promise<BoOrderTrackingRecord[]> {
     return localRecords;
   }
 
-  const isInitialized =
-    typeof localStorage !== 'undefined' && readProjectScopedStorage(LOCAL_BO_TRACKING_INIT_KEY, scopeKey);
-  if (!isInitialized && localRecords.length === 0) {
+  // Protección anti-pérdida de BD: si la base local está vacía pero no hay borrado explícito de todas las órdenes, restaurar
+  const hasUserDeletedAllSeeds = SEED_BO_ORDERS.length > 0 && SEED_BO_ORDERS.every((s) => deletedIds.has(s.id));
+  if (!hasUserDeletedAllSeeds && localRecords.length === 0) {
     saveLocalBoTrackingCache(SEED_BO_ORDERS, scopeKey);
     return SEED_BO_ORDERS;
   }
 
   return [];
+}
+
+/**
+ * Obtiene el historial individual completo y ordenado cronológicamente de todas las órdenes BO registradas.
+ */
+export async function getBoIndividualHistory(): Promise<BoOrderTrackingRecord[]> {
+  const records = await getBoTrackings();
+  return [...records].sort(
+    (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+  );
 }
 
 /**

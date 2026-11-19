@@ -30,6 +30,7 @@ import {
   Edit2,
   Trash2,
   Bell,
+  History,
 } from 'lucide-react';
 import {
   BoOrderTrackingRecord,
@@ -56,6 +57,7 @@ import {
 } from './boTrackingService';
 import { DealReminderView } from './DealReminderView';
 import { DealReminderRecord } from './dealReminderTypes';
+import { BoIndividualHistoryView } from './BoIndividualHistoryView';
 import { useCiscoAutomatedStore } from '../../core/store';
 import { downloadContentSafe } from '../../utils/downloadHelper';
 import { useTableDensityAndZoom } from '../../hooks/useTableDensityAndZoom';
@@ -64,7 +66,7 @@ import { TableDensityZoomControls } from '../../components/TableDensityZoomContr
 export function BoTrackingView() {
   const { currentUser, processedResult, detectedPartner } = useCiscoAutomatedStore();
 
-  const [activeTab, setActiveTab] = useState<'orders' | 'deal_reminders'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'history' | 'deal_reminders'>('orders');
   const [orders, setOrders] = useState<BoOrderTrackingRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -364,7 +366,7 @@ export function BoTrackingView() {
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-slate-950 text-slate-100 overflow-y-auto">
-      {/* Top Module Subnav Tabs: Logística BO vs Recordador de Deals */}
+      {/* Top Module Subnav Tabs: Logística BO vs Historial Individual vs Recordador de Deals */}
       <div className="bg-slate-950/95 border-b border-slate-800 px-6 pt-3 flex items-center justify-between sticky top-0 z-30 backdrop-blur-md">
         <div className="flex items-center space-x-2">
           <button
@@ -380,6 +382,23 @@ export function BoTrackingView() {
             {stats.activeCount > 0 && (
               <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-950 text-amber-300 border border-amber-800/50">
                 {stats.activeCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 flex items-center space-x-2 transition-all cursor-pointer ${
+              activeTab === 'history'
+                ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10 rounded-t-xl'
+                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 rounded-t-xl'
+            }`}
+          >
+            <History className="w-4 h-4" />
+            <span>Historial Individual de Órdenes BO</span>
+            {orders.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800/50">
+                {orders.length}
               </span>
             )}
           </button>
@@ -413,6 +432,25 @@ export function BoTrackingView() {
             setIsNewOrderModalOpen(true);
           }}
         />
+      ) : activeTab === 'history' ? (
+        <div className="p-6">
+          <BoIndividualHistoryView
+            orders={orders}
+            isLoading={isLoading}
+            onRefresh={loadData}
+            onOpenNewOrderModal={() => setIsNewOrderModalOpen(true)}
+            onOpenNotesModal={(o) => setSelectedOrderForNotes(o)}
+            onOpenEditModal={(o) => setSelectedOrderForEdit(o)}
+            onDeleteOrder={handleDeleteOrder}
+            tableDensity={tableDensity}
+            tableZoom={tableZoom}
+            headPaddingClass={headPaddingClass}
+            cellPaddingClass={cellPaddingClass}
+            zoomStyle={zoomStyle}
+            onDensityChange={handleSetTableDensity}
+            onZoomChange={handleSetTableZoom}
+          />
+        </div>
       ) : (
         <>
           {/* Header Section */}

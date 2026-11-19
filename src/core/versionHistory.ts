@@ -15,11 +15,29 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.20.0',
+    date: '2026-11-18',
+    commit: 'feat-dsv-auto-save-persistence-armor-bo-individual-history',
+    title: 'Auto-Guardado Permanente en Historial DSV, Blindaje de BD y Nuevo Módulo de Historial Individual BO',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Auto-Guardado Obligatorio en Historial de Órdenes DSV (DsvModal.tsx y DsvView.tsx): Corrección estructural en el flujo de exportación DSV donde la generación del archivo Excel de 48 columnas ahora invoca de forma automática e inmediata saveDsvToCloud(...) y syncBoOrderFromDsvRecord(...), garantizando que toda gestión DSV quede registrada permanentemente en el historial compartido y en el tablero logístico sin requerir acciones manuales adicionales.',
+      'Blindaje Anti-Purga y Cero Pérdida de BD en DSV (firestoreService.ts): Erradicación del bug que eliminaba la caché local con removeItem cuando el tamaño serializado superaba los 20 KB. Implementación de una arquitectura de almacenamiento blindada con caché en memoria, hidratación asíncrona desde IndexedDB (STORES.KEYVAL), bóveda de respaldo dual y semillas maestras históricas (dsvSeeds.ts, incluyendo Infocorp Deal 86146758, Sonda 8899201, Telefónica Tech 7744102 y Entel 6612984).',
+      'Nuevo Módulo de Historial Individual de Órdenes BO (BoIndividualHistoryView.tsx): Creación de una pestaña principal dedicada en Tracking BO para la auditoría y consulta detallada de todas las órdenes BO generadas, complementando el cruce de datos y el flujo Kanban con fichas de detalle completas, desglose financiero, resumen de despacho y bitácora de notas históricas.',
+      'Filtro Mensual por Defecto con Avance Continuo y Selector Histórico: El nuevo módulo de historial individual BO se abre por defecto en el mes actual y permite alternar fluidamente entre meses específicos, vista histórica completa, filtros por Partner, Bodega (E1 Física vs ED Digital) y Etapa Logística.',
+      'Adaptabilidad Multiresolución con Zoom Local en Historial BO: Integración de TableDensityZoomControls y useTableDensityAndZoom en BoIndividualHistoryView para ajuste automático a cualquier tamaño de pantalla, con controles de densidad (Auto-Fit, Compacto, Estándar) y zoom porcentual sin afectar el navegador.',
+      'Protección Anti-Pérdida de BD en Seguimiento BO (boTrackingService.ts): Implementación de bóveda permanente LOCAL_BO_TRACKING_VAULT_KEY y auto-hidratación que impide que las órdenes BO se vacíen ante caídas de red, reinicios de caché o modo offline.',
+      'Exportación Integral a Excel y CSV del Historial BO: Descarga estructurada en 1 clic de todas las órdenes BO filtradas con sus métricas financieras, márgenes, estados de courier y enlaces de tracking.',
+      'Nueva Suite de Pruebas Unitarias Automatizadas (tests/dsvBoHistoryPersistenceArmor.test.ts): Valida la disponibilidad de semillas maestras, auto-guardado en exportación DSV, resiliencia ante grandes volúmenes de datos, orden cronológico y filtros del historial BO (44 suites de prueba pasando al 100%).',
+    ],
+  },
+  {
     version: '2.19.0',
     date: '2026-11-18',
     commit: 'feat-dsv-excluded-items-panel-and-force-include',
     title: 'Visibilidad de P/N Excluidos del DSV y Opción Ergonómica de Inclusión Forzada (Estilo BO)',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Visibilidad Completa de P/N Descartados / Excluidos del DSV: Implementación de la sección desplegable con diseño ergonómico homologado al módulo BO (Back Order), permitiendo a los usuarios visualizar con total transparencia todas las líneas con precio de lista $0.00 USD, componentes o licencias sin costo del BOM que originalmente no entran en la plantilla DSV de 48 columnas.',
