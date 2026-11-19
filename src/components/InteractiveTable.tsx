@@ -40,6 +40,7 @@ import { validateCiscoBom } from '../core/bomValidator';
 import { BomValidatorModal } from './BomValidatorModal';
 import { useTableDensityAndZoom } from '../hooks/useTableDensityAndZoom';
 import { TableDensityZoomControls } from './TableDensityZoomControls';
+import { useToast } from '../context/ToastContext';
 
 export type InteractiveTableFilterType = 'all' | 'intangible' | 'tangible' | 'arancel';
 
@@ -201,7 +202,7 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
   const { isClientMode, toggleClientMode } = useCiscoAutomatedStore();
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState<InteractiveTableFilterType>('all');
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   // Table Density & Visual Zoom States (Auto-Fit across resolutions without changing browser zoom)
   const {
@@ -273,8 +274,7 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
       localStorage.setItem(key, JSON.stringify(updated));
     } catch {}
     setEditingNoteItem(null);
-    setToastMessage('Nota guardada correctamente.');
-    setTimeout(() => setToastMessage(null), 2500);
+    showToast('Nota guardada correctamente.', 'success', 2500);
   };
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -411,8 +411,7 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
         ? 'Intangible (0% Internación / 0% Arancel)'
         : `Arancel (+${params.internacionPct}% Internación + ${params.arancelPct}% Arancel)`;
 
-    setToastMessage(`SKU ${targetItem.partNumber} → ${ruleLabel} (Guardado en memoria)`);
-    setTimeout(() => setToastMessage(null), 3000);
+    showToast(`SKU ${targetItem.partNumber} → ${ruleLabel} (Guardado en memoria)`, 'info', 3000);
 
     setContextMenu({ isOpen: false, x: 0, y: 0, item: null });
   };
@@ -462,17 +461,6 @@ export const InteractiveTable: React.FC<InteractiveTableProps> = ({
         </div>
       )}
 
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed bottom-6 right-6 z-50 bg-indigo-600 text-white px-4 py-3 rounded-2xl text-xs font-bold shadow-2xl flex items-center space-x-2.5 animate-slide-up border border-indigo-400/40"
-        >
-          <Save className="w-4 h-4 text-amber-300 shrink-0" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
 
       {/* Floating 3-State Context Menu */}
       {contextMenu.isOpen && contextMenu.item && (

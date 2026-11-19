@@ -18,6 +18,7 @@ import {
   snapshotToConversionRates,
   subscribeFrontendCurrencyChange,
 } from '../core/chileanExchangeRateService';
+import { useToast } from '../context/ToastContext';
 import {
   Eye,
   MousePointerClick,
@@ -62,7 +63,7 @@ export const ExcelSheetPreview: React.FC<ExcelSheetPreviewProps> = ({
   const [showRecalculated, setShowRecalculated] = useState<boolean>(true);
   const { isClientMode } = useCiscoAutomatedStore();
   const effectiveShowRecalculated = isClientMode ? true : showRecalculated;
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { showToast } = useToast();
   const [currency, setCurrency] = useState<CurrencyCode>(() => getSavedFrontendCurrency());
   const [rates, setRates] = useState<CurrencyConversionRates>(() =>
     snapshotToConversionRates(getCachedDailyOfficialRates(false) || getDefaultOfficialRatesSnapshot())
@@ -158,8 +159,7 @@ export const ExcelSheetPreview: React.FC<ExcelSheetPreviewProps> = ({
         ? 'Intangible (0% Internación / 0% Arancel)'
         : `Arancel (+${params.internacionPct}% Int. + ${params.arancelPct}% Arancel)`;
 
-    setToastMessage(`SKU ${targetItem.partNumber} &rarr; ${ruleLabel} (Guardado en memoria)`);
-    setTimeout(() => setToastMessage(null), 3000);
+    showToast(`SKU ${targetItem.partNumber} → ${ruleLabel} (Guardado en memoria)`, 'info', 3000);
 
     setContextMenu({ isOpen: false, x: 0, y: 0, item: null });
   };
@@ -181,14 +181,6 @@ export const ExcelSheetPreview: React.FC<ExcelSheetPreviewProps> = ({
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden relative">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-indigo-600 text-white px-4 py-3 rounded-2xl text-xs font-bold shadow-2xl flex items-center space-x-2.5 animate-slide-up border border-indigo-400/40">
-          <Save className="w-4 h-4 text-amber-300 shrink-0" />
-          <span dangerouslySetInnerHTML={{ __html: toastMessage }} />
-        </div>
-      )}
-
       {/* Floating 3-State Context Menu */}
       {contextMenu.isOpen && contextMenu.item && (
         <div

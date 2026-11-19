@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Share2, Download, FileCheck, Check, Sparkles } from 'lucide-react';
 import { shareQuote, ShareQuoteData } from '../../utils/mobileShareHelper';
 import { useCiscoAutomatedStore } from '../../core/store';
+import { useToast } from '../../context/ToastContext';
 
 interface MobileStickyBarProps {
   clientName?: string;
@@ -28,7 +29,7 @@ export const MobileStickyBar: React.FC<MobileStickyBarProps> = ({
   onDsvClick,
   formatCurrency,
 }) => {
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const { showToast } = useToast();
   const { isClientMode } = useCiscoAutomatedStore();
 
   const handleShare = async () => {
@@ -43,21 +44,11 @@ export const MobileStickyBar: React.FC<MobileStickyBarProps> = ({
     };
 
     const res = await shareQuote(data);
-    setToastMsg(res.message);
-    setTimeout(() => setToastMsg(null), 3000);
+    showToast(res.message, res.shared ? 'success' : 'info');
   };
 
   return (
     <>
-      {/* Toast Notification */}
-      {toastMsg && (
-        <div className="fixed top-16 left-4 right-4 z-50 p-3 rounded-2xl bg-indigo-600 text-white font-bold text-xs shadow-2xl flex items-center justify-between border border-indigo-400/40 animate-in fade-in slide-in-from-top-4">
-          <span>{toastMsg}</span>
-          <button onClick={() => setToastMsg(null)} className="text-white/80 hover:text-white">
-            <Check className="w-4 h-4" />
-          </button>
-        </div>
-      )}
 
       {/* Sticky Quick Bar for Mobile */}
       <div className="md:hidden sticky top-[61px] z-20 bg-slate-950/95 backdrop-blur-md border-b border-slate-800 p-2.5 mb-3 flex items-center justify-between gap-2 shadow-lg">

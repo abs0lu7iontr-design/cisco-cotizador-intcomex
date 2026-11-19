@@ -28,6 +28,11 @@ import {
   isNavigatorOffline,
   setManualOfflineMode,
 } from '../core/storage/offlineModeManager';
+import {
+  detectAllOfflineConflicts,
+  OfflineConflictItem,
+} from '../core/storage/offlineConflictDetector';
+import { OfflineConflictModal } from './OfflineConflictModal';
 
 interface OfflineSyncModalProps {
   isOpen: boolean;
@@ -56,6 +61,8 @@ export const OfflineSyncModal: React.FC<OfflineSyncModalProps> = ({
   const [errors, setErrors] = useState<string[]>([]);
   const [acknowledgedRisk, setAcknowledgedRisk] = useState(true);
   const [isConfirmingClear, setIsConfirmingClear] = useState(false);
+  const [detectedConflicts, setDetectedConflicts] = useState<OfflineConflictItem[]>([]);
+  const [isConflictModalOpen, setIsConflictModalOpen] = useState(false);
 
   const loadSummary = async () => {
     setIsLoadingSummary(true);
@@ -91,6 +98,15 @@ export const OfflineSyncModal: React.FC<OfflineSyncModalProps> = ({
     setProgress({ processed: 0, total: totalPending });
 
     try {
+      // 1. Detección preventiva de conflictos concurrentes (multi-usuario)
+      const conflicts = await detectAllOfflineConflicts(items);
+      if (conflicts.length > 0) {
+        setDetectedConflicts(conflicts);
+        setIsConflictModalOpen(true);
+        setIsUploading(false);
+        return;
+      }
+
       const result = await flushOfflineQueue({
         forceEvenIfManualOffline: true,
         hasUserConsent: true,
@@ -425,6 +441,23 @@ export const OfflineSyncModal: React.FC<OfflineSyncModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Modal de Resolución Concurrente de Conflictos Offline */}
+      {isConflictModalOpen && detectedConflicts.length > 0 && (
+        <OfflineConflictModal
+          conflicts={detectedConflicts}
+          isOpen={isConflictModalOpen}
+          onClose={() => setIsConflictModalOpen(false)}
+          onAllResolved={async () => {
+            setIsConflictModalOpen(false);
+            setDetectedConflicts([]);
+            await loadSummary();
+            setTimeout(() => {
+              handleUploadAndGoOnline();
+            }, 300);
+          }}
+        />
+      )}
     </div>
   );
 };

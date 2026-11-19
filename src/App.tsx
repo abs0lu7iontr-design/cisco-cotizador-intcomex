@@ -8,6 +8,7 @@ import {
   useCiscoAutomatedStore,
 } from './core/store';
 import { ThemeProvider } from './context/ThemeContext';
+import { ToastProvider } from './context/ToastContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoginScreen } from './components/LoginScreen';
 import { Sidebar } from './components/Sidebar';
@@ -1376,7 +1377,9 @@ export function App() {
     <ErrorBoundary fallbackTitle="Error Crítico en la Aplicación">
       <ThemeProvider>
         <CiscoAutomatedProvider>
-          <AppContent />
+          <ToastProvider>
+            <AppContent />
+          </ToastProvider>
         </CiscoAutomatedProvider>
       </ThemeProvider>
     </ErrorBoundary>

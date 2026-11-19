@@ -30,6 +30,7 @@ import {
 import { useCiscoAutomatedStore } from '../core/store';
 import { savePipelineDeal, PipelineDealRecord, MESES_ANO } from '../modules/pipeline';
 import { formatShortUserFirstName } from '../utils/userNameUtils';
+import { useToast } from '../context/ToastContext';
 import {
   Search,
   RefreshCw,
@@ -208,10 +209,7 @@ export function EstimatesHistoryView() {
 
   // UI state
   const [isLoading, setIsLoading] = useState(false);
-  const [toastMessage, setToastMessage] = useState<{
-    text: string;
-    type: 'success' | 'error';
-  } | null>(null);
+  const { showToast } = useToast();
   const [cloudStatusNote, setCloudStatusNote] = useState<string | null>(null);
   const [requestingAccessKeys, setRequestingAccessKeys] = useState<Set<string>>(new Set());
 
@@ -354,10 +352,6 @@ export function EstimatesHistoryView() {
     return list;
   }, [selectedEstimateDetail, estimateVersions]);
 
-  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
-    setToastMessage({ text, type });
-    setTimeout(() => setToastMessage(null), 4000);
-  };
 
   // Access evaluation helper for any Estimate row
   const evaluateAccess = (est: CloudEstimateRecord) => {
@@ -908,20 +902,6 @@ export function EstimatesHistoryView() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl text-xs font-bold shadow-2xl flex items-center space-x-2.5 animate-slide-up border ${
-            toastMessage.type === 'success'
-              ? 'bg-emerald-600 text-white border-emerald-400/40'
-              : 'bg-rose-600 text-white border-rose-400/40'
-          }`}
-        >
-          <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
-          <span>{toastMessage.text}</span>
-        </div>
-      )}
-
       {/* Header & Controls Bar */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
         <div className="flex items-center space-x-4">

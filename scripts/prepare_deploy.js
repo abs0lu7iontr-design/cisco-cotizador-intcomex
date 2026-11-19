@@ -93,10 +93,13 @@ const cdnDesktopBundlePath = path.join(distPagesDir, 'desktop_build.html');
 fs.writeFileSync(cdnDesktopBundlePath, portableBundleBuffer);
 console.log(`🚀 [deploy-prep] Inyectado en CDN Cloudflare: desktop_build.html (${(portableBundleBuffer.length / (1024 * 1024)).toFixed(2)} MB)`);
 
-// Asegurar headers y version.json
-const versionSrc = path.join(rootDir, 'public', 'version.json');
-if (fs.existsSync(versionSrc)) {
-  fs.copyFileSync(versionSrc, path.join(distPagesDir, 'version.json'));
+// Asegurar headers, version.json y PWA assets
+const staticAssetsToSync = ['version.json', 'sw.js', 'manifest.json', 'icon-192.svg', 'icon-512.svg'];
+for (const asset of staticAssetsToSync) {
+  const assetSrc = path.join(rootDir, 'public', asset);
+  if (fs.existsSync(assetSrc)) {
+    fs.copyFileSync(assetSrc, path.join(distPagesDir, asset));
+  }
 }
 
 const headersCandidates = [

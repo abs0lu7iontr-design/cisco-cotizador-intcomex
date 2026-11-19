@@ -3,6 +3,10 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import { APP_DISPLAY_NAME, getFormattedAppVersion } from './core/appVersion';
+import { registerServiceWorker } from './core/serviceWorkerManager';
+
+// Register enterprise PWA Service Worker for mobile & offline shell caching
+registerServiceWorker();
 
 // Keep browser window tab title always updated with dynamic app version
 if (typeof document !== 'undefined') {

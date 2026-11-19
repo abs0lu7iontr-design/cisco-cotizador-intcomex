@@ -15,11 +15,28 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.22.0',
+    date: '2026-11-19',
+    commit: 'feat-toast-offline-conflict-resolution-pwa-sw',
+    title: 'Sistema Unificado de Notificaciones Toast, Detección de Conflictos Offline y Service Worker PWA',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Sistema Centralizado de Notificaciones Toast (ToastContext.tsx): Proveedor global ToastProvider y hook useToast con cola de alertas apiladas, temporizador por severidad (success, error, warning, info) y botón de cierre ergonómico.',
+      'Despachador Desacoplado triggerGlobalToast: Permite disparar toasts desde cualquier servicio o módulo no-React mediante el evento nativo cisco-toast.',
+      'Refactorización Integral de Vistas: Eliminados estados locales duplicados y banners redundantes en DashboardView, EstimatesHistoryView, InteractiveTable, UserManagementView, DealReminderView, ExcelSheetPreview y MobileStickyBar.',
+      'Detección Proactiva de Conflictos Offline (offlineConflictDetector.ts): Compara marcas de tiempo y versiones locales con la nube para evitar sobreescrituras accidentales en la cola de sincronización diferida.',
+      'Modal de Resolución de Conflictos (OfflineConflictModal.tsx): Comparativa visual lado a lado con 3 opciones de resolución: Bifurcar Versión (vN+1, cero pérdida de datos), Sobrescribir Nube o Conservar Nube.',
+      'Service Worker PWA Offline Real (public/sw.js & serviceWorkerManager.ts): Caché estática Cache-First y navegación Network-First con fallback offline, preservando la exclusión de APIs de nube y habilitando instalación en móviles y tablets.',
+      'Nueva Suite de Pruebas Unitarias Automatizadas (tests/toastAndOfflineConflictAndPwa.test.ts): Valida la interoperabilidad del Toast centralizado, la bifurcación/resolución de conflictos offline y la integridad del Service Worker (46 suites pasando al 100%).',
+    ],
+  },
+  {
     version: '2.21.0',
     date: '2026-11-19',
     commit: 'feat-user-short-first-name-compact-table-cell-fit',
     title: 'Optimización y Ajuste de Celdas: Nombres de Pila Concisos en Toda la Plataforma',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Formateador Universal de Nombres (userNameUtils.ts): Implementación de la utilidad global formatShortUserFirstName y getShortDisplayName para normalizar nombres extensos, cargos y cuentas administrativas a nombres de pila directos y legibles (ej. "Mauricio Skill (Administrador)" -> "Mauricio", "Luis Burgos" -> "Luis", "Johana Valencia" -> "Johana", "Marta Adasme" -> "Marta", "Raul Cuevas" -> "Raul").',

@@ -14,6 +14,7 @@ import {
 import { useCiscoAutomatedStore } from '../core/store';
 import { getFormattedAppVersion } from '../core/appVersion';
 import { formatShortUserFirstName } from '../utils/userNameUtils';
+import { useToast } from '../context/ToastContext';
 import {
   TrendingUp,
   FileSpreadsheet,
@@ -84,7 +85,7 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
   );
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
   const [syncNote, setSyncNote] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const { showToast } = useToast();
 
   // 2. Analytical Filter States — Default is 'month' (Mensual) so estimates are always visible upon opening
   const [periodFilter, setPeriodFilter] = useState<DashboardPeriodFilter>('month');
@@ -121,10 +122,6 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
     };
   }, [lastSyncIso]);
 
-  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
-    setToast({ text, type });
-    setTimeout(() => setToast(null), 3500);
-  };
 
   // Sync Mirror Snapshot with Firebase Firestore & Desktop SQLite (Loads up to 300 recent estimates)
   const syncMirrorWithFirebase = useCallback(
@@ -477,20 +474,6 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
-      {/* Toast Notification */}
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-2xl text-xs font-bold shadow-2xl flex items-center space-x-2.5 border ${
-            toast.type === 'success'
-              ? 'bg-emerald-600 text-white border-emerald-400/40'
-              : 'bg-rose-600 text-white border-rose-400/40'
-          }`}
-        >
-          <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
-          <span>{toast.text}</span>
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-900/90 p-6 rounded-3xl border border-slate-800 shadow-xl">
         <div>

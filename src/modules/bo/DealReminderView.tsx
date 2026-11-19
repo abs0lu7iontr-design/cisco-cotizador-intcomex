@@ -56,6 +56,7 @@ import { DealReminderAlertModal } from './DealReminderAlertModal';
 import { useCiscoAutomatedStore } from '../../core/store';
 import { downloadContentSafe } from '../../utils/downloadHelper';
 import { formatShortUserFirstName } from '../../utils/userNameUtils';
+import { useToast } from '../../context/ToastContext';
 
 interface DealReminderViewProps {
   onConvertToBo?: (deal: DealReminderRecord) => void;
@@ -72,7 +73,7 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
   const [copiedDealId, setCopiedDealId] = useState<string | null>(null);
   const [sendingEmailDealId, setSendingEmailDealId] = useState<string | null>(null);
   const [isTestingOfflineCron, setIsTestingOfflineCron] = useState(false);
-  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const { showToast } = useToast();
   const [previewDealForAlertModal, setPreviewDealForAlertModal] = useState<DealReminderRecord | null>(null);
 
   // Modales
@@ -262,10 +263,6 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
     showToast('Recordatorio eliminado.', 'info');
   };
 
-  const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success', duration = 4500) => {
-    setToastMessage({ text, type });
-    setTimeout(() => setToastMessage(null), duration);
-  };
 
   // Enviar recordatorio offline vía Cloudflare Edge Function a mauricio.skill@intcomex.com
   const handleTestOfflineEmail = async (targetDeal?: DealReminderRecord) => {
@@ -1145,21 +1142,6 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
           onClose={() => setPreviewDealForAlertModal(null)}
           onRefreshData={loadData}
         />
-      )}
-
-      {/* Floating Toast Feedback */}
-      {toastMessage && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 flex items-center space-x-2.5 px-4 py-3 rounded-2xl shadow-2xl border text-xs font-semibold backdrop-blur-md animate-fade-in ${
-            toastMessage.type === 'error'
-              ? 'bg-rose-950/90 border-rose-600/50 text-rose-200'
-              : toastMessage.type === 'info'
-                ? 'bg-sky-950/90 border-sky-600/50 text-sky-200'
-                : 'bg-emerald-950/90 border-emerald-600/50 text-emerald-200'
-          }`}
-        >
-          <span>{toastMessage.text}</span>
-        </div>
       )}
     </div>
   );

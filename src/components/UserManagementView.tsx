@@ -35,11 +35,12 @@ import {
   sha256Salted,
   CloudUserRecord,
 } from '../modules/cloud';
+import { useToast } from '../context/ToastContext';
 
 export function UserManagementView() {
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const { showToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modal States
@@ -99,10 +100,6 @@ export function UserManagementView() {
     setTimeout(() => setCodeCopied(false), 2500);
   };
 
-  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
-    setToastMsg({ text, type });
-    setTimeout(() => setToastMsg(null), 3500);
-  };
 
   const fetchUsers = async () => {
     setIsLoading(true);
@@ -421,24 +418,6 @@ export function UserManagementView() {
 
   return (
     <div className="space-y-6">
-      {/* Toast Alert */}
-      {toastMsg && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl text-xs font-bold shadow-2xl flex items-center space-x-2 animate-slide-up ${
-            toastMsg.type === 'success'
-              ? 'bg-emerald-950 text-emerald-200 border border-emerald-500/50'
-              : 'bg-rose-950 text-rose-200 border border-rose-500/50'
-          }`}
-        >
-          {toastMsg.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          ) : (
-            <AlertCircle className="w-4 h-4 text-rose-400" />
-          )}
-          <span>{toastMsg.text}</span>
-        </div>
-      )}
-
       {/* Header & Controls */}
       <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

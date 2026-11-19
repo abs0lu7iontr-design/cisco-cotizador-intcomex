@@ -6,6 +6,32 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.22.0] - 2026-11-19
+### 🔔 Sistema Unificado de Notificaciones Toast, Detección de Conflictos Offline y Service Worker PWA
+- **Sistema Centralizado de Notificaciones Toast (`ToastContext.tsx`):**
+  - Creación del proveedor global `ToastProvider` y hook `useToast` con gestión unificada de alertas contextuales (`success`, `error`, `warning`, `info`).
+  - Capacidad de apilamiento dinámico (queue de toasts), autodismiss con temporizador configurable por severidad, animación fluida y botón de cierre individual.
+  - Despachador desacoplado `triggerGlobalToast(options)` mediante evento nativo de ventana (`cisco-toast`) para invocar notificaciones desde cualquier función de servicio o utilidad no-React.
+  - Reemplazo y limpieza de estados locales duplicados `showToast` / `toastMsg` y banners locales flotantes redundantes en `DashboardView`, `EstimatesHistoryView`, `InteractiveTable`, `UserManagementView`, `DealReminderView`, `ExcelSheetPreview` y `MobileStickyBar`.
+  - Posicionamiento ergonómico y flotante en la esquina inferior derecha con soporte adaptativo para la barra inferior en dispositivos móviles.
+- **Detección Proactiva de Conflictos y Control Concurrente Offline (`offlineConflictDetector.ts` & `OfflineConflictModal.tsx`):**
+  - Implementación del detector de discrepancias entre versiones locales en cola offline y registros actualizados en la nube por otros usuarios o gestiones remotas.
+  - Nuevo modal visual interactivo (`OfflineConflictModal.tsx`) con diseño comparativo lado a lado (Nube vs Offline Local): autor, fecha y hora, monto USD, cantidad de ítems del BOM y estado/etapa.
+  - Ofrece 3 modos de resolución sin pérdida de datos:
+    1. **Bifurcar Versión (Recomendado):** Incrementa automáticamente la versión del Estimate (ej. `vN+1`) o crea una copia independiente preservando ambos trabajos.
+    2. **Sobrescribir Nube:** Aplica los cambios locales como versión definitiva sobre la nube.
+    3. **Conservar Nube:** Descarta los cambios locales en conflicto y sincroniza el estado remoto.
+  - Integración nativa en `OfflineSyncModal.tsx`, previniendo sobreescrituras ciegas o involuntarias antes de enviar la cola a Firestore.
+- **Service Worker y Motor PWA Offline Real (`public/sw.js` & `serviceWorkerManager.ts`):**
+  - Implementación del Service Worker oficial de la plataforma (`cisco-automated-shell-v2.22.0`) en la raíz del dominio.
+  - Estrategia **Cache-First** con *stale-while-revalidate* para recursos estáticos y assets locales (HTML shell, CSS, JS, imágenes, SVG, fuentes).
+  - Estrategia **Network-First** con fallback a caché para navegación, permitiendo recargar o abrir la plataforma en el navegador móvil o tablet incluso sin conexión a Internet.
+  - Exclusión explícita de endpoints de nube (APIs de Firebase/Firestore, OpenRouter y Google GenAI) para salvaguardar el consentimiento de datos offline.
+  - Módulo gestor `serviceWorkerManager.ts` con escucha del evento `beforeinstallprompt` y capacidad para solicitar la instalación de la aplicación como PWA en pantalla de inicio.
+  - Registro automático en `main.tsx`, metadatos PWA completos en `index.html` y sincronización garantizada en `scripts/prepare_deploy.js`.
+- **Nueva Suite de Pruebas Unitarias Automatizadas (`tests/toastAndOfflineConflictAndPwa.test.ts`):**
+  - 10 pruebas unitarias automatizadas cubriendo el sistema Toast, detección y resolución de conflictos offline, y Service Worker PWA (46 suites pasando al 100%).
+
 ## [v2.21.0] - 2026-11-19
 ### 👤 Optimización y Ajuste de Celdas: Nombres de Pila Concisos en Toda la Plataforma
 - **Formateador Universal de Nombres (`userNameUtils.ts`):**
