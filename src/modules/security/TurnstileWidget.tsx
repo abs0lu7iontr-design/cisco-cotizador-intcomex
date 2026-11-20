@@ -108,10 +108,18 @@ export function TurnstileWidget({
       }
     };
 
-    // Passive polling: wait for window.turnstile loaded via index.html script tag
+    // Dynamic lazy-load on demand: only load script when Turnstile is actually mounted
     if (window.turnstile) {
       renderWidget();
     } else {
+      if (typeof document !== 'undefined' && !document.getElementById('cf-turnstile-script')) {
+        const script = document.createElement('script');
+        script.id = 'cf-turnstile-script';
+        script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+        script.async = true;
+        script.defer = true;
+        document.head.appendChild(script);
+      }
       pollTimer = setInterval(() => {
         if (window.turnstile) {
           if (pollTimer) clearInterval(pollTimer);

@@ -7,7 +7,7 @@
 // 3. Cloud & Firestore APIs: Network-Only (handled by IndexedDB offline vaults)
 // ============================================================================
 
-const CACHE_NAME = 'cisco-automated-shell-v2.22.0';
+const CACHE_NAME = 'cisco-automated-shell-v2.24.0';
 
 const PRECACHE_ASSETS = [
   '/',
@@ -16,8 +16,6 @@ const PRECACHE_ASSETS = [
   '/favicon.ico',
   '/icon-192.svg',
   '/icon-512.svg',
-  '/logo-halloween-animado.gif',
-  '/logo-navidad-nieve.gif',
 ];
 
 // 1. Instalación del Service Worker: Pre-cacheados de recursos mínimos esenciales

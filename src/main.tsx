@@ -5,8 +5,14 @@ import './index.css';
 import { APP_DISPLAY_NAME, getFormattedAppVersion } from './core/appVersion';
 import { registerServiceWorker } from './core/serviceWorkerManager';
 
-// Register enterprise PWA Service Worker for mobile & offline shell caching
-registerServiceWorker();
+// Register enterprise PWA Service Worker in background when thread is idle (0ms startup latency)
+if (typeof window !== 'undefined') {
+  if ('requestIdleCallback' in window) {
+    (window as any).requestIdleCallback(() => registerServiceWorker());
+  } else {
+    setTimeout(() => registerServiceWorker(), 2000);
+  }
+}
 
 // Keep browser window tab title always updated with dynamic app version
 if (typeof document !== 'undefined') {

@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.23.0",
-  "git_commit": "fbd90ed",
+  "version": "2.24.0",
+  "git_commit": "e755e64",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-20T03:29:58.149Z",
-  "release_notes": "feat(v2.22.0): unified toast system, offline conflict resolution modal and pwa service worker",
+  "build_timestamp": "2026-11-20T04:13:58.076Z",
+  "release_notes": "feat(v2.23.0): 60fps virtualization, user default pipeline view, presets, gigabyte catalogs and performance telemetry",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

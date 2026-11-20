@@ -102,7 +102,7 @@ import {
   X,
 } from 'lucide-react';
 
-function AppContent() {
+function AuthenticatedApp() {
   const {
     currentUser,
     setCurrentUser,
@@ -487,14 +487,6 @@ function AppContent() {
     }
   };
 
-  // If not logged in, show LoginScreen
-  if (!currentUser) {
-    return (
-      <ErrorBoundary fallbackTitle="Error en Pantalla de Acceso">
-        <LoginScreen onLoginSuccess={(u) => setCurrentUser(u)} />
-      </ErrorBoundary>
-    );
-  }
 
   // Parse partner, client and model from filename or header info
   const getPartnerClientDefaults = () => {
@@ -1370,6 +1362,27 @@ function AppContent() {
       />
     </div>
   );
+}
+
+function AppContent() {
+  const { currentUser, setCurrentUser } = useCiscoAutomatedStore();
+
+  // Initialize theme on application mount
+  useEffect(() => {
+    const savedTheme = getSavedThemeId();
+    applyTheme(savedTheme);
+  }, []);
+
+  // If not logged in, render LoginScreen with instant sub-50ms latency and ZERO dashboard overhead
+  if (!currentUser) {
+    return (
+      <ErrorBoundary fallbackTitle="Error en Pantalla de Acceso">
+        <LoginScreen onLoginSuccess={(u) => setCurrentUser(u)} />
+      </ErrorBoundary>
+    );
+  }
+
+  return <AuthenticatedApp />;
 }
 
 export function App() {

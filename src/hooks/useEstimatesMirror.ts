@@ -184,9 +184,9 @@ export function getEstimatesMirrorSnapshot(): CloudEstimateRecord[] {
     const rawMirror = readProjectScopedStorage(LOCAL_ESTIMATES_MIRROR_KEY, scopeKey) || '';
     const rawLegacy = readProjectScopedStorage(LOCAL_ESTIMATES_LEGACY_KEY, scopeKey) || '';
 
-    // Fast path: if storage strings and IDB count haven't changed, preserve referential equality strictly
-    const currentHash = `${scopeKey}:::${idbRecords.length}:::${rawPrimary}:::${rawVault}:::${rawMirror}:::${rawLegacy}`;
-    if (cachedHash !== null && currentHash === cachedHash) {
+    // Fast path: O(1) fingerprint check prevents creating 10-20 MB strings on every render pass
+    const currentFingerprint = `${scopeKey}:::${idbRecords.length}:::${rawPrimary.length}:::${rawVault.length}:::${rawMirror.length}:::${rawLegacy.length}:::${rawPrimary.slice(0, 32)}:::${rawPrimary.slice(-32)}`;
+    if (cachedHash !== null && currentFingerprint === cachedHash) {
       return cachedSnapshot;
     }
 
@@ -258,7 +258,7 @@ export function getEstimatesMirrorSnapshot(): CloudEstimateRecord[] {
       ...legacyMapped,
     ]);
 
-    cachedHash = currentHash;
+    cachedHash = currentFingerprint;
     cachedSnapshot = merged;
     return cachedSnapshot;
   } catch (_) {

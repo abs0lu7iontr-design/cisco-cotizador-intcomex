@@ -25,6 +25,7 @@ export async function checkGeoLocation(): Promise<GeoLocationInfo> {
     const res = await fetch('/api/geo-auth', {
       method: 'GET',
       headers: { Accept: 'application/json' },
+      signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(1500) : undefined,
     });
     if (res.ok) {
       const data: any = await res.json();

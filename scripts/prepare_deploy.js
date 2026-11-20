@@ -44,8 +44,8 @@ for (const target of desktopTargets) {
     }
     fs.writeFileSync(target, portableBundleBuffer);
     console.log(`📋 [deploy-prep] Sincronizado a desktop local: ${path.relative(rootDir, target)}`);
-    // Sincronizar assets estáticos de branding ligero (Halloween y Navidad)
-    for (const logo of ['logo-navidad-nieve.gif', 'logo-halloween-animado.gif']) {
+    // Sincronizar assets estáticos de branding ligero (Halloween, Navidad, Cisco Seal, Intcomex)
+    for (const logo of ['logo-navidad-nieve.gif', 'logo-halloween-animado.gif', 'cisco-seal.png', 'intcomex-logo.png']) {
       const src = path.join(rootDir, 'public', logo);
       if (fs.existsSync(src)) {
         fs.copyFileSync(src, path.join(dir, logo));
@@ -94,7 +94,18 @@ fs.writeFileSync(cdnDesktopBundlePath, portableBundleBuffer);
 console.log(`🚀 [deploy-prep] Inyectado en CDN Cloudflare: desktop_build.html (${(portableBundleBuffer.length / (1024 * 1024)).toFixed(2)} MB)`);
 
 // Asegurar headers, version.json y PWA assets
-const staticAssetsToSync = ['version.json', 'sw.js', 'manifest.json', 'icon-192.svg', 'icon-512.svg'];
+const staticAssetsToSync = [
+  'version.json',
+  'sw.js',
+  'manifest.json',
+  'icon-192.svg',
+  'icon-512.svg',
+  'favicon.ico',
+  'logo-navidad-nieve.gif',
+  'logo-halloween-animado.gif',
+  'cisco-seal.png',
+  'intcomex-logo.png',
+];
 for (const asset of staticAssetsToSync) {
   const assetSrc = path.join(rootDir, 'public', asset);
   if (fs.existsSync(assetSrc)) {
