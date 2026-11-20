@@ -15,11 +15,27 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.23.0',
+    date: '2026-11-20',
+    commit: 'feat-virtualization-presets-user-pm-catalog-telemetry',
+    title: 'Virtualización 60 FPS, Vista Individual por Cuenta, Presets Guardados, Catálogos en Gigabytes y Telemetría',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Vista Individual por Defecto según Cuenta (userNameUtils.ts): Detección automática del PM de la sesión actual (Mauricio, Raul, Marta, Johana). Al ingresar a Pipeline o Forecast se carga automáticamente tu pipeline individual con selector rápido para alternar a Vista General.',
+      'Gestor de Presets y Vistas Guardadas (FilterPresetsBar.tsx & filterPresetsManager.ts): Barra interactiva con filtros guardados de fábrica y capacidad para guardar cualquier combinación personalizada de filtros con nombre.',
+      'Virtualización Nativa de Listas a 60 FPS (useVirtualList.ts): Hook de alto rendimiento sin librerías externas pesadas. Renderiza únicamente filas visibles con espaciadores paddingTop/Bottom exactos en Pipeline, Forecast e Historial de Cotizaciones.',
+      'Caché de Catálogos Maestros y Capacidad en Gigabytes (masterCatalogCache.ts): Auditoría que demuestra que IndexedDB soporta entre 50 GB y 250 GB+ (60%-80% del disco libre), respaldado en disco por SQLite WASM con OPFS directo, con precarga sub-10ms de cables DAC/AOC, semillas y dominios Cisco.',
+      'Telemetría de Rendimiento en Tiempo Real (performanceTelemetry.ts): Monitoreo continuo de FPS (~60 FPS), latencias de render, nodos DOM y memoria JS Heap con tarjeta interactiva en el Monitor de Salud y botón de optimización en caliente.',
+      'Nueva Suite de Pruebas Automatizadas (tests/virtualizationPresetsCatalogTelemetry.test.ts): Valida mapeo de usuarios, presets, matemática de virtualización, cuotas de almacenamiento y telemetría (47 suites pasando al 100%).',
+    ],
+  },
+  {
     version: '2.22.0',
     date: '2026-11-19',
     commit: 'feat-toast-offline-conflict-resolution-pwa-sw',
     title: 'Sistema Unificado de Notificaciones Toast, Detección de Conflictos Offline y Service Worker PWA',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Sistema Centralizado de Notificaciones Toast (ToastContext.tsx): Proveedor global ToastProvider y hook useToast con cola de alertas apiladas, temporizador por severidad (success, error, warning, info) y botón de cierre ergonómico.',

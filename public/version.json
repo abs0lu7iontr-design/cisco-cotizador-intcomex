@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.22.0",
-  "git_commit": "96d77eb",
+  "version": "2.23.0",
+  "git_commit": "fbd90ed",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-19T23:10:15.278Z",
-  "release_notes": "feat(v2.21.0): compact first name formatting across estimates dsv bo pipeline and forecast cells",
+  "build_timestamp": "2026-11-20T03:29:58.149Z",
+  "release_notes": "feat(v2.22.0): unified toast system, offline conflict resolution modal and pwa service worker",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

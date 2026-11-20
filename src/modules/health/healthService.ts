@@ -28,6 +28,8 @@ import {
 } from '../../core/storage/modernStorageEngine';
 import { getSqliteMetrics } from '../../core/storage/sqliteStorageEngine';
 import { collection, getDocs, limit, query } from 'firebase/firestore';
+import { getPerformanceSnapshot, PerformanceSnapshot } from '../../core/telemetry/performanceTelemetry';
+import { getMasterCatalogStatus, warmMasterCatalogCache, MasterCatalogMetrics } from '../../core/cache/masterCatalogCache';
 
 const SESSION_START_TIME = Date.now();
 
@@ -458,17 +460,50 @@ export function calculateOverallHealth(checks: HealthCheckResult[]): {
 }
 
 /**
+ * Diagnostic Check: Real-time Performance Telemetry (FPS, Render Latency, DOM Nodes & Heap)
+ */
+export function checkPerformanceTelemetry(): { result: HealthCheckResult; snapshot: PerformanceSnapshot } {
+  const snapshot = getPerformanceSnapshot();
+  const status: HealthStatusLevel = snapshot.score >= 75 ? 'healthy' : snapshot.score >= 60 ? 'degraded' : 'critical';
+
+  return {
+    result: {
+      id: 'telemetry_performance',
+      name: 'Telemetría de Rendimiento en Tiempo Real',
+      category: 'runtime',
+      status,
+      latencyMs: snapshot.lastRenderDurationMs,
+      message: `Score ${snapshot.score}/100: ${snapshot.ratingLabel} (~${snapshot.fpsEstimate} FPS, ${snapshot.domNodeCount} nodos DOM)`,
+      details: {
+        score: snapshot.score,
+        rating: snapshot.rating,
+        fpsEstimate: snapshot.fpsEstimate,
+        domNodes: snapshot.domNodeCount,
+        avgRenderMs: snapshot.averageRenderDurationMs,
+        jsHeapUsedMb: snapshot.jsHeapUsedMb,
+        isVirtualizationActive: snapshot.isVirtualizationActive,
+        virtualizedTablesCount: snapshot.virtualizedTablesCount,
+      },
+      lastChecked: new Date().toISOString(),
+    },
+    snapshot,
+  };
+}
+
+/**
  * Runs all diagnostics concurrently and aggregates into a complete report.
  */
 export async function runAllHealthChecks(): Promise<SystemHealthReport> {
-  const [firestoreRes, cdnRes, storageData] = await Promise.all([
+  const [firestoreRes, cdnRes, storageData, masterCatalogData] = await Promise.all([
     checkFirestoreHealth(),
     checkCloudflareCdnHealth(),
     checkStorageHealth(),
+    warmMasterCatalogCache(),
   ]);
 
   const ratesData = checkExchangeRatesHealth();
   const runtimeData = checkRuntimeEnvironment();
+  const telemetryData = checkPerformanceTelemetry();
 
   const checks: Record<string, HealthCheckResult> = {
     firestore: firestoreRes,
@@ -476,6 +511,7 @@ export async function runAllHealthChecks(): Promise<SystemHealthReport> {
     storage: storageData.result,
     rates: ratesData.result,
     runtime: runtimeData.result,
+    telemetry: telemetryData.result,
   };
 
   const checkList = Object.values(checks);
@@ -490,6 +526,8 @@ export async function runAllHealthChecks(): Promise<SystemHealthReport> {
     storage: storageData.metrics,
     runtime: runtimeData.metrics,
     rates: ratesData.metrics,
+    telemetry: telemetryData.snapshot,
+    masterCatalog: masterCatalogData,
   };
 }
 

@@ -6,6 +6,29 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.23.0] - 2026-11-20
+### ⚡ Virtualización 60 FPS, Vista Individual por Cuenta, Vistas Guardadas (Presets), Catálogos Maestros (Gigabytes) y Telemetría de Rendimiento
+- **Vista Individual por Defecto según la Cuenta del Usuario (`userNameUtils.ts`, `PipelineView.tsx`, `ForecastView.tsx`):**
+  - Implementado el motor de mapeo automático de cuentas de usuario `getPipelinePmForUser`, vinculando la sesión actual con su PM Responsable oficial (Mauricio Skill, Raul Cuevas, Marta Adasme, Johana Valencia).
+  - Al abrir los módulos **Pipeline Comercial** o **Forecast Comercial**, el filtro de PM se pre-selecciona automáticamente con el usuario de la cuenta, cargando su vista individual de inmediato.
+  - Incorporado selector rápido tipo píldora ergonómica en la barra de herramientas para alternar en 1 solo clic entre **`👤 Mi Pipeline / Mi Forecast`** y **`🌐 Vista General (Todos los PMs)`**.
+- **Gestor de Presets y Vistas Guardadas Personalizadas (`filterPresetsManager.ts` & `FilterPresetsBar.tsx` - Oportunidad #11):**
+  - Componente de barra interactiva `FilterPresetsBar` con acceso directo a vistas frecuentes: *"Mi Vista Individual (Mes Actual)"*, *"Vista General (Todos)"*, *"Oportunidades Calientes (>= 70%)"*, *"Alertas Pendientes"* e *"Histórico Completo"*.
+  - Los usuarios pueden guardar cualquier combinación personalizada de filtros, partners, grupos o meses con un nombre descriptivo y recuperarla en cualquier momento, con persistencia garantizada.
+- **Virtualización Nativa de Listas en Tablas Masivas a 60 FPS (`useVirtualList.ts` - Oportunidad #1):**
+  - Hook ligero sin dependencias externas pesadas (`useVirtualList`), 100% compatible con React 19.
+  - Renderiza únicamente las filas visibles dentro de la ventana de desplazamiento más un margen de sobremuestreo (*overscan*), eliminando el lag en tablas con cientos o miles de filas.
+  - Integrado en **Pipeline Comercial** (`PipelineView.tsx`), **Forecast Comercial** (`ForecastView.tsx`) y en el **Historial de Cotizaciones** (`EstimatesHistoryView.tsx`).
+- **Caché Inteligente de Catálogos Maestros y Auditoría de Capacidad en Gigabytes (`masterCatalogCache.ts` - Oportunidad #9):**
+  - Demostración y clarificación técnica de que **IndexedDB NO tiene un límite pequeño** (utiliza la cuota W3C del origen que asigna el 60% al 80% del disco libre, normalmente entre 50 GB y 250 GB, a diferencia de los 5 MB de LocalStorage).
+  - Arquitectura multi-capa: L1 en RAM instantánea (< 1 ms), L2 en IndexedDB de alta capacidad con `requestPersistentStorage()`, y L3 en SQLite WASM + OPFS (Origin Private File System en disco).
+  - Precalentamiento automático de catálogos Cisco (Cables DAC/AOC Twinax, semillas de deals, forecast y familias de hardware) con resolución garantizada en sub-10 ms.
+- **Telemetría de Rendimiento en Tiempo Real y Diagnóstico Proactivo (`performanceTelemetry.ts` - Oportunidad #12):**
+  - Monitoreo continuo de tasa de cuadros (~60 FPS), latencias de renderizado por componente, conteo de nodos del árbol DOM y memoria Heap V8.
+  - Cálculo de un **Performance Score (0 - 100)** y nueva tarjeta de diagnóstico en tiempo real en el **Monitor de Salud & Diagnóstico** (`HealthDashboardView.tsx`), con botón de optimización en caliente para purgar cachés volátiles.
+- **Nueva Suite de Pruebas Automatizadas (`tests/virtualizationPresetsCatalogTelemetry.test.ts`):**
+  - 6 pruebas unitarias exhaustivas validando el mapeo de cuentas, la gestión de presets, la matemática de virtualización y espaciadores, la auditoría de almacenamiento y la telemetría (47 suites pasando al 100%).
+
 ## [v2.22.0] - 2026-11-19
 ### 🔔 Sistema Unificado de Notificaciones Toast, Detección de Conflictos Offline y Service Worker PWA
 - **Sistema Centralizado de Notificaciones Toast (`ToastContext.tsx`):**

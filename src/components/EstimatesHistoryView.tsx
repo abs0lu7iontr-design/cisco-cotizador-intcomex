@@ -31,6 +31,8 @@ import { useCiscoAutomatedStore } from '../core/store';
 import { savePipelineDeal, PipelineDealRecord, MESES_ANO } from '../modules/pipeline';
 import { formatShortUserFirstName } from '../utils/userNameUtils';
 import { useToast } from '../context/ToastContext';
+import { useVirtualList } from '../hooks/useVirtualList';
+import { markRenderStart, markRenderEnd, registerVirtualTable } from '../core/telemetry/performanceTelemetry';
 import {
   Search,
   RefreshCw,
@@ -615,6 +617,24 @@ export function EstimatesHistoryView() {
   const paginatedEstimates = useMemo(() => {
     return filteredEstimates.slice(0, visibleCount);
   }, [filteredEstimates, visibleCount]);
+
+  const estimatesContainerRef = useRef<HTMLDivElement>(null);
+  const {
+    virtualItems: virtualEstimateItems,
+    paddingTop: estimatesPaddingTop,
+    paddingBottom: estimatesPaddingBottom,
+    isVirtualActive: isEstimatesVirtualActive,
+  } = useVirtualList({
+    itemsCount: paginatedEstimates.length,
+    estimateSize: 64,
+    parentRef: estimatesContainerRef,
+    minItemsToActivate: 30,
+  });
+
+  useEffect(() => {
+    registerVirtualTable('estimates_history_table', isEstimatesVirtualActive);
+    return () => registerVirtualTable('estimates_history_table', false);
+  }, [isEstimatesVirtualActive]);
 
   const myPendingRequestsCount = useMemo(() => {
     const myUsername = (currentUser?.username || '').trim().toLowerCase();
@@ -1355,12 +1375,13 @@ export function EstimatesHistoryView() {
       {activeTab === 'estimates' && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-xl overflow-hidden">
           <div
-            className="overflow-x-auto custom-scrollbar transition-all duration-200"
+            ref={estimatesContainerRef}
+            className="overflow-x-auto overflow-y-auto max-h-[750px] custom-scrollbar transition-all duration-200"
             style={tableZoom !== 100 ? { zoom: `${tableZoom}%` } : undefined}
           >
             <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-slate-950/80 border-b border-slate-800 font-bold text-slate-400 uppercase tracking-wider">
+              <thead className="sticky top-0 z-20">
+                <tr className="bg-slate-950 border-b border-slate-800 font-bold text-slate-400 uppercase tracking-wider shadow-sm">
                   <th className={`${headPaddingClass} min-w-[145px]`}>Estimate / Deal ID</th>
                   <th className={`${headPaddingClass} min-w-[115px]`}>Creado Por</th>
                   <th className={`${headPaddingClass} min-w-[110px]`}>Partner / Reseller</th>
@@ -1400,17 +1421,26 @@ export function EstimatesHistoryView() {
                     </td>
                   </tr>
                 ) : (
-                  paginatedEstimates.map((est, idx) => {
-                    const {
-                      isOwner,
-                      isAllowed,
-                      canManagePrivacy,
-                      hasAccess,
-                      myRequest,
-                      pendingRequests,
-                    } = evaluateAccess(est);
+                  <>
+                    {estimatesPaddingTop > 0 && (
+                      <tr aria-hidden="true" style={{ height: `${estimatesPaddingTop}px` }}>
+                        <td colSpan={11} className="p-0 border-0" />
+                      </tr>
+                    )}
+                    {virtualEstimateItems.map(({ index }) => {
+                      const est = paginatedEstimates[index];
+                      if (!est) return null;
+                      const idx = index;
+                      const {
+                        isOwner,
+                        isAllowed,
+                        canManagePrivacy,
+                        hasAccess,
+                        myRequest,
+                        pendingRequests,
+                      } = evaluateAccess(est);
 
-                    return (
+                      return (
                       <tr
                         key={est.id || idx}
                         className={`transition-colors ${
@@ -1745,9 +1775,15 @@ export function EstimatesHistoryView() {
                         </td>
                       </tr>
                     );
-                  })
-                )}
-              </tbody>
+                  })}
+                  {estimatesPaddingBottom > 0 && (
+                    <tr aria-hidden="true" style={{ height: `${estimatesPaddingBottom}px` }}>
+                      <td colSpan={11} className="p-0 border-0" />
+                    </tr>
+                  )}
+                </>
+              )}
+            </tbody>
             </table>
           </div>
 

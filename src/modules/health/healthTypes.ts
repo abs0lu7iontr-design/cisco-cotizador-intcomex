@@ -72,6 +72,9 @@ export interface ExchangeRatesHealthMetrics {
   isCached: boolean;
 }
 
+import type { PerformanceSnapshot } from '../../core/telemetry/performanceTelemetry';
+import type { MasterCatalogMetrics } from '../../core/cache/masterCatalogCache';
+
 export interface SystemHealthReport {
   overallStatus: HealthStatusLevel;
   score: number; // 0 to 100
@@ -81,4 +84,6 @@ export interface SystemHealthReport {
   storage: StorageHealthMetrics;
   runtime: RuntimeHealthMetrics;
   rates: ExchangeRatesHealthMetrics;
+  telemetry?: PerformanceSnapshot;
+  masterCatalog?: MasterCatalogMetrics;
 }

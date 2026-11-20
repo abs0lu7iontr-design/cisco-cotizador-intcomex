@@ -32,10 +32,16 @@ import {
   Bell,
   Clock,
   RotateCcw,
+  Globe,
+  Zap,
 } from 'lucide-react';
 import { useTableDensityAndZoom } from '../../hooks/useTableDensityAndZoom';
 import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
-import { formatShortUserFirstName } from '../../utils/userNameUtils';
+import { formatShortUserFirstName, getPipelinePmForUser } from '../../utils/userNameUtils';
+import { FilterPresetsBar } from '../../components/FilterPresetsBar';
+import { loadFilterPresets, FilterPreset } from '../../core/presets/filterPresetsManager';
+import { useVirtualList } from '../../hooks/useVirtualList';
+import { markRenderStart, markRenderEnd, registerVirtualTable } from '../../core/telemetry/performanceTelemetry';
 import { isAppOffline } from '../../core/storage/offlineModeManager';
 import {
   PipelineDealRecord,
@@ -78,16 +84,42 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
   const [isSyncing, setIsSyncing] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table');
 
-  // Filtros - Por defecto se abre en el mes actual para máxima organización y enfoque
-  const [filters, setFilters] = useState<PipelineFilterOptions>({
+  const userPmName = useMemo(() => getPipelinePmForUser(currentUser), [currentUser]);
+  const userShortName = useMemo(() => (userPmName ? formatShortUserFirstName(userPmName) : 'Mi Usuario'), [userPmName]);
+
+  // Filtros - Por defecto se abre en el mes actual y con el PM individual de la sesión
+  const [filters, setFilters] = useState<PipelineFilterOptions>(() => ({
     searchQuery: '',
-    pmResponsable: 'ALL',
+    pmResponsable: getPipelinePmForUser(currentUser) || 'ALL',
     grupoVentas: 'ALL',
     mesCierre: getCurrentMonthName(),
     am: 'ALL',
     porcentajeAvance: 'ALL',
     partner: 'ALL',
-  });
+  }));
+
+  // Presets de Vistas y Filtros Guardados
+  const [presets, setPresets] = useState<FilterPreset[]>(() =>
+    loadFilterPresets('pipeline', userPmName, getCurrentMonthName())
+  );
+  const [activePresetId, setActivePresetId] = useState<string>(() =>
+    userPmName ? 'factory_pipeline_my_deals' : 'factory_pipeline_all_deals'
+  );
+
+  const refreshPresets = () => {
+    setPresets(loadFilterPresets('pipeline', userPmName, getCurrentMonthName()));
+  };
+
+  const handleSelectPreset = (preset: FilterPreset) => {
+    setActivePresetId(preset.id);
+    setFilters((prev) => ({
+      ...prev,
+      ...preset.filters,
+    }));
+  };
+
+  // Referencia para scroll virtualizado
+  const tableContainerRef = useRef<HTMLDivElement>(null);
 
   // Table Density & Visual Zoom States (Auto-Fit across resolutions without changing browser zoom)
   const {
@@ -157,8 +189,30 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
 
   // Filtrado y Estadísticas
   const filteredDeals = useMemo(() => {
-    return filterPipelineDeals(deals, filters);
+    markRenderStart('PipelineView');
+    const res = filterPipelineDeals(deals, filters);
+    markRenderEnd('PipelineView');
+    return res;
   }, [deals, filters]);
+
+  // Hook de Virtualización Nativa para Tablas Masivas (60 FPS)
+  const {
+    virtualItems,
+    paddingTop,
+    paddingBottom,
+    isVirtualActive,
+    renderedCount,
+  } = useVirtualList({
+    itemsCount: filteredDeals.length,
+    estimateSize: 46,
+    parentRef: tableContainerRef,
+    minItemsToActivate: 30,
+  });
+
+  useEffect(() => {
+    registerVirtualTable('pipeline_table', isVirtualActive);
+    return () => registerVirtualTable('pipeline_table', false);
+  }, [isVirtualActive]);
 
   // Recálculo dinámico sobre filteredDeals para que cualquier filtro recalcule sumas y KPIs
   const stats = useMemo(() => {
@@ -581,10 +635,59 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
         </div>
       </div>
 
+      {/* Filter Presets Bar */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl px-3 py-1.5 shadow-md">
+        <FilterPresetsBar
+          module="pipeline"
+          presets={presets}
+          activePresetId={activePresetId}
+          currentFilters={filters}
+          onSelectPreset={handleSelectPreset}
+          onPresetsChanged={refreshPresets}
+          userPmName={userPmName}
+        />
+      </div>
+
       {/* Filter and View Toggle Bar */}
       <div className="p-3 sm:p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 shadow-md">
         {/* Left: Search & Filters */}
         <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
+          {/* Quick Toggle: Mi Pipeline vs Vista General */}
+          <div className="flex items-center space-x-1 bg-slate-950 p-1 rounded-xl border border-slate-800 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setFilters((prev) => ({ ...prev, pmResponsable: userPmName || 'ALL' }));
+                setActivePresetId('factory_pipeline_my_deals');
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                filters.pmResponsable !== 'ALL' && filters.pmResponsable === userPmName
+                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 ring-1 ring-indigo-400/40'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+              title={`Ver exclusivamente mis oportunidades como PM (${userPmName || userShortName})`}
+            >
+              <User className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Mi Pipeline ({userShortName})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFilters((prev) => ({ ...prev, pmResponsable: 'ALL' }));
+                setActivePresetId('factory_pipeline_all_deals');
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                filters.pmResponsable === 'ALL'
+                  ? 'bg-sky-600 text-white shadow-sm shadow-sky-600/30 ring-1 ring-sky-400/40'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+              title="Ver el Pipeline de todos los PMs del equipo"
+            >
+              <Globe className="w-3.5 h-3.5 text-sky-400" />
+              <span>Vista General</span>
+            </button>
+          </div>
+
           {/* Search Input */}
           <div className="relative min-w-[180px] max-w-sm flex-1">
             <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
@@ -600,7 +703,10 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
           {/* PM Filter */}
           <select
             value={filters.pmResponsable || 'ALL'}
-            onChange={(e) => setFilters((prev) => ({ ...prev, pmResponsable: e.target.value }))}
+            onChange={(e) => {
+              setFilters((prev) => ({ ...prev, pmResponsable: e.target.value }));
+              setActivePresetId(e.target.value === 'ALL' ? 'factory_pipeline_all_deals' : '');
+            }}
             className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 focus:border-indigo-500 outline-none"
           >
             <option value="ALL">Todos los PMs</option>
@@ -878,12 +984,16 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
           })}
         </div>
       ) : (
-        /* TABLE VIEW */
+        /* TABLE VIEW WITH 60 FPS VIRTUALIZATION */
         <div className="p-1 rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden">
-          <div className="overflow-x-auto custom-scrollbar transition-all duration-200" style={zoomStyle}>
+          <div
+            ref={tableContainerRef}
+            className="overflow-x-auto overflow-y-auto max-h-[700px] custom-scrollbar transition-all duration-200"
+            style={zoomStyle}
+          >
             <table className="w-full text-left whitespace-nowrap">
-              <thead>
-                <tr className="border-b border-slate-800 bg-slate-950/70 text-slate-400 font-bold uppercase tracking-wider">
+              <thead className="sticky top-0 z-20">
+                <tr className="border-b border-slate-800 bg-slate-950 text-slate-400 font-bold uppercase tracking-wider shadow-sm">
                   <th className={headPaddingClass}>Fecha Lev.</th>
                   <th className={headPaddingClass}>Fecha Cot.</th>
                   <th className={headPaddingClass}>PM Resp.</th>
@@ -905,7 +1015,14 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {filteredDeals.map((deal) => {
+                {paddingTop > 0 && (
+                  <tr aria-hidden="true" style={{ height: `${paddingTop}px` }}>
+                    <td colSpan={18} className="p-0 border-0" />
+                  </tr>
+                )}
+                {virtualItems.map(({ index }) => {
+                  const deal = filteredDeals[index];
+                  if (!deal) return null;
                   const stageMeta = PIPELINE_STAGE_OPTIONS.find((s) => s.value === deal.porcentajeAvance);
                   return (
                     <tr
@@ -989,6 +1106,11 @@ export function PipelineView({ onOpenQuoter, onOpenBoTracking }: PipelineViewPro
                     </tr>
                   );
                 })}
+                {paddingBottom > 0 && (
+                  <tr aria-hidden="true" style={{ height: `${paddingBottom}px` }}>
+                    <td colSpan={18} className="p-0 border-0" />
+                  </tr>
+                )}
               </tbody>
               {filteredDeals.length > 0 && (
                 <tfoot className="border-t-2 border-slate-700 bg-slate-950/95 font-bold">

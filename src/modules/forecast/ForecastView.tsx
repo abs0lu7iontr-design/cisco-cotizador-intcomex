@@ -34,10 +34,16 @@ import {
   ExternalLink,
   RotateCcw,
   Calendar,
+  Globe,
+  User,
 } from 'lucide-react';
 import { useTableDensityAndZoom } from '../../hooks/useTableDensityAndZoom';
 import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
-import { formatShortUserFirstName } from '../../utils/userNameUtils';
+import { formatShortUserFirstName, getPipelinePmForUser } from '../../utils/userNameUtils';
+import { FilterPresetsBar } from '../../components/FilterPresetsBar';
+import { loadFilterPresets, FilterPreset } from '../../core/presets/filterPresetsManager';
+import { useVirtualList } from '../../hooks/useVirtualList';
+import { markRenderStart, markRenderEnd, registerVirtualTable } from '../../core/telemetry/performanceTelemetry';
 import { isAppOffline } from '../../core/storage/offlineModeManager';
 import {
   ForecastRecord,
@@ -77,20 +83,47 @@ import { getPipelineDeals } from '../pipeline/pipelineStorage';
 import { getBoTrackings } from '../bo/boTrackingService';
 
 export function ForecastView() {
-  const { processedResult } = useCiscoAutomatedStore();
+  const { processedResult, currentUser } = useCiscoAutomatedStore();
+
+  const userPmName = useMemo(() => getPipelinePmForUser(currentUser), [currentUser]);
+  const userShortName = useMemo(() => (userPmName ? formatShortUserFirstName(userPmName) : 'Mi Usuario'), [userPmName]);
 
   const [records, setRecords] = useState<ForecastRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [filters, setFilters] = useState<ForecastFilterOptions>({
+
+  // Filtros - Por defecto se abre en el mes actual y con el PM individual de la sesión
+  const [filters, setFilters] = useState<ForecastFilterOptions>(() => ({
     searchQuery: '',
-    pmResponsable: 'ALL',
+    pmResponsable: getPipelinePmForUser(currentUser) || 'ALL',
     bodega: 'ALL',
     grupoVentas: 'ALL',
     credit: 'ALL',
     am: 'ALL',
     periodoMes: getCurrentMonthName(),
     onlyWithReminders: false,
-  });
+  }));
+
+  // Presets de Vistas y Filtros Guardados
+  const [presets, setPresets] = useState<FilterPreset[]>(() =>
+    loadFilterPresets('forecast', userPmName, getCurrentMonthName())
+  );
+  const [activePresetId, setActivePresetId] = useState<string>(() =>
+    userPmName ? 'factory_forecast_my_records' : 'factory_forecast_all_records'
+  );
+
+  const refreshPresets = () => {
+    setPresets(loadFilterPresets('forecast', userPmName, getCurrentMonthName()));
+  };
+
+  const handleSelectPreset = (preset: FilterPreset) => {
+    setActivePresetId(preset.id);
+    setFilters((prev) => ({
+      ...prev,
+      ...preset.filters,
+    }));
+  };
+
+  const tableContainerRef = useRef<HTMLDivElement>(null);
 
   // Table Density & Visual Zoom States (Auto-Fit across resolutions without changing browser zoom)
   const {
@@ -167,10 +200,31 @@ export function ForecastView() {
   }, []);
 
   // Filtered records based on active user filters
-  const filteredRecords = useMemo(
-    () => filterForecastRecords(records, filters),
-    [records, filters]
-  );
+  const filteredRecords = useMemo(() => {
+    markRenderStart('ForecastView');
+    const res = filterForecastRecords(records, filters);
+    markRenderEnd('ForecastView');
+    return res;
+  }, [records, filters]);
+
+  // Hook de Virtualización Nativa para Tablas Masivas (60 FPS)
+  const {
+    virtualItems,
+    paddingTop,
+    paddingBottom,
+    isVirtualActive,
+    renderedCount,
+  } = useVirtualList({
+    itemsCount: filteredRecords.length,
+    estimateSize: 42,
+    parentRef: tableContainerRef,
+    minItemsToActivate: 30,
+  });
+
+  useEffect(() => {
+    registerVirtualTable('forecast_table', isVirtualActive);
+    return () => registerVirtualTable('forecast_table', false);
+  }, [isVirtualActive]);
 
   // Compute dynamic Stats & Reminders based on filteredRecords so every filter updates all sums
   const stats = useMemo(() => computeForecastStats(filteredRecords), [filteredRecords]);
@@ -546,8 +600,57 @@ export function ForecastView() {
           </div>
         </div>
 
+        {/* Filter Presets Bar */}
+        <div className="mt-4 pt-3 border-t border-slate-800/80">
+          <FilterPresetsBar
+            module="forecast"
+            presets={presets}
+            activePresetId={activePresetId}
+            currentFilters={filters}
+            onSelectPreset={handleSelectPreset}
+            onPresetsChanged={refreshPresets}
+            userPmName={userPmName}
+          />
+        </div>
+
         {/* Filters Toolbar */}
-        <div className="flex flex-wrap items-center gap-2.5 mt-4 pt-3 border-t border-slate-800/80">
+        <div className="flex flex-wrap items-center gap-2.5 mt-3 pt-2">
+          {/* Quick Toggle: Mi Forecast vs Vista General */}
+          <div className="flex items-center space-x-1 bg-slate-950 p-1 rounded-xl border border-slate-800 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setFilters((prev) => ({ ...prev, pmResponsable: userPmName || 'ALL' }));
+                setActivePresetId('factory_forecast_my_records');
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                filters.pmResponsable !== 'ALL' && filters.pmResponsable === userPmName
+                  ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30 ring-1 ring-emerald-400/40'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+              title={`Ver exclusivamente mis proyecciones como PM (${userPmName || userShortName})`}
+            >
+              <User className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Mi Forecast ({userShortName})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFilters((prev) => ({ ...prev, pmResponsable: 'ALL' }));
+                setActivePresetId('factory_forecast_all_records');
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                filters.pmResponsable === 'ALL'
+                  ? 'bg-sky-600 text-white shadow-sm shadow-sky-600/30 ring-1 ring-sky-400/40'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+              title="Ver el Forecast consolidado de todos los PMs del equipo"
+            >
+              <Globe className="w-3.5 h-3.5 text-sky-400" />
+              <span>Vista General</span>
+            </button>
+          </div>
+
           {/* Search Input */}
           <div className="relative flex-1 min-w-[180px] max-w-sm">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -684,8 +787,11 @@ export function ForecastView() {
         </div>
       </div>
 
-      {/* Main Table Container with Dark Slate / Cyber Aesthetic */}
-      <div className="flex-1 overflow-auto bg-slate-950 p-2 sm:p-4 custom-scrollbar">
+      {/* Main Table Container with 60 FPS Virtualization */}
+      <div
+        ref={tableContainerRef}
+        className="flex-1 overflow-auto bg-slate-950 p-2 sm:p-4 custom-scrollbar max-h-[750px]"
+      >
         <div
           className="inline-block min-w-full align-middle border border-slate-800 rounded-xl overflow-hidden shadow-2xl bg-slate-900 text-slate-200 transition-all duration-200"
           style={zoomStyle}
@@ -756,17 +862,25 @@ export function ForecastView() {
                   </td>
                 </tr>
               ) : (
-                filteredRecords.map((r, rowIdx) => {
-                  const isEven = rowIdx % 2 === 0;
+                <>
+                  {paddingTop > 0 && (
+                    <tr aria-hidden="true" style={{ height: `${paddingTop}px` }}>
+                      <td colSpan={38} className="p-0 border-0" />
+                    </tr>
+                  )}
+                  {virtualItems.map(({ index }) => {
+                    const r = filteredRecords[index];
+                    if (!r) return null;
+                    const isEven = index % 2 === 0;
 
-                  // Check alerts for this row
-                  const hasPriceProtectionExpiry = !!r.priceProtectionExpiryDate;
-                  const isCreditPending =
-                    r.credit?.toLowerCase().includes('pdte') ||
-                    r.credit?.toLowerCase().includes('revis');
-                  const hasOpenCase = !!r.caso || !!r.nuevoCaso;
+                    // Check alerts for this row
+                    const hasPriceProtectionExpiry = !!r.priceProtectionExpiryDate;
+                    const isCreditPending =
+                      r.credit?.toLowerCase().includes('pdte') ||
+                      r.credit?.toLowerCase().includes('revis');
+                    const hasOpenCase = !!r.caso || !!r.nuevoCaso;
 
-                  return (
+                    return (
                     <tr
                       key={r.id}
                       onClick={() => handleOpenEdit(r)}
@@ -912,9 +1026,15 @@ export function ForecastView() {
                       })}
                     </tr>
                   );
-                })
-              )}
-            </tbody>
+                })}
+                {paddingBottom > 0 && (
+                  <tr aria-hidden="true" style={{ height: `${paddingBottom}px` }}>
+                    <td colSpan={38} className="p-0 border-0" />
+                  </tr>
+                )}
+              </>
+            )}
+          </tbody>
           </table>
         </div>
       </div>

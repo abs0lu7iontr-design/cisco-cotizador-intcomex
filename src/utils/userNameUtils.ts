@@ -84,3 +84,41 @@ export function getShortDisplayName(
   const raw = user.fullName || user.full_name || user.username || '';
   return formatShortUserFirstName(raw);
 }
+
+/**
+ * Mapea el usuario de la sesión actual al nombre de PM Responsable en Pipeline / Forecast.
+ * Retorna el nombre oficial de la lista PIPELINE_PM_LIST o null si es un visualizador externo.
+ * Ejemplos:
+ * - "pm_cisco" / "mskill" / "Mauricio Skill" -> "Mauricio Skill"
+ * - "rcuevas" / "Raul Cuevas" -> "Raul Cuevas"
+ * - "madasme" / "Marta Adasme" -> "Marta Adasme"
+ * - "jvalencia" / "Johana Valencia" -> "Johana Valencia"
+ */
+export function getPipelinePmForUser(
+  user?: { username?: string; fullName?: string; full_name?: string; role?: string } | string | null
+): string | null {
+  if (!user) return null;
+  const firstName = getShortDisplayName(user);
+  const normalized = firstName.toLowerCase();
+
+  if (normalized.includes('mauricio')) {
+    return 'Mauricio Skill';
+  }
+  if (normalized.includes('raul') || normalized.includes('raúl')) {
+    return 'Raul Cuevas';
+  }
+  if (normalized.includes('marta')) {
+    return 'Marta Adasme';
+  }
+  if (normalized.includes('johana') || normalized.includes('jovana') || normalized.includes('yohana')) {
+    return 'Johana Valencia';
+  }
+
+  // Si no coincide con un PM específico pero es admin o pm_cisco
+  const rawStr = typeof user === 'string' ? user.toLowerCase() : `${user.username || ''} ${user.fullName || ''}`.toLowerCase();
+  if (rawStr.includes('pm_cisco') || rawStr.includes('mskill')) {
+    return 'Mauricio Skill';
+  }
+
+  return null;
+}
