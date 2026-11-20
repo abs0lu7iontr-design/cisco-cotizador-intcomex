@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.24.0",
-  "git_commit": "e755e64",
+  "version": "2.24.1",
+  "git_commit": "16b3371",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-20T04:13:58.076Z",
-  "release_notes": "feat(v2.23.0): 60fps virtualization, user default pipeline view, presets, gigabyte catalogs and performance telemetry",
+  "build_timestamp": "2026-11-20T14:05:37.391Z",
+  "release_notes": "fix(v2.24.0): instant login startup optimization, zero-delay cold start, isolated auth gateway, O(1) mirror fingerprint and 3MB bundle reduction",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

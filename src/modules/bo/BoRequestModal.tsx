@@ -75,7 +75,8 @@ export const BoRequestModal: React.FC<Props> = ({
 }) => {
   const [recipientEmail, setRecipientEmail] = useState(DEFAULT_BO_EMAIL_TO);
   const [ccEmail, setCcEmail] = useState(DEFAULT_BO_EMAIL_CC);
-  const [clientName, setClientName] = useState(initialClientName || 'Cliente');
+  const [partnerName, setPartnerName] = useState<string>(detectedPartner || 'Intcomex Partner');
+  const [clientName, setClientName] = useState(initialClientName || 'Cliente Final');
   const [lines, setLines] = useState<BoLineItem[]>([]);
   const [discardedLines, setDiscardedLines] = useState<BoLineItem[]>([]);
   const [manualBodega, setManualBodega] = useState<'E1' | 'ED' | null>(null);
@@ -105,7 +106,17 @@ export const BoRequestModal: React.FC<Props> = ({
   useEffect(() => {
     if (!isOpen) return;
 
-    setClientName(initialClientName || 'Cliente');
+    const resolvedPartner =
+      detectedPartner ||
+      estimateResult?.headerInfo?.companyName ||
+      'Intcomex Partner';
+    const resolvedClient =
+      initialClientName ||
+      estimateResult?.headerInfo?.customerName ||
+      'Cliente Final';
+
+    setPartnerName(resolvedPartner);
+    setClientName(resolvedClient);
     setRecipientEmail(DEFAULT_BO_EMAIL_TO);
     setCcEmail(DEFAULT_BO_EMAIL_CC);
     setCopied(false);
@@ -162,7 +173,7 @@ export const BoRequestModal: React.FC<Props> = ({
       setLines(filledActive);
       setDiscardedLines(filledDiscarded);
     });
-  }, [isOpen, initialClientName, initialLines, estimateResult]);
+  }, [isOpen, initialClientName, initialLines, estimateResult, detectedPartner]);
 
   // Totales de la tabla activa completa
   const totals = useMemo(() => {
@@ -442,11 +453,20 @@ export const BoRequestModal: React.FC<Props> = ({
   // Copiar solo un bloque de línea madre al portapapeles en formato Outlook
   const handleCopyLineBlock = async (motherKey: string) => {
     await syncAllCurrentSkus();
+    const effectivePartner = partnerName.trim() || detectedPartner || 'Intcomex Partner';
+    const effectiveClient = clientName.trim() || 'Cliente Final';
+    const currentDealId = estimateResult?.headerInfo?.dealId || '';
+    const currentEstimateId = estimateResult?.headerInfo?.quoteName || estimateResult?.headerInfo?.estimateId || '';
+
     const linesWithCurrentBodega = lines.map((l) => ({ ...l, bodega: currentBodega }));
     const copyRes = await copyBoTableWithDetail(linesWithCurrentBodega, {
       groupByLine: false,
       selectedLine: motherKey,
       partnerPosByLine,
+      partnerName: effectivePartner,
+      clientName: effectiveClient,
+      dealId: currentDealId,
+      estimateId: currentEstimateId,
     });
 
     const linesToSync = linesWithCurrentBodega.filter(
@@ -455,11 +475,11 @@ export const BoRequestModal: React.FC<Props> = ({
     const currentPo = partnerPosByLine[motherKey]?.trim();
     const syncRes = await syncBoOrderFromEstimateModal({
       estimate: estimateResult,
-      clientName: `${clientName} (Línea ${motherKey}${currentPo ? ` - OC ${currentPo}` : ''})`,
+      clientName: `${effectiveClient} (Línea ${motherKey}${currentPo ? ` - OC ${currentPo}` : ''})`,
       lines: linesToSync,
       bodega: currentBodega,
       author: formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio'),
-      partnerName: detectedPartner,
+      partnerName: effectivePartner,
       actionSource: 'COPY_HTML',
     });
     if (syncRes.success && syncRes.record && onOrderSynced) {
@@ -492,12 +512,21 @@ export const BoRequestModal: React.FC<Props> = ({
     // 1. Guardar y sincronizar todos los SKUs cargados a la base de datos antes de copiar
     await syncAllCurrentSkus();
 
+    const effectivePartner = partnerName.trim() || detectedPartner || 'Intcomex Partner';
+    const effectiveClient = clientName.trim() || 'Cliente Final';
+    const currentDealId = estimateResult?.headerInfo?.dealId || '';
+    const currentEstimateId = estimateResult?.headerInfo?.quoteName || estimateResult?.headerInfo?.estimateId || '';
+
     // 2. Copiar tabla enriquecida para Outlook respetando el modo (unificado vs agrupado por líneas con subtotales)
     const linesWithCurrentBodega = lines.map((l) => ({ ...l, bodega: currentBodega }));
     const exportOpts: BoTableExportOptions = {
       groupByLine: viewMode === 'by_line',
       selectedLine: selectedLineFilter !== 'ALL' ? selectedLineFilter : undefined,
       partnerPosByLine,
+      partnerName: effectivePartner,
+      clientName: effectiveClient,
+      dealId: currentDealId,
+      estimateId: currentEstimateId,
     };
     const copyRes = await copyBoTableWithDetail(linesWithCurrentBodega, exportOpts);
 
@@ -510,11 +539,11 @@ export const BoRequestModal: React.FC<Props> = ({
     const poDesc = currentPo ? ` - OC ${currentPo}` : '';
     const syncRes = await syncBoOrderFromEstimateModal({
       estimate: estimateResult,
-      clientName: selectedLineFilter !== 'ALL' ? `${clientName} (Línea ${selectedLineFilter}${poDesc})` : clientName,
+      clientName: selectedLineFilter !== 'ALL' ? `${effectiveClient} (Línea ${selectedLineFilter}${poDesc})` : effectiveClient,
       lines: linesToSync,
       bodega: currentBodega,
       author: formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio'),
-      partnerName: detectedPartner,
+      partnerName: effectivePartner,
       actionSource: 'COPY_HTML',
     });
 
@@ -551,6 +580,11 @@ export const BoRequestModal: React.FC<Props> = ({
     // 1. Guardar y sincronizar todos los SKUs cargados
     await syncAllCurrentSkus();
 
+    const effectivePartner = partnerName.trim() || detectedPartner || 'Intcomex Partner';
+    const effectiveClient = clientName.trim() || 'Cliente Final';
+    const currentDealId = estimateResult?.headerInfo?.dealId || '';
+    const currentEstimateId = estimateResult?.headerInfo?.quoteName || estimateResult?.headerInfo?.estimateId || '';
+
     // 2. Registrar la transición del Estimate a Back Order (BO) en la base de datos de seguimiento logístico
     const linesWithCurrentBodega = lines.map((l) => ({ ...l, bodega: currentBodega }));
     const linesToSync = selectedLineFilter !== 'ALL'
@@ -562,11 +596,11 @@ export const BoRequestModal: React.FC<Props> = ({
 
     const syncRes = await syncBoOrderFromEstimateModal({
       estimate: estimateResult,
-      clientName: selectedLineFilter !== 'ALL' ? `${clientName} (Línea ${selectedLineFilter}${poDesc})` : clientName,
+      clientName: selectedLineFilter !== 'ALL' ? `${effectiveClient} (Línea ${selectedLineFilter}${poDesc})` : effectiveClient,
       lines: linesToSync,
       bodega: currentBodega,
       author: formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio'),
-      partnerName: detectedPartner,
+      partnerName: effectivePartner,
       actionSource: 'OPEN_OUTLOOK',
     });
 
@@ -577,8 +611,9 @@ export const BoRequestModal: React.FC<Props> = ({
     const greeting = getBoTimeBasedGreeting();
     const lineSuffix = selectedLineFilter !== 'ALL' ? ` - Línea ${selectedLineFilter}` : '';
     const poSubjectSuffix = currentPo ? ` (OC: ${currentPo})` : '';
-    const rawSubject = `RV: Cotización ${clientName.trim()}${lineSuffix}${poSubjectSuffix}`;
-    const rawBody = `Estimados,\n\n${greeting}, por favor crear BO${selectedLineFilter !== 'ALL' ? ` para Línea ${selectedLineFilter}` : ''}${currentPo ? ` (OC Partner: ${currentPo})` : ''}.\n\n(Pega aquí la tabla copiada usando CTRL+V)\n\nSaludos,`;
+    const partnerSuffix = effectivePartner && effectivePartner !== 'Intcomex Partner' ? ` [${effectivePartner}]` : '';
+    const rawSubject = `RV: Cotización ${effectiveClient}${partnerSuffix}${lineSuffix}${poSubjectSuffix}`;
+    const rawBody = `Estimados,\n\n${greeting}, por favor crear BO${selectedLineFilter !== 'ALL' ? ` para Línea ${selectedLineFilter}` : ''}${currentPo ? ` (OC Partner: ${currentPo})` : ''}.\n\nDATOS DE REFERENCIA COMERCIAL (CRUCE):\n• Partner / Reseller: ${effectivePartner}\n• Cliente Final: ${effectiveClient}${currentDealId ? `\n• Deal ID: ${currentDealId}` : ''}${currentEstimateId ? ` | Estimate ID: ${currentEstimateId}` : ''}\n\n(Pega aquí la tabla copiada usando CTRL+V)\n\nSaludos,`;
 
     // Intentar abrir vía API nativa de escritorio (Outlook / Windows Shell)
     const openedInDesktop = await openDesktopEmailClient(recipientEmail, ccEmail, rawSubject, rawBody);
@@ -795,7 +830,7 @@ export const BoRequestModal: React.FC<Props> = ({
         </div>
 
         {/* Resumen Superior y Cabecera Correo Editable */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-zinc-900/60 p-3 rounded-xl border border-zinc-800 text-xs mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 bg-zinc-900/60 p-3 rounded-xl border border-zinc-800 text-xs mb-3">
           <div>
             <label className="text-zinc-400 font-mono text-[10px] block mb-1">Para:</label>
             <input
@@ -815,16 +850,26 @@ export const BoRequestModal: React.FC<Props> = ({
             />
           </div>
           <div>
-            <label className="text-zinc-400 font-mono text-[10px] block mb-1">Asunto: RV: Cotización</label>
+            <label className="text-zinc-400 font-mono text-[10px] block mb-1">Partner / Reseller:</label>
+            <input
+              type="text"
+              value={partnerName}
+              onChange={(e) => setPartnerName(e.target.value)}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-indigo-400 font-medium font-mono"
+              placeholder="Partner / Reseller"
+            />
+          </div>
+          <div>
+            <label className="text-zinc-400 font-mono text-[10px] block mb-1">Cliente Final:</label>
             <input
               type="text"
               value={clientName}
               onChange={(e) => setClientName(e.target.value)}
               className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400 font-medium font-mono"
-              placeholder="Nombre del Cliente"
+              placeholder="Cliente Final"
             />
           </div>
-          <div className="flex items-center justify-between sm:justify-end gap-3 sm:border-l sm:border-zinc-800 sm:pl-3">
+          <div className="flex items-center justify-between sm:justify-end gap-3 lg:border-l lg:border-zinc-800 lg:pl-3">
             <div className="text-right">
               <span className="text-zinc-400 font-mono text-[10px] block">
                 {selectedLineFilter === 'ALL' ? 'Total Venta BO:' : `Total Línea ${selectedLineFilter}:`}
@@ -1442,11 +1487,11 @@ export const BoRequestModal: React.FC<Props> = ({
                   const linesWithCurrentBodega = lines.map((l) => ({ ...l, bodega: currentBodega }));
                   const syncRes = await syncBoOrderFromEstimateModal({
                     estimate: estimateResult,
-                    clientName,
+                    clientName: clientName.trim() || 'Cliente Final',
                     lines: linesWithCurrentBodega,
                     bodega: currentBodega,
                     author: formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio'),
-                    partnerName: detectedPartner,
+                    partnerName: partnerName.trim() || detectedPartner || 'Intcomex Partner',
                     actionSource: 'MODAL_ACTION',
                   });
                   if (syncRes.success && syncRes.record && onOrderSynced) {

@@ -6,6 +6,18 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.24.1] - 2026-11-20
+### 📦 Cruce Comercial en Módulo BO: Inclusión de Partner y Cliente Final en Copiado de Tablas y Correo Outlook
+- **Ficha de Referencia y Cruce Comercial (`boEmailHelper.ts`):**
+  - Incorporada automáticamente debajo de la tabla Back Order (BO) una tarjeta estructurada oficial con **Partner / Reseller** y **Cliente Final** (junto con Deal ID, Estimate ID y OC Partner cuando correspondan).
+  - Compatible con Microsoft Outlook nativo (formato HTML enriquecido) y fallback estructurado en texto plano para garantizar la trazabilidad de los pedidos en cadenas de correos cruzadas con Ventas Core.
+- **Campos Editables en Encabezado de Solicitud BO (`BoRequestModal.tsx`):**
+  - Añadido campo editable de **Partner / Reseller** junto a **Cliente Final** en una cabecera responsiva de 5 columnas (Para, CC, Partner, Cliente Final y Totales).
+  - Detección automática del partner y cliente desde la cotización activa, nombre de archivo o parámetros guardados.
+  - Sincronización completa de los nombres editados de Partner y Cliente Final al abrir borradores en Outlook, registrar en la bitácora logística y copiar bloques por línea madre.
+- **Suite de Pruebas Unitarias Actualizada (`tests/boLineGrouping.test.ts`):**
+  - Añadido Test 6 para validar exhaustivamente la inyección de la ficha de referencia comercial (Partner, Cliente Final, Deal ID y Estimate ID) tanto en HTML como en texto plano.
+
 ## [v2.24.0] - 2026-11-20
 ### ⚡ Optimización de Carga Inicial Ultrarrápida (<50ms): Aislamiento Total de Login, Huella O(1) de Bóvedas y PWA Diferida
 - **Aislamiento Arquitectónico de Arranque (`App.tsx`):**

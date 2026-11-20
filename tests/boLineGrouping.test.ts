@@ -217,6 +217,38 @@ assert.ok(textGrouped.includes(`Subtotal Línea 2.0:\t\t\t1\t—\t$${formatCLP(1
 assert.ok(textGrouped.includes(`Total General (Todas las Líneas):\t\t\t5\t—\t$${formatCLP(13720, 2)} USD`), 'Debe incluir total general texto de 13.720,00');
 console.log('✅ Texto plano con subtotales, encabezados y OC Partner validado al 100%.');
 
+// --- Test 6: Ficha de Referencia y Cruce Comercial (Partner y Cliente Final abajo de la tabla) ---
+console.log('\n--- 6. Prueba de Ficha de Cruce Comercial (Partner y Cliente Final abajo de la tabla) ---');
+const htmlWithPartnerAndClient = generateBoHtmlTable(activeLines, {
+  groupByLine: false,
+  partnerName: 'Infocorp Chile S.A.',
+  clientName: 'Entel PCS Telecomunicaciones',
+  dealId: '86146758',
+  estimateId: 'EST-992812',
+});
+
+assert.ok(htmlWithPartnerAndClient.includes('Partner / Reseller:'), 'Debe incluir etiqueta Partner / Reseller');
+assert.ok(htmlWithPartnerAndClient.includes('Infocorp Chile S.A.'), 'Debe incluir nombre de Partner');
+assert.ok(htmlWithPartnerAndClient.includes('Cliente Final:'), 'Debe incluir etiqueta Cliente Final');
+assert.ok(htmlWithPartnerAndClient.includes('Entel PCS Telecomunicaciones'), 'Debe incluir nombre de Cliente Final');
+assert.ok(htmlWithPartnerAndClient.includes('86146758'), 'Debe incluir Deal ID para cruce');
+assert.ok(htmlWithPartnerAndClient.includes('EST-992812'), 'Debe incluir Estimate ID para cruce');
+
+const textWithPartnerAndClient = generateBoPlainTextTable(activeLines, {
+  groupByLine: false,
+  partnerName: 'Infocorp Chile S.A.',
+  clientName: 'Entel PCS Telecomunicaciones',
+  dealId: '86146758',
+  estimateId: 'EST-992812',
+});
+
+assert.ok(textWithPartnerAndClient.includes('DATOS DE REFERENCIA COMERCIAL (CRUCE):'), 'Texto plano debe incluir encabezado de cruce');
+assert.ok(textWithPartnerAndClient.includes('Partner / Reseller: Infocorp Chile S.A.'), 'Texto plano debe incluir Partner');
+assert.ok(textWithPartnerAndClient.includes('Cliente Final: Entel PCS Telecomunicaciones'), 'Texto plano debe incluir Cliente Final');
+assert.ok(textWithPartnerAndClient.includes('Deal ID: 86146758'), 'Texto plano debe incluir Deal ID');
+assert.ok(textWithPartnerAndClient.includes('Estimate ID: EST-992812'), 'Texto plano debe incluir Estimate ID');
+console.log('✅ Ficha de cruce comercial (Partner y Cliente Final abajo de la tabla) validada con éxito.');
+
 console.log('\n🎉 ¡TODAS LAS PRUEBAS DE AGRUPACIÓN, ENCABEZADOS Y OC PARTNER BO PASARON CON ÉXITO AL 100%!');
 
 process.exit(0);

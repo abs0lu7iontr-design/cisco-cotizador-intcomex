@@ -15,11 +15,26 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.24.1',
+    date: '2026-11-20',
+    commit: 'feat-bo-copy-partner-client-cross-reference',
+    title: 'Cruce Comercial en Módulo BO: Inclusión de Partner y Cliente Final en Copiado de Tablas y Correo Outlook',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Ficha de Cruce Comercial Debajo de la Tabla BO (boEmailHelper.ts): Inclusión automática de una tarjeta de referencia comercial con Partner / Reseller, Cliente Final, Deal ID, Estimate ID y N° de OC al copiar tablas para Outlook (HTML enriquecido) y texto plano.',
+      'Trazabilidad Total en Correo Electrónico: Permite identificar y cruzar de inmediato a qué cotización, partner y cliente final pertenece cada Back Order al intercambiar correos con Ventas Core o Compras.',
+      'Cabecera Responsiva Editable en Solicitud BO (BoRequestModal.tsx): Incorporada entrada de texto para Partner / Reseller junto con Cliente Final en un grid de 5 columnas (Para, CC, Partner, Cliente Final y Totales).',
+      'Sincronización en Apertura de Outlook y Bitácora Logística: El Partner y Cliente Final editados se integran automáticamente en el asunto, cuerpo de correo Outlook y seguimiento de órdenes BO.',
+      'Validación en Suite de Pruebas Unitarias (tests/boLineGrouping.test.ts): Añadida prueba exhaustiva para certificar la inyección de la ficha de cruce comercial tanto en HTML como en texto plano.',
+    ],
+  },
+  {
     version: '2.24.0',
     date: '2026-11-20',
     commit: 'fix-instant-login-startup-zero-latency-optimization',
     title: 'Optimización de Carga Inicial Ultrarrápida (<50ms): Aislamiento Total de Login, Huella O(1) de Bóvedas y PWA Diferida',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Aislamiento de Montaje No-Autenticado (App.tsx): Creación del componente AppContent como puerta de enlace estricta. Si el usuario no ha iniciado sesión (!currentUser), se renderiza inmediatamente LoginScreen sin montar el dashboard ni ejecutar ningún hook de cotizaciones, deals o backorders.',

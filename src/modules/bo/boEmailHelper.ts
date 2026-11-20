@@ -27,6 +27,10 @@ export interface BoTableExportOptions {
   groupByLine?: boolean;
   selectedLine?: string; // 'ALL' or specific motherLine like '1.0'
   partnerPosByLine?: Record<string, string>; // Mapeo de N° de OC del Partner por cada Línea Madre
+  partnerName?: string; // Nombre del Partner o Reseller para cruce comercial
+  clientName?: string; // Nombre del Cliente Final para cruce comercial
+  dealId?: string; // Deal ID Cisco CCW
+  estimateId?: string; // Estimate ID Cisco CCW
 }
 
 /**
@@ -171,6 +175,50 @@ export function generateBoHtmlTable(
     ? `Total General (Todas las Líneas):`
     : `Total General:`;
 
+  // Ficha de Referencia y Cruce Comercial: Partner y Cliente Final (como abajo de la cotización)
+  let referenceBlockHtml = '';
+  if (options?.partnerName || options?.clientName || options?.dealId || options?.estimateId) {
+    const partner = options.partnerName?.trim() || 'Intcomex Partner';
+    const client = options.clientName?.trim() || 'Cliente Final';
+    const dealId = options.dealId && options.dealId !== 'NA' ? options.dealId : null;
+    const estimateId = options.estimateId && options.estimateId !== 'NA' ? options.estimateId : null;
+    const currentPo = selectedLine ? options.partnerPosByLine?.[selectedLine]?.trim() : null;
+
+    referenceBlockHtml = `
+  <!-- Ficha de Referencia y Cruce Comercial: Partner y Cliente Final -->
+  <table width="100%" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse; width: 100%; max-width: 850px; margin-top: 10px; margin-bottom: 6px; font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 9.5pt; border: 1px solid #cbd5e1; background-color: #f8fafc; border-radius: 4px;">
+    <tr>
+      <td width="140" style="border: 1px solid #cbd5e1; padding: 6px 12px; background-color: #f1f5f9; font-weight: bold; color: #475569; width: 140px;">
+        Partner / Reseller:
+      </td>
+      <td style="border: 1px solid #cbd5e1; padding: 6px 12px; color: #0f172a; font-weight: bold;">
+        ${partner}
+      </td>
+      <td width="140" style="border: 1px solid #cbd5e1; padding: 6px 12px; background-color: #f1f5f9; font-weight: bold; color: #475569; width: 140px;">
+        Cliente Final:
+      </td>
+      <td style="border: 1px solid #cbd5e1; padding: 6px 12px; color: #0f172a; font-weight: bold;">
+        ${client}
+      </td>
+    </tr>
+    ${(dealId || estimateId || currentPo) ? `
+    <tr>
+      <td width="140" style="border: 1px solid #cbd5e1; padding: 5px 12px; background-color: #f8fafc; font-size: 9pt; color: #64748b; width: 140px;">
+        Deal ID:
+      </td>
+      <td style="border: 1px solid #cbd5e1; padding: 5px 12px; font-size: 9pt; font-family: Consolas, monospace; color: #1e293b;">
+        ${dealId || 'N/A'}
+      </td>
+      <td width="140" style="border: 1px solid #cbd5e1; padding: 5px 12px; background-color: #f8fafc; font-size: 9pt; color: #64748b; width: 140px;">
+        ${estimateId ? 'Estimate ID:' : 'OC Partner:'}
+      </td>
+      <td style="border: 1px solid #cbd5e1; padding: 5px 12px; font-size: 9pt; font-family: Consolas, monospace; color: #4338ca; font-weight: bold;">
+        ${estimateId ? (currentPo ? `${estimateId} (OC: ${currentPo})` : estimateId) : (currentPo || 'N/A')}
+      </td>
+    </tr>` : ''}
+  </table>`;
+  }
+
   return `
   <p style="font-family: Calibri, sans-serif; font-size: 11pt;">Estimados,</p>
   <p style="font-family: Calibri, sans-serif; font-size: 11pt;">${greeting}, por favor crear BO${selectedLine ? ` para Línea ${selectedLine}` : ''}.</p>
@@ -195,6 +243,7 @@ export function generateBoHtmlTable(
       </tr>
     </tbody>
   </table>
+  ${referenceBlockHtml}
   <br/>
   `;
 }
@@ -286,7 +335,24 @@ export function generateBoPlainTextTable(
     ? `Total General (Todas las Líneas):`
     : `Total General:`;
 
-  return `Estimados,\n${greeting}, por favor crear BO${selectedLine ? ` para Línea ${selectedLine}` : ''}.\n\nSKU\tPart Number\tBodega\tQty\tUnit Net Price\tExtended Net Price\n${rowsText}\n\n${grandTotalLabel}\t\t\t${totalQty}\t—\t$${formatCLP(totalVenta, 2)} USD`;
+  let refText = '';
+  if (options?.partnerName || options?.clientName || options?.dealId || options?.estimateId) {
+    const partner = options.partnerName?.trim() || 'Intcomex Partner';
+    const client = options.clientName?.trim() || 'Cliente Final';
+    const dealId = options.dealId && options.dealId !== 'NA' ? options.dealId : null;
+    const estimateId = options.estimateId && options.estimateId !== 'NA' ? options.estimateId : null;
+    const currentPo = selectedLine ? options.partnerPosByLine?.[selectedLine]?.trim() : null;
+
+    refText = `\n\nDATOS DE REFERENCIA COMERCIAL (CRUCE):\n• Partner / Reseller: ${partner}\n• Cliente Final: ${client}`;
+    if (dealId || estimateId) {
+      refText += `\n• Deal ID: ${dealId || 'N/A'}${estimateId ? ` | Estimate ID: ${estimateId}` : ''}`;
+    }
+    if (currentPo) {
+      refText += `\n• OC Partner (Línea ${selectedLine}): ${currentPo}`;
+    }
+  }
+
+  return `Estimados,\n${greeting}, por favor crear BO${selectedLine ? ` para Línea ${selectedLine}` : ''}.\n\nSKU\tPart Number\tBodega\tQty\tUnit Net Price\tExtended Net Price\n${rowsText}\n\n${grandTotalLabel}\t\t\t${totalQty}\t—\t$${formatCLP(totalVenta, 2)} USD${refText}`;
 }
 
 /**
