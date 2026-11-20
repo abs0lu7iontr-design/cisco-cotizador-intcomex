@@ -17,6 +17,7 @@ import {
   copyBoTableWithDetail,
   getBoTimeBasedGreeting,
   BoTableExportOptions,
+  capitalizeBusinessName,
 } from './boEmailHelper';
 import { getMotherLineKey } from '../../core/calculations';
 import {
@@ -75,8 +76,8 @@ export const BoRequestModal: React.FC<Props> = ({
 }) => {
   const [recipientEmail, setRecipientEmail] = useState(DEFAULT_BO_EMAIL_TO);
   const [ccEmail, setCcEmail] = useState(DEFAULT_BO_EMAIL_CC);
-  const [partnerName, setPartnerName] = useState<string>(detectedPartner || 'Intcomex Partner');
-  const [clientName, setClientName] = useState(initialClientName || 'Cliente Final');
+  const [partnerName, setPartnerName] = useState<string>(capitalizeBusinessName(detectedPartner) || 'Intcomex Partner');
+  const [clientName, setClientName] = useState(capitalizeBusinessName(initialClientName) || 'Cliente Final');
   const [lines, setLines] = useState<BoLineItem[]>([]);
   const [discardedLines, setDiscardedLines] = useState<BoLineItem[]>([]);
   const [manualBodega, setManualBodega] = useState<'E1' | 'ED' | null>(null);
@@ -106,14 +107,16 @@ export const BoRequestModal: React.FC<Props> = ({
   useEffect(() => {
     if (!isOpen) return;
 
-    const resolvedPartner =
+    const resolvedPartner = capitalizeBusinessName(
       detectedPartner ||
       estimateResult?.headerInfo?.companyName ||
-      'Intcomex Partner';
-    const resolvedClient =
+      'Intcomex Partner'
+    );
+    const resolvedClient = capitalizeBusinessName(
       initialClientName ||
       estimateResult?.headerInfo?.customerName ||
-      'Cliente Final';
+      'Cliente Final'
+    );
 
     setPartnerName(resolvedPartner);
     setClientName(resolvedClient);
@@ -453,8 +456,8 @@ export const BoRequestModal: React.FC<Props> = ({
   // Copiar solo un bloque de línea madre al portapapeles en formato Outlook
   const handleCopyLineBlock = async (motherKey: string) => {
     await syncAllCurrentSkus();
-    const effectivePartner = partnerName.trim() || detectedPartner || 'Intcomex Partner';
-    const effectiveClient = clientName.trim() || 'Cliente Final';
+    const effectivePartner = capitalizeBusinessName(partnerName) || detectedPartner || 'Intcomex Partner';
+    const effectiveClient = capitalizeBusinessName(clientName) || 'Cliente Final';
     const currentDealId = estimateResult?.headerInfo?.dealId || '';
     const currentEstimateId = estimateResult?.headerInfo?.quoteName || estimateResult?.headerInfo?.estimateId || '';
 
@@ -512,8 +515,8 @@ export const BoRequestModal: React.FC<Props> = ({
     // 1. Guardar y sincronizar todos los SKUs cargados a la base de datos antes de copiar
     await syncAllCurrentSkus();
 
-    const effectivePartner = partnerName.trim() || detectedPartner || 'Intcomex Partner';
-    const effectiveClient = clientName.trim() || 'Cliente Final';
+    const effectivePartner = capitalizeBusinessName(partnerName) || detectedPartner || 'Intcomex Partner';
+    const effectiveClient = capitalizeBusinessName(clientName) || 'Cliente Final';
     const currentDealId = estimateResult?.headerInfo?.dealId || '';
     const currentEstimateId = estimateResult?.headerInfo?.quoteName || estimateResult?.headerInfo?.estimateId || '';
 
@@ -580,8 +583,8 @@ export const BoRequestModal: React.FC<Props> = ({
     // 1. Guardar y sincronizar todos los SKUs cargados
     await syncAllCurrentSkus();
 
-    const effectivePartner = partnerName.trim() || detectedPartner || 'Intcomex Partner';
-    const effectiveClient = clientName.trim() || 'Cliente Final';
+    const effectivePartner = capitalizeBusinessName(partnerName) || detectedPartner || 'Intcomex Partner';
+    const effectiveClient = capitalizeBusinessName(clientName) || 'Cliente Final';
     const currentDealId = estimateResult?.headerInfo?.dealId || '';
     const currentEstimateId = estimateResult?.headerInfo?.quoteName || estimateResult?.headerInfo?.estimateId || '';
 
@@ -855,6 +858,7 @@ export const BoRequestModal: React.FC<Props> = ({
               type="text"
               value={partnerName}
               onChange={(e) => setPartnerName(e.target.value)}
+              onBlur={() => setPartnerName((prev) => capitalizeBusinessName(prev))}
               className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-indigo-400 font-medium font-mono"
               placeholder="Partner / Reseller"
             />
@@ -865,6 +869,7 @@ export const BoRequestModal: React.FC<Props> = ({
               type="text"
               value={clientName}
               onChange={(e) => setClientName(e.target.value)}
+              onBlur={() => setClientName((prev) => capitalizeBusinessName(prev))}
               className="w-full bg-zinc-950 border border-zinc-700 rounded px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400 font-medium font-mono"
               placeholder="Cliente Final"
             />
@@ -1487,11 +1492,11 @@ export const BoRequestModal: React.FC<Props> = ({
                   const linesWithCurrentBodega = lines.map((l) => ({ ...l, bodega: currentBodega }));
                   const syncRes = await syncBoOrderFromEstimateModal({
                     estimate: estimateResult,
-                    clientName: clientName.trim() || 'Cliente Final',
+                    clientName: capitalizeBusinessName(clientName) || 'Cliente Final',
                     lines: linesWithCurrentBodega,
                     bodega: currentBodega,
                     author: formatShortUserFirstName(currentUser?.full_name || currentUser?.username || 'Mauricio'),
-                    partnerName: partnerName.trim() || detectedPartner || 'Intcomex Partner',
+                    partnerName: capitalizeBusinessName(partnerName) || detectedPartner || 'Intcomex Partner',
                     actionSource: 'MODAL_ACTION',
                   });
                   if (syncRes.success && syncRes.record && onOrderSynced) {

@@ -15,11 +15,25 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.24.2',
+    date: '2026-11-20',
+    commit: 'feat-bo-capitalize-partner-client-title-case',
+    title: 'Capitalización Obligatoria de Primera Letra (Title Case) en Partner y Cliente Final (Módulo BO)',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Normalización Title Case (capitalizeBusinessName en boEmailHelper.ts): Garantiza que cada palabra del nombre del Partner y Cliente Final inicie con letra Mayúscula, resolviendo entradas en minúsculas sostenidas o mayúsculas CCW sin perder siglas como S.A., SpA, LTDA o IBM.',
+      'Auto-Capitalización en Formulario BO (BoRequestModal.tsx): Formateo automático de nombres al abrir el modal y en el evento onBlur de los campos de texto de la cabecera.',
+      'Blindaje de Copiado y Correo Outlook: Inyección de los nombres debidamente capitalizados en la tabla HTML, texto plano, asunto y cuerpo de correo.',
+      'Suite de Pruebas Unitarias (tests/boLineGrouping.test.ts): Añadido Test 7 con validación estricta de capitalización en 8 casos de prueba.',
+    ],
+  },
+  {
     version: '2.24.1',
     date: '2026-11-20',
     commit: 'feat-bo-copy-partner-client-cross-reference',
     title: 'Cruce Comercial en Módulo BO: Inclusión de Partner y Cliente Final en Copiado de Tablas y Correo Outlook',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Ficha de Cruce Comercial Debajo de la Tabla BO (boEmailHelper.ts): Inclusión automática de una tarjeta de referencia comercial con Partner / Reseller, Cliente Final, Deal ID, Estimate ID y N° de OC al copiar tablas para Outlook (HTML enriquecido) y texto plano.',

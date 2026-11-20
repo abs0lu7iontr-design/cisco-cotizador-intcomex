@@ -34,6 +34,55 @@ export interface BoTableExportOptions {
 }
 
 /**
+ * Siglas y acrónimos comerciales corporativos que deben mantenerse en mayúsculas.
+ */
+const BUSINESS_ACRONYMS = new Set([
+  'SA', 'S.A.', 'SPA', 'S.P.A.', 'LTDA', 'EIRL', 'SL', 'SRL', 'LLC', 'INC', 'CORP',
+  'IBM', 'TI', 'HW', 'SW', 'BO', 'OC', 'CCW', 'VPN', 'IP', 'GPL', 'USA', 'USA.', 'PCS'
+]);
+
+/**
+ * Normaliza nombres comerciales de Partners y Clientes Finales asegurando
+ * que cada palabra comience con letra Mayúscula (Title Case), preservando
+ * siglas comunes (S.A., SpA, LTDA, IBM, etc.).
+ */
+export function capitalizeBusinessName(name?: string | null): string {
+  if (!name || typeof name !== 'string') return '';
+  const trimmed = name.trim();
+  if (!trimmed) return '';
+
+  let text = trimmed;
+  const lettersOnly = text.replace(/[^a-zA-ZáéíóúüñÁÉÍÓÚÜÑ]/g, '');
+  if (lettersOnly.length > 3 && text === text.toUpperCase()) {
+    text = text.toLowerCase();
+  }
+
+  return text
+    .split(/\s+/)
+    .map((word) => {
+      if (!word) return '';
+      const cleanUpper = word.replace(/[^a-zA-Z.]/g, '').toUpperCase();
+      if (BUSINESS_ACRONYMS.has(cleanUpper) || BUSINESS_ACRONYMS.has(word.toUpperCase())) {
+        return word.toUpperCase();
+      }
+      if (/^[a-zA-Z]\.([a-zA-Z]\.?)+$/.test(word)) {
+        return word.toUpperCase();
+      }
+      if (word.includes('-')) {
+        return word
+          .split('-')
+          .map((sub) => sub.charAt(0).toUpperCase() + sub.slice(1))
+          .join('-');
+      }
+      if (word.startsWith('(') && word.length > 1) {
+        return '(' + word.charAt(1).toUpperCase() + word.slice(2);
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
+}
+
+/**
  * Obtiene el saludo dinámico según la hora local del sistema:
  * - Antes de las 12:00 hrs -> "Buenos días"
  * - Desde las 12:00 hrs en adelante -> "Buenas tardes"
@@ -178,8 +227,8 @@ export function generateBoHtmlTable(
   // Ficha de Referencia y Cruce Comercial: Partner y Cliente Final (como abajo de la cotización)
   let referenceBlockHtml = '';
   if (options?.partnerName || options?.clientName || options?.dealId || options?.estimateId) {
-    const partner = options.partnerName?.trim() || 'Intcomex Partner';
-    const client = options.clientName?.trim() || 'Cliente Final';
+    const partner = capitalizeBusinessName(options.partnerName) || 'Intcomex Partner';
+    const client = capitalizeBusinessName(options.clientName) || 'Cliente Final';
     const dealId = options.dealId && options.dealId !== 'NA' ? options.dealId : null;
     const estimateId = options.estimateId && options.estimateId !== 'NA' ? options.estimateId : null;
     const currentPo = selectedLine ? options.partnerPosByLine?.[selectedLine]?.trim() : null;
@@ -337,8 +386,8 @@ export function generateBoPlainTextTable(
 
   let refText = '';
   if (options?.partnerName || options?.clientName || options?.dealId || options?.estimateId) {
-    const partner = options.partnerName?.trim() || 'Intcomex Partner';
-    const client = options.clientName?.trim() || 'Cliente Final';
+    const partner = capitalizeBusinessName(options.partnerName) || 'Intcomex Partner';
+    const client = capitalizeBusinessName(options.clientName) || 'Cliente Final';
     const dealId = options.dealId && options.dealId !== 'NA' ? options.dealId : null;
     const estimateId = options.estimateId && options.estimateId !== 'NA' ? options.estimateId : null;
     const currentPo = selectedLine ? options.partnerPosByLine?.[selectedLine]?.trim() : null;

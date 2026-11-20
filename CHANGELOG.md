@@ -6,6 +6,16 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.24.2] - 2026-11-20
+### 🔤 Capitalización Obligatoria de Primera Letra (Title Case) en Partner y Cliente Final (Módulo BO)
+- **Función de Capitalización Inteligente (`capitalizeBusinessName` en `boEmailHelper.ts`):**
+  - Implementada normalización automática que asegura que cada palabra del nombre del Partner y Cliente Final comience estrictamente con letra Mayúscula.
+  - Soporta conversión de textos en mayúsculas sostenidas (`INFOCORP CHILE` -> `Infocorp Chile`) o minúsculas (`entel pcs` -> `Entel PCS`), preservando siglas corporativas reconocidas (S.A., SpA, LTDA, IBM, PCS, EIRL).
+- **Auto-Capitalización en Tiempo Real (`BoRequestModal.tsx`):**
+  - El modal de solicitud BO capitaliza los nombres al abrirse, en el evento `onBlur` de los campos editables, al copiar tablas (HTML y texto plano), al abrir Outlook y al sincronizar con el seguimiento logístico.
+- **Suite de Pruebas Unitarias Actualizada (`tests/boLineGrouping.test.ts`):**
+  - Añadido Test 7 con validaciones exhaustivas de capitalización de primera letra en múltiples variantes y combinaciones.
+
 ## [v2.24.1] - 2026-11-20
 ### 📦 Cruce Comercial en Módulo BO: Inclusión de Partner y Cliente Final en Copiado de Tablas y Correo Outlook
 - **Ficha de Referencia y Cruce Comercial (`boEmailHelper.ts`):**

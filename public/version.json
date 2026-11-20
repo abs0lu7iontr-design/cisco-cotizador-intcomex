@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.24.1",
-  "git_commit": "16b3371",
+  "version": "2.24.2",
+  "git_commit": "c41ba12",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-20T14:05:37.391Z",
-  "release_notes": "fix(v2.24.0): instant login startup optimization, zero-delay cold start, isolated auth gateway, O(1) mirror fingerprint and 3MB bundle reduction",
+  "build_timestamp": "2026-11-20T18:22:27.744Z",
+  "release_notes": "feat(v2.24.1): add partner and end customer cross-reference to BO table copy and outlook export",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

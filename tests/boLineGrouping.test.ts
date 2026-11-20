@@ -7,7 +7,7 @@
 
 import assert from 'node:assert';
 import { prepareBoLinesFromCalculated, partitionBoLinesByCost } from '../src/modules/bo/boTypes';
-import { generateBoHtmlTable, generateBoPlainTextTable, formatCLP } from '../src/modules/bo/boEmailHelper';
+import { generateBoHtmlTable, generateBoPlainTextTable, formatCLP, capitalizeBusinessName } from '../src/modules/bo/boEmailHelper';
 import { EstimateLineItem } from '../src/core/types';
 
 console.log('🧪 INICIANDO SUITE DE PRUEBAS DE AGRUPACIÓN, ENCABEZADOS Y OC PARTNER BO (v2.4.5)...\n');
@@ -248,6 +248,35 @@ assert.ok(textWithPartnerAndClient.includes('Cliente Final: Entel PCS Telecomuni
 assert.ok(textWithPartnerAndClient.includes('Deal ID: 86146758'), 'Texto plano debe incluir Deal ID');
 assert.ok(textWithPartnerAndClient.includes('Estimate ID: EST-992812'), 'Texto plano debe incluir Estimate ID');
 console.log('✅ Ficha de cruce comercial (Partner y Cliente Final abajo de la tabla) validada con éxito.');
+
+// --- Test 7: Capitalización Obligatoria de Primera Letra en Partner y Cliente Final ---
+console.log('\n--- 7. Prueba de Capitalización Obligatoria de Primera Letra en Partner y Cliente Final ---');
+assert.strictEqual(capitalizeBusinessName('infocorp chile s.a.'), 'Infocorp Chile S.A.');
+assert.strictEqual(capitalizeBusinessName('INFOCORP CHILE S.A.'), 'Infocorp Chile S.A.');
+assert.strictEqual(capitalizeBusinessName('cliente final'), 'Cliente Final');
+assert.strictEqual(capitalizeBusinessName('CLIENTE FINAL'), 'Cliente Final');
+assert.strictEqual(capitalizeBusinessName('cisco-chile'), 'Cisco-Chile');
+assert.strictEqual(capitalizeBusinessName('entel pcs telecomunicaciones'), 'Entel PCS Telecomunicaciones');
+assert.strictEqual(capitalizeBusinessName('sonda ltda'), 'Sonda LTDA');
+assert.strictEqual(capitalizeBusinessName('ibm'), 'IBM');
+
+// Verificar que generateBoHtmlTable y generateBoPlainTextTable capitalizan aunque se pase en minúsculas
+const htmlLowercaseInputs = generateBoHtmlTable(activeLines, {
+  groupByLine: false,
+  partnerName: 'infocorp chile',
+  clientName: 'sociedad concesionaria s.a.',
+});
+assert.ok(htmlLowercaseInputs.includes('Infocorp Chile'), 'El HTML debe capitalizar Partner aunque venga en minúsculas');
+assert.ok(htmlLowercaseInputs.includes('Sociedad Concesionaria S.A.'), 'El HTML debe capitalizar Cliente Final aunque venga en minúsculas');
+
+const textLowercaseInputs = generateBoPlainTextTable(activeLines, {
+  groupByLine: false,
+  partnerName: 'infocorp chile',
+  clientName: 'sociedad concesionaria s.a.',
+});
+assert.ok(textLowercaseInputs.includes('Partner / Reseller: Infocorp Chile'), 'El texto plano debe capitalizar Partner');
+assert.ok(textLowercaseInputs.includes('Cliente Final: Sociedad Concesionaria S.A.'), 'El texto plano debe capitalizar Cliente Final');
+console.log('✅ Capitalización estricta de primera letra para Partner y Cliente Final validada al 100%.');
 
 console.log('\n🎉 ¡TODAS LAS PRUEBAS DE AGRUPACIÓN, ENCABEZADOS Y OC PARTNER BO PASARON CON ÉXITO AL 100%!');
 
