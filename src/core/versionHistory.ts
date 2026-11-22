@@ -15,11 +15,25 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.24.3',
+    date: '2026-11-22',
+    commit: 'fix-remove-target-margin-from-client-quote-share',
+    title: 'Confidencialidad Comercial: Exclusión Estricta de Margen Objetivo en Resumen para Compartir / Copiar Cotizaciones',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Blindaje de Confidencialidad Comercial (mobileShareHelper.ts): Eliminada la exposición de "📈 Margen Objetivo" en el resumen de cotización comercial generado para compartir vía WhatsApp, correo o portapapeles, protegiendo las cifras internas del distribuidor ante clientes finales y canales.',
+      'Saneamiento de Enlace en Compartición Nativa (Web Share API): Corregida la duplicación de URL en WhatsApp y hojas de compartir móviles donde la plataforma anexaba dos veces el enlace institucional al final del mensaje.',
+      'Desacople en Barra Rápida Móvil (MobileStickyBar.tsx): Eliminada la inyección de margen comercial en el objeto de datos de compartición, manteniendo el indicador de margen únicamente visible en la pantalla para el PM / vendedor cuando no está en Modo Cliente.',
+      'Suite de Pruebas Automatizadas Dedicada (tests/mobileShareHelper.test.ts): Valida que ningún resumen compartido o copiado al portapapeles contenga la palabra "Margen", "Margen Objetivo" ni porcentajes internos, y verifica la presencia de enlace único.',
+    ],
+  },
+  {
     version: '2.24.2',
     date: '2026-11-20',
     commit: 'feat-bo-capitalize-partner-client-title-case',
     title: 'Capitalización Obligatoria de Primera Letra (Title Case) en Partner y Cliente Final (Módulo BO)',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Normalización Title Case (capitalizeBusinessName en boEmailHelper.ts): Garantiza que cada palabra del nombre del Partner y Cliente Final inicie con letra Mayúscula, resolviendo entradas en minúsculas sostenidas o mayúsculas CCW sin perder siglas como S.A., SpA, LTDA o IBM.',

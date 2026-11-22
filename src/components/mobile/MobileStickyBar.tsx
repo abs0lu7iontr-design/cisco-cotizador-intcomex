@@ -39,7 +39,6 @@ export const MobileStickyBar: React.FC<MobileStickyBarProps> = ({
       itemsCount,
       totalUsd,
       totalClp,
-      marginPct,
       fileName,
     };
 

@@ -6,6 +6,21 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.24.3] - 2026-11-22
+### 🔒 Confidencialidad Comercial: Exclusión Estricta de Margen Objetivo en Resumen para Compartir / Copiar Cotizaciones
+- **Blindaje de Confidencialidad Comercial (`src/utils/mobileShareHelper.ts`):**
+  - Eliminada la línea `📈 Margen Objetivo: X%` del texto estructurado generado por `formatQuoteShareText`.
+  - Este resumen, utilizado para compartir en WhatsApp, correo o copiar al portapapeles comercial, ahora presenta exclusivamente información ejecutiva para el cliente o canal (Cliente Final, Partner, Deal ID, Líneas cotizadas, Total Venta USD y Total Venta CLP), manteniendo el margen objetivo y costos estrictamente confidenciales.
+- **Saneamiento de Enlace en Compartición Nativa (Web Share API):**
+  - Eliminada la especificación redundante del parámetro `url` en llamadas `navigator.share` que provocaba que WhatsApp y hojas de compartir en móviles repitieran la URL al final del mensaje (`🌐 https://develop.cisco-automated.pages.dev https://develop.cisco-automated.pages.dev/`).
+- **Desacople en Barra Rápida Móvil (`src/components/mobile/MobileStickyBar.tsx`):**
+  - Removido el paso de `marginPct` hacia `shareQuote` en la acción del botón "Compartir", manteniendo el indicador de margen únicamente visible en la pantalla interna para el usuario vendedor / PM cuando no se encuentra en Modo Cliente.
+- **Nueva Suite de Pruebas Unitarias Automatizadas (`tests/mobileShareHelper.test.ts`):**
+  - Validación del 100% de exclusión de las palabras "Margen" y "Margen Objetivo" en el resumen formateado.
+  - Comprobación de URL única no duplicada.
+  - Validación del fallback seguro a portapapeles y de la llamada limpia a la Web Share API sin parámetro redundante.
+  - Integración en el comando central `npm test`.
+
 ## [v2.24.2] - 2026-11-20
 ### 🔤 Capitalización Obligatoria de Primera Letra (Title Case) en Partner y Cliente Final (Módulo BO)
 - **Función de Capitalización Inteligente (`capitalizeBusinessName` en `boEmailHelper.ts`):**

@@ -10,6 +10,10 @@ export interface ShareQuoteData {
   itemsCount: number;
   totalUsd: string | number;
   totalClp?: string | number;
+  /**
+   * @deprecated Por confidencialidad comercial con clientes finales y partners,
+   * el margen objetivo NUNCA debe ser expuesto ni compartido en resúmenes comerciales.
+   */
   marginPct?: string | number;
   fileName?: string;
   excelBuffer?: ArrayBuffer | Uint8Array;
@@ -48,9 +52,8 @@ export function formatQuoteShareText(data: ShareQuoteData): string {
     lines.push(`🇨🇱 *Total Venta CLP:* $${typeof data.totalClp === 'number' ? Math.round(data.totalClp).toLocaleString('es-CL') : data.totalClp} CLP`);
   }
 
-  if (data.marginPct !== undefined) {
-    lines.push(`📈 *Margen Objetivo:* ${data.marginPct}%`);
-  }
+  // NOTA: Por estricta confidencialidad comercial con clientes finales y partners,
+  // el margen objetivo nunca debe incluirse en resúmenes comerciales para compartir o copiar.
 
   lines.push('--------------------------------------');
   lines.push('⚡ Cotización procesada con Cisco Automated (Intcomex Chile)');
@@ -97,7 +100,6 @@ export async function shareQuote(data: ShareQuoteData): Promise<ShareResult> {
         await navigator.share({
           title: shareTitle,
           text: shareText,
-          url: 'https://develop.cisco-automated.pages.dev',
         });
       }
 
