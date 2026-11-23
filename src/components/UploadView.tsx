@@ -11,9 +11,12 @@ import {
   ArrowRight,
   Download,
   Info,
+  CloudDownload,
+  Sparkles,
 } from 'lucide-react';
 import { openDesktopFileDialog, isDesktopApp } from '../core/desktopBridge';
 import { useUiExperience } from '../core/themeEngine';
+import { CiscoCloudEstimateImportModal } from '../modules/ciscoApi';
 
 interface UploadViewProps {
   onProcessFile: (buffer: ArrayBuffer, fileName: string) => void;
@@ -22,6 +25,7 @@ interface UploadViewProps {
 export function UploadView({ onProcessFile }: UploadViewProps) {
   const { isAesthetic } = useUiExperience();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isCiscoApiModalOpen, setIsCiscoApiModalOpen] = useState(false);
   const [validationResult, setValidationResult] = useState<{
     success: boolean;
     partner?: string;
@@ -142,17 +146,28 @@ export function UploadView({ onProcessFile }: UploadViewProps) {
       <div
         className={
           isAesthetic
-            ? 'aesthetic-card border p-6 rounded-2xl backdrop-blur-md shadow-xl'
-            : 'bg-slate-900/90 border border-slate-800 p-6 rounded-2xl'
+            ? 'aesthetic-card border p-6 rounded-2xl backdrop-blur-md shadow-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4'
+            : 'bg-slate-900/90 border border-slate-800 p-6 rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4'
         }
       >
-        <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2.5">
-          <UploadCloud className="w-6 h-6 text-indigo-400" />
-          <span>Subir y Clasificar Estimate Cisco CCW</span>
-        </h1>
-        <p className="text-xs text-slate-400 mt-1">
-          Valida la nomenclatura estandarizada y almacena el archivo automáticamente en la estructura de carpetas jerárquica.
-        </p>
+        <div>
+          <h1 className="text-xl font-black text-white tracking-tight flex items-center gap-2.5">
+            <UploadCloud className="w-6 h-6 text-indigo-400" />
+            <span>Subir y Clasificar Estimate Cisco CCW</span>
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Valida la nomenclatura estandarizada y almacena el archivo automáticamente en la estructura de carpetas jerárquica.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setIsCiscoApiModalOpen(true)}
+          className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-cyan-950/40 shrink-0"
+        >
+          <CloudDownload className="w-4 h-4" />
+          <span>Sincronizar desde Cisco Cloud API</span>
+        </button>
       </div>
 
       {/* Nomenclature Guide */}
@@ -286,6 +301,11 @@ export function UploadView({ onProcessFile }: UploadViewProps) {
           )}
         </div>
       )}
+      {/* Cisco Cloud Estimate API Import Modal */}
+      <CiscoCloudEstimateImportModal
+        isOpen={isCiscoApiModalOpen}
+        onClose={() => setIsCiscoApiModalOpen(false)}
+      />
     </div>
   );
 }

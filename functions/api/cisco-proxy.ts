@@ -12,6 +12,8 @@ const corsHeaders = {
 };
 
 const DEFAULT_AUTH_URL = 'https://id.cisco.com/oauth2/default/v1/token';
+const DEFAULT_CLIENT_ID = '3400130c-8528-49a1-9c71-f40e68e0f9bc';
+const DEFAULT_CLIENT_SECRET = '801e3a4f-950f-4951-ba4f-3c63d3684bb6';
 
 export const onRequestOptions: PagesFunction = async () => {
   return new Response(null, {
@@ -27,19 +29,19 @@ export const onRequestPost: PagesFunction = async (context) => {
     const action = body?.action || 'token';
 
     const env = (context.env || {}) as Record<string, string | undefined>;
-    const clientId = (body?.clientId || env.CISCO_CLIENT_ID || env.VITE_CISCO_CLIENT_ID || '').trim();
+    const clientId = (body?.clientId || env.CISCO_CLIENT_ID || env.VITE_CISCO_CLIENT_ID || DEFAULT_CLIENT_ID).trim();
     const clientSecret = (
       body?.clientSecret ||
       env.CISCO_CLIENT_SECRET || env.VITE_CISCO_CLIENT_SECRET ||
-      ''
+      DEFAULT_CLIENT_SECRET
     ).trim();
     const authUrl = (body?.authUrl || env.CISCO_AUTH_URL || env.VITE_CISCO_AUTH_URL || DEFAULT_AUTH_URL).trim();
 
-        if (!clientId || !clientSecret) {
+    if (!clientId || !clientSecret) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: 'Credenciales Cisco M2M no configuradas en las variables de entorno de Cloudflare Pages (VITE_CISCO_CLIENT_ID / VITE_CISCO_CLIENT_SECRET).',
+          error: 'Credenciales Cisco M2M no configuradas.',
         }),
         {
           status: 401,
@@ -93,7 +95,10 @@ export const onRequestPost: PagesFunction = async (context) => {
       if (
         !targetUrl.startsWith('https://apix.cisco.com/') &&
         !targetUrl.startsWith('https://api.cisco.com/') &&
-        !targetUrl.startsWith('https://sec.cloudapps.cisco.com/')
+        !targetUrl.startsWith('https://sec.cloudapps.cisco.com/') &&
+        !targetUrl.startsWith('https://capitest.cisco.com/') &&
+        !targetUrl.startsWith('https://capi.cisco.com/') &&
+        !targetUrl.startsWith('https://it-api.cisco.com/')
       ) {
         return new Response(
           JSON.stringify({
@@ -142,12 +147,26 @@ export const onRequestPost: PagesFunction = async (context) => {
         token = tokenData.access_token;
       }
 
+      const reqHeaders: Record<string, string> = {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      };
+
+      const reqMethod = (body?.method || 'GET').toUpperCase();
+      let reqBody: string | undefined = undefined;
+
+      if (reqMethod === 'POST' || reqMethod === 'PUT' || reqMethod === 'PATCH') {
+        reqHeaders['Content-Type'] = 'application/json';
+        const rawPayload = body?.body ?? body?.data;
+        if (rawPayload !== undefined) {
+          reqBody = typeof rawPayload === 'string' ? rawPayload : JSON.stringify(rawPayload);
+        }
+      }
+
       const apiRes = await fetch(targetUrl, {
-        method: body?.method || 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/json',
-        },
+        method: reqMethod,
+        headers: reqHeaders,
+        body: reqBody,
       });
 
       const rawText = await apiRes.text();

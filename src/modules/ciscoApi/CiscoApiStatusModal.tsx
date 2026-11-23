@@ -79,6 +79,12 @@ const DEFAULT_API_LIST = [
     desc: 'Perfiles y cuentas de clientes corporativos en CX Cloud',
     endpoint: 'https://apix.cisco.com/cs/api/v2/customer-info/customer-details',
   },
+  {
+    name: 'Modern Commerce GraphQL (Lead Times & Estimates)',
+    limit: 'M2M GraphQL • OAuth2 Token',
+    desc: 'Sincronización de estimates CCW, jerarquía BOM y tiempos de entrega oficiales',
+    endpoint: 'capitest.cisco.com (POE) / capi.cisco.com (PROD)',
+  },
 ];
 
 export const CiscoApiStatusModal: React.FC<Props> = ({ isOpen, onClose }) => {
@@ -165,7 +171,7 @@ export const CiscoApiStatusModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   Cisco Developer API Suite (Producción)
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/50">
-                  7 APIs Vinculadas
+                  8 APIs Vinculadas (Modern Commerce GraphQL)
                 </span>
               </div>
               <p className="text-xs text-slate-400">

@@ -18,6 +18,52 @@ export interface CiscoApiConfig {
   authUrl: string;
   gatewayBaseUrl?: string;
   cxCustomerId?: string;
+  commerceEnvironment?: 'POE' | 'PROD';
+}
+
+export interface CiscoLeadTime {
+  measurement: number;
+  unitOfMeasure: string;
+}
+
+export interface CiscoGraphQLItem {
+  sku: string;
+  description: string;
+  leadTime?: CiscoLeadTime;
+}
+
+export interface CiscoGraphQLLine {
+  line: {
+    configurationLineReference: {
+      lineId: string | number;
+      parentLineId: string | number;
+      magicKey?: string;
+    };
+    item: CiscoGraphQLItem;
+    quantity: {
+      measurement: number;
+      unitOfMeasure?: string;
+    };
+    financialDetails: {
+      unitListPrice: { amount: number; currency?: string };
+      discounts?: Array<{ rate: { measurement: number; unitOfMeasure?: string } }>;
+      unitNetPrice: { amount: number; currency?: string };
+      extendedNetPrice: { amount: number; currency?: string };
+    };
+  };
+}
+
+export interface CiscoGraphQLEstimate {
+  id: string;
+  name: string;
+  estimateStatus: string;
+  expirationDate?: string;
+  priceList?: {
+    code: string;
+    description?: string;
+    currencies?: string[];
+  };
+  lines: CiscoGraphQLLine[];
 }
 
 export interface PsirtAdvisory {

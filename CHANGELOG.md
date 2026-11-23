@@ -6,6 +6,27 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.25.0] - 2026-11-22
+### ☁️ Integración Oficial con Cisco Modern Commerce GraphQL API y Tiempos de Entrega (Lead Times)
+- **Conexión Directa M2M con Cisco Modern Commerce API (`src/modules/ciscoApi/ciscoCommerceService.ts`):**
+  - Implementada integración cliente-a-máquina (Client Credentials M2M) con la API oficial GraphQL de Cisco (`it-developer.cisco.com`).
+  - Soporte nativo para alternar entre el ambiente Sandbox/Pruebas (`POE` en `https://capitest.cisco.com/commerce/graphql`) y el ambiente de Producción (`PROD` en `https://capi.cisco.com/commerce/graphql`).
+  - Consulta en tiempo real de cotizaciones mediante `query GetEstimate` extrayendo SKU, descripciones, cantidades, precios de lista, descuentos y precios netos.
+- **Extracción Oficial de Tiempos de Entrega (Lead Time) por SKU:**
+  - Obtención de los plazos de fábrica garantizados por Cisco a través de `item.leadTime { measurement, unitOfMeasure }`.
+  - Cálculo del Lead Time consolidado de toda la cotización aplicando la Regla de Oro de Cisco ("The longest line wins" / el ítem con mayor demora determina la entrega del paquete completo).
+  - Conversión automática a semanas comerciales Intcomex considerando trámites aduaneros y logística internacional en Chile (+2 semanas de tránsito).
+- **Reconstrucción Jerárquica de Líneas Madre-Hijo (BOM):**
+  - Detección precisa de relaciones padre/hijo (`parentLineId === 0` vs sub-líneas) generando numeraciones legibles multinivel (`1.0`, `1.0.1`, `2.0`, etc.) y agrupando componentes subordinados sin romper dependencias de licenciamiento o módulos ópticos.
+- **Modal Interactivo de Sincronización en la Nube (`CiscoCloudEstimateImportModal.tsx`):**
+  - Nueva ventana modal accesible desde el Navbar ("Cisco API") y desde la pantalla de carga ("Sincronizar desde Cisco Cloud API").
+  - Permite al usuario cotizador ingresar un ID de Estimate (ej. `OI161111385UO` o `OE169047114NP`) y sincronizar automáticamente todas las líneas, precios y tiempos de entrega al cotizador de Intcomex en un solo clic, sin necesidad de exportar ni descargar archivos Excel de CCW.
+- **Proxy Cloudflare Blindado (`functions/api/cisco-proxy.ts`):**
+  - Soporte de proxy seguro para llamadas GraphQL POST con autenticación centralizada y dominios Cisco autorizados (`capitest.cisco.com`, `capi.cisco.com`, `id.cisco.com`).
+  - Inyección segura de credenciales preconfiguradas del portal de desarrolladores de Cisco.
+- **Suite de Pruebas Automatizadas (`tests/ciscoModernCommerceApi.test.ts`):**
+  - Pruebas exhaustivas que validan la transformación de estructuras GraphQL a `ProcessedEstimateResult`, la numeración jerárquica y el cálculo del Lead Time global.
+
 ## [v2.24.3] - 2026-11-22
 ### 🔒 Confidencialidad Comercial: Exclusión Estricta de Margen Objetivo en Resumen para Compartir / Copiar Cotizaciones
 - **Blindaje de Confidencialidad Comercial (`src/utils/mobileShareHelper.ts`):**

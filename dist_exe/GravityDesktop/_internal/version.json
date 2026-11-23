@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.24.3",
-  "git_commit": "42c3b6e",
+  "version": "2.25.0",
+  "git_commit": "74670b6",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-22T06:28:32.186Z",
-  "release_notes": "feat(v2.24.2): enforce Title Case capitalization on BO partner and end customer names",
+  "build_timestamp": "2026-11-23T01:46:08.049Z",
+  "release_notes": "fix(v2.24.3): remove target margin from customer quote share text and clean duplicate url",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

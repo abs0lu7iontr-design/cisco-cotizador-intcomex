@@ -77,6 +77,7 @@ import { HealthDashboardView } from './modules/health';
 import { useEstimatesMirror } from './hooks/useEstimatesMirror';
 import { getPendingAccessRequestsForUser } from './modules/notifications/estimateAccessNotificationService';
 import { DemandIntelligenceView } from './modules/demandIntelligence';
+import { CiscoCloudEstimateImportModal } from './modules/ciscoApi';
 import {
   useOfflineMode,
   setManualOfflineMode,
@@ -214,6 +215,7 @@ function AuthenticatedApp() {
   const { isOffline, isManualOffline, isNavigatorOffline } = useOfflineMode();
   const [pendingOfflineCount, setPendingOfflineCount] = useState<number>(0);
   const [isOfflineSyncModalOpen, setIsOfflineSyncModalOpen] = useState<boolean>(false);
+  const [isCiscoCloudModalOpen, setIsCiscoCloudModalOpen] = useState<boolean>(false);
 
   // Active Back Order (BO) Count for Sidebar Badge
   const [activeBoCount, setActiveBoCount] = useState<number>(0);
@@ -802,6 +804,12 @@ function AuthenticatedApp() {
         />
       )}
 
+      {/* Cisco Cloud Estimate GraphQL Import Modal */}
+      <CiscoCloudEstimateImportModal
+        isOpen={isCiscoCloudModalOpen}
+        onClose={() => setIsCiscoCloudModalOpen(false)}
+      />
+
       {/* Collapsible Navigation Sidebar (Hidden on mobile < md, full on desktop >= md) */}
       <div className="hidden md:flex shrink-0">
       <Sidebar
@@ -829,6 +837,7 @@ function AuthenticatedApp() {
         {/* Navbar */}
         <Navbar
           onUploadClick={handleUploadClick}
+          onCiscoCloudClick={() => setIsCiscoCloudModalOpen(true)}
           onDownloadClick={() => setIsDownloadModalOpen(true)}
           onSaveCloudClick={handleSaveCloud}
           onOpenEstimateHistory={() => setCurrentView('estimates')}

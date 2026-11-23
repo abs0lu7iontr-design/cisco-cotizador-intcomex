@@ -15,11 +15,27 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.25.0',
+    date: '2026-11-22',
+    commit: 'feat-cisco-modern-commerce-graphql-api-lead-times',
+    title: 'Integración Oficial con Cisco Modern Commerce GraphQL API y Tiempos de Entrega (Lead Times)',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Integración Directa M2M con Cisco Modern Commerce (ciscoCommerceService.ts): Conexión mediante OAuth2 Client Credentials con la API GraphQL oficial de Cisco (it-developer.cisco.com), soportando entornos Sandbox (POE en capitest.cisco.com) y Producción (PROD en capi.cisco.com).',
+      'Extracción Oficial de Tiempos de Entrega (Lead Time): Obtención de leadTime por SKU (measurement y unitOfMeasure) y cálculo del tiempo total de entrega de la solución ("The longest line wins") con ajuste de tránsito aduanero chileno de Intcomex (+2 semanas).',
+      'Reconstrucción de Jerarquía Madre-Hijo (BOM): Mapeo multinivel (1.0, 1.0.1, etc.) identificando relaciones de componentes dependientes y cálculo financiero con márgenes comerciales automáticos.',
+      'Modal de Importación en la Nube (CiscoCloudEstimateImportModal.tsx): Permite importar cotizaciones oficiales directamente por ID (ej. OI161111385UO) desde el Navbar o pantalla de carga sin descargar archivos Excel de CCW.',
+      'Proxy Seguro Cloudflare (cisco-proxy.ts): Enrutamiento seguro para consultas GraphQL autenticadas con protección de tokens y whitelist de hosts Cisco.',
+      'Suite de Pruebas Unitarias (tests/ciscoModernCommerceApi.test.ts): Verificación completa al 100% del mapeo de entidades, jerarquías de líneas y cálculo de Lead Time global.',
+    ],
+  },
+  {
     version: '2.24.3',
     date: '2026-11-22',
     commit: 'fix-remove-target-margin-from-client-quote-share',
     title: 'Confidencialidad Comercial: Exclusión Estricta de Margen Objetivo en Resumen para Compartir / Copiar Cotizaciones',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Blindaje de Confidencialidad Comercial (mobileShareHelper.ts): Eliminada la exposición de "📈 Margen Objetivo" en el resumen de cotización comercial generado para compartir vía WhatsApp, correo o portapapeles, protegiendo las cifras internas del distribuidor ante clientes finales y canales.',

@@ -10,13 +10,16 @@ const TOKEN_CACHE_KEY = 'cisco_oauth_token_v2';
 const CONFIG_CACHE_KEY = 'cisco_api_config_v2';
 
 export const DEFAULT_CISCO_CONFIG: CiscoApiConfig = {
-  clientId: ((import.meta as any).env?.VITE_CISCO_CLIENT_ID || '').trim(),
-  clientSecret: ((import.meta as any).env?.VITE_CISCO_CLIENT_SECRET || '').trim(),
+  clientId:
+    ((import.meta as any).env?.VITE_CISCO_CLIENT_ID || '3400130c-8528-49a1-9c71-f40e68e0f9bc').trim(),
+  clientSecret:
+    ((import.meta as any).env?.VITE_CISCO_CLIENT_SECRET || '801e3a4f-950f-4951-ba4f-3c63d3684bb6').trim(),
   authUrl:
     (import.meta as any).env?.VITE_CISCO_AUTH_URL ||
     'https://id.cisco.com/oauth2/default/v1/token',
   gatewayBaseUrl: 'https://apix.cisco.com',
   cxCustomerId: '',
+  commerceEnvironment: 'POE',
 };
 
 export function getCiscoConfig(): CiscoApiConfig {
@@ -33,6 +36,7 @@ export function getCiscoConfig(): CiscoApiConfig {
         authUrl: parsed.authUrl?.trim() || DEFAULT_CISCO_CONFIG.authUrl,
         gatewayBaseUrl: parsed.gatewayBaseUrl?.trim() || DEFAULT_CISCO_CONFIG.gatewayBaseUrl,
         cxCustomerId: parsed.cxCustomerId?.trim() || '',
+        commerceEnvironment: parsed.commerceEnvironment || DEFAULT_CISCO_CONFIG.commerceEnvironment,
       };
     }
   } catch {
@@ -53,6 +57,7 @@ export function saveCiscoConfig(cfg: Partial<CiscoApiConfig>): CiscoApiConfig {
     gatewayBaseUrl:
       (cfg.gatewayBaseUrl ?? current.gatewayBaseUrl)?.trim() || 'https://apix.cisco.com',
     cxCustomerId: (cfg.cxCustomerId ?? current.cxCustomerId ?? '').trim(),
+    commerceEnvironment: cfg.commerceEnvironment ?? current.commerceEnvironment ?? 'POE',
   };
 
   if (typeof localStorage !== 'undefined') {

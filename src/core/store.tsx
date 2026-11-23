@@ -243,6 +243,7 @@ export interface CiscoAutomatedState {
   setRowRule: (rowIdx: number, rule: OverrideRuleType, sku?: string) => Promise<void>;
   cycleRowRule: (rowIdx: number) => Promise<void>;
   clearEstimate: () => void;
+  loadDirectEstimateIntoStore: (estimate: ProcessedEstimateResult) => void;
   loadCloudEstimateIntoStore: (record: CloudEstimateRecord) => Promise<void>;
   saveCurrentEstimateToCloud: (
     options?: SaveEstimateCloudOptions
@@ -1045,6 +1046,17 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     }
   }, []);
 
+  const loadDirectEstimateIntoStore = useCallback((estimate: ProcessedEstimateResult) => {
+    setProcessedResult(estimate);
+    setCurrentFileName(estimate.fileName || `Cisco_API_${estimate.headerInfo?.estimateId || 'Estimate'}.xlsx`);
+    if (estimate.headerInfo?.customerName) {
+      setDetectedPartner(estimate.headerInfo.customerName);
+    }
+    setCurrentView('quoter');
+    setActiveQuoterTab('table');
+    setIsRecalculated(false);
+  }, []);
+
   const saveCurrentEstimateToCloud = useCallback(
     async (options?: SaveEstimateCloudOptions) => {
       if (!processedResult) {
@@ -1436,6 +1448,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       cycleRowRule,
       setRowRule,
       clearEstimate,
+      loadDirectEstimateIntoStore,
       loadCloudEstimateIntoStore,
       saveCurrentEstimateToCloud,
       logout,
@@ -1493,6 +1506,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       cycleRowRule,
       setRowRule,
       clearEstimate,
+      loadDirectEstimateIntoStore,
       loadCloudEstimateIntoStore,
       saveCurrentEstimateToCloud,
       logout,

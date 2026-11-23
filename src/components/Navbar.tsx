@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   Download,
   UploadCloud,
+  CloudDownload,
   RefreshCw,
   Upload,
   Trash2,
@@ -40,6 +41,7 @@ import { useAutoUpdate, applyUpdateNow } from '../core/autoUpdateManager';
 
 interface NavbarProps {
   onUploadClick: () => void;
+  onCiscoCloudClick?: () => void;
   onShowRulesClick?: () => void;
   onSharedSkuClick?: () => void;
   onDownloadClick: () => void;
@@ -76,6 +78,7 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({
   onUploadClick,
+  onCiscoCloudClick,
   onShowRulesClick: _onShowRulesClick,
   onSharedSkuClick: _onSharedSkuClick,
   onDownloadClick,
@@ -176,6 +179,20 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Upload className="w-4 h-4" />
               <span>Subir Excel</span>
             </button>
+
+            {onCiscoCloudClick && (
+              <button
+                id="btn-cisco-cloud-sync"
+                type="button"
+                onClick={onCiscoCloudClick}
+                disabled={isProcessing}
+                className="inline-flex items-center space-x-1.5 text-xs font-bold bg-cyan-700/80 hover:bg-cyan-600 text-cyan-100 border border-cyan-500/40 px-3 py-2 rounded-xl shadow-lg shadow-cyan-950/40 transition-all cursor-pointer"
+                title="Sincronizar directamente con Cisco CCW API por código de Estimate"
+              >
+                <CloudDownload className="w-4 h-4 text-cyan-300" />
+                <span className="hidden sm:inline">Cisco API</span>
+              </button>
+            )}
 
             {onDsvClick && (
               <button
