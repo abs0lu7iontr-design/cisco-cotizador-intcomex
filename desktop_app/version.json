@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.25.1",
-  "git_commit": "108fa41",
+  "version": "2.26.0",
+  "git_commit": "f1b5a22",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-23T02:16:46.943Z",
-  "release_notes": "feat(v2.25.0): integrate Cisco Modern Commerce GraphQL API for direct estimate sync and official lead times",
+  "build_timestamp": "2026-11-23T02:37:59.141Z",
+  "release_notes": "fix(v2.25.1): enhance Cisco API gateway pending approval error diagnostics",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

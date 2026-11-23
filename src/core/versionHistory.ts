@@ -15,11 +15,26 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.26.0',
+    date: '2026-11-22',
+    commit: 'feat-cisco-orders-api-tracking-bo',
+    title: 'Integración de Seguimiento Satelital y Tracking de Órdenes Cisco API (Módulo BO)',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Seguimiento Satelital de Órdenes Cisco (ciscoOrdersService.ts): Conexión directa M2M con Cisco Orders API para consultar el estado en planta de fabricación, ESD, despacho y números de serie físicos de los equipos.',
+      'Gobernanza Estricta de Solo Lectura: Operación 100% de consulta y visualización logística sin compras ni mutaciones comerciales en Cisco CCW.',
+      'Normalización de Courier y Guía: Reconocimiento automático de FedEx, UPS y DHL con enlaces directos de rastreo satelital.',
+      'Modal de Sincronización en BO (CiscoOrderTrackingSyncModal.tsx): Actualiza la etapa BO, fechas y genera una entrada en la bitácora con 1 solo clic desde el tablero Kanban o vista de Tabla.',
+      'Suite de Pruebas Automatizadas (tests/ciscoOrderTracking.test.ts): 100% de cobertura en mapeo de estados, transportistas y seriales.',
+    ],
+  },
+  {
     version: '2.25.1',
     date: '2026-11-22',
     commit: 'fix-cisco-api-gateway-pending-approval-diagnostics',
     title: 'Diagnóstico y Mensajería Proactiva de Estado de Aprobación en Cisco API Gateway',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Diagnóstico de Aprobación Cisco (ciscoCommerceService.ts): Detección precisa de respuestas HTTP 403, 404 y 503 devueltas por el API Gateway de Cisco mientras una aplicación registrada está en revisión de aprobación.',

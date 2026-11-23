@@ -63,6 +63,7 @@ import { downloadContentSafe } from '../../utils/downloadHelper';
 import { useTableDensityAndZoom } from '../../hooks/useTableDensityAndZoom';
 import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
 import { formatShortUserFirstName } from '../../utils/userNameUtils';
+import { CiscoOrderTrackingSyncModal } from './CiscoOrderTrackingSyncModal';
 
 export function BoTrackingView() {
   const { currentUser, processedResult, detectedPartner } = useCiscoAutomatedStore();
@@ -93,6 +94,8 @@ export function BoTrackingView() {
   const [newNoteText, setNewNoteText] = useState('');
   const [selectedOrderForEdit, setSelectedOrderForEdit] = useState<BoOrderTrackingRecord | null>(null);
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
+  const [isCiscoTrackingModalOpen, setIsCiscoTrackingModalOpen] = useState(false);
+  const [selectedOrderForCiscoTracking, setSelectedOrderForCiscoTracking] = useState<BoOrderTrackingRecord | null>(null);
 
   // Formulario nueva orden
   const [newOrderForm, setNewOrderForm] = useState({
@@ -243,6 +246,13 @@ export function BoTrackingView() {
     await saveBoTracking(selectedOrderForEdit);
     setSelectedOrderForEdit(null);
     await loadData();
+  };
+
+  // Handler para aplicar sincronización desde Cisco API
+  const handleApplyCiscoTracking = async (updated: BoOrderTrackingRecord) => {
+    await saveBoTracking(updated);
+    await loadData();
+    setSelectedOrderForCiscoTracking(null);
   };
 
   // Handler para eliminar orden
@@ -480,6 +490,18 @@ export function BoTrackingView() {
 
           {/* Action Buttons */}
           <div className="flex items-center flex-wrap gap-2.5">
+            <button
+              onClick={() => {
+                setSelectedOrderForCiscoTracking(null);
+                setIsCiscoTrackingModalOpen(true);
+              }}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-blue-950/60 hover:bg-blue-900/80 text-blue-300 border border-blue-700/50 text-xs font-semibold rounded-xl transition-all cursor-pointer shadow-sm"
+              title="Consultar Tracking satelital en Cisco Orders API"
+            >
+              <Truck className="w-4 h-4 text-blue-400" />
+              <span>📡 Cisco Tracking API</span>
+            </button>
+
             <button
               onClick={() => setIsNewOrderModalOpen(true)}
               className="inline-flex items-center space-x-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
@@ -830,6 +852,16 @@ export function BoTrackingView() {
                             <div className="flex items-center justify-between pt-1">
                               <div className="flex items-center space-x-1">
                                 <button
+                                  onClick={() => {
+                                    setSelectedOrderForCiscoTracking(order);
+                                    setIsCiscoTrackingModalOpen(true);
+                                  }}
+                                  className="p-1.5 bg-blue-950/60 hover:bg-blue-900/80 text-blue-300 border border-blue-800/50 rounded-lg text-xs transition-colors cursor-pointer"
+                                  title="Consultar y sincronizar tracking en Cisco API"
+                                >
+                                  <Truck className="w-3.5 h-3.5 text-blue-400" />
+                                </button>
+                                <button
                                   onClick={() => setSelectedOrderForNotes(order)}
                                   className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition-colors cursor-pointer relative"
                                   title="Ver bitácora y notas diarias"
@@ -993,6 +1025,16 @@ export function BoTrackingView() {
                         </td>
                         <td className={`${cellPaddingClass} text-center`}>
                           <div className="flex items-center justify-center space-x-1.5">
+                            <button
+                              onClick={() => {
+                                setSelectedOrderForCiscoTracking(order);
+                                setIsCiscoTrackingModalOpen(true);
+                              }}
+                              className="p-1.5 bg-blue-950/60 hover:bg-blue-900/80 text-blue-300 border border-blue-800/50 rounded-lg text-xs cursor-pointer"
+                              title="Consultar Cisco Tracking API"
+                            >
+                              <Truck className="w-3.5 h-3.5 text-blue-400" />
+                            </button>
                             <button
                               onClick={() => setSelectedOrderForNotes(order)}
                               className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs cursor-pointer relative"
@@ -1499,6 +1541,17 @@ export function BoTrackingView() {
           </div>
         </div>
       )}
+
+      {/* MODAL 4: Sincronización de Tracking con Cisco Orders API (Solo Lectura) */}
+      <CiscoOrderTrackingSyncModal
+        isOpen={isCiscoTrackingModalOpen}
+        onClose={() => {
+          setIsCiscoTrackingModalOpen(false);
+          setSelectedOrderForCiscoTracking(null);
+        }}
+        currentRecord={selectedOrderForCiscoTracking}
+        onApplyTracking={handleApplyCiscoTracking}
+      />
     </div>
   );
 }

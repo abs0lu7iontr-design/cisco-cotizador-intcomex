@@ -6,6 +6,25 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.26.0] - 2026-11-22
+### 📡 Integración de Seguimiento Satelital y Tracking de Órdenes Cisco API (Módulo BO)
+- **Servicio de Seguimiento de Órdenes de Solo Lectura (`src/modules/ciscoApi/ciscoOrdersService.ts`):**
+  - Implementada integración M2M con Cisco Orders API / Modern Commerce GraphQL (`query GetOrderDetails`).
+  - **Gobernanza Estricta:** Diseñado exclusivamente para lectura y visualización logística. La plataforma no realiza compras, emisión de órdenes de compra ni mutaciones comerciales en Cisco CCW (labor reservada al área de Compras Intcomex).
+  - Consulta automática de estado en fábrica (`Booked`, `In Production`, `Shipped`, `Delivered`).
+  - Extracción y normalización de Transportistas oficiales (`FedEx`, `UPS`, `DHL`, `Otro`).
+  - Obtención de número de guía internacional (Waybill) y generación automática de enlace de rastreo en vivo.
+  - Extracción de fecha estimada de despacho (`Estimated Ship Date` - ESD), fecha real (`Actual Ship Date` - ASD) y proyección de arribo a Chile (+14 días).
+  - Desglose de ítems por línea y captura de números de serie físicos (S/N) asignados a cada equipo.
+- **Modal Interactivo de Sincronización Logística (`src/modules/bo/CiscoOrderTrackingSyncModal.tsx`):**
+  - Nueva ventana modal accesible desde la cabecera y desde cada tarjeta de orden en vistas Kanban y Tabla.
+  - Permite ingresar o autocompletar el Sales Order (SO) de Cisco o la OC del cliente y consultar en tiempo real.
+  - Botón de 1 clic *"Sincronizar Datos en Orden BO"* que actualiza la etapa logística, asigna el courier y la guía, y genera un registro fechado en la bitácora de la orden.
+- **Integración en Tablero Back Order (`src/modules/bo/BoTrackingView.tsx`):**
+  - Botón en cabecera superior *"📡 Cisco Tracking API"* y accesos rápidos directos en cada tarjeta de orden.
+- **Nueva Suite de Pruebas Unitarias Automatizadas (`tests/ciscoOrderTracking.test.ts`):**
+  - Pruebas exhaustivas que validan el mapeo de estados, normalización de couriers, síntesis de URLs y parseo de números de serie físicos.
+
 ## [v2.25.1] - 2026-11-22
 ### 🛡️ Diagnóstico y Mensajería Proactiva de Estado de Aprobación en Cisco API Gateway
 - **Manejo Específico de Códigos HTTP de Gateway Cisco (`src/modules/ciscoApi/ciscoCommerceService.ts`):**
