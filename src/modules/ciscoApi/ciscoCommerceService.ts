@@ -162,6 +162,23 @@ export async function fetchEstimateFromCiscoApi(
     }
 
     const payload: any = await proxyRes.json();
+
+    if (!payload?.success) {
+      const httpStatus = payload?.httpStatus;
+      if (httpStatus === 403 || httpStatus === 404 || httpStatus === 503) {
+        return {
+          success: false,
+          error: `Cisco API Gateway retornó HTTP ${httpStatus}. La aplicación "Cisco-Automated-Intcomex" aún se encuentra pendiente de aprobación en el portal Cisco Developer para el entorno ${envMode} (o el servicio se encuentra en aprovisionamiento). Tan pronto como Cisco apruebe el acceso, este endpoint quedará habilitado automáticamente.`,
+          rawResponse: payload,
+        };
+      }
+      return {
+        success: false,
+        error: payload?.error || `Error HTTP ${httpStatus || 'desconocido'} al consultar Cisco API.`,
+        rawResponse: payload,
+      };
+    }
+
     const gqlData = payload?.data?.data?.getEstimate;
 
     if (!gqlData || !gqlData.lines || gqlData.lines.length === 0) {

@@ -15,11 +15,23 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.25.1',
+    date: '2026-11-22',
+    commit: 'fix-cisco-api-gateway-pending-approval-diagnostics',
+    title: 'Diagnóstico y Mensajería Proactiva de Estado de Aprobación en Cisco API Gateway',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Diagnóstico de Aprobación Cisco (ciscoCommerceService.ts): Detección precisa de respuestas HTTP 403, 404 y 503 devueltas por el API Gateway de Cisco mientras una aplicación registrada está en revisión de aprobación.',
+      'Mensajes de Estado Proactivos en UI: Informa al usuario con exactitud que las credenciales están activas pero el permiso del endpoint está en proceso de revisión por parte de Cisco IT.',
+    ],
+  },
+  {
     version: '2.25.0',
     date: '2026-11-22',
     commit: 'feat-cisco-modern-commerce-graphql-api-lead-times',
     title: 'Integración Oficial con Cisco Modern Commerce GraphQL API y Tiempos de Entrega (Lead Times)',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Integración Directa M2M con Cisco Modern Commerce (ciscoCommerceService.ts): Conexión mediante OAuth2 Client Credentials con la API GraphQL oficial de Cisco (it-developer.cisco.com), soportando entornos Sandbox (POE en capitest.cisco.com) y Producción (PROD en capi.cisco.com).',

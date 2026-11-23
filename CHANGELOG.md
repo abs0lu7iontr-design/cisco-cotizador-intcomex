@@ -6,6 +6,12 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.25.1] - 2026-11-22
+### 🛡️ Diagnóstico y Mensajería Proactiva de Estado de Aprobación en Cisco API Gateway
+- **Manejo Específico de Códigos HTTP de Gateway Cisco (`src/modules/ciscoApi/ciscoCommerceService.ts`):**
+  - Implementada detección proactiva de respuestas HTTP 403 (Acceso no autorizado / Developer Inactive), HTTP 404 (Endpoint no enrutado / Aprovisionamiento pendiente) y HTTP 503 (Servicio en cola de activación).
+  - Al consultar cotizaciones mientras la aplicación se encuentra en revisión en el Cisco Developer Portal, el sistema informa con claridad que la app `Cisco-Automated-Intcomex` está a la espera de que el aprobador de Cisco active la suscripción al API, evitando mensajes genéricos confusos.
+
 ## [v2.25.0] - 2026-11-22
 ### ☁️ Integración Oficial con Cisco Modern Commerce GraphQL API y Tiempos de Entrega (Lead Times)
 - **Conexión Directa M2M con Cisco Modern Commerce API (`src/modules/ciscoApi/ciscoCommerceService.ts`):**
