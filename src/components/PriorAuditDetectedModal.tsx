@@ -33,8 +33,7 @@ export function PriorAuditDetectedModal({
 
   const formatPct = (val?: number) => {
     if (val === undefined || val === null || isNaN(val)) return '0%';
-    const num = val > 0 && val <= 1 ? val * 100 : val;
-    return `${Math.round(num * 10) / 10}%`;
+    return `${Math.round(val * 100) / 100}%`;
   };
 
   const intFormatted = formatPct(detectedAudit.previousInternacionPct);

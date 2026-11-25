@@ -55,8 +55,14 @@ export function safeParseFloat(value: any): number {
     str = str.slice(1, -1).trim();
   }
 
-  // Limpiar símbolos de moneda ($, USD, CLP, UF), porcentaje (%) y espacios
-  str = str.replace(/[$\s%]/g, '').replace(/^(USD|CLP|UF)/i, '').replace(/(USD|CLP|UF)$/i, '').trim();
+  // Limpiar prefijos/sufijos de moneda (US$, $US, USD, CLP, UF), porcentaje (%) y espacios sin dejar residuos
+  str = str
+    .replace(/^(US\$|\$US|CLP\$|USD|CLP|UF)\s*/i, '')
+    .replace(/\s*(US\$|USD|CLP|UF)$/i, '')
+    .replace(/[$\s%]/g, '')
+    .replace(/^(USD|CLP|UF)/i, '')
+    .replace(/(USD|CLP|UF)$/i, '')
+    .trim();
   if (!str) return 0;
 
   if (str.startsWith('-')) {
@@ -143,7 +149,6 @@ export function checkIsIntangible(sku: string, description: string): boolean {
   const isPureStandaloneLicenseSku =
     !isPhysicalAccessoryOrCable &&
     (upperSku.startsWith('CON-') ||
-      upperSku.startsWith('CON') ||
       upperSku.startsWith('L-') ||
       upperSku.startsWith('LIC-') ||
       isCiscoOneLicenseSku ||
@@ -219,7 +224,7 @@ export function checkIsIntangible(sku: string, description: string): boolean {
     return true;
   }
 
-  if (upperSku.includes('-LIC') || upperSku.includes('LIC')) {
+  if (upperSku.startsWith('LIC-') || upperSku.includes('-LIC') || upperSku.includes('LIC-')) {
     return true;
   }
 
@@ -642,7 +647,7 @@ export function solveGoalSeekParameters(
   currentParams: QuoteParameters = { internacionPct: 7.0, arancelPct: 6.0, margenPct: 5.0 },
   overrides?: Record<number, OverrideRuleType>
 ): GoalSeekResult {
-  const targetMargin = currentParams.margenPct >= 1 ? currentParams.margenPct / 100 : currentParams.margenPct;
+  const targetMargin = currentParams.margenPct / 100;
   if (targetMargin >= 0.99) {
     return { success: false, error: 'Margen inalcanzable. El límite máximo permitido es 99%.' };
   }

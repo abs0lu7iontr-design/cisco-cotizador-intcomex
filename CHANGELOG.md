@@ -6,6 +6,21 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.26.3] - 2026-11-25
+### 🛠️ Cola Offline, Autenticación Segura y Precisión Financiera/Temporal (#3, #4 y #5)
+- **Cola Offline y Detector de Conflictos (`src/core/storage/offlineSyncQueue.ts`, `offlineConflictDetector.ts`):**
+  - Implementada sincronización real en `executeQueuedItem` para `save_sku_override` (`shared_sku_rules`), `save_ticket` (`app_feedback_tickets`) y preservación segura de `save_ccwr_quote`; el branch `default` ahora retorna `{ ok: false }` en lugar de descartar acciones no reconocidas.
+  - Corregida la comparación `remoteCreatedTs > localCreatedTs` en `checkItemConflict` convirtiendo `localRec.createdAt` a milisegundos antes de comparar contra timestamps numéricos.
+- **Autenticación y Resguardo de Contraseñas (`src/modules/cloud/firestoreService.ts`, `UserManagementView.tsx`, `LoginScreen.tsx`, `functions/api/send-2fa-otp.ts`):**
+  - Añadida sal por usuario (`sha256Salted(password, username)`) con verificación en tiempo constante, retrocompatibilidad para hashes legacy y eliminación total de la comparación en texto plano (`password_hash === cleanPass`).
+  - Eliminado el reset silencioso a `'Intcomex2026!'` en `UserManagementView.tsx` al editar usuario, cambiar rol o activar/desactivar cuenta (preserva el `password_hash` existente en nube vía `{ merge: true }`), y eliminados los valores prellenados `'Intcomex2026!'` en formularios de creación/reset.
+  - Eliminado el guardado reversible de contraseñas Base64 en `localStorage` desde `LoginScreen.tsx` (`SAVED_PASSWORD_STORAGE_KEY`), purgando cualquier residuo previo.
+- **Cálculos Financieros, Parseo y Filtros Temporales (`forecastService.ts`, `calculations.ts`, `dateUtils.ts`, `store.tsx`, `PriorAuditDetectedModal.tsx`):**
+  - Corregido `parseFlexibleNumber` para no multiplicar por 1000 decimales como `0.125` / `0,125` / `-0.125`, y corregido `safeParseFloat` para limpiar `US$`/`USD` sin dejar residuos `"US"`.
+  - Refinado `checkIsIntangible` (`CON-` en lugar de `CON`, y delimitadores claros para `-LIC`/`LIC-`) para no marcar hardware como intangible, y corregido `solveGoalSeekParameters` para calcular márgenes `< 1%` (ej. `0.5%`) sin escalarlos erróneamente a `50%`.
+  - Corregido `extractMonthAndYearFromCommercialValue` (`d.getUTCMonth()` en lugar de `d.getUTCDate()`), restringido `CURRENT_MONTH` al año en curso en `matchesPeriodFilter` con soporte explícito `Q1-YYYY`/`YYYY-Q1`, y eliminada la escala errónea `<= 1 ? * 100` en `loadPriorAuditMargins` y `PriorAuditDetectedModal.tsx`.
+- **Nueva Suite de Pruebas (`tests/coreCalculationsAndOfflineAuth.test.ts`):** Verifica cola offline, detector de conflictos, sal por usuario, `parseFlexibleNumber('0.125')`, `safeParseFloat`, `checkIsIntangible`, Goal Seek `<1%` y filtros de fecha/mes.
+
 ## [v2.26.2] - 2026-11-25
 ### 🔒 Endurecimiento de Seguridad Edge/Firestore y Blindaje de Persistencia Local/IDB/SQLite
 - **Seguridad Edge y Autenticación 2FA/Turnstile (`functions/api/*`, `src/utils/edgeCors.ts`, `src/modules/security/*`):**

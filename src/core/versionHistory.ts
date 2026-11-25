@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.26.3',
+    date: '2026-11-25',
+    commit: 'offline-queue-auth-and-financial-precision-fixes',
+    title: 'Cola Offline Real, Autenticación Endurecida y Correcciones Financieras/Temporales',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Cola Offline y Conflictos (offlineSyncQueue.ts, offlineConflictDetector.ts): Sincronización real de save_sku_override y save_ticket, rechazo seguro en default, y normalización numérica de timestamps al detectar conflictos.',
+      'Autenticación y Contraseñas (firestoreService.ts, UserManagementView.tsx, LoginScreen.tsx): Sal por usuario con comparación en tiempo constante, eliminación de fallback en texto plano, fin de resets silenciosos a clave por defecto y purga de contraseñas Base64 en localStorage.',
+      'Motores Financieros y Fechas (forecastService.ts, calculations.ts, dateUtils.ts, store.tsx): Fix de 0.125 -> 125 en parseFlexibleNumber, limpieza de US$ en safeParseFloat, precisión sub-1% en Goal Seek/Auditoría, filtros por año en CURRENT_MONTH/Q1-YYYY y uso correcto de getUTCMonth().',
+    ],
+  },
+  {
     version: '2.26.2',
     date: '2026-11-25',
     commit: 'security-edge-firestore-and-storage-persistence-hardening',
     title: 'Endurecimiento de Seguridad Edge/Firestore y Blindaje de Persistencia Local/IDB/SQLite',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Seguridad Edge y Turnstile (functions/api/* y edgeCors.ts): Eliminado verify.js y failsafes cliente/servidor, CORS restringido a orígenes oficiales, prevención SSRF en authUrl de cisco-proxy.ts y fail-closed en geo-auth.ts.',

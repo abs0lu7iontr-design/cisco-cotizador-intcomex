@@ -316,13 +316,61 @@ async function executeQueuedItem(item: OfflineQueueItem): Promise<{ ok: boolean;
       return res.success ? { ok: true } : { ok: false, error: res.error };
     }
 
+    case 'save_sku_override': {
+      const ruleRec = item.payload?.record || item.payload;
+      if (!ruleRec || !ruleRec.sku) {
+        return { ok: false, error: 'Payload inválido para regla SKU en cola offline' };
+      }
+      const { getFirestoreInstance } = await import('../../modules/cloud/firebaseConfig');
+      const { db, isReady } = getFirestoreInstance();
+      if (!isReady || !db) {
+        return { ok: false, error: 'Firestore aún no disponible para Reglas SKU' };
+      }
+      const { publishSharedSkuRules } = await import('../../modules/cloud/firestoreService');
+      const author = ruleRec.author || {
+        username: 'offline_sync',
+        fullName: 'Sincronización Offline',
+        role: 'pm',
+      };
+      const res = await publishSharedSkuRules([ruleRec], author);
+      if (res.error && res.error.includes('almacenamiento local')) {
+        return { ok: false, error: res.error };
+      }
+      return res.success ? { ok: true } : { ok: false, error: res.error };
+    }
+
+    case 'save_ticket': {
+      const ticket = item.payload?.ticket || item.payload;
+      if (!ticket || !ticket.id) {
+        return { ok: false, error: 'Payload inválido para ticket en cola offline' };
+      }
+      const { getFirestoreInstance } = await import('../../modules/cloud/firebaseConfig');
+      const { db, isReady } = getFirestoreInstance();
+      if (!isReady || !db) {
+        return { ok: false, error: 'Firestore aún no disponible para Feedback/Tickets' };
+      }
+      const { doc, setDoc } = await import('firebase/firestore');
+      const { sanitizeForFirestore } = await import('../../modules/cloud/firestoreService');
+      await setDoc(doc(db, 'app_feedback_tickets', String(ticket.id)), sanitizeForFirestore(ticket), {
+        merge: true,
+      });
+      return { ok: true };
+    }
+
     case 'save_ccwr_quote': {
-      // Historial local CCW-R ya persistido en el PC (cruce con Forecast/Pipeline usa acciones dedicadas)
+      const quote = item.payload?.quote || item.payload;
+      if (quote?.headerInfo?.quoteNumber) {
+        const { saveCcwrQuoteHistory } = await import('../../modules/ccwrQuote/ccwrStorage');
+        await saveCcwrQuoteHistory(quote);
+      }
       return { ok: true };
     }
 
     default:
-      return { ok: true };
+      return {
+        ok: false,
+        error: `Acción offline no soportada para sincronización cloud: ${String(item.action)}`,
+      };
   }
 }
 

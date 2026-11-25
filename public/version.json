@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.26.2",
-  "git_commit": "6f0acdd",
+  "version": "2.26.3",
+  "git_commit": "ef8d211",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-25T04:00:59.233Z",
-  "release_notes": "fix(v2.26.1): auto-exclude XAAS SaaS SKUs from DSV export with proactive warnings and Deal 86803728 tests",
+  "build_timestamp": "2026-11-25T04:14:33.026Z",
+  "release_notes": "fix(v2.26.2): harden edge security, firestore rules, and IDB/SQLite/partners storage persistence",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

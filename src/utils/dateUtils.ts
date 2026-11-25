@@ -897,7 +897,7 @@ export function extractMonthAndYearFromCommercialValue(
   if (parsed.isValid && parsed.iso) {
     const d = new Date(parsed.iso);
     return {
-      month: (parsed.isCalendarDateOnly ? d.getUTCDate() : d.getMonth()) + 1,
+      month: (parsed.isCalendarDateOnly ? d.getUTCMonth() : d.getMonth()) + 1,
       year: parsed.isCalendarDateOnly ? d.getUTCFullYear() : d.getFullYear(),
     };
   }
@@ -909,21 +909,23 @@ export function extractMonthAndYearFromCommercialValue(
  * Comprueba si un registro o fecha coincide con un periodo de filtro seleccionado.
  * period puede ser:
  *  - "ALL" o "all": siempre true
- *  - "CURRENT_MONTH": coincide con el mes calendario actual (ej. Noviembre)
- *  - Nombre de mes: "Enero" ... "Diciembre"
- *  - Trimestre: "Q1", "Q2", "Q3", "Q4"
+ *  - "CURRENT_MONTH": coincide con el mes y año calendario actual (ej. Noviembre 2026)
+ *  - Nombre de mes: "Enero" ... "Diciembre" (opcionalmente con año, ej. "Noviembre 2026")
+ *  - Trimestre: "Q1", "Q2", "Q3", "Q4" (opcionalmente con año, ej. "Q1-2026" o "2026-Q1")
  *  - Año: "YEAR_CURRENT" o "YEAR_2026"
  *  - Clave YYYY-MM: ej. "2026-11"
  */
 export function matchesPeriodFilter(dateValue: unknown, period: string): boolean {
   if (!period || period === 'ALL' || period === 'all') return true;
 
-  const currentYear = new Date().getFullYear();
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
   const currentMonthName = getCurrentMonthName();
+  const isCurrentMonthFilter = period === 'CURRENT_MONTH' || period === 'current_month';
 
   // Si el filtro es CURRENT_MONTH, resolver al mes actual
-  const targetPeriod =
-    period === 'CURRENT_MONTH' || period === 'current_month' ? currentMonthName : period;
+  const targetPeriod = isCurrentMonthFilter ? currentMonthName : period;
 
   const extracted = extractMonthAndYearFromCommercialValue(dateValue);
   if (!extracted) {
@@ -935,13 +937,35 @@ export function matchesPeriodFilter(dateValue: unknown, period: string): boolean
           (m) => targetPeriod.toLowerCase().includes(m.toLowerCase()) && lower.includes(m.toLowerCase())
         )
       ) {
+        if (isCurrentMonthFilter) {
+          const explicitYearMatch = dateValue.match(/\b(20\d{2})\b/);
+          if (explicitYearMatch && parseInt(explicitYearMatch[1], 10) !== currentYear) {
+            return false;
+          }
+        }
         return true;
       }
     }
     return false;
   }
 
-  // Caso A: Filtro por Trimestre (Q1, Q2, Q3, Q4)
+  if (isCurrentMonthFilter) {
+    return extracted.month === currentMonth && extracted.year === currentYear;
+  }
+
+  // Caso A: Filtro por Trimestre ("Q1".."Q4", "2026-Q1" o "Q1-2026")
+  const quarterWithYearMatch =
+    targetPeriod.match(/^(\d{4})[-/\s]?Q([1-4])$/i) ||
+    targetPeriod.match(/^Q([1-4])[-/\s]?(\d{4})$/i);
+  if (quarterWithYearMatch) {
+    const isYearFirst = quarterWithYearMatch[1].length === 4;
+    const filterYear = parseInt(isYearFirst ? quarterWithYearMatch[1] : quarterWithYearMatch[2], 10);
+    const qNum = parseInt(isYearFirst ? quarterWithYearMatch[2] : quarterWithYearMatch[1], 10);
+    const startMonth = (qNum - 1) * 3 + 1;
+    const endMonth = startMonth + 2;
+    return extracted.year === filterYear && extracted.month >= startMonth && extracted.month <= endMonth;
+  }
+
   if (/^Q[1-4]$/i.test(targetPeriod)) {
     const qNum = parseInt(targetPeriod.slice(1), 10);
     const startMonth = (qNum - 1) * 3 + 1;
@@ -949,12 +973,12 @@ export function matchesPeriodFilter(dateValue: unknown, period: string): boolean
     return extracted.month >= startMonth && extracted.month <= endMonth;
   }
 
-  // Caso B: Filtro por Año Actual
-  if (
-    targetPeriod === 'YEAR_CURRENT' ||
-    targetPeriod === 'year_current' ||
-    targetPeriod === `YEAR_${currentYear}`
-  ) {
+  // Caso B: Filtro por Año Actual o explícito YEAR_YYYY
+  const yearMatch = targetPeriod.match(/^YEAR_(\d{4})$/i);
+  if (yearMatch) {
+    return extracted.year === parseInt(yearMatch[1], 10);
+  }
+  if (targetPeriod === 'YEAR_CURRENT' || targetPeriod === 'year_current') {
     return extracted.year === currentYear;
   }
 
@@ -964,11 +988,16 @@ export function matchesPeriodFilter(dateValue: unknown, period: string): boolean
     return extracted.year === filterY && extracted.month === filterM;
   }
 
-  // Caso D: Filtro por Nombre de Mes ("Noviembre", etc.)
+  // Caso D: Filtro por Nombre de Mes ("Noviembre" o "Noviembre 2026")
+  const explicitFilterYearMatch = targetPeriod.match(/\b(20\d{2})\b/);
+  const explicitFilterYear = explicitFilterYearMatch ? parseInt(explicitFilterYearMatch[1], 10) : null;
   for (let idx = 0; idx < SPANISH_MONTH_NAMES.length; idx++) {
     const mName = SPANISH_MONTH_NAMES[idx];
     if (targetPeriod.toLowerCase().includes(mName.toLowerCase())) {
-      return extracted.month === idx + 1;
+      return (
+        extracted.month === idx + 1 &&
+        (explicitFilterYear === null || extracted.year === explicitFilterYear)
+      );
     }
   }
 

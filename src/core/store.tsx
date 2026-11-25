@@ -573,8 +573,6 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     async (buffer: ArrayBuffer, fileName: string) => {
       setIsProcessing(true);
       setErrorMessage(null);
-      setFastTrackPromoMap({});
-      setParams(DEFAULT_PARAMS);
 
       try {
         const safeBuffer = buffer.slice(0);
@@ -594,6 +592,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           return;
         }
 
+        setFastTrackPromoMap({});
         setRawWorkbookBuffer(safeBuffer);
         setCurrentFileName(fileName);
 
@@ -1234,16 +1233,11 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
 
   const loadPriorAuditMargins = useCallback(async () => {
     if (!detectedAudit) return;
-    const priorInt =
-      detectedAudit.previousInternacionPct > 0 && detectedAudit.previousInternacionPct <= 1
-        ? Math.round(detectedAudit.previousInternacionPct * 100)
-        : Math.round(detectedAudit.previousInternacionPct);
-    const priorMarg =
-      detectedAudit.previousMarginPct > 0 && detectedAudit.previousMarginPct <= 1
-        ? Math.round(detectedAudit.previousMarginPct * 100)
-        : Math.round(detectedAudit.previousMarginPct);
+    const normalizePct = (val: number) => Math.round(val * 100) / 100;
+    const priorInt = normalizePct(detectedAudit.previousInternacionPct);
+    const priorMarg = normalizePct(detectedAudit.previousMarginPct);
     const rawAr = detectedAudit.previousArancelPct !== undefined ? detectedAudit.previousArancelPct : 6.0;
-    const priorAr = rawAr > 0 && rawAr <= 1 ? Math.round(rawAr * 100) : Math.round(rawAr);
+    const priorAr = normalizePct(rawAr);
 
     const hasCustom = Boolean(detectedAudit.hasCustomLineParams && detectedAudit.lineCustomParams);
     const mode = detectedAudit.parameterMode || (hasCustom ? 'custom_lines' : 'standard');

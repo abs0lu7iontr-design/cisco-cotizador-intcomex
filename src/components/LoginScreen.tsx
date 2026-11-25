@@ -67,20 +67,24 @@ const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 const FLOOD_WINDOW_MS = 10 * 1000; // 10 seconds
 const MAX_FLOOD_REQUESTS = 4;
 
-function encodePasswordToken(pass: string): string {
+// Política de seguridad estricta: jamás persistir contraseñas reversibles en localStorage.
+// El autocompletado seguro lo gestiona el gestor nativo del navegador (autoComplete="current-password").
+function encodePasswordToken(_pass: string): string {
   try {
-    return btoa(encodeURIComponent(pass));
-  } catch {
-    return '';
-  }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(SAVED_PASSWORD_STORAGE_KEY);
+    }
+  } catch {}
+  return '';
 }
 
-function decodePasswordToken(token: string): string {
+function decodePasswordToken(_token: string): string {
   try {
-    return decodeURIComponent(atob(token));
-  } catch {
-    return '';
-  }
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(SAVED_PASSWORD_STORAGE_KEY);
+    }
+  } catch {}
+  return '';
 }
 
 function loadSecurityState(): SecurityState {
@@ -124,14 +128,11 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   });
 
   const [password, setPassword] = useState(() => {
-    if (!localConfig.rememberLastUser) return '';
-    const rawUser = (localConfig.lastUsername || '').trim();
-    if (!rawUser || rawUser.toLowerCase() === 'pm_cisco') return '';
     try {
       if (typeof localStorage !== 'undefined') {
-        const stored = localStorage.getItem(SAVED_PASSWORD_STORAGE_KEY);
-        if (stored) {
-          return decodePasswordToken(stored);
+        const legacyStored = localStorage.getItem(SAVED_PASSWORD_STORAGE_KEY);
+        if (legacyStored) {
+          decodePasswordToken(legacyStored);
         }
       }
     } catch {}

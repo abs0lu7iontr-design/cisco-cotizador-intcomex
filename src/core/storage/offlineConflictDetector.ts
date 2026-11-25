@@ -78,7 +78,16 @@ export async function checkItemConflict(item: OfflineQueueItem): Promise<Offline
         const amountDiffers =
           Math.abs((remoteRec.currentAmount || 0) - (localRec.currentAmount || 0)) > 0.05;
 
-        if (remoteIsNewer || versionsDiffer || (amountDiffers && remoteCreatedTs > localRec.createdAt)) {
+          const localCreatedRaw = (localRec as any).createdAt;
+          const localCreatedTs =
+            typeof localCreatedRaw === 'number'
+              ? localCreatedRaw
+              : localCreatedRaw
+              ? new Date(localCreatedRaw).getTime()
+              : 0;
+          const safeLocalCreatedTs = Number.isFinite(localCreatedTs) ? localCreatedTs : 0;
+
+          if (remoteIsNewer || versionsDiffer || (amountDiffers && remoteCreatedTs > safeLocalCreatedTs)) {
           return {
             queueItemId: item.id,
             action: item.action,

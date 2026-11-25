@@ -2800,14 +2800,27 @@ export async function deleteCloudDsv(
 // ----------------------------------------------------------------------------
 const USERS_COLLECTION = 'users';
 const LOCAL_USERS_BACKUP_KEY = 'cisco_users_cloud_cache_v2';
+const GLOBAL_AUTH_SALT = 'Cisco_Automated_Intcomex_Salt_2026!';
 
-export async function sha256Salted(password: string): Promise<string> {
-  const salt = 'Cisco_Automated_Intcomex_Salt_2026!';
+export async function sha256Salted(password: string, usernameSalt?: string): Promise<string> {
+  const normalizedUser = (usernameSalt || '').trim().toLowerCase();
+  const payload = normalizedUser
+    ? `${normalizedUser}:${password}:${GLOBAL_AUTH_SALT}`
+    : `${password}${GLOBAL_AUTH_SALT}`;
   const encoder = new TextEncoder();
-  const data = encoder.encode(password + salt);
+  const data = encoder.encode(payload);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function timingSafeHexEquals(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 export const DEFAULT_BASE_USERS: CloudUserRecord[] = [
@@ -2915,19 +2928,24 @@ export async function authenticateCloudUser(
       }
     }
 
-    // Auto-seed inicial de Firestore si es primera instalación y son usuarios base
+    // Auto-seed inicial de Firestore únicamente si la colección de usuarios está completamente vacía
     if (!userData && (cleanUser === 'admin' || cleanUser === 'pm_cisco')) {
-      const defaultUser = DEFAULT_BASE_USERS.find((u) => u.username.toLowerCase() === cleanUser);
-      if (defaultUser) {
-        const defaultHash = await sha256Salted('Intcomex2026!');
-        const seededUser: CloudUserRecord = {
-          ...defaultUser,
-          password_hash: defaultHash,
-        };
-        try {
-          await withTimeout(setDoc(userDocRef, sanitizeForFirestore(seededUser)), 2500);
-          userData = seededUser;
-        } catch (_) {}
+      const anyUserSnap = await withTimeout(getDocs(query(collection(db, USERS_COLLECTION), limit(1))), 3000).catch(
+        () => null
+      );
+      if (anyUserSnap && anyUserSnap.empty) {
+        const defaultUser = DEFAULT_BASE_USERS.find((u) => u.username.toLowerCase() === cleanUser);
+        if (defaultUser) {
+          const defaultHash = await sha256Salted('Intcomex2026!');
+          const seededUser: CloudUserRecord = {
+            ...defaultUser,
+            password_hash: defaultHash,
+          };
+          try {
+            await withTimeout(setDoc(userDocRef, sanitizeForFirestore(seededUser)), 2500);
+            userData = seededUser;
+          } catch (_) {}
+        }
       }
     }
 
@@ -2942,11 +2960,13 @@ export async function authenticateCloudUser(
       };
     }
 
-    // Validar hash criptográfico con salt
-    const computedHash = await sha256Salted(cleanPass);
+    // Validar estrictamente hash criptográfico con salt (sin fallback de texto plano)
+    const perUserHash = await sha256Salted(cleanPass, cleanUser);
+    const legacyHash = await sha256Salted(cleanPass);
+    const storedHash = String(userData.password_hash || '').trim();
     const isValid =
-      Boolean(userData.password_hash) &&
-      (userData.password_hash === computedHash || userData.password_hash === cleanPass);
+      storedHash.length === 64 &&
+      (timingSafeHexEquals(storedHash, perUserHash) || timingSafeHexEquals(storedHash, legacyHash));
 
     if (!isValid) {
       return { success: false, error: 'Usuario o contraseña incorrectos.' };

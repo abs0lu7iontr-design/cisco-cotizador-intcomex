@@ -34,9 +34,11 @@ function timingSafeEqualStr(a: string, b: string): boolean {
   return diff === 0;
 }
 
-async function sha256SaltedServer(password: string): Promise<string> {
+async function sha256SaltedServer(password: string, usernameSalt?: string): Promise<string> {
   const salt = 'Cisco_Automated_Intcomex_Salt_2026!';
-  const data = new TextEncoder().encode(password + salt);
+  const normalizedUser = (usernameSalt || '').trim().toLowerCase();
+  const payload = normalizedUser ? `${normalizedUser}:${password}:${salt}` : `${password}${salt}`;
+  const data = new TextEncoder().encode(payload);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   return Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, '0'))
@@ -73,8 +75,9 @@ async function verifyAdminViaFirestore(
     return false;
   }
 
-  const computedHash = await sha256SaltedServer(cleanPass);
-  return timingSafeEqualStr(storedHash, computedHash);
+  const perUserHash = await sha256SaltedServer(cleanPass, cleanUser);
+  const legacyHash = await sha256SaltedServer(cleanPass);
+  return timingSafeEqualStr(storedHash, perUserHash) || timingSafeEqualStr(storedHash, legacyHash);
 }
 
 export const onRequestOptions: PagesFunction<Env> = async (context) => {

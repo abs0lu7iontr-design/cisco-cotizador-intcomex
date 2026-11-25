@@ -41,7 +41,11 @@ export function parseFlexibleNumber(val: any): number {
   }
   if (!val) return 0;
 
-  let str = String(val).trim().replace(/[$£€\sUSD]/gi, '');
+  let str = String(val)
+    .trim()
+    .replace(/^(US\$|\$US|USD|CLP|UF)\s*/i, '')
+    .replace(/\s*(USD|CLP|UF)$/i, '')
+    .replace(/[$£€\s]/gi, '');
   if (!str) return 0;
 
   const hasComma = str.includes(',');
@@ -63,7 +67,7 @@ export function parseFlexibleNumber(val: any): number {
       // Múltiples comas son separadores de miles
       str = str.replace(/,/g, '');
     } else if (parts.length === 2) {
-      if (parts[1].length === 3 && parts[0].length <= 3) {
+      if (parts[1].length === 3 && parts[0].length <= 3 && !/^-?0+$/.test(parts[0])) {
         str = str.replace(',', '');
       } else {
         str = parts[0] + '.' + parts[1];
@@ -75,15 +79,15 @@ export function parseFlexibleNumber(val: any): number {
       // Múltiples puntos son separadores de miles (formato CLP / Intcomex)
       str = str.replace(/\./g, '');
     } else if (parts.length === 2) {
-      // Si la parte derecha tiene 3 dígitos exactos y la izquierda <= 3, ej: 1.085 -> 1085
-      if (parts[1].length === 3 && parts[0].length <= 3) {
+      // Solo interpretar punto como separador de miles si parte entera no es 0 (evita convertir 0.125 en 125)
+      if (parts[1].length === 3 && parts[0].length <= 3 && !/^-?0+$/.test(parts[0])) {
         str = str.replace('.', '');
       }
     }
   }
 
   const num = parseFloat(str);
-  return isNaN(num) ? 0 : Number(num.toFixed(2));
+  return isNaN(num) ? 0 : Number(num.toFixed(4));
 }
 
 export function normalizeMatchKey(val?: string | null): string {

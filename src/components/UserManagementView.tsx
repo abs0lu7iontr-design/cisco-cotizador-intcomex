@@ -54,7 +54,7 @@ export function UserManagementView() {
   const [newUsername, setNewUsername] = useState('');
   const [newFullName, setNewFullName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('Intcomex2026!');
+  const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState<Role>('pm');
 
   // Form States - Edit Full User
@@ -65,7 +65,7 @@ export function UserManagementView() {
   const [editIsActive, setEditIsActive] = useState<boolean>(true);
 
   // Form States - Quick Actions
-  const [resetPasswordVal, setResetPasswordVal] = useState('Intcomex2026!');
+  const [resetPasswordVal, setResetPasswordVal] = useState('');
   const [targetRole, setTargetRole] = useState<Role>('pm');
 
   // 2FA Admin Unlock & Contingency State
@@ -169,9 +169,10 @@ export function UserManagementView() {
       }
 
       // Cloud Firestore + Local Cache creation
-      const hash = await sha256Salted(newPassword);
+      const cleanNewUser = newUsername.trim().toLowerCase();
+      const hash = await sha256Salted(newPassword, cleanNewUser);
       const newUserRecord: CloudUserRecord = {
-        username: newUsername.trim().toLowerCase(),
+        username: cleanNewUser,
         full_name: newFullName.trim(),
         email: newEmail.trim(),
         role: newRole,
@@ -237,20 +238,19 @@ export function UserManagementView() {
         }
       }
 
-      // Cloud Firestore + Local Cache Update
-      let passwordHash = (selectedUserForAction as any).password_hash;
-      if (editPassword.trim()) {
-        passwordHash = await sha256Salted(editPassword.trim());
-      } else if (!passwordHash) {
-        passwordHash = await sha256Salted('Intcomex2026!');
-      }
+      // Cloud Firestore + Local Cache Update (nunca sobrescribir hash existente con clave por defecto)
+      const existingHash = (selectedUserForAction as any).password_hash as string | undefined;
+      const cleanTargetUser = selectedUserForAction.username.toLowerCase();
+      const passwordHash = editPassword.trim()
+        ? await sha256Salted(editPassword.trim(), cleanTargetUser)
+        : existingHash;
 
       const updatedRecord: CloudUserRecord = {
-        username: selectedUserForAction.username.toLowerCase(),
+        username: cleanTargetUser,
         full_name: editFullName.trim(),
         email: editEmail.trim(),
         role: editRole,
-        password_hash: passwordHash,
+        ...(passwordHash ? { password_hash: passwordHash } : {}),
         is_active: editIsActive ? 1 : 0,
         created_at: selectedUserForAction.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -286,13 +286,14 @@ export function UserManagementView() {
         }
       }
 
-      // Cloud update
+      // Cloud update (preserva password_hash existente vía merge: true si no está cargado localmente)
+      const existingHash = (selectedUserForAction as any).password_hash as string | undefined;
       const updatedRecord: CloudUserRecord = {
         username: selectedUserForAction.username.toLowerCase(),
         full_name: selectedUserForAction.full_name,
         email: selectedUserForAction.email,
         role: targetRole,
-        password_hash: (selectedUserForAction as any).password_hash || (await sha256Salted('Intcomex2026!')),
+        ...(existingHash ? { password_hash: existingHash } : {}),
         is_active: selectedUserForAction.is_active ?? 1,
         created_at: selectedUserForAction.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -332,9 +333,10 @@ export function UserManagementView() {
       }
 
       // Cloud password hash reset
-      const newHash = await sha256Salted(resetPasswordVal);
+      const cleanTargetUser = selectedUserForAction.username.toLowerCase();
+      const newHash = await sha256Salted(resetPasswordVal, cleanTargetUser);
       const updatedRecord: CloudUserRecord = {
-        username: selectedUserForAction.username.toLowerCase(),
+        username: cleanTargetUser,
         full_name: selectedUserForAction.full_name,
         email: selectedUserForAction.email,
         role: selectedUserForAction.role,
@@ -376,13 +378,14 @@ export function UserManagementView() {
         }
       }
 
-      // Cloud status toggle
+      // Cloud status toggle (preserva password_hash existente en la nube)
+      const existingHash = (user as any).password_hash as string | undefined;
       const updatedRecord: CloudUserRecord = {
         username: user.username.toLowerCase(),
         full_name: user.full_name,
         email: user.email,
         role: user.role,
-        password_hash: (user as any).password_hash || (await sha256Salted('Intcomex2026!')),
+        ...(existingHash ? { password_hash: existingHash } : {}),
         is_active: nextState ? 1 : 0,
         created_at: user.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -577,7 +580,7 @@ export function UserManagementView() {
                           <button
                             onClick={() => {
                               setSelectedUserForAction(u);
-                              setResetPasswordVal('Intcomex2026!');
+                              setResetPasswordVal('');
                               setShowResetModal(true);
                             }}
                             className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors cursor-pointer"
