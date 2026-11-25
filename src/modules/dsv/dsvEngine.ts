@@ -69,6 +69,45 @@ export function isZeroValueBomItem(item: RawBomItem): boolean {
 }
 
 /**
+ * Detecta SKUs SaaS / XaaS (SKU IDENTIFIER = XAAS) que Cisco DSV rechaza automáticamente
+ * con "SAAS SKU NOT ELIGIBLE FOR DSV" (WPL Price LC = 0).
+ */
+export function isSaasIneligibleForDsv(item: RawBomItem): boolean {
+  const skuId = String(item.skuIdentifier || '').toUpperCase().trim();
+  return skuId === 'XAAS';
+}
+
+/**
+ * Determina si un ítem debe excluirse por defecto del DSV (valor $0 o SaaS no elegible).
+ */
+export function isDefaultExcludedFromDsv(item: RawBomItem): boolean {
+  return isZeroValueBomItem(item) || isSaasIneligibleForDsv(item);
+}
+
+/**
+ * Devuelve código y etiqueta legible del motivo por el cual un ítem se excluye del DSV.
+ */
+export function getDsvExclusionReason(item: RawBomItem): {
+  code: 'SAAS_NOT_ELIGIBLE' | 'ZERO_PRICE' | 'ZERO_QTY';
+  label: string;
+} {
+  const isSaas = isSaasIneligibleForDsv(item);
+  const qty = Number(item.qty) || 0;
+  const listPrice = Number(item.listPrice) || 0;
+
+  if (qty <= 0) {
+    return { code: 'ZERO_QTY', label: 'Cantidad <= 0' };
+  }
+  if (isSaas && listPrice > 0) {
+    return { code: 'SAAS_NOT_ELIGIBLE', label: 'SaaS / XaaS (No elegible DSV)' };
+  }
+  if (isSaas && listPrice <= 0) {
+    return { code: 'ZERO_PRICE', label: 'SaaS $0.00 (No elegible DSV)' };
+  }
+  return { code: 'ZERO_PRICE', label: 'Precio de Lista $0.00' };
+}
+
+/**
  * Detecta equipos SMB (Catalyst 1000/1200/1300 y CBS) para cotizador DSV
  */
 export function getDsvDiscountRate(sku: string, defaultRate: number = 42): number {
@@ -278,17 +317,23 @@ export function transformRawBomToDsv(
       : new Set(forceIncludedLineNumbers || []);
 
   let discardedCount = 0;
+  let discardedSaasCount = 0;
   const discardedRows: RawBomItem[] = [];
   const dsvRows: Dsv48LineItem[] = [];
 
   for (const item of rawBom.items) {
     const itemLineKey = sanitizeTrim(item.lineNumber);
     const isZeroValue = isZeroValueBomItem(item);
+    const isSaasIneligible = isSaasIneligibleForDsv(item);
+    const isDefaultExcluded = isZeroValue || isSaasIneligible;
     const isForced = forceIncludedSet.has(itemLineKey);
 
-    // Filtro de valor cero (Columna O: LIST_PRICE <= 0), salvo que allowExportAll sea true o haya sido forzado por el usuario
-    if (!allowExportAll && isZeroValue && !isForced) {
+    // Filtro por defecto: valor cero o SaaS/XaaS no elegible para DSV, salvo allowExportAll o inclusión forzada
+    if (!allowExportAll && isDefaultExcluded && !isForced) {
       discardedCount++;
+      if (isSaasIneligible && !isZeroValue) {
+        discardedSaasCount++;
+      }
       discardedRows.push(item);
       continue;
     }
@@ -390,7 +435,7 @@ export function transformRawBomToDsv(
       detectedType: effectiveCategory,
       overrideType: itemOverride,
       discrepancy,
-      isForcedIncluded: isForced && isZeroValue,
+      isForcedIncluded: isForced && isDefaultExcluded,
     };
 
     dsvRows.push(dsvRow);
@@ -404,6 +449,7 @@ export function transformRawBomToDsv(
     totalOriginalItems: rawBom.items.length,
     validDsvItems: dsvRows.length,
     discardedZeroItems: discardedCount,
+    discardedSaasItems: discardedSaasCount,
     rows: dsvRows,
     discardedRows,
     discrepancies: discrepanciesList,

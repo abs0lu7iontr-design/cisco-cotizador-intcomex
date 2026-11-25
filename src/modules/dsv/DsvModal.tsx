@@ -23,7 +23,9 @@ import { DsvModalFormData, SkuCategoryType, Dsv48LineItem } from './types';
 import {
   transformRawBomToDsv,
   generateCleanDsvWorkbook,
-  isZeroValueBomItem,
+  isSaasIneligibleForDsv,
+  isDefaultExcludedFromDsv,
+  getDsvExclusionReason,
   getFormattedDsvDate,
   generateDsvFilename,
   DsvDiscrepancy,
@@ -130,22 +132,26 @@ export const DsvModal: React.FC<DsvModalProps> = ({
 
   // Statistics of items
   const stats = useMemo(() => {
-    if (!rawBom || !rawBom.items) return { valid: 0, discarded: 0, total: 0, forced: 0 };
+    if (!rawBom || !rawBom.items) return { valid: 0, discarded: 0, discardedSaas: 0, total: 0, forced: 0 };
     let valid = 0;
     let discarded = 0;
+    let discardedSaas = 0;
     let forced = 0;
     const forceSet = forceIncludedLines || new Set<string>();
     rawBom.items.forEach((item) => {
-      const isZero = isZeroValueBomItem(item);
+      const isExcluded = isDefaultExcludedFromDsv(item);
       const isForced = forceSet.has(item.lineNumber);
-      if (!isZero || isForced) {
+      if (!isExcluded || isForced) {
         valid++;
-        if (isZero && isForced) forced++;
+        if (isExcluded && isForced) forced++;
       } else {
         discarded++;
+        if (isSaasIneligibleForDsv(item) && (item.listPrice || 0) > 0) {
+          discardedSaas++;
+        }
       }
     });
-    return { valid, discarded, total: rawBom.items.length, forced };
+    return { valid, discarded, discardedSaas, total: rawBom.items.length, forced };
   }, [rawBom, forceIncludedLines]);
 
   // Validation checks according to Section 7
@@ -448,7 +454,7 @@ export const DsvModal: React.FC<DsvModalProps> = ({
               title="Haz clic para ver o incluir P/N descartados ($0.00 USD)"
             >
               <span className="text-[11px] text-rose-300 flex items-center justify-center gap-1">
-                <span>Descartados ($0.00)</span>
+                <span>Descartados ({stats.discardedSaas > 0 ? 'SaaS / $0' : '$0.00'})</span>
                 {isDiscardedModalExpanded ? (
                   <ChevronUp className="w-3 h-3 text-rose-300" />
                 ) : (
@@ -459,12 +465,22 @@ export const DsvModal: React.FC<DsvModalProps> = ({
             </button>
           </div>
 
+          {/* Notice if SaaS items were excluded */}
+          {stats.discardedSaas > 0 && (
+            <div className="p-3 rounded-2xl bg-violet-950/40 border border-violet-500/40 text-violet-200 text-[11px] flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-violet-400 shrink-0 mt-0.5" />
+              <span>
+                Se excluyeron <strong>{stats.discardedSaas}</strong> ítem(s) <strong>SaaS / XaaS</strong> del archivo Excel porque Cisco los rechaza con <code className="px-1 rounded bg-rose-950/80 text-rose-300 font-mono">SAAS SKU NOT ELIGIBLE FOR DSV</code>. Puedes verlos o incluirlos manualmente haciendo clic en Descartados.
+              </span>
+            </div>
+          )}
+
           {/* Collapsible Discarded Section in Modal */}
           {isDiscardedModalExpanded && (
             <div className="border border-slate-800/90 rounded-2xl bg-slate-950/90 p-3 space-y-2 text-xs">
               <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold text-slate-300">
                 <span className="flex items-center gap-1.5 text-rose-300">
-                  <span>P/N Descartados de la exportación DSV (List Price $0.00 USD):</span>
+                  <span>P/N Descartados de la exportación DSV ($0.00 USD / SaaS XaaS):</span>
                 </span>
                 <div className="flex items-center gap-1.5">
                   {onIncludeAllLines && stats.discarded > 0 && (
@@ -490,32 +506,48 @@ export const DsvModal: React.FC<DsvModalProps> = ({
               </div>
               <div className="max-h-40 overflow-y-auto space-y-1.5 custom-scrollbar divide-y divide-slate-800/40">
                 {rawBom?.items
-                  .filter((it) => isZeroValueBomItem(it) && !forceIncludedLines?.has(it.lineNumber))
-                  .map((it, idx) => (
-                    <div key={idx} className="pt-1.5 flex items-center justify-between gap-2 text-[11px] font-mono">
-                      <div className="flex items-center gap-2 truncate">
-                        <span className="text-slate-500">L#{it.lineNumber}</span>
-                        <span className="font-bold text-white">{it.ciscoSku || it.partNumber}</span>
-                        <span className="text-slate-400 font-sans truncate max-w-[140px] text-[10px]" title={it.description}>
-                          {it.description || '-'}
-                        </span>
-                        <span className="text-slate-400">Qty:{it.qty}</span>
-                        <span className="text-rose-400 font-bold">$0.00</span>
+                  .filter((it) => isDefaultExcludedFromDsv(it) && !forceIncludedLines?.has(it.lineNumber))
+                  .map((it, idx) => {
+                    const reason = getDsvExclusionReason(it);
+                    const isSaasReason = reason.code === 'SAAS_NOT_ELIGIBLE';
+                    const displayList =
+                      it.durationListPrice && it.durationListPrice > 0
+                        ? it.durationListPrice
+                        : it.listPrice || 0;
+                    return (
+                      <div key={idx} className="pt-1.5 flex items-center justify-between gap-2 text-[11px] font-mono">
+                        <div className="flex items-center gap-2 truncate">
+                          <span className="text-slate-500">L#{it.lineNumber}</span>
+                          <span className="font-bold text-white">{it.ciscoSku || it.partNumber}</span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-sans font-bold ${
+                              isSaasReason
+                                ? 'bg-violet-950 text-violet-300 border border-violet-700/50'
+                                : 'bg-rose-950 text-rose-300 border border-rose-800/50'
+                            }`}
+                          >
+                            {isSaasReason ? 'SaaS/XAAS' : '$0.00'}
+                          </span>
+                          <span className="text-slate-400">Qty:{it.qty}</span>
+                          <span className={isSaasReason ? 'text-violet-300 font-bold' : 'text-rose-400 font-bold'}>
+                            ${displayList.toFixed(2)}
+                          </span>
+                        </div>
+                        {onToggleForceIncludeLine && (
+                          <button
+                            type="button"
+                            onClick={() => onToggleForceIncludeLine(it.lineNumber)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg transition-colors shrink-0 cursor-pointer"
+                            title="Forzar inclusión de este P/N en el DSV"
+                          >
+                            <Plus className="w-2.5 h-2.5" />
+                            <span>+ Incluir</span>
+                          </button>
+                        )}
                       </div>
-                      {onToggleForceIncludeLine && (
-                        <button
-                          type="button"
-                          onClick={() => onToggleForceIncludeLine(it.lineNumber)}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg transition-colors shrink-0 cursor-pointer"
-                          title="Forzar inclusión de este P/N en el DSV"
-                        >
-                          <Plus className="w-2.5 h-2.5" />
-                          <span>+ Incluir</span>
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                {rawBom?.items.filter((it) => isZeroValueBomItem(it) && !forceIncludedLines?.has(it.lineNumber)).length === 0 && (
+                    );
+                  })}
+                {rawBom?.items.filter((it) => isDefaultExcludedFromDsv(it) && !forceIncludedLines?.has(it.lineNumber)).length === 0 && (
                   <div className="text-center py-2 text-slate-500 text-[11px]">
                     No hay líneas descartadas (todos los P/N están incluidos en el DSV).
                   </div>

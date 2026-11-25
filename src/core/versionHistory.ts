@@ -15,11 +15,25 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.26.1',
+    date: '2026-11-25',
+    commit: 'fix-dsv-saas-xaas-exclusion-and-diagnostic',
+    title: 'Protección Anti-Rechazo DSV para SKUs SaaS / XaaS (SAAS SKU NOT ELIGIBLE FOR DSV)',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Exclusión Automática Anti-Rechazo DSV (dsvEngine.ts): Detecta SKUs con SKU IDENTIFIER = XAAS (ej. LIC-CW-E) que Cisco DSV rechaza con "SAAS SKU NOT ELIGIBLE FOR DSV" (WPL $0.00) y los excluye por defecto para evitar errores de carga.',
+      'Visibilidad y Control Manual (DsvView.tsx y DsvModal.tsx): Muestra alerta proactiva explicativa y traslada los ítems SaaS a la sección de descartados con su precio real y botón "+ Incluir en DSV" por si se requiere forzarlos.',
+      'Blindaje de Parser (dsvBomParser.ts): Captura BILLING MODEL (Prepaid Term) y protege DURATION LIST PRICE contra colisión con ORIGINAL DURATION LIST PRICE.',
+      'Suite de Pruebas (tests/dsvSaasExclusionAndDiagnostic.test.ts): Valida fórmulas matemáticas exactas y exclusión automática sobre el Deal 86803728.',
+    ],
+  },
+  {
     version: '2.26.0',
     date: '2026-11-22',
     commit: 'feat-cisco-orders-api-tracking-bo',
     title: 'Integración de Seguimiento Satelital y Tracking de Órdenes Cisco API (Módulo BO)',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Seguimiento Satelital de Órdenes Cisco (ciscoOrdersService.ts): Conexión directa M2M con Cisco Orders API para consultar el estado en planta de fabricación, ESD, despacho y números de serie físicos de los equipos.',

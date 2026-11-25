@@ -24,7 +24,13 @@ import {
 } from 'lucide-react';
 import { parseRawDealBom, RawBomParsedResult, RawBomItem, sanitizeTrim } from './dsvBomParser';
 import { DsvModal } from './DsvModal';
-import { isZeroValueBomItem, calculateDsvPrices, transformRawBomToDsv } from './dsvEngine';
+import {
+  isSaasIneligibleForDsv,
+  isDefaultExcludedFromDsv,
+  getDsvExclusionReason,
+  calculateDsvPrices,
+  transformRawBomToDsv,
+} from './dsvEngine';
 import { SkuCategoryType, DsvModalFormData } from './types';
 import { DsvIngestionView, ConsolidatedDealRecord } from './ingestion';
 import { saveDsvToCloud, getCloudDsvs, CloudDsvRecord } from '../cloud';
@@ -263,7 +269,7 @@ export const DsvView: React.FC = () => {
     setForceIncludedLines((prev) => {
       const next = new Set(prev);
       rawBom.items.forEach((item) => {
-        if (isZeroValueBomItem(item)) {
+        if (isDefaultExcludedFromDsv(item)) {
           next.add(sanitizeTrim(item.lineNumber));
         }
       });
@@ -282,9 +288,8 @@ export const DsvView: React.FC = () => {
       .map((it) => {
         const sku = `"${(it.ciscoSku || it.partNumber || '').replace(/"/g, '""')}"`;
         const desc = `"${(it.description || '').replace(/"/g, '""')}"`;
-        const reason = (it.listPrice <= 0)
-          ? '"Precio de lista $0.00 USD (Componente/Licencia sin costo en BOM)"'
-          : '"Cantidad menor o igual a cero"';
+        const reasonObj = getDsvExclusionReason(it);
+        const reason = `"${reasonObj.label}"`;
         return `"${it.lineNumber}",${sku},${desc},${it.qty || 0},${(it.listPrice || 0).toFixed(2)},${reason}`;
       })
       .join('\n');
@@ -425,23 +430,27 @@ export const DsvView: React.FC = () => {
   };
 
   // Compute dynamic valid and discarded items respecting forceIncludedLines
-  const { validItems, discardedItems } = useMemo(() => {
-    if (!rawBom || !rawBom.items) return { validItems: [], discardedItems: [] };
+  const { validItems, discardedItems, excludedSaasItems } = useMemo(() => {
+    if (!rawBom || !rawBom.items) return { validItems: [], discardedItems: [], excludedSaasItems: [] };
     const valid: Array<RawBomItem & { isForced?: boolean }> = [];
     const discarded: RawBomItem[] = [];
+    const saasExcluded: RawBomItem[] = [];
 
     for (const item of rawBom.items) {
       const lineKey = sanitizeTrim(item.lineNumber);
-      const isZero = isZeroValueBomItem(item);
+      const isExcluded = isDefaultExcludedFromDsv(item);
       const isForced = forceIncludedLines.has(lineKey);
 
-      if (!isZero || isForced) {
-        valid.push({ ...item, isForced: isZero && isForced });
+      if (!isExcluded || isForced) {
+        valid.push({ ...item, isForced: isExcluded && isForced });
       } else {
         discarded.push(item);
+        if (isSaasIneligibleForDsv(item) && (item.listPrice || 0) > 0) {
+          saasExcluded.push(item);
+        }
       }
     }
-    return { validItems: valid, discardedItems: discarded };
+    return { validItems: valid, discardedItems: discarded, excludedSaasItems: saasExcluded };
   }, [rawBom, forceIncludedLines]);
 
   return (
@@ -737,10 +746,34 @@ export const DsvView: React.FC = () => {
                 />
               </span>
               <span className="text-xs font-bold text-rose-400 mt-1 truncate">
-                {discardedItems.length} {discardedItems.length === 1 ? 'línea' : 'líneas'} ($0.00)
+                {discardedItems.length} {discardedItems.length === 1 ? 'línea' : 'líneas'} ({excludedSaasItems.length > 0 ? `${excludedSaasItems.length} SaaS / $0.00` : '$0.00'})
               </span>
             </div>
           </div>
+
+          {/* Alerta de SKUs SaaS / XaaS excluidos automáticamente (SAAS SKU NOT ELIGIBLE FOR DSV) */}
+          {excludedSaasItems.length > 0 && (
+            <div className="p-4 rounded-2xl bg-violet-950/40 border border-violet-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-violet-200 shadow-lg">
+              <div className="flex items-start sm:items-center space-x-3">
+                <AlertCircle className="w-5 h-5 text-violet-400 shrink-0 mt-0.5 sm:mt-0" />
+                <div>
+                  <strong className="font-bold text-violet-200 block">
+                    Protección Anti-Rechazo DSV: {excludedSaasItems.length} SKU(s) SaaS / XaaS excluidos automáticamente
+                  </strong>
+                  <span className="text-[11px] text-violet-300/90 leading-relaxed block">
+                    Cisco DSV rechaza los ítems con <code className="px-1 py-0.5 rounded bg-violet-900/60 text-violet-200 font-mono">SKU IDENTIFIER = XAAS</code> (ej: <strong>{excludedSaasItems.map((s) => s.ciscoSku).join(', ')}</strong>) con el error <code className="px-1 py-0.5 rounded bg-rose-950/80 text-rose-300 font-mono">SAAS SKU NOT ELIGIBLE FOR DSV</code> (WPL $0.00). Si necesitas revisarlos o forzarlos manualmente, despliega la sección inferior.
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDiscardedExpanded(true)}
+                className="px-3 py-1.5 rounded-xl bg-violet-600/20 hover:bg-violet-600/35 text-violet-200 border border-violet-500/40 font-bold text-[11px] transition-colors cursor-pointer shrink-0"
+              >
+                Ver Excluidos ({discardedItems.length})
+              </button>
+            </div>
+          )}
 
           {/* Rules Explanation Badge */}
           <div className="p-4 rounded-2xl bg-blue-950/40 border border-blue-800/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-blue-200">
@@ -958,7 +991,7 @@ export const DsvView: React.FC = () => {
                     <ChevronDown className="w-4 h-4 text-slate-400" />
                   )}
                   <span>
-                    P/N Descartados / Excluidos del DSV ($0.00 USD)
+                    P/N Descartados / Excluidos del DSV ($0.00 USD / SaaS XaaS)
                   </span>
                 </button>
                 <span className="text-[10px] bg-slate-800 text-slate-300 font-mono px-2.5 py-0.5 rounded-full border border-slate-700">
@@ -1034,7 +1067,12 @@ export const DsvView: React.FC = () => {
                       </thead>
                       <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
                         {discardedItems.map((dItem, dIdx) => {
-                          const isZero = (dItem.listPrice || 0) <= 0;
+                          const reason = getDsvExclusionReason(dItem);
+                          const isSaasReason = reason.code === 'SAAS_NOT_ELIGIBLE';
+                          const displayList =
+                            dItem.durationListPrice && dItem.durationListPrice > 0
+                              ? dItem.durationListPrice
+                              : dItem.listPrice || 0;
                           return (
                             <tr key={dIdx} className="hover:bg-slate-900/50 transition-colors">
                               <td className="p-2.5 text-center text-slate-400 font-semibold">{dItem.lineNumber}</td>
@@ -1043,12 +1081,18 @@ export const DsvView: React.FC = () => {
                                 {dItem.description || '-'}
                               </td>
                               <td className="p-2.5 text-center text-slate-300">{dItem.qty || 0}</td>
-                              <td className="p-2.5 text-right text-rose-300 font-bold">
-                                ${(dItem.listPrice || 0).toFixed(2)}
+                              <td className={`p-2.5 text-right font-bold ${isSaasReason ? 'text-violet-300' : 'text-rose-300'}`}>
+                                ${displayList.toFixed(2)}
                               </td>
                               <td className="p-2.5 text-center font-sans">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-950/60 text-rose-300 border border-rose-800/50">
-                                  {isZero ? 'Precio de Lista $0.00' : 'Cantidad <= 0'}
+                                <span
+                                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                    isSaasReason
+                                      ? 'bg-violet-950/70 text-violet-300 border-violet-700/60'
+                                      : 'bg-rose-950/60 text-rose-300 border-rose-800/50'
+                                  }`}
+                                >
+                                  {reason.label}
                                 </span>
                               </td>
                               <td className="p-2.5 text-center font-sans">

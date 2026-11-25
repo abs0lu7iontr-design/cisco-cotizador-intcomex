@@ -6,6 +6,21 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.26.1] - 2026-11-25
+### 🛡️ Protección Anti-Rechazo DSV para SKUs SaaS / XaaS (`SAAS SKU NOT ELIGIBLE FOR DSV`)
+- **Detección y Exclusión Automática de SKUs `XAAS` (`src/modules/dsv/dsvEngine.ts`):**
+  - Implementadas las funciones `isSaasIneligibleForDsv`, `isDefaultExcludedFromDsv` y `getDsvExclusionReason`.
+  - Los SKUs marcados en el BOM oficial de Cisco con `SKU IDENTIFIER = XAAS` (suscripciones SaaS/Cloud como `LIC-CW-E` o `CISCO-NETWORK-SUB`, que Cisco DSV rechaza sistemáticamente con `SAAS SKU NOT ELIGIBLE FOR DSV` y `WPL Price LC = 0`) se excluyen automáticamente por defecto de la exportación de 48 columnas para evitar rechazos parciales en el portal DSV.
+  - Se mantiene 100% operativa la opción de inclusión manual (`+ Incluir en DSV` / `forceIncludedLines`) en la sección inferior desplegable.
+- **Blindaje de Parser Deal BOM (`src/modules/dsv/dsvBomParser.ts`):**
+  - Añadida extracción explícita de `BILLING MODEL` (Columna X, ej. `Prepaid Term`).
+  - Blindaje contra colisión de cabeceras entre `ORIGINAL DURATION LIST PRICE` y `DURATION LIST PRICE` (`!text.includes('ORIGINAL')`).
+- **Alertas y Visibilidad en UI (`src/modules/dsv/DsvView.tsx` y `src/modules/dsv/DsvModal.tsx`):**
+  - Nuevo banner de alerta proactiva cuando el BOM contiene SKUs `XAAS` excluidos automáticamente, indicando el código de motivo `SAAS SKU NOT ELIGIBLE FOR DSV`.
+  - Etiqueta diferenciada (`SaaS / XaaS (No elegible DSV)`) y despliegue de su List Price real en la tabla de descartados y CSV exportable.
+- **Nueva Suite de Pruebas Unitarias (`tests/dsvSaasExclusionAndDiagnostic.test.ts`):**
+  - Reproducción exacta del caso Deal `86803728` (`CW9174I-CFG` + `LIC-CW-E`), validando exactitud de Columna J (`1463.83` / `261.00`), Columna K (`1009.54` / `198.00`), exclusión por defecto de `XAAS` e inclusión manual forzada.
+
 ## [v2.26.0] - 2026-11-22
 ### 📡 Integración de Seguimiento Satelital y Tracking de Órdenes Cisco API (Módulo BO)
 - **Servicio de Seguimiento de Órdenes de Solo Lectura (`src/modules/ciscoApi/ciscoOrdersService.ts`):**

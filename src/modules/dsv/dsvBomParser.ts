@@ -21,6 +21,7 @@ export interface RawBomItem {
   unitNetPrice?: number;       // Col Q (16) - UNIT NET PRICE
   extendedNetPrice?: number;   // Col R (17) - EXTENDED NET PRICE
   distiDiscountPct: number;    // Col S (18) - DISTI DISCOUNT (%)
+  billingModel?: string;       // Col X (23) - BILLING MODEL (ej: 'Prepaid Term')
   skuIdentifier?: string;      // Col Y (24) - SKU IDENTIFIER (ej: 'XAAS')
   description?: string;
   durationListPrice?: number;  // Col AD (29) - DURATION LIST PRICE
@@ -155,6 +156,7 @@ export async function parseRawDealBom(
   let colUnitNet = 16;    // Col Q (16) - UNIT NET PRICE
   let colExtNet = 17;     // Col R (17) - EXTENDED NET PRICE
   let colDiscount = 18;   // Col S (18) - DISTI DISCOUNT
+  let colBillingModel = 23; // Col X (23) - BILLING MODEL
   let colSkuIdentifier = 24; // Col Y (24) - SKU IDENTIFIER (ej: 'XAAS')
   let colDurationListPrice = 29; // Col AD (29) - DURATION LIST PRICE
   let colDurationNetPrice = 30;  // Col AE (30) - DURATION NET PRICE
@@ -226,11 +228,13 @@ export async function parseRawDealBom(
       ) {
         // Strictly Col S (DISTI DISCOUNT)
         colDiscount = colIdx;
+      } else if (text === 'BILLING MODEL' || text === 'BILLING_MODEL' || (text.includes('BILLING') && text.includes('MODEL'))) {
+        colBillingModel = colIdx;
       } else if (text === 'SKU IDENTIFIER' || text === 'SKU_IDENTIFIER' || text.includes('IDENTIFIER')) {
         colSkuIdentifier = colIdx;
-      } else if (text.includes('DURATION') && text.includes('NET') && text.includes('PRICE')) {
+      } else if (text.includes('DURATION') && text.includes('NET') && text.includes('PRICE') && !text.includes('ORIGINAL')) {
         colDurationNetPrice = colIdx;
-      } else if (text.includes('DURATION') && text.includes('LIST') && text.includes('PRICE')) {
+      } else if (text.includes('DURATION') && text.includes('LIST') && text.includes('PRICE') && !text.includes('ORIGINAL')) {
         colDurationListPrice = colIdx;
       } else if (text === 'PRICING TERM' || text === 'PRICING_TERM' || (text.includes('PRICING') && text.includes('TERM'))) {
         colPricingTerm = colIdx;
@@ -306,6 +310,13 @@ export async function parseRawDealBom(
       0
     );
     const discountVal = safeParseFloat(row[colDiscount]);
+    const billingModelVal = sanitizeTrim(
+      (colBillingModel !== -1 ? row[colBillingModel] : undefined) ??
+      row['BILLING MODEL'] ??
+      row['Billing Model'] ??
+      row[23] ??
+      ''
+    );
     const skuIdentifierVal = sanitizeTrim(
       (colSkuIdentifier !== -1 ? row[colSkuIdentifier] : undefined) ??
       row['SKU IDENTIFIER'] ??
@@ -367,6 +378,7 @@ export async function parseRawDealBom(
       unitNetPrice: unitNetVal,
       extendedNetPrice: extNetVal,
       distiDiscountPct: discountVal,
+      billingModel: billingModelVal,
       skuIdentifier: skuIdentifierVal,
       description: descStr,
       durationNetPrice,

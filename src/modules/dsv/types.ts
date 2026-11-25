@@ -81,6 +81,7 @@ export interface DsvTransformationSummary {
   totalOriginalItems: number;
   validDsvItems: number;
   discardedZeroItems: number;
+  discardedSaasItems?: number;
   rows: Dsv48LineItem[];
   discardedRows?: RawBomItem[];
   discrepancies?: DsvDiscrepancy[];
