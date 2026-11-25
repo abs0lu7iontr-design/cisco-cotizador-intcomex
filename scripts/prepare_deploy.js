@@ -124,4 +124,30 @@ for (const h of headersCandidates) {
   }
 }
 
+// Inyectar manifiesto real de chunks code-split y versión actual en dist-pages/sw.js para soporte 100% offline PWA
+const distAssetsPath = path.join(distPagesDir, 'assets');
+const distSwPath = path.join(distPagesDir, 'sw.js');
+if (fs.existsSync(distAssetsPath) && fs.existsSync(distSwPath)) {
+  const pkgJson = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+  const appVersion = String(pkgJson.version || '0.0.0').trim();
+  const precacheChunks = fs
+    .readdirSync(distAssetsPath)
+    .filter((f) => /\.(js|css)$/i.test(f))
+    .sort()
+    .map((f) => `/assets/${f}`);
+
+  let swCode = fs.readFileSync(distSwPath, 'utf8');
+  swCode = swCode
+    .replace(
+      /const CACHE_NAME = ['"][^'"]+['"];/,
+      `const CACHE_NAME = 'cisco-automated-shell-v${appVersion}';`
+    )
+    .replace(
+      /const PRECACHE_CHUNKS = \[\];/,
+      `const PRECACHE_CHUNKS = ${JSON.stringify(precacheChunks)};`
+    );
+  fs.writeFileSync(distSwPath, swCode, 'utf8');
+  console.log(`🛡️ [deploy-prep] Inyectados ${precacheChunks.length} chunks en dist-pages/sw.js (cache v${appVersion}) para Modo Offline PWA 100% completo.`);
+}
+
 console.log('🎉 [deploy-prep] ¡Preparación de despliegue completada con éxito!');

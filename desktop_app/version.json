@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.26.5",
-  "git_commit": "58cd308",
+  "version": "2.26.6",
+  "git_commit": "50507cd",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-25T10:27:49.078Z",
-  "release_notes": "fix(v2.26.4): desktop security isolation, exporter/HTML escaping, quick calc, audit logs & cache fingerprint",
+  "build_timestamp": "2026-11-25T10:42:19.204Z",
+  "release_notes": "perf(v2.26.5): code-splitting, lazy views/modals and deferred sql.js bundle",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

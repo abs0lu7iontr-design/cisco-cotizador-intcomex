@@ -20,7 +20,7 @@ export function registerServiceWorker(): void {
     return;
   }
 
-  window.addEventListener('load', () => {
+  const doRegister = () => {
     navigator.serviceWorker
       .register('/sw.js')
       .then((registration) => {
@@ -46,7 +46,13 @@ export function registerServiceWorker(): void {
       .catch((err) => {
         console.warn('[PWA] No se pudo registrar el Service Worker:', err);
       });
-  });
+  };
+
+  if (document.readyState === 'complete') {
+    doRegister();
+  } else {
+    window.addEventListener('load', doRegister);
+  }
 
   // Capturar evento beforeinstallprompt para permitir instalación PWA asistida
   window.addEventListener('beforeinstallprompt', (e) => {

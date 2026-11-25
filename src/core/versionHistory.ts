@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.26.6',
+    date: '2026-11-25',
+    commit: 'pwa-offline-chunk-precaching-for-code-splitting',
+    title: 'Pre-cacheo Automático PWA Offline para Todos los Chunks Code-Split',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Inyección automática de todos los chunks /assets/*.js y .css en dist-pages/sw.js (scripts/prepare_deploy.js + public/sw.js) con versión sincronizada en CACHE_NAME',
+      'Pre-cacheo resiliente en lotes de 6 chunks durante la instalación del Service Worker para garantizar acceso 100% offline a vistas lazy y SQLite WASM sin visitas previas',
+      'Corrección de registro en serviceWorkerManager.ts cuando document.readyState === complete tras requestIdleCallback',
+    ],
+  },
+  {
     version: '2.26.5',
     date: '2026-11-25',
     commit: 'code-splitting-lazy-views-and-sqljs-chunk-isolation',
     title: 'Code-Splitting Web (-80% Bundle Inicial), Lazy Views y Carga Diferida SQLite WASM',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Carga bajo demanda (React.lazy + Suspense) en 15 vistas secundarias, QuickCalculator y 14 modales pesados de App.tsx (#10)',

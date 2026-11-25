@@ -6,6 +6,16 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.26.6] - 2026-11-25
+
+### Corregido y Blindado
+- **Blindaje 100% Offline PWA para Chunks Code-Split (#10 Offline Fix):**
+  - Actualizado `public/sw.js` con `PRECACHE_CHUNKS`, `precacheChunksResiliently` (pre-cacheo en segundo plano en lotes de 6) y retorno seguro en `Response.error()` para assets no encontrados sin conexión.
+  - Actualizado `scripts/prepare_deploy.js` para inyectar automáticamente todos los archivos `/assets/*.js` y `/assets/*.css` generados dentro de `dist-pages/sw.js` y sincronizar `CACHE_NAME` con la versión de `package.json`, garantizando que vistas lazy y `vendor-sqljs` estén disponibles offline incluso sin haberse visitado previamente en la sesión.
+  - Corregido `src/core/serviceWorkerManager.ts` comprobando `document.readyState === 'complete'` para que el registro diferido con `requestIdleCallback` / `setTimeout` nunca pierda el evento `window.load`.
+
+---
+
 ## [v2.26.5] - 2026-11-25
 
 ### Optimizado

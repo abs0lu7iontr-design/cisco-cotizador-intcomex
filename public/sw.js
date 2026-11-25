@@ -7,7 +7,7 @@
 // 3. Cloud & Firestore APIs: Network-Only (handled by IndexedDB offline vaults)
 // ============================================================================
 
-const CACHE_NAME = 'cisco-automated-shell-v2.24.0';
+const CACHE_NAME = 'cisco-automated-shell-v2.26.6';
 
 const PRECACHE_ASSETS = [
   '/',
@@ -18,13 +18,34 @@ const PRECACHE_ASSETS = [
   '/icon-512.svg',
 ];
 
-// 1. Instalación del Service Worker: Pre-cacheados de recursos mínimos esenciales
+// Lista inyectada automáticamente por scripts/prepare_deploy.js durante el build web
+// para pre-cachear en segundo plano todos los chunks lazy (.js / .css) y garantizar 100% modo offline.
+const PRECACHE_CHUNKS = [];
+
+async function precacheChunksResiliently(cache, chunkUrls) {
+  if (!Array.isArray(chunkUrls) || chunkUrls.length === 0) return;
+  const BATCH_SIZE = 6;
+  for (let i = 0; i < chunkUrls.length; i += BATCH_SIZE) {
+    const batch = chunkUrls.slice(i, i + BATCH_SIZE);
+    await Promise.allSettled(
+      batch.map(async (url) => {
+        const hit = await cache.match(url);
+        if (!hit) {
+          await cache.add(url);
+        }
+      })
+    );
+  }
+}
+
+// 1. Instalación del Service Worker: Pre-cacheo de shell mínimo + chunks divididos (Code-Splitting Offline)
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => {
-        return cache.addAll(PRECACHE_ASSETS);
+      .then(async (cache) => {
+        await cache.addAll(PRECACHE_ASSETS);
+        await precacheChunksResiliently(cache, PRECACHE_CHUNKS);
       })
       .then(() => {
         return self.skipWaiting();
@@ -123,7 +144,21 @@ self.addEventListener('fetch', (event) => {
   if (isStaticAsset) {
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
-        const fetchPromise = fetch(request)
+        if (cachedResponse) {
+          fetch(request)
+            .then((networkResponse) => {
+              if (networkResponse && networkResponse.status === 200) {
+                const responseClone = networkResponse.clone();
+                caches.open(CACHE_NAME).then((cache) => {
+                  cache.put(request, responseClone);
+                });
+              }
+            })
+            .catch(() => {});
+          return cachedResponse;
+        }
+
+        return fetch(request)
           .then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200) {
               const responseClone = networkResponse.clone();
@@ -133,9 +168,7 @@ self.addEventListener('fetch', (event) => {
             }
             return networkResponse;
           })
-          .catch(() => cachedResponse);
-
-        return cachedResponse || fetchPromise;
+          .catch(() => Response.error());
       })
     );
   }

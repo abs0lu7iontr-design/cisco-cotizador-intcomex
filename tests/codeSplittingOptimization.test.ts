@@ -78,6 +78,23 @@ async function runTests() {
     );
   }
 
+  const swCode = fs.readFileSync(path.join(rootDir, 'public', 'sw.js'), 'utf8');
+  assert.ok(swCode.includes('const PRECACHE_CHUNKS = []'), 'public/sw.js debe definir PRECACHE_CHUNKS');
+  assert.ok(swCode.includes('precacheChunksResiliently'), 'public/sw.js debe pre-cachear chunks en batches resilientes');
+
+  const swMgrCode = fs.readFileSync(path.join(rootDir, 'src', 'core', 'serviceWorkerManager.ts'), 'utf8');
+  assert.ok(
+    swMgrCode.includes("document.readyState === 'complete'"),
+    'serviceWorkerManager.ts debe registrar /sw.js aunque document.readyState ya sea complete'
+  );
+
+  const deployPrepCode = fs.readFileSync(path.join(rootDir, 'scripts', 'prepare_deploy.js'), 'utf8');
+  assert.ok(
+    deployPrepCode.includes('PRECACHE_CHUNKS') && deployPrepCode.includes('distSwPath'),
+    'prepare_deploy.js debe inyectar PRECACHE_CHUNKS reales en dist-pages/sw.js'
+  );
+  console.log('  ✅ Pre-cacheo automático de chunks offline PWA verificado.');
+
   console.log('\n🎉 Todas las pruebas de Code-Splitting (#10) pasaron al 100%!');
 }
 
