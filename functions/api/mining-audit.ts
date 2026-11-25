@@ -5,21 +5,17 @@
 
 import { runMiningAudit } from '../../src/modules/mining/miningAuditor';
 import { CustomerMatchInput } from '../../src/modules/mining/customerMatcher';
+import { buildEdgeCorsHeaders } from '../../src/utils/edgeCors';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
-
-export const onRequestOptions: PagesFunction = async () => {
+export const onRequestOptions: PagesFunction = async (context) => {
   return new Response(null, {
     status: 204,
-    headers: corsHeaders,
+    headers: buildEdgeCorsHeaders(context.request, 'POST, OPTIONS', 'Content-Type'),
   });
 };
 
 export const onRequestPost: PagesFunction = async (context) => {
+  const corsHeaders = buildEdgeCorsHeaders(context.request, 'POST, OPTIONS', 'Content-Type');
   try {
     const body: any = await context.request.json();
 
@@ -68,7 +64,7 @@ export const onRequestPost: PagesFunction = async (context) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error?.message || 'Error interno evaluando auditoría minera.',
+        error: 'Error interno evaluando auditoría minera.',
       }),
       {
         status: 500,

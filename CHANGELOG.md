@@ -6,6 +6,20 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.26.2] - 2026-11-25
+### 🔒 Endurecimiento de Seguridad Edge/Firestore y Blindaje de Persistencia Local/IDB/SQLite
+- **Seguridad Edge y Autenticación 2FA/Turnstile (`functions/api/*`, `src/utils/edgeCors.ts`, `src/modules/security/*`):**
+  - Eliminado archivo redundante `functions/api/verify.js` (failsafe `token.length >= 20` y clave dummy) y endurecidos `functions/api/verify.ts`, `functions/api/verify-turnstile.ts` y `turnstileService.ts` para exigir `TURNSTILE_SECRET_KEY` y retornar HTTP `403` ante tokens inválidos.
+  - Restringido `functions/api/cisco-proxy.ts` mediante allowlist estricta de hosts HTTPS Cisco tanto en `authUrl` (prevención de SSRF) como en `targetUrl`, prioridad de secretos de servidor (`env.CISCO_CLIENT_*`) y CORS limitado a orígenes oficiales (`src/utils/edgeCors.ts`), evitando también guardar/enviar secretos por defecto innecesariamente desde `ciscoAuthService.ts`.
+  - Protegido `action === 'generate_admin_override'` en `functions/api/send-2fa-otp.ts` exigiendo secreto servidor o verificación de credenciales de Administrador contra Firestore (más confirmación en `UserManagementView.tsx`), añadido escape HTML en plantillas de correo, comparación HMAC en tiempo constante y modo *fail-closed* en `functions/api/geo-auth.ts`.
+- **Endurecimiento de Reglas Firestore (`firestore.rules`):**
+  - Reemplazado `allow delete: if true` en `cisco_forecast_records` por `isAdmin() || !isAuthenticated()`, aplicadas validaciones estrictas `hasOnly` / `affectedKeys`, inmutabilidad de `v0_RAW`/`v0` en versiones de `estimates`, prevención de escrituras huérfanas, protección RBAC para cuentas `admin` y límites de tamaño anti-DoS en las 13 colecciones.
+- **Integridad de Almacenamiento Local, Partners, Backups y SQLite (`modernStorageEngine.ts`, `usePartnerDatabase.ts`, `databaseBackupManager.ts`, `sqliteStorageEngine.ts`):**
+  - Migración real de claves `idb_fallback_*` hacia IndexedDB antes de limpiar `localStorage`, protección contra borrado si falla el parseo/escritura IDB y reordenamiento de `optimizeAndMigrateLocalStorage()` para hacer alcanzable la compactación de `cisco_cloud_estimates_cache_v2`.
+  - Hidratación automática desde IndexedDB con aislamiento por proyecto (`hydratePartnersFromIndexedDb`) en `usePartnerDatabase.ts` y snapshots asíncronos completos (`exportAllDatabasesSnapshotAsync`) en `databaseBackupManager.ts` para catálogos `> 20 KB` de Partners, DSV y reglas SKU.
+  - Recuperación automática desde el snapshot secundario de IndexedDB ante binarios OPFS corruptos y `flushSqlitePersist()` en eventos `pagehide`/`beforeunload`/`visibilitychange` en `sqliteStorageEngine.ts`.
+- **Nueva Suite de Pruebas (`tests/securityAndStorageHardening.test.ts`):** Valida CORS Edge, cierre de bypass Turnstile, persistencia >20 KB de Partners/Backups y compactación de `modernStorageEngine`.
+
 ## [v2.26.1] - 2026-11-25
 ### 🛡️ Protección Anti-Rechazo DSV para SKUs SaaS / XaaS (`SAAS SKU NOT ELIGIBLE FOR DSV`)
 - **Detección y Exclusión Automática de SKUs `XAAS` (`src/modules/dsv/dsvEngine.ts`):**

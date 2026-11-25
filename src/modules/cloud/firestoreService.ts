@@ -126,7 +126,7 @@ export async function hydrateDsvCacheFromIndexedDb(): Promise<CloudDsvRecord[]> 
   return inMemoryDsvCache;
 }
 
-function getLocalDsvCache(): CloudDsvRecord[] {
+export function getLocalDsvCache(): CloudDsvRecord[] {
   try {
     const deletedIds = getDeletedDsvIds();
     const map = new Map<string, CloudDsvRecord>();

@@ -62,7 +62,12 @@ export function saveCiscoConfig(cfg: Partial<CiscoApiConfig>): CiscoApiConfig {
 
   if (typeof localStorage !== 'undefined') {
     try {
-      localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify(updated));
+      // Avoid persisting default clientSecret in localStorage unless user customized it
+      const toPersist: Partial<CiscoApiConfig> = { ...updated };
+      if (toPersist.clientSecret === DEFAULT_CISCO_CONFIG.clientSecret) {
+        delete toPersist.clientSecret;
+      }
+      localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify(toPersist));
       localStorage.removeItem(TOKEN_CACHE_KEY);
     } catch {
       // Ignorar errores de cuota
@@ -146,13 +151,15 @@ export async function getCiscoAccessTokenWithMeta(
   // 2. Modo Navegador Web (Cloudflare Pages Edge Proxy para evitar error 401 Origin / CORS de Okta)
   if (typeof window !== 'undefined' && window.location?.protocol?.startsWith('http')) {
     try {
+      const hasCustomId = cfg.clientId !== DEFAULT_CISCO_CONFIG.clientId;
+      const hasCustomSecret = cfg.clientSecret !== DEFAULT_CISCO_CONFIG.clientSecret;
       const proxyRes = await fetch('/api/cisco-proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'token',
-          clientId: cfg.clientId,
-          clientSecret: cfg.clientSecret,
+          ...(hasCustomId ? { clientId: cfg.clientId } : {}),
+          ...(hasCustomSecret ? { clientSecret: cfg.clientSecret } : {}),
           authUrl: cfg.authUrl,
         }),
       });

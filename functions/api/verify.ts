@@ -3,11 +3,21 @@
 // Native onRequestPost handler for Cloudflare Turnstile validation
 // ============================================================================
 
+import { buildEdgeCorsHeaders } from '../../src/utils/edgeCors';
+
 interface Env {
   TURNSTILE_SECRET_KEY?: string;
 }
 
+export const onRequestOptions: PagesFunction<Env> = async (context) => {
+  return new Response(null, {
+    status: 204,
+    headers: buildEdgeCorsHeaders(context.request, 'POST, OPTIONS'),
+  });
+};
+
 export const onRequestPost: PagesFunction<Env> = async (context) => {
+  const corsHeaders = buildEdgeCorsHeaders(context.request, 'POST, OPTIONS');
   try {
     const body: any = await context.request.json();
     const rawToken = body?.token || body?.response || '';
@@ -19,14 +29,25 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         JSON.stringify({ success: false, "error-codes": ["missing-input-response"] }),
         {
           status: 400,
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...corsHeaders },
         }
       );
     }
 
-    // Read SECRET_KEY from environment variables and strip any quotes or whitespace
-    const rawSecret = context.env.TURNSTILE_SECRET_KEY || '1x0000000000000000000000000000000AA';
-    const SECRET_KEY = String(rawSecret).trim().replace(/^["']|["']$/g, '').trim();
+    const rawSecret = context.env.TURNSTILE_SECRET_KEY;
+    const SECRET_KEY = rawSecret
+      ? String(rawSecret).trim().replace(/^["']|["']$/g, '').trim()
+      : '';
+
+    if (!SECRET_KEY) {
+      return new Response(
+        JSON.stringify({ success: false, "error-codes": ["turnstile-not-configured"] }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        }
+      );
+    }
 
     const response = await fetch(
       "https://challenges.cloudflare.com/turnstile/v0/siteverify",
@@ -43,11 +64,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }
     );
 
-    const result = await response.json();
+    const result: any = await response.json();
+    const isVerified = Boolean(result && result.success === true);
 
     return new Response(JSON.stringify(result), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
+      status: isVerified ? 200 : 403,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   } catch (error) {
     console.error("Turnstile validation error:", error);
@@ -55,7 +77,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       JSON.stringify({ success: false, "error-codes": ["internal-error"] }),
       {
         status: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...corsHeaders },
       }
     );
   }

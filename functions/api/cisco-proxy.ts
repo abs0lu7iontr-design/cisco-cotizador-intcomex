@@ -5,37 +5,70 @@
 // y el rechazo HTTP 401 de Okta cuando el navegador envía cabecera Origin.
 // ============================================================================
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+import { buildEdgeCorsHeaders } from '../../src/utils/edgeCors';
 
 const DEFAULT_AUTH_URL = 'https://id.cisco.com/oauth2/default/v1/token';
 const DEFAULT_CLIENT_ID = '3400130c-8528-49a1-9c71-f40e68e0f9bc';
 const DEFAULT_CLIENT_SECRET = '801e3a4f-950f-4951-ba4f-3c63d3684bb6';
 
-export const onRequestOptions: PagesFunction = async () => {
+const ALLOWED_AUTH_HOSTS = new Set<string>([
+  'id.cisco.com',
+  'cloudsso.cisco.com',
+  'cloudsso1.cisco.com',
+]);
+
+const ALLOWED_API_HOSTS = new Set<string>([
+  'apix.cisco.com',
+  'api.cisco.com',
+  'sec.cloudapps.cisco.com',
+  'capitest.cisco.com',
+  'capi.cisco.com',
+  'it-api.cisco.com',
+]);
+
+function isAllowedCiscoUrl(rawUrl: string, allowedHosts: Set<string>): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.protocol === 'https:' && !parsed.username && !parsed.password && allowedHosts.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+export const onRequestOptions: PagesFunction = async (context) => {
   return new Response(null, {
     status: 204,
-    headers: corsHeaders,
+    headers: buildEdgeCorsHeaders(context.request, 'POST, OPTIONS'),
   });
 };
 
 export const onRequestPost: PagesFunction = async (context) => {
   const start = Date.now();
+  const corsHeaders = buildEdgeCorsHeaders(context.request, 'POST, OPTIONS');
   try {
     const body: any = await context.request.json();
     const action = body?.action || 'token';
 
     const env = (context.env || {}) as Record<string, string | undefined>;
-    const clientId = (body?.clientId || env.CISCO_CLIENT_ID || env.VITE_CISCO_CLIENT_ID || DEFAULT_CLIENT_ID).trim();
-    const clientSecret = (
-      body?.clientSecret ||
-      env.CISCO_CLIENT_SECRET || env.VITE_CISCO_CLIENT_SECRET ||
-      DEFAULT_CLIENT_SECRET
-    ).trim();
-    const authUrl = (body?.authUrl || env.CISCO_AUTH_URL || env.VITE_CISCO_AUTH_URL || DEFAULT_AUTH_URL).trim();
+    // Prefer server-side secrets configured in Cloudflare Pages when client uses default or omits them
+    const bodyClientId = typeof body?.clientId === 'string' ? body.clientId.trim() : '';
+    const bodyClientSecret = typeof body?.clientSecret === 'string' ? body.clientSecret.trim() : '';
+    const clientId = (env.CISCO_CLIENT_ID || bodyClientId || DEFAULT_CLIENT_ID).trim();
+    const clientSecret = (env.CISCO_CLIENT_SECRET || bodyClientSecret || DEFAULT_CLIENT_SECRET).trim();
+    const authUrl = (body?.authUrl || env.CISCO_AUTH_URL || DEFAULT_AUTH_URL).trim();
+
+    if (!isAllowedCiscoUrl(authUrl, ALLOWED_AUTH_HOSTS)) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'URL de autenticación Cisco no permitida por el proxy.',
+        }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        }
+      );
+    }
 
     if (!clientId || !clientSecret) {
       return new Response(
@@ -92,14 +125,7 @@ export const onRequestPost: PagesFunction = async (context) => {
 
     if (action === 'request') {
       const targetUrl = String(body?.url || '').trim();
-      if (
-        !targetUrl.startsWith('https://apix.cisco.com/') &&
-        !targetUrl.startsWith('https://api.cisco.com/') &&
-        !targetUrl.startsWith('https://sec.cloudapps.cisco.com/') &&
-        !targetUrl.startsWith('https://capitest.cisco.com/') &&
-        !targetUrl.startsWith('https://capi.cisco.com/') &&
-        !targetUrl.startsWith('https://it-api.cisco.com/')
-      ) {
+      if (!isAllowedCiscoUrl(targetUrl, ALLOWED_API_HOSTS)) {
         return new Response(
           JSON.stringify({
             success: false,

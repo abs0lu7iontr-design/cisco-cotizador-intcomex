@@ -34,6 +34,7 @@ let dbInstance: Database | null = null;
 let dbInitPromise: Promise<Database | null> | null = null;
 let isOpfsActive = false;
 let pendingSaveTimeout: any = null;
+let hasPendingSqliteWrite = false;
 let lastKnownBytes = 0;
 
 /**
@@ -253,23 +254,34 @@ export async function getSqliteDb(): Promise<Database | null> {
       const SQL = await initSqlJs();
 
       // 1. Intentar cargar binario previo desde OPFS
-      let binaryData = await readOpfsBinary();
+      const opfsBytes = await readOpfsBinary();
 
-      // 2. Si no hay en OPFS, intentar cargar desde el snapshot secundario
-      if (!binaryData || binaryData.length === 0) {
-        binaryData = await readSnapshotFallback();
+      // 2. Abrir DB desde OPFS o recuperar desde snapshot secundario IndexedDB si falta o está corrupto
+      let db: Database | null = null;
+      let restoredFromCorruptFallback = false;
+
+      if (opfsBytes && opfsBytes.length > 0) {
+        try {
+          db = new SQL.Database(opfsBytes);
+        } catch (e) {
+          console.warn('[SQLite] Binario OPFS corrupto o ilegible, intentando snapshot IndexedDB:', e);
+        }
       }
 
-      // 3. Crear o abrir la base de datos
-      let db: Database;
-      if (binaryData && binaryData.length > 0) {
-        try {
-          db = new SQL.Database(binaryData);
-        } catch (e) {
-          console.warn('[SQLite] Binario SQLite corrupto o ilegible, inicializando nueva:', e);
-          db = new SQL.Database();
+      if (!db) {
+        const fallbackBytes = await readSnapshotFallback();
+        if (fallbackBytes && fallbackBytes.length > 0) {
+          try {
+            db = new SQL.Database(fallbackBytes);
+            restoredFromCorruptFallback = Boolean(opfsBytes && opfsBytes.length > 0);
+          } catch (e) {
+            console.warn('[SQLite] Snapshot IndexedDB también ilegible, inicializando base limpia:', e);
+          }
         }
-      } else {
+      }
+
+      const isFreshDatabase = !db;
+      if (!db) {
         db = new SQL.Database();
       }
 
@@ -280,8 +292,10 @@ export async function getSqliteDb(): Promise<Database | null> {
       const initialBytes = db.export();
       lastKnownBytes = initialBytes.length;
 
-      // Guardar de inmediato si es una base nueva
-      if (!binaryData || binaryData.length === 0) {
+      // Reparar OPFS si fue recuperado desde fallback, o persistir si es una base nueva
+      if (restoredFromCorruptFallback) {
+        await writeOpfsBinary(initialBytes);
+      } else if (isFreshDatabase && (!opfsBytes || opfsBytes.length === 0)) {
         await persistSqliteToDisk();
       }
 
@@ -301,12 +315,27 @@ export async function getSqliteDb(): Promise<Database | null> {
  * Programa un guardado automático no-bloqueante a disco en OPFS / snapshot (debounced a 300 ms).
  */
 export function scheduleSqlitePersist(): void {
+  hasPendingSqliteWrite = true;
   if (pendingSaveTimeout) {
     clearTimeout(pendingSaveTimeout);
   }
   pendingSaveTimeout = setTimeout(() => {
+    pendingSaveTimeout = null;
     persistSqliteToDisk().catch(() => {});
   }, 300);
+}
+
+/**
+ * Fuerza la escritura inmediata de cambios SQLite pendientes a OPFS + IndexedDB.
+ */
+export async function flushSqlitePersist(): Promise<boolean> {
+  if (!dbInstance) return false;
+  if (pendingSaveTimeout) {
+    clearTimeout(pendingSaveTimeout);
+    pendingSaveTimeout = null;
+  }
+  if (!hasPendingSqliteWrite) return true;
+  return persistSqliteToDisk();
 }
 
 /**
@@ -315,6 +344,7 @@ export function scheduleSqlitePersist(): void {
 export async function persistSqliteToDisk(): Promise<boolean> {
   if (!dbInstance) return false;
   try {
+    hasPendingSqliteWrite = false;
     const bytes = dbInstance.export();
     lastKnownBytes = bytes.length;
     const opfsDone = await writeOpfsBinary(bytes);
@@ -324,6 +354,21 @@ export async function persistSqliteToDisk(): Promise<boolean> {
     console.warn('[SQLite] Error persistiendo SQLite a disco:', err);
     return false;
   }
+}
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  const handleFlushLifecycle = () => {
+    if (hasPendingSqliteWrite) {
+      flushSqlitePersist().catch(() => {});
+    }
+  };
+  window.addEventListener('pagehide', handleFlushLifecycle);
+  window.addEventListener('beforeunload', handleFlushLifecycle);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      handleFlushLifecycle();
+    }
+  });
 }
 
 // ============================================================================

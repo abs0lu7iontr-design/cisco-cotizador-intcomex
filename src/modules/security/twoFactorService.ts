@@ -180,7 +180,8 @@ export async function requestAdminUnlock(
  * Obtains or generates an admin contingency override code for a traveling user
  */
 export async function getAdminOverrideCode(
-  username?: string
+  username?: string,
+  adminCredentials?: { adminUsername: string; adminPassword: string }
 ): Promise<{ success: boolean; code?: string; dayStamp?: string; target?: string; error?: string }> {
   try {
     const res = await fetch('/api/send-2fa-otp', {
@@ -189,6 +190,8 @@ export async function getAdminOverrideCode(
       body: JSON.stringify({
         action: 'generate_admin_override',
         username: username || '',
+        ...(adminCredentials?.adminUsername ? { adminUsername: adminCredentials.adminUsername } : {}),
+        ...(adminCredentials?.adminPassword ? { adminPassword: adminCredentials.adminPassword } : {}),
       }),
     });
     const data: any = await res.json();

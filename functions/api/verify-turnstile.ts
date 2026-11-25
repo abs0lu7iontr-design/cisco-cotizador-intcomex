@@ -2,14 +2,24 @@
 // CLOUDFLARE PAGES FUNCTIONS - SERVERLESS TURNSTILE SITEVERIFY ENDPOINT
 // ============================================================================
 
+import { buildEdgeCorsHeaders } from '../../src/utils/edgeCors';
+
 interface Env {
   TURNSTILE_SECRET_KEY?: string;
 }
 
+export const onRequestOptions: PagesFunction<Env> = async (context) => {
+  return new Response(null, {
+    status: 204,
+    headers: buildEdgeCorsHeaders(context.request, 'POST, OPTIONS'),
+  });
+};
+
 export const onRequestPost: PagesFunction<Env> = async (context) => {
+  const corsHeaders = buildEdgeCorsHeaders(context.request, 'POST, OPTIONS');
   try {
     const body: any = await context.request.json();
-    const token = body?.token;
+    const token = String(body?.token || '').trim();
     const ip = context.request.headers.get('CF-Connecting-IP') || '';
 
     if (!token) {
@@ -17,12 +27,24 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         JSON.stringify({ success: false, error: 'Token Turnstile no proporcionado.' }),
         {
           status: 400,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
         }
       );
     }
 
-    const secretKey = context.env.TURNSTILE_SECRET_KEY || '1x0000000000000000000000000000000AA';
+    const secretKey = context.env.TURNSTILE_SECRET_KEY
+      ? String(context.env.TURNSTILE_SECRET_KEY).trim().replace(/^["']|["']$/g, '').trim()
+      : '';
+
+    if (!secretKey) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Servicio Turnstile no configurado en el servidor.' }),
+        {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        }
+      );
+    }
 
     const formData = new FormData();
     formData.append('secret', secretKey);
@@ -41,7 +63,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     if (outcome.success) {
       return new Response(JSON.stringify({ success: true }), {
         status: 200,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
       });
     } else {
       return new Response(
@@ -52,16 +74,16 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }),
         {
           status: 403,
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
         }
       );
     }
   } catch (err: any) {
     return new Response(
-      JSON.stringify({ success: false, error: err?.message || 'Error interno de validación' }),
+      JSON.stringify({ success: false, error: 'Error interno de validación Turnstile.' }),
       {
         status: 500,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
       }
     );
   }

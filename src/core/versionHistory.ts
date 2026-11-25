@@ -15,11 +15,25 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.26.2',
+    date: '2026-11-25',
+    commit: 'security-edge-firestore-and-storage-persistence-hardening',
+    title: 'Endurecimiento de Seguridad Edge/Firestore y Blindaje de Persistencia Local/IDB/SQLite',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Seguridad Edge y Turnstile (functions/api/* y edgeCors.ts): Eliminado verify.js y failsafes cliente/servidor, CORS restringido a orígenes oficiales, prevención SSRF en authUrl de cisco-proxy.ts y fail-closed en geo-auth.ts.',
+      'Protección 2FA Admin Override (send-2fa-otp.ts y UserManagementView.tsx): Validación obligatoria de credenciales de Administrador o secreto de servidor, comparación HMAC en tiempo constante y escape HTML en correos.',
+      'Reglas Firestore Endurecidas (firestore.rules): Eliminado delete abierto en Forecast, inmutabilidad v0_RAW en subcolecciones, allowlists de campos (hasOnly/affectedKeys) y límites anti-DoS en las 13 colecciones.',
+      'Cero Pérdida en Storage, Partners, Backups y SQLite (modernStorageEngine.ts, usePartnerDatabase.ts, databaseBackupManager.ts, sqliteStorageEngine.ts): Hidratación IDB para catálogos >20 KB, migración segura idb_fallback_*, recuperación de OPFS corrupto y flush al cerrar pestaña.',
+    ],
+  },
+  {
     version: '2.26.1',
     date: '2026-11-25',
     commit: 'fix-dsv-saas-xaas-exclusion-and-diagnostic',
     title: 'Protección Anti-Rechazo DSV para SKUs SaaS / XaaS (SAAS SKU NOT ELIGIBLE FOR DSV)',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Exclusión Automática Anti-Rechazo DSV (dsvEngine.ts): Detecta SKUs con SKU IDENTIFIER = XAAS (ej. LIC-CW-E) que Cisco DSV rechaza con "SAAS SKU NOT ELIGIBLE FOR DSV" (WPL $0.00) y los excluye por defecto para evitar errores de carga.',

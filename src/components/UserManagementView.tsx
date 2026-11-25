@@ -70,17 +70,27 @@ export function UserManagementView() {
 
   // 2FA Admin Unlock & Contingency State
   const [adminUnlockTarget, setAdminUnlockTarget] = useState<string>('');
+  const [adminAuthUsername, setAdminAuthUsername] = useState<string>('mskill');
+  const [adminAuthPassword, setAdminAuthPassword] = useState<string>('');
   const [adminGeneratedCode, setAdminGeneratedCode] = useState<string | null>(null);
   const [isGeneratingUnlockCode, setIsGeneratingUnlockCode] = useState<boolean>(false);
   const [codeCopied, setCodeCopied] = useState<boolean>(false);
 
   const handleGenerateOverride = async () => {
+    if (!adminAuthUsername.trim() || !adminAuthPassword.trim()) {
+      showToast('Confirme su usuario y contraseña de Administrador para autorizar el código.', 'error');
+      return;
+    }
     setIsGeneratingUnlockCode(true);
     setAdminGeneratedCode(null);
     try {
-      const res = await getAdminOverrideCode(adminUnlockTarget);
+      const res = await getAdminOverrideCode(adminUnlockTarget, {
+        adminUsername: adminAuthUsername.trim(),
+        adminPassword: adminAuthPassword,
+      });
       if (res.success && res.code) {
         setAdminGeneratedCode(res.code);
+        setAdminAuthPassword('');
         showToast('Código de contingencia generado para hoy.', 'success');
       } else {
         showToast(res.error || 'Error al generar código.', 'error');
@@ -689,12 +699,28 @@ export function UserManagementView() {
                   ))}
                 </select>
               </div>
+            </div>
 
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              <input
+                type="text"
+                value={adminAuthUsername}
+                onChange={(e) => setAdminAuthUsername(e.target.value)}
+                placeholder="Usuario Admin (ej: mskill)"
+                className="sm:w-44 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-indigo-500"
+              />
+              <input
+                type="password"
+                value={adminAuthPassword}
+                onChange={(e) => setAdminAuthPassword(e.target.value)}
+                placeholder="Confirmar clave Admin..."
+                className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-indigo-500"
+              />
               <button
                 type="button"
                 onClick={handleGenerateOverride}
                 disabled={isGeneratingUnlockCode}
-                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isGeneratingUnlockCode ? 'animate-spin' : ''}`} />
                 <span>{isGeneratingUnlockCode ? 'Generando...' : 'Generar Código'}</span>

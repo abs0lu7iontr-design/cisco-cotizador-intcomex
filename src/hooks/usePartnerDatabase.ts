@@ -11,11 +11,13 @@ import {
   getFirestoreInstance,
   readProjectScopedStorage,
   writeProjectScopedStorage,
+  getScopedStorageKey,
+  isDefaultFirebaseProject,
   registerProjectListener,
   captureProjectContext,
   isProjectContextCurrent,
 } from '../modules/cloud/firebaseConfig';
-import { idbSet, STORES } from '../core/storage/indexedDbStorage';
+import { idbSet, idbGet, STORES } from '../core/storage/indexedDbStorage';
 import { isAppOffline } from '../core/storage/offlineModeManager';
 
 export interface PartnerRecord {
@@ -235,17 +237,21 @@ export function markPendingPartnerWriteSynced(
   }
 }
 
+const inMemoryPartnersByScope = new Map<string, PartnerRecord[]>();
+
 export function persistPartnersToStorage(list: PartnerRecord[], projectId?: string): void {
   try {
-    // Almacenar en motor IndexedDB de alta capacidad para no saturar los 5 MB de LocalStorage
-    idbSet(STORES.KEYVAL, LOCAL_STORAGE_PARTNERS_KEY, list).catch(() => {});
+    const idbKey = getScopedStorageKey(LOCAL_STORAGE_PARTNERS_KEY, projectId);
+    inMemoryPartnersByScope.set(idbKey, list);
+    // Almacenar en motor IndexedDB de alta capacidad con clave por proyecto para evitar mezcla entre entornos
+    idbSet(STORES.KEYVAL, idbKey, list).catch(() => {});
     if (typeof localStorage === 'undefined') return;
     const serialized = JSON.stringify(list);
     if (serialized.length < 20_000) {
       writeProjectScopedStorage(LOCAL_STORAGE_PARTNERS_KEY, serialized, projectId);
     } else {
-      localStorage.removeItem(LOCAL_STORAGE_PARTNERS_KEY);
-      localStorage.removeItem(LOCAL_STORAGE_PARTNERS_VAULT_KEY);
+      localStorage.removeItem(getScopedStorageKey(LOCAL_STORAGE_PARTNERS_KEY, projectId));
+      localStorage.removeItem(getScopedStorageKey(LOCAL_STORAGE_PARTNERS_VAULT_KEY, projectId));
     }
   } catch {
     // Ignore storage quota errors
@@ -254,15 +260,45 @@ export function persistPartnersToStorage(list: PartnerRecord[], projectId?: stri
 
 export function loadPartnersFromStorage(projectId?: string): PartnerRecord[] {
   try {
-    if (typeof localStorage === 'undefined') return [];
+    const idbKey = getScopedStorageKey(LOCAL_STORAGE_PARTNERS_KEY, projectId);
+    const inMem = inMemoryPartnersByScope.get(idbKey) || [];
+    if (typeof localStorage === 'undefined') return inMem;
     const cached1 = readProjectScopedStorage(LOCAL_STORAGE_PARTNERS_KEY, projectId);
     const cached2 = readProjectScopedStorage(LOCAL_STORAGE_PARTNERS_VAULT_KEY, projectId);
     const p1: PartnerRecord[] = cached1 ? JSON.parse(cached1) : [];
     const p2: PartnerRecord[] = cached2 ? JSON.parse(cached2) : [];
     const pendingMap = getPendingPartnerWrites(projectId);
-    return mergePartnerListsDeterministically(p2, p1, { pendingMap });
+    const mergedLocal = mergePartnerListsDeterministically(p2, p1, { pendingMap });
+    return inMem.length > 0
+      ? mergePartnerListsDeterministically(inMem, mergedLocal, { pendingMap })
+      : mergedLocal;
   } catch {
     return [];
+  }
+}
+
+/**
+ * Hidrata de forma asíncrona la base de Partners desde IndexedDB cuando el catálogo supera los 20 KB
+ * y fue retirado de localStorage.
+ */
+export async function hydratePartnersFromIndexedDb(projectId?: string): Promise<PartnerRecord[]> {
+  try {
+    const idbKey = getScopedStorageKey(LOCAL_STORAGE_PARTNERS_KEY, projectId);
+    let idbList = await idbGet<PartnerRecord[]>(STORES.KEYVAL, idbKey);
+    const isDef = projectId !== undefined ? isDefaultFirebaseProject(projectId) : isDefaultFirebaseProject();
+    if ((!Array.isArray(idbList) || idbList.length === 0) && isDef && idbKey !== LOCAL_STORAGE_PARTNERS_KEY) {
+      idbList = await idbGet<PartnerRecord[]>(STORES.KEYVAL, LOCAL_STORAGE_PARTNERS_KEY);
+    }
+    const cleanIdb = Array.isArray(idbList) ? idbList : [];
+    const localList = loadPartnersFromStorage(projectId);
+    const pendingMap = getPendingPartnerWrites(projectId);
+    const merged = mergePartnerListsDeterministically(cleanIdb, localList, { pendingMap });
+    if (merged.length > 0) {
+      inMemoryPartnersByScope.set(idbKey, merged);
+    }
+    return merged;
+  } catch {
+    return loadPartnersFromStorage(projectId);
   }
 }
 
@@ -416,17 +452,35 @@ export function usePartnerDatabase(originalBomName: string) {
     }
   }, []);
 
-  // Escuchar actualizaciones locales inmediatas o cambio de proyecto Firebase
+  // Escuchar actualizaciones locales inmediatas, hidratación IDB al montar o cambio de proyecto Firebase
   useEffect(() => {
+    let active = true;
+    const hydrateFromIdb = () => {
+      const ctx = captureProjectContext();
+      hydratePartnersFromIndexedDb(ctx.projectId)
+        .then((hydrated) => {
+          if (!active || !isProjectContextCurrent(ctx) || hydrated.length === 0) return;
+          const pendingMap = getPendingPartnerWrites(ctx.projectId);
+          setPartners((prev) =>
+            mergePartnerListsDeterministically(hydrated, prev, { pendingMap })
+          );
+        })
+        .catch(() => {});
+    };
+
+    hydrateFromIdb();
+
     const handleLocalUpdate = () => {
       const loaded = loadPartnersFromStorage();
       setPartners(loaded);
+      hydrateFromIdb();
     };
 
     window.addEventListener('cisco_partners_updated', handleLocalUpdate);
     window.addEventListener('cisco-firebase-project-switched', handleLocalUpdate);
     window.addEventListener('storage', handleLocalUpdate);
     return () => {
+      active = false;
       window.removeEventListener('cisco_partners_updated', handleLocalUpdate);
       window.removeEventListener('cisco-firebase-project-switched', handleLocalUpdate);
       window.removeEventListener('storage', handleLocalUpdate);

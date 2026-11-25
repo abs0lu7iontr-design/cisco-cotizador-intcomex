@@ -167,30 +167,52 @@ export async function optimizeAndMigrateLocalStorage(): Promise<{
       } catch {}
     }
 
-    // 2. Limpiar claves residuales idb_fallback_* gigantes si IndexedDB ya está disponible
+    // 2. Migrar y consolidar claves residuales idb_fallback_* si IndexedDB ya está disponible
     const db = await getIndexedDb();
     if (db) {
-      const keysToRemove: string[] = [];
+      const keysToMigrate: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key && key.startsWith('idb_fallback_')) {
-          keysToRemove.push(key);
+          keysToMigrate.push(key);
         }
       }
-      for (const k of keysToRemove) {
-        const val = localStorage.getItem(k) || '';
-        freedBytes += (k.length + val.length) * 2;
-        localStorage.removeItem(k);
-        migratedKeys++;
-        clearedKeys.push(k);
+      const knownStores = [STORES.ESTIMATES, STORES.ROW_NOTES, STORES.OFFLINE_QUEUE, STORES.KEYVAL];
+      for (const k of keysToMigrate) {
+        const val = localStorage.getItem(k);
+        if (val === null) continue;
+        const remainder = k.slice('idb_fallback_'.length);
+        const matchedStore = knownStores.find((s) => remainder.startsWith(`${s}_`)) || STORES.KEYVAL;
+        const realKey = remainder.startsWith(`${matchedStore}_`)
+          ? remainder.slice(matchedStore.length + 1)
+          : remainder;
+
+        let parsedVal: unknown = val;
+        try {
+          parsedVal = JSON.parse(val);
+        } catch {
+          parsedVal = val;
+        }
+        const ok = realKey ? await idbSet(matchedStore, realKey, parsedVal) : false;
+        if (ok) {
+          freedBytes += (k.length + val.length) * 2;
+          localStorage.removeItem(k);
+          migratedKeys++;
+          clearedKeys.push(k);
+        }
       }
     }
 
-    // 3. Purga y consolidación de bóvedas pesadas hacia IndexedDB
-    for (let i = localStorage.length - 1; i >= 0; i--) {
+    // 3. Purga y consolidación de bóvedas pesadas hacia IndexedDB (recolectar claves antes de iterar)
+    const snapshotKeys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (!key) continue;
-      const raw = localStorage.getItem(key) || '';
+      if (key) snapshotKeys.push(key);
+    }
+
+    for (const key of snapshotKeys) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
 
       const isHeavyVault =
         HEAVY_VAULT_KEYS_TO_MIGRATE.some((h) => key.includes(h)) ||
@@ -204,68 +226,57 @@ export async function optimizeAndMigrateLocalStorage(): Promise<{
         key.includes('cisco_bo_sku_catalog') ||
         key.startsWith('idb_fallback_');
 
-      if (isHeavyVault && raw.length > 15_000) {
-        try {
-          const parsed = JSON.parse(raw);
-          await idbSet(STORES.KEYVAL, key, parsed);
-
-          // Si es clave de Pipeline o Forecast, persistir también bajo sus claves canónicas de IDB
-          if (key.includes('cisco_pipeline_deals') && Array.isArray(parsed) && parsed.length > 0) {
-            await idbSet(STORES.KEYVAL, 'pipeline_deals_idb_v1::cisco_automated', parsed);
-            await idbSet(STORES.KEYVAL, 'pipeline_deals_idb_v1::default_local', parsed);
-          } else if (key.includes('cisco_forecast_records') && Array.isArray(parsed) && parsed.length > 0) {
-            await idbSet(STORES.KEYVAL, 'forecast_records_idb_v1::cisco_automated', parsed);
-            await idbSet(STORES.KEYVAL, 'forecast_records_idb_v1::default_local', parsed);
-          }
-        } catch (_) {}
-        freedBytes += (key.length + raw.length) * 2;
-        localStorage.removeItem(key);
-        migratedKeys++;
-        clearedKeys.push(key);
-      } else if (raw.length > 30_000) {
-        // Cualquier clave atípica superior a 30 KB se traslada a IndexedDB para proteger el límite de 5 MB de LocalStorage
-        try {
-          const parsed = JSON.parse(raw);
-          await idbSet(STORES.KEYVAL, key, parsed);
-
-          if (key.includes('cisco_pipeline_deals') && Array.isArray(parsed) && parsed.length > 0) {
-            await idbSet(STORES.KEYVAL, 'pipeline_deals_idb_v1::cisco_automated', parsed);
-            await idbSet(STORES.KEYVAL, 'pipeline_deals_idb_v1::default_local', parsed);
-          } else if (key.includes('cisco_forecast_records') && Array.isArray(parsed) && parsed.length > 0) {
-            await idbSet(STORES.KEYVAL, 'forecast_records_idb_v1::cisco_automated', parsed);
-            await idbSet(STORES.KEYVAL, 'forecast_records_idb_v1::default_local', parsed);
-          }
-        } catch (_) {}
-        freedBytes += (key.length + raw.length) * 2;
-        localStorage.removeItem(key);
-        migratedKeys++;
-        clearedKeys.push(key);
-      } else if (key.includes('cisco_cloud_estimates_cache_v2') && raw.length > 40_000) {
-        // Reducir la copia de LocalStorage a un subset ultra-liviano de las últimas 15 cabeceras sin partidas
+      // Primero evaluar compactación específica del caché de cabeceras de estimates
+      if (key.includes('cisco_cloud_estimates_cache_v2') && raw.length > 40_000) {
         try {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed) && parsed.length > 15) {
-            await idbSet(STORES.KEYVAL, 'cisco_estimates_full_history_backup', parsed);
-            const trimmed = parsed.slice(0, 15).map((r: any) => ({
-              id: r.id,
-              estimateId: r.estimateId,
-              dealId: r.dealId,
-              partnerName: r.partnerName,
-              clientFinalName: r.clientFinalName,
-              createdAt: r.createdAt,
-              creator: r.creator,
-              financialSummary: r.financialSummary,
-              headerInfo: r.headerInfo,
-              itemsCount: r.itemsCount,
-              items: [],
-            }));
-            const trimmedStr = JSON.stringify(trimmed);
-            freedBytes += (raw.length - trimmedStr.length) * 2;
-            localStorage.setItem(key, trimmedStr);
-            migratedKeys++;
-            clearedKeys.push(`${key} (compactado a 15 registros)`);
+            const backedUp = await idbSet(STORES.KEYVAL, 'cisco_estimates_full_history_backup', parsed);
+            if (backedUp) {
+              const trimmed = parsed.slice(0, 15).map((r: any) => ({
+                id: r.id,
+                estimateId: r.estimateId,
+                dealId: r.dealId,
+                partnerName: r.partnerName,
+                clientFinalName: r.clientFinalName,
+                createdAt: r.createdAt,
+                creator: r.creator,
+                financialSummary: r.financialSummary,
+                headerInfo: r.headerInfo,
+                itemsCount: r.itemsCount,
+                items: [],
+              }));
+              const trimmedStr = JSON.stringify(trimmed);
+              freedBytes += Math.max(0, (raw.length - trimmedStr.length) * 2);
+              localStorage.setItem(key, trimmedStr);
+              migratedKeys++;
+              clearedKeys.push(`${key} (compactado a 15 registros)`);
+            }
           }
         } catch (_) {}
+      } else if ((isHeavyVault && raw.length > 15_000) || raw.length > 30_000) {
+        let migratedOk = false;
+        try {
+          const parsed = JSON.parse(raw);
+          migratedOk = await idbSet(STORES.KEYVAL, key, parsed);
+
+          // Si es clave de Pipeline o Forecast, persistir también bajo sus claves canónicas de IDB
+          if (migratedOk && key.includes('cisco_pipeline_deals') && Array.isArray(parsed) && parsed.length > 0) {
+            await idbSet(STORES.KEYVAL, 'pipeline_deals_idb_v1::cisco_automated', parsed);
+            await idbSet(STORES.KEYVAL, 'pipeline_deals_idb_v1::default_local', parsed);
+          } else if (migratedOk && key.includes('cisco_forecast_records') && Array.isArray(parsed) && parsed.length > 0) {
+            await idbSet(STORES.KEYVAL, 'forecast_records_idb_v1::cisco_automated', parsed);
+            await idbSet(STORES.KEYVAL, 'forecast_records_idb_v1::default_local', parsed);
+          }
+        } catch (_) {
+          migratedOk = false;
+        }
+        if (migratedOk) {
+          freedBytes += (key.length + raw.length) * 2;
+          localStorage.removeItem(key);
+          migratedKeys++;
+          clearedKeys.push(key);
+        }
       }
     }
 
@@ -280,19 +291,6 @@ export async function optimizeAndMigrateLocalStorage(): Promise<{
           key.includes('_debug_') ||
           key === 'cisco_users_local')
       ) {
-        tempKeys.push(key);
-      }
-    }
-    for (const tk of tempKeys) {
-      const val = localStorage.getItem(tk) || '';
-      freedBytes += (tk.length + val.length) * 2;
-      localStorage.removeItem(tk);
-      migratedKeys++;
-      clearedKeys.push(tk);
-    }
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && (key.startsWith('temp_') || key.startsWith('cache_log_') || key.includes('_debug_'))) {
         tempKeys.push(key);
       }
     }

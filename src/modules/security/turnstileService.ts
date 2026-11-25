@@ -34,27 +34,27 @@ export async function verifyTurnstileToken(
       const result: any = await res.json();
       if (result.success) {
         return { success: true };
-      } else {
-        const codes = result['error-codes'] || [];
-        const codeText = codes.length > 0 ? ` (${codes.join(', ')})` : '';
-        return {
-          success: false,
-          error: `Desafío de seguridad Turnstile no válido o expirado${codeText}.`,
-          errorCodes: codes,
-        };
       }
     }
+
+    let codes: string[] = [];
+    try {
+      const errBody: any = await res.json();
+      if (Array.isArray(errBody?.['error-codes'])) {
+        codes = errBody['error-codes'];
+      }
+    } catch {}
+    const codeText = codes.length > 0 ? ` (${codes.join(', ')})` : '';
+    return {
+      success: false,
+      error: `Desafío de seguridad Turnstile no válido o expirado${codeText}.`,
+      errorCodes: codes,
+    };
   } catch (err) {
     console.warn('[Turnstile /api/verify communication note]:', err);
+    return {
+      success: false,
+      error: 'No se pudo validar el desafío de seguridad Turnstile con el servidor.',
+    };
   }
-
-  // Failsafe if running in offline client mode
-  if (cleanToken && cleanToken.length >= 20) {
-    return { success: true };
-  }
-
-  return {
-    success: false,
-    error: 'Verificación de seguridad Turnstile incompleta. Por favor resuelva el captcha.',
-  };
 }

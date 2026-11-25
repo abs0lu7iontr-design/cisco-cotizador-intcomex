@@ -1,256 +1,118 @@
 rules_version = '2';
 
 // ===============================================================
-// Assumed Data Model (Cisco Automated v2.9 - Intcomex)
+// Assumed Data Model (Cisco Automated v2.26+ - Intcomex)
 // ===============================================================
 //
-// Architectural Note:
-// This application uses a custom SHA-256 salted RBAC authentication flow
-// backed by the `users` collection and local failsafe cache rather than
-// Firebase Authentication (`request.auth` is null for standard Web/Desktop
-// client operations). Rules below remove any 30-day Test Mode timestamp
-// expiration, enforce collection-level isolation (13 explicit collections),
-// validate payload schemas and field bounds on both create and update,
-// and deny all other paths by default.
+// Architectural & Auth-Gating Note:
+// `src/modules/cloud/firebaseConfig.ts` currently initializes `firebase/app` and
+// `firebase/firestore` WITHOUT signing into Firebase Authentication (`request.auth`
+// is `null` in standard Web and Desktop client builds).
+//
+// Because of this, reads and operational writes currently permit `!isAuthenticated()`
+// where required by the live client app (including LoginScreen `last_login` sync,
+// UserManagementView Web admin CRUD, and operational modules). Once Firebase Auth
+// (Anonymous / Email-Password / Custom Token) is integrated into `firebaseConfig.ts`
+// and enabled in Firebase Console, replace `!isAuthenticated()` fallbacks with
+// `isAuthenticated()` / `isAdmin()` / `isOwner(...)` checks.
 //
 // Collection 1: estimates/{estimateId}
-//   - dealId: string
-//   - estimateId: string
-//   - partnerName: string
-//   - clientFinalName: string
-//   - originalFileName: string
-//   - createdAt: string (ISO 8601)
-//   - creator: map (username, fullName, role, email)
-//   - financialSummary: map
-//   - headerInfo: map
-//   - itemsCount: number
-//   - items: list
-//   - customOverrideMap: map
-//   - fastTrackPromoMap: map (optional)
+//   - id, dealId, estimateId, partnerName, clientFinalName, modelName, originalFileName: string
+//   - createdAt, updatedAt, archivedAt: string (ISO 8601)
+//   - creator, financialSummary, headerInfo: map
+//   - itemsCount, activeVersion, versionsCount: number (>= 0)
+//   - baselineV0Amount, currentAmount: number
+//   - items: list (<= 2500)
+//   - customOverrideMap, fastTrackPromoMap: map (<= 2500)
+//   - isRestricted, isLocalOnly, syncedToCloud: bool
+//   - storageScope, privacyLevel, syncStatus, lastOperationId, v0Status, lifecycleState, archivedBy, activeVersionTag: string
+//   - allowedUsers, accessRequests, versionsSummary: list (<= 500)
 //
 //   Subcollection 1.1: estimates/{estimateId}/versions/{versionId}
-//     - versionNumber: number
-//     - versionTag: string
-//     - type: string
-//     - marginPct: number
-//     - totalAmount: number
-//     - netCiscoTotal: number
-//     - items: list
-//     - createdAt: string (ISO 8601)
-//     - creatorUsername: string
+//     - id, estimateId, versionTag, type, createdAt, creatorUsername, creatorFullName, originalFileName, note: string
+//     - versionNumber: number (required, >= 0)
+//     - totalAmount, netCiscoTotal, marginPct, internacionPct, arancelPct, itemsCount: number
+//     - items: list (<= 2500)
+//     - customOverrideMap, fastTrackPromoMap: map (<= 2500)
+//     - headerInfo: map (<= 40)
+//     - v0_RAW / v0 versions are immutable once created; orphaned versions without parent are blocked.
 //
 // Collection 2: dsv_records/{dsvId}
-//   - dealId: string
-//   - soNumber: string
-//   - poNumber: string
-//   - partnerId: string
-//   - resellerName: string
-//   - endCustomerName: string
-//   - endCustomerAddress: string
-//   - originalFileName: string
-//   - createdAt: string (ISO 8601)
-//   - creator: map
-//   - financialSummary: map
-//   - items: list
-//   - overrides: map
+//   - id, dealId, soNumber, poNumber, partnerId, resellerName, endCustomerName, endCustomerAddress, originalFileName, createdAt: string
+//   - creator, financialSummary: map
+//   - items: list (<= 2500)
+//   - overrides: map (<= 2500)
 //
 // Collection 3: users/{userId}
-//   - id: string (optional, matches document ID)
-//   - username: string (required, 1-100 chars, lowercase, matches userId)
+//   - id: string (optional, <= 100, immutable once set)
+//   - username: string (required, 1-100 chars, lowercase matches userId, immutable on update)
 //   - full_name: string (optional, <= 200 chars)
-//   - email: string (optional, <= 200 chars)
-//   - role: string ('admin' | 'pm' | 'user' | 'viewer' | 'preventa' | 'standard')
+//   - email: string (optional, <= 200 chars, valid email format on create/change)
+//   - role: string (required, 'admin' | 'pm' | 'user' | 'viewer' | 'preventa' | 'standard')
 //   - password_hash: string (required, 64-hex SHA-256 salted hash)
-//   - is_active: number (required, 1 = active, 0 = disabled)
-//   - created_at: string (optional, ISO 8601, <= 100 chars)
-//   - updated_at: string (optional, ISO 8601, <= 100 chars)
-//   - last_login: string (optional, ISO 8601, <= 100 chars)
-//   Hardening & Immutability Rules:
-//     - Physical delete is strictly forbidden (allow delete: if false;)
-//     - userId MUST match request.resource.data.username.lower()
-//     - Strict schema: data.keys().hasOnly(['id', 'username', 'full_name', 'email', 'role', 'password_hash', 'is_active', 'created_at', 'updated_at', 'last_login'])
-//     - Root 'admin' protection: username cannot change, is_active MUST be 1, role MUST be 'admin'
+//   - is_active: int (required, 0 | 1)
+//   - created_at: string (optional, <= 100 chars, immutable once set)
+//   - updated_at: string (optional, <= 100 chars)
+//   - last_login: string (optional, <= 100 chars)
+//   Hardening:
+//     - Physical delete forbidden (`allow delete: if false;`)
+//     - Root `'admin'` cannot be deactivated or demoted (`role == 'admin' && is_active == 1`)
+//     - When `isAuthenticated()` is true, only `isAdmin()` can create users or modify role/is_active/password_hash
 //
 // Collection 4: shared_sku_rules/{skuId}
-//   - sku: string (required)
-//   - rule: string ('equipo' | 'intangible' | 'arancel' | OverrideRuleType)
-//   - previousType: string (optional)
-//   - note: string (optional)
-//   - author: map (username, fullName, role)
-//   - updatedAt: string (ISO 8601)
-//   - createdAt: string (ISO 8601)
+//   - id, sku, rule, previousType, note, updatedAt, createdAt: string
+//   - author: map
 //
 // Collection 5: partner_custom_params/{paramId}
-//   - id: string
-//   - scope: string ('partner' | 'global')
-//   - partnerName: string
-//   - params: map (internacionPct, arancelPct, margenPct) (required)
-//   - durationType: string ('permanent' | '15_days' | '30_days' | 'end_of_month')
+//   - id, partnerName, createdAt, updatedAt, updatedBy: string
+//   - scope: 'partner' | 'global'
+//   - durationType: 'permanent' | '15_days' | '30_days' | 'end_of_month'
+//   - params: map (required; internacionPct, arancelPct, margenPct numbers)
 //   - expiresAt: number or null
-//   - createdAt: string (ISO 8601)
-//   - updatedAt: string (ISO 8601)
-//   - updatedBy: string (optional)
 //
 // Collection 6: partners_xcl/{partnerId}
-//   - resellerName: string (required)
-//   - xclCode: string (required)
-//   - updatedAt: number (optional)
+//   - resellerName: string (required, 1..500)
+//   - xclCode: string (required, 1..200)
+//   - updatedAt: number or string (optional)
 //
 // Collection 7: cisco_bo_sku_catalog/{skuKey}
-//   - partNumber: string (required)
-//   - basePartNumber: string
-//   - sku: string (required)
-//   - updatedAt: string (ISO 8601)
-//   - updatedBy: string (optional)
+//   - partNumber: string (required, 1..500)
+//   - basePartNumber, sku, updatedAt, updatedBy, source: string
+//   - isExactVariant: bool
 //
 // Collection 8: bo_order_tracking/{trackingId}
-//   - id: string
-//   - estimateId: string (required)
-//   - estimateVersionTag: string
-//   - dealId: string
-//   - partnerName: string
-//   - endCustomerName: string
-//   - clientPoNumber: string (required)
-//   - ciscoSoNumber: string (optional)
-//   - courier: string ('FedEx' | 'UPS' | 'DHL' | 'Otro')
-//   - courierTrackingNumber: string (optional)
-//   - courierTrackingUrl: string (optional)
-//   - currentStage: string (required)
-//   - estimatedShipDate: string (optional)
-//   - estimatedArrivalDate: string (optional)
-//   - actualDeliveryDate: string (optional)
-//   - createdAt: string (ISO 8601)
-//   - updatedAt: string (ISO 8601)
-//   - lastDailyReviewAt: string (optional)
-//   - totalSaleUsd: number (optional)
-//   - grossProfitUsd: number (optional)
-//   - marginPct: number (optional)
-//   - internacionUsd: number (optional)
-//   - arancelUsd: number (optional)
-//   - itemsCount: number (optional)
-//   - bodegaDestino: string (optional)
-//   - notes: list (optional)
+//   - id, estimateId, estimateVersionTag, dealId, partnerName, endCustomerName, clientPoNumber, ciscoSoNumber,
+//     clientPoAddedAt, ciscoSoAddedAt, courier, courierTrackingNumber, courierTrackingUrl, currentStage,
+//     estimatedShipDate, estimatedArrivalDate, actualDeliveryDate, createdAt, updatedAt, lastDailyReviewAt, bodegaDestino
+//   - totalSaleUsd, grossProfitUsd, marginPct, internacionUsd, arancelUsd, itemsCount: number
+//   - notes: list (<= 1000)
+//   - archived: bool
 //
 // Collection 9: cisco_fast_track_catalog/{docId}
-//   - Fast Track catalog metadata and chunked products for cloud synchronization
-//   - Metadata document ('metadata'): totalSkus, lastUpdated, validFrom, validUntil, promotionCode, promotionTitle, fileName, chunksCount
-//   - Chunk documents ('chunk_N'): chunkIndex, totalChunks, items (list of products), updatedAt
+//   - Manifest / _metadata / chunk documents with bounded fields and list sizes (items <= 500)
 //
 // Collection 10: deal_reminders/{reminderId}
-//   - Recordatorios y seguimiento comercial de Deals escalados a AM Cisco o Velocity Hub
-//   - dealId: string (required)
-//   - partnerName: string (required)
-//   - endCustomerName: string (required)
-//   - escalationChannel: string ('AM_CISCO' | 'VELOCITY_HUB') (required)
-//   - status: string ('PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'INFO_REQUIRED' | 'CONVERTED_TO_BO')
-//   - escalatedAt: string (ISO 8601)
-//   - notes: string (optional)
-//   - history: list (historial de recordatorios y cambios de estado)
-//   - reminderCount: number
-//   - lastReminderSentAt: string (ISO 8601, optional)
-//   - amContactName: string (optional)
-//   - amContactEmail: string (optional)
-//   - vfTicketNumber: string (optional)
-//   - targetDiscountPct: number (optional)
-//   - estimatedTotalUsd: number (optional)
-//   - estimateId: string (optional)
-//   - createdAt: string (ISO 8601)
-//   - updatedAt: string (ISO 8601)
-//   - createdBy: string (optional)
-//   - archived: bool (optional)
+//   - id, dealId, partnerName, endCustomerName, escalationChannel, amContactName, amContactEmail,
+//     vfTicketNumber, estimateId, notes, status, escalatedAt, lastReminderCopiedAt, lastReminderSentAt,
+//     lastSentConfirmationSource, snoozedUntil, lastPopupDismissedAt, notificationEmail, discountsApprovedAt,
+//     createdAt, updatedAt, createdBy
+//   - targetDiscountPct, estimatedTotalUsd, reminderCopyCount, reminderCount: number
+//   - history: list (<= 1000)
+//   - archived: bool
 //
 // Collection 11: app_feedback_tickets/{ticketId}
-//   - Sistema de Tickets de Feedback, Reporte de Errores y Sugerencias de Cisco Automated
-//   - id: string
-//   - title: string (required)
-//   - description: string (required)
-//   - type: string ('BUG' | 'IMPROVEMENT' | 'FEATURE_REQUEST' | 'UX_UI' | 'DATA_CATALOG' | 'OTHER') (required)
-//   - priority: string ('CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW') (required)
-//   - status: string ('OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED' | 'REJECTED') (required)
-//   - module: string (optional)
-//   - author: map (username, fullName, email, role)
-//   - sla: map / target fields (targetHours, dueAt, resolvedAt)
-//   - technicalContext: map (appVersion, gitCommit, environment, userAgent, activeView)
-//   - responses: list (historial de mensajes y feedback del equipo técnico)
-//   - attachments: list (capturas o pantallazos)
-//   - createdAt: string (ISO 8601)
-//   - updatedAt: string (ISO 8601)
+//   - id, title, description, type, priority, status, module, dueAt, resolvedAt, createdAt, updatedAt
+//   - targetHours, timeToResolutionMinutes: number
+//   - author, assignedTo, technicalContext, aiDiagnosis: map
+//   - attachments: list (<= 10), responses: list (<= 200)
+//   - readByAuthor, readBySupport: bool
 //
 // Collection 12: cisco_pipeline_deals/{dealId}
-//   - Pipeline Comercial & Oportunidades Cisco Intcomex
-//   - id: string (required, 1-100 chars, matches dealId)
-//   - partner: string (required, 1-200 chars)
-//   - endUser: string (required, 1-200 chars)
-//   - usd: number (required, >= 0)
-//   - porcentajeAvance: number (required, 0-100)
-//   - productosSuscripciones: number (optional, >= 0)
-//   - servicios: number (optional, >= 0)
-//   - meraki: number (optional, >= 0)
-//   - pmResponsable: string (optional, <= 200 chars)
-//   - ejecutivoPartner: string (optional, <= 200 chars)
-//   - mesCierre: string (optional, <= 100 chars)
-//   - mesFacturacion: string (optional, <= 100 chars)
-//   - dealId: string (optional, <= 100 chars)
-//   - am: string (optional, <= 200 chars)
-//   - grupoVentas: string (optional, <= 100 chars)
-//   - notas: string (optional, <= 5000 chars)
-//   - priceProtectionExpiryDate: string (optional, <= 100 chars)
-//   - sourceEstimateId: string (optional, <= 100 chars)
-//   - sourceEstimateVersion: string (optional, <= 100 chars)
-//   - boTrackingId: string (optional, <= 100 chars)
-//   - fechaLevantamiento: string (optional, <= 100 chars)
-//   - fechaCotizacion: string (optional, <= 100 chars)
-//   - marca: string (optional, <= 100 chars)
-//   - createdAt: string (optional, ISO 8601, <= 100 chars)
-//   - updatedAt: string (optional, ISO 8601, <= 100 chars)
-//   - isSeed: bool (optional)
+//   - id (matches dealId), partner, endUser, usd, porcentajeAvance, and optional commercial fields
 //
 // Collection 13: cisco_forecast_records/{recordId}
-//   - Registro y Matriz de Forecast Comercial Oficial Intcomex (36 columnas de negocio)
-//   - id: string (required, 1-100 chars)
-//   - fechaLevantamiento: string (optional, <= 100 chars)
-//   - fechaCotizacion: string (optional, <= 100 chars)
-//   - marca: string (optional, <= 100 chars)
-//   - pmResponsable: string (optional, <= 200 chars)
-//   - partner: string (optional, <= 200 chars)
-//   - ejecutivoPartner: string (optional, <= 200 chars)
-//   - endUser: string (optional, <= 200 chars)
-//   - usdIntcomex: number (optional, >= 0)
-//   - emailEjecutivoPartner: string (optional, <= 200 chars)
-//   - mesFacturacion: string (optional, <= 100 chars)
-//   - emailClienteFinal: string (optional, <= 200 chars)
-//   - detalleProductos: string (optional, <= 2000 chars)
-//   - oc: string (optional, <= 100 chars)
-//   - deal: string (optional, <= 200 chars)
-//   - productos: number (optional, >= 0)
-//   - suscripciones: number (optional, >= 0)
-//   - servicios: number (optional, >= 0)
-//   - meraki: number (optional, >= 0)
-//   - am: string (optional, <= 200 chars)
-//   - grupoVentas: string (optional, <= 100 chars)
-//   - observacion: string (optional, <= 2000 chars)
-//   - dsvSubmission: string (optional, <= 100 chars)
-//   - po: string (optional, <= 100 chars)
-//   - so: string (optional, <= 100 chars)
-//   - submittedDate: string (optional, <= 100 chars)
-//   - clienteCisco: string (optional, <= 100 chars)
-//   - promotionAuthorizationNumber: string (optional, <= 200 chars)
-//   - endCustomerName: string (optional, <= 200 chars)
-//   - endCustomerAddress1: string (optional, <= 500 chars)
-//   - numeroVenta: string (optional, <= 100 chars)
-//   - bodega: string (optional, <= 100 chars)
-//   - caso: string (optional, <= 200 chars)
-//   - priceProtectionExpiryDate: string (optional, <= 100 chars)
-//   - credit: string (optional, <= 100 chars)
-//   - nuevoCaso: string (optional, <= 200 chars)
-//   - confirmacionCredito: string (optional, <= 200 chars)
-//   - createdAt: string (optional, ISO 8601, <= 100 chars)
-//   - updatedAt: string (optional, ISO 8601, <= 100 chars)
-//   - isSeed: bool (optional)
-//   - sourceEstimateId: string (optional, <= 100 chars)
-//   - sourceBoTrackingId: string (optional, <= 100 chars)
-//   - sourceDsvId: string (optional, <= 100 chars)
-//   - sourcePipelineId: string (optional, <= 100 chars)
+//   - id (matches recordId), and optional 36-column forecast fields
+//   - Delete restricted to `isAdmin() || !isAuthenticated()` (aligned with pipeline/BO/reminders)
 //
 // ===============================================================
 
@@ -267,48 +129,218 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.role == 'admin' ||
-        request.auth.token.role == 'Administrador' ||
-        request.auth.token.admin == true ||
-        request.auth.token.email == 'mauricio.skill@mayor.cl'
+        ('role' in request.auth.token && (
+          request.auth.token.role == 'admin' ||
+          request.auth.token.role == 'Administrador'
+        )) ||
+        ('admin' in request.auth.token && request.auth.token.admin == true) ||
+        ('email_verified' in request.auth.token &&
+          request.auth.token.email_verified == true &&
+          'email' in request.auth.token &&
+          request.auth.token.email == 'mauricio.skill@mayor.cl')
       );
     }
 
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
     function isDocOwner(docData) {
-      return isAuthenticated() && (
+      return isAuthenticated() && docData is map && (
         ('creator' in docData && docData.creator is map && (
-          docData.creator.username == request.auth.token.username ||
-          docData.creator.email == request.auth.token.email
+          ('username' in docData.creator && 'username' in request.auth.token && docData.creator.username == request.auth.token.username) ||
+          ('email' in docData.creator && 'email' in request.auth.token && 'email_verified' in request.auth.token && request.auth.token.email_verified == true && docData.creator.email == request.auth.token.email)
         )) ||
-        docData.userId == request.auth.uid
+        ('userId' in docData && docData.userId == request.auth.uid)
       );
+    }
+
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) ||
+        (isAuthenticated() && request.resource.data.uid == request.auth.uid);
+    }
+
+    function uidNotModified() {
+      return !('uid' in request.resource.data) ||
+        ('uid' in resource.data && request.resource.data.uid == resource.data.uid);
     }
 
     function isValidPayloadSize(data) {
       return data is map && data.size() > 0 && data.size() < 80;
     }
 
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function affectedKeysOnlyAllowed(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.size() <= 200 &&
+        email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    function isValidUrl(url) {
+      return url is string &&
+        url.size() <= 1000 &&
+        (url.matches('^https://.*') || url.matches('^http://.*'));
+    }
+
+    function isValidOptionalString(data, field, minLen, maxLen) {
+      return !(field in data) ||
+        (data[field] is string && data[field].size() >= minLen && data[field].size() <= maxLen);
+    }
+
+    function isValidOptionalNumber(data, field, minVal) {
+      return !(field in data) || (data[field] is number && data[field] >= minVal);
+    }
+
+    function isValidOptionalBool(data, field) {
+      return !(field in data) || data[field] is bool;
+    }
+
+    function isValidOptionalList(data, field, maxSize) {
+      return !(field in data) || (data[field] is list && data[field].size() <= maxSize);
+    }
+
+    function isValidOptionalMap(data, field, maxSize) {
+      return !(field in data) || (data[field] is map && data[field].size() <= maxSize);
+    }
+
     // ===============================================================
     // Domain Validators (Used in BOTH create and update)
     // ===============================================================
 
+    function allowedEstimateFields() {
+      return [
+        'id', 'dealId', 'estimateId', 'partnerName', 'clientFinalName', 'modelName',
+        'originalFileName', 'createdAt', 'updatedAt', 'creator', 'financialSummary',
+        'headerInfo', 'itemsCount', 'items', 'customOverrideMap', 'fastTrackPromoMap',
+        'isRestricted', 'isLocalOnly', 'storageScope', 'privacyLevel', 'allowedUsers',
+        'accessRequests', 'syncedToCloud', 'syncStatus', 'lastOperationId', 'v0Status',
+        'lifecycleState', 'archivedAt', 'archivedBy', 'activeVersion', 'activeVersionTag',
+        'baselineV0Amount', 'currentAmount', 'versionsCount', 'versionsSummary'
+      ];
+    }
+
     function isValidEstimate(data) {
       return isValidPayloadSize(data) &&
         ('estimateId' in data || 'dealId' in data || 'items' in data) &&
-        (!('estimateId' in data) || (data.estimateId is string && data.estimateId.size() <= 500)) &&
-        (!('dealId' in data) || (data.dealId is string && data.dealId.size() <= 500));
+        isValidOptionalString(data, 'id', 0, 500) &&
+        isValidOptionalString(data, 'estimateId', 0, 500) &&
+        isValidOptionalString(data, 'dealId', 0, 500) &&
+        isValidOptionalString(data, 'partnerName', 0, 500) &&
+        isValidOptionalString(data, 'clientFinalName', 0, 500) &&
+        isValidOptionalString(data, 'modelName', 0, 500) &&
+        isValidOptionalString(data, 'originalFileName', 0, 500) &&
+        isValidOptionalString(data, 'createdAt', 0, 100) &&
+        isValidOptionalString(data, 'updatedAt', 0, 100) &&
+        isValidOptionalString(data, 'archivedAt', 0, 100) &&
+        isValidOptionalString(data, 'archivedBy', 0, 200) &&
+        isValidOptionalString(data, 'storageScope', 0, 50) &&
+        isValidOptionalString(data, 'privacyLevel', 0, 50) &&
+        isValidOptionalString(data, 'syncStatus', 0, 50) &&
+        isValidOptionalString(data, 'lastOperationId', 0, 200) &&
+        isValidOptionalString(data, 'v0Status', 0, 100) &&
+        isValidOptionalString(data, 'lifecycleState', 0, 50) &&
+        isValidOptionalString(data, 'activeVersionTag', 0, 50) &&
+        isValidOptionalMap(data, 'creator', 15) &&
+        isValidOptionalMap(data, 'financialSummary', 30) &&
+        isValidOptionalMap(data, 'headerInfo', 40) &&
+        isValidOptionalMap(data, 'customOverrideMap', 2500) &&
+        isValidOptionalMap(data, 'fastTrackPromoMap', 2500) &&
+        isValidOptionalNumber(data, 'itemsCount', 0) &&
+        isValidOptionalNumber(data, 'activeVersion', 0) &&
+        isValidOptionalNumber(data, 'versionsCount', 0) &&
+        (!('baselineV0Amount' in data) || data.baselineV0Amount is number) &&
+        (!('currentAmount' in data) || data.currentAmount is number) &&
+        isValidOptionalBool(data, 'isRestricted') &&
+        isValidOptionalBool(data, 'isLocalOnly') &&
+        isValidOptionalBool(data, 'syncedToCloud') &&
+        isValidOptionalList(data, 'items', 2500) &&
+        isValidOptionalList(data, 'allowedUsers', 500) &&
+        isValidOptionalList(data, 'accessRequests', 500) &&
+        isValidOptionalList(data, 'versionsSummary', 500);
+    }
+
+    function allowedEstimateVersionFields() {
+      return [
+        'id', 'estimateId', 'versionNumber', 'versionTag', 'type', 'totalAmount',
+        'netCiscoTotal', 'marginPct', 'internacionPct', 'arancelPct', 'itemsCount',
+        'createdAt', 'creatorUsername', 'creatorFullName', 'originalFileName', 'note',
+        'items', 'customOverrideMap', 'fastTrackPromoMap', 'headerInfo'
+      ];
+    }
+
+    function isValidEstimateVersion(data) {
+      return isValidPayloadSize(data) &&
+        'versionNumber' in data && data.versionNumber is number && data.versionNumber >= 0 &&
+        'versionTag' in data && data.versionTag is string && data.versionTag.size() >= 1 && data.versionTag.size() <= 50 &&
+        isValidOptionalString(data, 'id', 0, 100) &&
+        isValidOptionalString(data, 'estimateId', 0, 500) &&
+        isValidOptionalString(data, 'type', 0, 50) &&
+        (!('totalAmount' in data) || data.totalAmount is number) &&
+        (!('netCiscoTotal' in data) || data.netCiscoTotal is number) &&
+        (!('marginPct' in data) || data.marginPct is number) &&
+        (!('internacionPct' in data) || data.internacionPct is number) &&
+        (!('arancelPct' in data) || data.arancelPct is number) &&
+        isValidOptionalNumber(data, 'itemsCount', 0) &&
+        isValidOptionalString(data, 'createdAt', 0, 100) &&
+        isValidOptionalString(data, 'creatorUsername', 0, 200) &&
+        isValidOptionalString(data, 'creatorFullName', 0, 200) &&
+        isValidOptionalString(data, 'originalFileName', 0, 500) &&
+        isValidOptionalString(data, 'note', 0, 2000) &&
+        isValidOptionalList(data, 'items', 2500) &&
+        isValidOptionalMap(data, 'customOverrideMap', 2500) &&
+        isValidOptionalMap(data, 'fastTrackPromoMap', 2500) &&
+        isValidOptionalMap(data, 'headerInfo', 40);
+    }
+
+    function allowedDsvFields() {
+      return [
+        'id', 'dealId', 'soNumber', 'poNumber', 'partnerId', 'resellerName',
+        'endCustomerName', 'endCustomerAddress', 'originalFileName', 'createdAt',
+        'creator', 'financialSummary', 'items', 'overrides'
+      ];
     }
 
     function isValidDsvRecord(data) {
       return isValidPayloadSize(data) &&
         ('soNumber' in data || 'dealId' in data || 'items' in data) &&
-        (!('soNumber' in data) || (data.soNumber is string && data.soNumber.size() <= 500)) &&
-        (!('dealId' in data) || (data.dealId is string && data.dealId.size() <= 500));
+        isValidOptionalString(data, 'id', 0, 500) &&
+        isValidOptionalString(data, 'soNumber', 0, 500) &&
+        isValidOptionalString(data, 'dealId', 0, 500) &&
+        isValidOptionalString(data, 'poNumber', 0, 500) &&
+        isValidOptionalString(data, 'partnerId', 0, 500) &&
+        isValidOptionalString(data, 'resellerName', 0, 500) &&
+        isValidOptionalString(data, 'endCustomerName', 0, 500) &&
+        isValidOptionalString(data, 'endCustomerAddress', 0, 1000) &&
+        isValidOptionalString(data, 'originalFileName', 0, 500) &&
+        isValidOptionalString(data, 'createdAt', 0, 100) &&
+        isValidOptionalMap(data, 'creator', 15) &&
+        isValidOptionalMap(data, 'financialSummary', 20) &&
+        isValidOptionalList(data, 'items', 2500) &&
+        isValidOptionalMap(data, 'overrides', 2500);
+    }
+
+    function allowedUserFields() {
+      return [
+        'id', 'username', 'full_name', 'email', 'role',
+        'password_hash', 'is_active', 'created_at', 'updated_at', 'last_login'
+      ];
     }
 
     function isValidUser(data, userId) {
       return isValidPayloadSize(data) &&
-        data.keys().hasOnly(['id', 'username', 'full_name', 'email', 'role', 'password_hash', 'is_active', 'created_at', 'updated_at', 'last_login']) &&
+        userId is string && userId.size() >= 1 && userId.size() <= 100 &&
+        data.keys().hasOnly(allowedUserFields()) &&
         'username' in data &&
         data.username is string &&
         data.username.size() >= 1 &&
@@ -323,13 +355,26 @@ service cloud.firestore {
         'password_hash' in data &&
         data.password_hash is string &&
         data.password_hash.matches('^[0-9a-f]{64}$') &&
-        (!('id' in data) || (data.id is string && data.id.size() <= 100)) &&
-        (!('full_name' in data) || (data.full_name is string && data.full_name.size() <= 200)) &&
-        (!('email' in data) || (data.email is string && data.email.size() <= 200)) &&
-        (!('created_at' in data) || (data.created_at is string && data.created_at.size() <= 100)) &&
-        (!('updated_at' in data) || (data.updated_at is string && data.updated_at.size() <= 100)) &&
-        (!('last_login' in data) || (data.last_login is string && data.last_login.size() <= 100)) &&
+        isValidOptionalString(data, 'id', 0, 100) &&
+        isValidOptionalString(data, 'full_name', 0, 200) &&
+        isValidOptionalString(data, 'email', 0, 200) &&
+        isValidOptionalString(data, 'created_at', 0, 100) &&
+        isValidOptionalString(data, 'updated_at', 0, 100) &&
+        isValidOptionalString(data, 'last_login', 0, 100) &&
         (userId != 'admin' || (data.role == 'admin' && data.is_active == 1));
+    }
+
+    function isUserImmutableFieldsUnchanged() {
+      return request.resource.data.username == resource.data.username &&
+        (!('created_at' in resource.data) || request.resource.data.created_at == resource.data.created_at) &&
+        (!('id' in resource.data) || !('id' in request.resource.data) || request.resource.data.id == resource.data.id) &&
+        (!('email' in request.resource.data) || request.resource.data.email == '' ||
+          ('email' in resource.data && request.resource.data.email == resource.data.email) ||
+          isValidEmail(request.resource.data.email));
+    }
+
+    function allowedSharedSkuFields() {
+      return ['id', 'sku', 'rule', 'previousType', 'note', 'author', 'updatedAt', 'createdAt'];
     }
 
     function isValidSharedSkuRule(data) {
@@ -337,13 +382,40 @@ service cloud.firestore {
         'sku' in data &&
         data.sku is string &&
         data.sku.size() > 0 &&
-        data.sku.size() <= 500;
+        data.sku.size() <= 500 &&
+        isValidOptionalString(data, 'id', 0, 500) &&
+        isValidOptionalString(data, 'rule', 1, 50) &&
+        isValidOptionalString(data, 'previousType', 0, 100) &&
+        isValidOptionalString(data, 'note', 0, 2000) &&
+        isValidOptionalMap(data, 'author', 10) &&
+        isValidOptionalString(data, 'updatedAt', 0, 100) &&
+        isValidOptionalString(data, 'createdAt', 0, 100);
+    }
+
+    function allowedPartnerParamFields() {
+      return [
+        'id', 'scope', 'partnerName', 'params', 'durationType',
+        'expiresAt', 'createdAt', 'updatedAt', 'updatedBy'
+      ];
     }
 
     function isValidPartnerCustomParam(data) {
       return isValidPayloadSize(data) &&
         'params' in data &&
-        data.params is map;
+        data.params is map &&
+        data.params.size() <= 15 &&
+        isValidOptionalString(data, 'id', 0, 300) &&
+        (!('scope' in data) || (data.scope is string && data.scope in ['partner', 'global'])) &&
+        isValidOptionalString(data, 'partnerName', 0, 300) &&
+        (!('durationType' in data) || (data.durationType is string && data.durationType in ['permanent', '15_days', '30_days', 'end_of_month'])) &&
+        (!('expiresAt' in data) || data.expiresAt == null || data.expiresAt is number) &&
+        isValidOptionalString(data, 'createdAt', 0, 100) &&
+        isValidOptionalString(data, 'updatedAt', 0, 100) &&
+        isValidOptionalString(data, 'updatedBy', 0, 200);
+    }
+
+    function allowedPartnerXclFields() {
+      return ['resellerName', 'xclCode', 'updatedAt'];
     }
 
     function isValidPartnerXcl(data) {
@@ -355,7 +427,12 @@ service cloud.firestore {
         'xclCode' in data &&
         data.xclCode is string &&
         data.xclCode.size() > 0 &&
-        data.xclCode.size() <= 200;
+        data.xclCode.size() <= 200 &&
+        (!('updatedAt' in data) || data.updatedAt is number || (data.updatedAt is string && data.updatedAt.size() <= 100));
+    }
+
+    function allowedBoSkuCatalogFields() {
+      return ['partNumber', 'basePartNumber', 'sku', 'updatedAt', 'updatedBy', 'source', 'isExactVariant'];
     }
 
     function isValidBoSkuCatalog(data) {
@@ -366,7 +443,24 @@ service cloud.firestore {
         data.partNumber.size() <= 500 &&
         'sku' in data &&
         data.sku is string &&
-        data.sku.size() <= 500;
+        data.sku.size() <= 500 &&
+        isValidOptionalString(data, 'basePartNumber', 0, 500) &&
+        isValidOptionalString(data, 'updatedAt', 0, 100) &&
+        isValidOptionalString(data, 'updatedBy', 0, 200) &&
+        isValidOptionalString(data, 'source', 0, 100) &&
+        isValidOptionalBool(data, 'isExactVariant');
+    }
+
+    function allowedBoTrackingFields() {
+      return [
+        'id', 'estimateId', 'estimateVersionTag', 'dealId', 'partnerName',
+        'endCustomerName', 'clientPoNumber', 'ciscoSoNumber', 'clientPoAddedAt',
+        'ciscoSoAddedAt', 'courier', 'courierTrackingNumber', 'courierTrackingUrl',
+        'currentStage', 'estimatedShipDate', 'estimatedArrivalDate', 'actualDeliveryDate',
+        'createdAt', 'updatedAt', 'lastDailyReviewAt', 'totalSaleUsd', 'grossProfitUsd',
+        'marginPct', 'internacionUsd', 'arancelUsd', 'itemsCount', 'bodegaDestino',
+        'notes', 'archived'
+      ];
     }
 
     function isValidBoOrderTracking(data) {
@@ -379,110 +473,250 @@ service cloud.firestore {
         data.clientPoNumber is string &&
         data.clientPoNumber.size() <= 500 &&
         data.currentStage is string &&
-        data.currentStage.size() <= 200;
+        data.currentStage.size() <= 200 &&
+        isValidOptionalString(data, 'id', 0, 200) &&
+        isValidOptionalString(data, 'estimateVersionTag', 0, 50) &&
+        isValidOptionalString(data, 'dealId', 0, 200) &&
+        isValidOptionalString(data, 'partnerName', 0, 500) &&
+        isValidOptionalString(data, 'endCustomerName', 0, 500) &&
+        isValidOptionalString(data, 'ciscoSoNumber', 0, 200) &&
+        isValidOptionalString(data, 'clientPoAddedAt', 0, 100) &&
+        isValidOptionalString(data, 'ciscoSoAddedAt', 0, 100) &&
+        isValidOptionalString(data, 'courier', 0, 50) &&
+        isValidOptionalString(data, 'courierTrackingNumber', 0, 200) &&
+        (!('courierTrackingUrl' in data) || data.courierTrackingUrl == '' || isValidUrl(data.courierTrackingUrl)) &&
+        isValidOptionalString(data, 'estimatedShipDate', 0, 100) &&
+        isValidOptionalString(data, 'estimatedArrivalDate', 0, 100) &&
+        isValidOptionalString(data, 'actualDeliveryDate', 0, 100) &&
+        isValidOptionalString(data, 'createdAt', 0, 100) &&
+        isValidOptionalString(data, 'updatedAt', 0, 100) &&
+        isValidOptionalString(data, 'lastDailyReviewAt', 0, 100) &&
+        isValidOptionalString(data, 'bodegaDestino', 0, 20) &&
+        (!('totalSaleUsd' in data) || data.totalSaleUsd is number) &&
+        (!('grossProfitUsd' in data) || data.grossProfitUsd is number) &&
+        (!('marginPct' in data) || data.marginPct is number) &&
+        (!('internacionUsd' in data) || data.internacionUsd is number) &&
+        (!('arancelUsd' in data) || data.arancelUsd is number) &&
+        isValidOptionalNumber(data, 'itemsCount', 0) &&
+        isValidOptionalList(data, 'notes', 1000) &&
+        isValidOptionalBool(data, 'archived');
+    }
+
+    function allowedFastTrackFields() {
+      return [
+        'generationId', 'activeGenerationId', 'schemaVersion', 'chunkCount',
+        'expectedChunkIds', 'totalSkus', 'uniqueSkusCount', 'canonicalChecksum',
+        'createdAt', 'updatedAt', 'fileName', 'validUntil', 'validFrom',
+        'promotionCode', 'promotionTitle', 'lastUpdated', 'chunksCount',
+        'chunkIndex', 'totalChunks', 'items', 'chunkChecksum'
+      ];
     }
 
     function isValidFastTrackCatalog(data) {
-      return data is map && isValidPayloadSize(data);
+      return isValidPayloadSize(data) &&
+        isValidOptionalString(data, 'generationId', 0, 200) &&
+        isValidOptionalString(data, 'activeGenerationId', 0, 200) &&
+        isValidOptionalString(data, 'canonicalChecksum', 0, 200) &&
+        isValidOptionalString(data, 'chunkChecksum', 0, 200) &&
+        isValidOptionalString(data, 'promotionCode', 0, 200) &&
+        isValidOptionalString(data, 'fileName', 0, 500) &&
+        isValidOptionalString(data, 'promotionTitle', 0, 500) &&
+        isValidOptionalString(data, 'createdAt', 0, 100) &&
+        (!('updatedAt' in data) || data.updatedAt is number || (data.updatedAt is string && data.updatedAt.size() <= 100)) &&
+        (!('lastUpdated' in data) || data.lastUpdated is number || (data.lastUpdated is string && data.lastUpdated.size() <= 100)) &&
+        (!('validUntil' in data) || data.validUntil == null || data.validUntil is number || (data.validUntil is string && data.validUntil.size() <= 100)) &&
+        (!('validFrom' in data) || data.validFrom == null || data.validFrom is number || (data.validFrom is string && data.validFrom.size() <= 100)) &&
+        isValidOptionalNumber(data, 'schemaVersion', 0) &&
+        isValidOptionalNumber(data, 'chunkCount', 0) &&
+        isValidOptionalNumber(data, 'totalSkus', 0) &&
+        isValidOptionalNumber(data, 'uniqueSkusCount', 0) &&
+        isValidOptionalNumber(data, 'chunksCount', 0) &&
+        isValidOptionalNumber(data, 'chunkIndex', 0) &&
+        isValidOptionalNumber(data, 'totalChunks', 0) &&
+        isValidOptionalList(data, 'expectedChunkIds', 500) &&
+        isValidOptionalList(data, 'items', 500);
+    }
+
+    function allowedDealReminderFields() {
+      return [
+        'id', 'dealId', 'partnerName', 'endCustomerName', 'escalationChannel',
+        'amContactName', 'amContactEmail', 'vfTicketNumber', 'targetDiscountPct',
+        'estimatedTotalUsd', 'estimateId', 'notes', 'status', 'escalatedAt',
+        'lastReminderCopiedAt', 'reminderCopyCount', 'lastReminderSentAt',
+        'reminderCount', 'lastSentConfirmationSource', 'snoozedUntil',
+        'lastPopupDismissedAt', 'notificationEmail', 'discountsApprovedAt',
+        'createdAt', 'updatedAt', 'createdBy', 'history', 'archived'
+      ];
     }
 
     function isValidDealReminder(data) {
-      return data is map &&
-        isValidPayloadSize(data) &&
+      return isValidPayloadSize(data) &&
         'dealId' in data && data.dealId is string && data.dealId.size() <= 500 &&
         'partnerName' in data && data.partnerName is string && data.partnerName.size() <= 500 &&
         'endCustomerName' in data && data.endCustomerName is string && data.endCustomerName.size() <= 500 &&
-        'escalationChannel' in data && data.escalationChannel is string && data.escalationChannel.size() <= 100;
+        'escalationChannel' in data && data.escalationChannel is string && data.escalationChannel.size() <= 100 &&
+        isValidOptionalString(data, 'id', 0, 200) &&
+        isValidOptionalString(data, 'amContactName', 0, 200) &&
+        isValidOptionalString(data, 'amContactEmail', 0, 200) &&
+        isValidOptionalString(data, 'vfTicketNumber', 0, 200) &&
+        isValidOptionalString(data, 'estimateId', 0, 200) &&
+        isValidOptionalString(data, 'notes', 0, 10000) &&
+        isValidOptionalString(data, 'status', 0, 100) &&
+        isValidOptionalString(data, 'escalatedAt', 0, 100) &&
+        isValidOptionalString(data, 'lastReminderCopiedAt', 0, 100) &&
+        isValidOptionalString(data, 'lastReminderSentAt', 0, 100) &&
+        isValidOptionalString(data, 'lastSentConfirmationSource', 0, 100) &&
+        isValidOptionalString(data, 'snoozedUntil', 0, 100) &&
+        isValidOptionalString(data, 'lastPopupDismissedAt', 0, 100) &&
+        isValidOptionalString(data, 'notificationEmail', 0, 200) &&
+        isValidOptionalString(data, 'discountsApprovedAt', 0, 100) &&
+        isValidOptionalString(data, 'createdAt', 0, 100) &&
+        isValidOptionalString(data, 'updatedAt', 0, 100) &&
+        isValidOptionalString(data, 'createdBy', 0, 200) &&
+        isValidOptionalNumber(data, 'targetDiscountPct', 0) &&
+        isValidOptionalNumber(data, 'estimatedTotalUsd', 0) &&
+        isValidOptionalNumber(data, 'reminderCopyCount', 0) &&
+        isValidOptionalNumber(data, 'reminderCount', 0) &&
+        isValidOptionalList(data, 'history', 1000) &&
+        isValidOptionalBool(data, 'archived');
+    }
+
+    function allowedFeedbackTicketFields() {
+      return [
+        'id', 'title', 'description', 'type', 'priority', 'status', 'module',
+        'targetHours', 'dueAt', 'resolvedAt', 'timeToResolutionMinutes',
+        'author', 'assignedTo', 'technicalContext', 'attachments', 'responses',
+        'readByAuthor', 'readBySupport', 'aiDiagnosis', 'createdAt', 'updatedAt'
+      ];
     }
 
     function isValidFeedbackTicket(data) {
-      return data is map &&
-        isValidPayloadSize(data) &&
+      return isValidPayloadSize(data) &&
         'title' in data && data.title is string && data.title.size() <= 500 &&
         'description' in data && data.description is string && data.description.size() <= 25000 &&
-        'type' in data && data.type is string && data.type.size() <= 50 &&
-        'status' in data && data.status is string && data.status.size() <= 50 &&
-        'priority' in data && data.priority is string && data.priority.size() <= 50;
+        'type' in data && data.type is string && data.type in ['BUG', 'IMPROVEMENT', 'FEATURE_REQUEST', 'UX_UI', 'DATA_CATALOG', 'OTHER'] &&
+        'status' in data && data.status is string && data.status in ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'REJECTED'] &&
+        'priority' in data && data.priority is string && data.priority in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] &&
+        isValidOptionalString(data, 'id', 0, 200) &&
+        isValidOptionalString(data, 'module', 0, 50) &&
+        isValidOptionalString(data, 'dueAt', 0, 100) &&
+        isValidOptionalString(data, 'resolvedAt', 0, 100) &&
+        isValidOptionalString(data, 'createdAt', 0, 100) &&
+        isValidOptionalString(data, 'updatedAt', 0, 100) &&
+        isValidOptionalNumber(data, 'targetHours', 0) &&
+        isValidOptionalNumber(data, 'timeToResolutionMinutes', 0) &&
+        isValidOptionalMap(data, 'author', 15) &&
+        isValidOptionalMap(data, 'assignedTo', 15) &&
+        isValidOptionalMap(data, 'technicalContext', 30) &&
+        isValidOptionalMap(data, 'aiDiagnosis', 30) &&
+        isValidOptionalList(data, 'attachments', 10) &&
+        isValidOptionalList(data, 'responses', 200) &&
+        isValidOptionalBool(data, 'readByAuthor') &&
+        isValidOptionalBool(data, 'readBySupport');
     }
 
-    function isValidPipelineDeal(data) {
-      return data is map &&
-        isValidPayloadSize(data) &&
+    function allowedPipelineDealFields() {
+      return [
+        'id', 'fechaLevantamiento', 'fechaCotizacion', 'marca', 'pmResponsable',
+        'partner', 'ejecutivoPartner', 'endUser', 'usd', 'mesCierre', 'mesFacturacion',
+        'porcentajeAvance', 'dealId', 'productosSuscripciones', 'servicios', 'meraki',
+        'am', 'grupoVentas', 'notas', 'priceProtectionExpiryDate', 'createdAt', 'updatedAt',
+        'sourceEstimateId', 'sourceEstimateVersion', 'boTrackingId', 'isSeed'
+      ];
+    }
+
+    function isValidPipelineDeal(data, dealDocId) {
+      return isValidPayloadSize(data) &&
         'id' in data && data.id is string && data.id.size() >= 1 && data.id.size() <= 100 &&
+        data.id == dealDocId &&
         'partner' in data && data.partner is string && data.partner.size() >= 1 && data.partner.size() <= 200 &&
         'endUser' in data && data.endUser is string && data.endUser.size() >= 1 && data.endUser.size() <= 200 &&
         'usd' in data && data.usd is number && data.usd >= 0 &&
         'porcentajeAvance' in data && data.porcentajeAvance is number && data.porcentajeAvance >= 0 && data.porcentajeAvance <= 100 &&
-        (!('productosSuscripciones' in data) || (data.productosSuscripciones is number && data.productosSuscripciones >= 0)) &&
-        (!('servicios' in data) || (data.servicios is number && data.servicios >= 0)) &&
-        (!('meraki' in data) || (data.meraki is number && data.meraki >= 0)) &&
-        (!('pmResponsable' in data) || (data.pmResponsable is string && data.pmResponsable.size() <= 200)) &&
-        (!('ejecutivoPartner' in data) || (data.ejecutivoPartner is string && data.ejecutivoPartner.size() <= 200)) &&
-        (!('mesCierre' in data) || (data.mesCierre is string && data.mesCierre.size() <= 100)) &&
-        (!('mesFacturacion' in data) || (data.mesFacturacion is string && data.mesFacturacion.size() <= 100)) &&
-        (!('dealId' in data) || (data.dealId is string && data.dealId.size() <= 100)) &&
-        (!('am' in data) || (data.am is string && data.am.size() <= 200)) &&
-        (!('grupoVentas' in data) || (data.grupoVentas is string && data.grupoVentas.size() <= 100)) &&
-        (!('notas' in data) || (data.notas is string && data.notas.size() <= 5000)) &&
-        (!('priceProtectionExpiryDate' in data) || (data.priceProtectionExpiryDate is string && data.priceProtectionExpiryDate.size() <= 100)) &&
-        (!('sourceEstimateId' in data) || (data.sourceEstimateId is string && data.sourceEstimateId.size() <= 100)) &&
-        (!('sourceEstimateVersion' in data) || (data.sourceEstimateVersion is string && data.sourceEstimateVersion.size() <= 100)) &&
-        (!('boTrackingId' in data) || (data.boTrackingId is string && data.boTrackingId.size() <= 100)) &&
-        (!('fechaLevantamiento' in data) || (data.fechaLevantamiento is string && data.fechaLevantamiento.size() <= 100)) &&
-        (!('fechaCotizacion' in data) || (data.fechaCotizacion is string && data.fechaCotizacion.size() <= 100)) &&
-        (!('marca' in data) || (data.marca is string && data.marca.size() <= 100)) &&
-        (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100)) &&
-        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100)) &&
-        (!('isSeed' in data) || data.isSeed is bool);
+        isValidOptionalNumber(data, 'productosSuscripciones', 0) &&
+        isValidOptionalNumber(data, 'servicios', 0) &&
+        isValidOptionalNumber(data, 'meraki', 0) &&
+        isValidOptionalString(data, 'pmResponsable', 0, 200) &&
+        isValidOptionalString(data, 'ejecutivoPartner', 0, 200) &&
+        isValidOptionalString(data, 'mesCierre', 0, 100) &&
+        isValidOptionalString(data, 'mesFacturacion', 0, 100) &&
+        isValidOptionalString(data, 'dealId', 0, 100) &&
+        isValidOptionalString(data, 'am', 0, 200) &&
+        isValidOptionalString(data, 'grupoVentas', 0, 100) &&
+        isValidOptionalString(data, 'notas', 0, 5000) &&
+        isValidOptionalString(data, 'priceProtectionExpiryDate', 0, 100) &&
+        isValidOptionalString(data, 'sourceEstimateId', 0, 100) &&
+        isValidOptionalString(data, 'sourceEstimateVersion', 0, 100) &&
+        isValidOptionalString(data, 'boTrackingId', 0, 100) &&
+        isValidOptionalString(data, 'fechaLevantamiento', 0, 100) &&
+        isValidOptionalString(data, 'fechaCotizacion', 0, 100) &&
+        isValidOptionalString(data, 'marca', 0, 100) &&
+        isValidOptionalString(data, 'createdAt', 0, 100) &&
+        isValidOptionalString(data, 'updatedAt', 0, 100) &&
+        isValidOptionalBool(data, 'isSeed');
     }
 
-    function isValidForecastRecord(data) {
-      return data is map &&
-        isValidPayloadSize(data) &&
+    function allowedForecastRecordFields() {
+      return [
+        'id', 'fechaLevantamiento', 'fechaCotizacion', 'marca', 'pmResponsable',
+        'partner', 'ejecutivoPartner', 'endUser', 'usdIntcomex', 'emailEjecutivoPartner',
+        'mesFacturacion', 'emailClienteFinal', 'detalleProductos', 'oc', 'deal',
+        'productos', 'suscripciones', 'servicios', 'meraki', 'am', 'grupoVentas',
+        'observacion', 'dsvSubmission', 'po', 'so', 'submittedDate', 'clienteCisco',
+        'promotionAuthorizationNumber', 'endCustomerName', 'endCustomerAddress1',
+        'numeroVenta', 'bodega', 'caso', 'priceProtectionExpiryDate', 'credit',
+        'nuevoCaso', 'confirmacionCredito', 'createdAt', 'updatedAt', 'isSeed',
+        'sourceEstimateId', 'sourceBoTrackingId', 'sourceDsvId', 'sourcePipelineId'
+      ];
+    }
+
+    function isValidForecastRecord(data, recordDocId) {
+      return isValidPayloadSize(data) &&
         'id' in data && data.id is string && data.id.size() >= 1 && data.id.size() <= 100 &&
-        (!('fechaLevantamiento' in data) || (data.fechaLevantamiento is string && data.fechaLevantamiento.size() <= 100)) &&
-        (!('fechaCotizacion' in data) || (data.fechaCotizacion is string && data.fechaCotizacion.size() <= 100)) &&
-        (!('marca' in data) || (data.marca is string && data.marca.size() <= 100)) &&
-        (!('pmResponsable' in data) || (data.pmResponsable is string && data.pmResponsable.size() <= 200)) &&
-        (!('partner' in data) || (data.partner is string && data.partner.size() <= 200)) &&
-        (!('ejecutivoPartner' in data) || (data.ejecutivoPartner is string && data.ejecutivoPartner.size() <= 200)) &&
-        (!('endUser' in data) || (data.endUser is string && data.endUser.size() <= 200)) &&
-        (!('usdIntcomex' in data) || (data.usdIntcomex is number && data.usdIntcomex >= 0)) &&
-        (!('emailEjecutivoPartner' in data) || (data.emailEjecutivoPartner is string && data.emailEjecutivoPartner.size() <= 200)) &&
-        (!('mesFacturacion' in data) || (data.mesFacturacion is string && data.mesFacturacion.size() <= 100)) &&
-        (!('emailClienteFinal' in data) || (data.emailClienteFinal is string && data.emailClienteFinal.size() <= 200)) &&
-        (!('detalleProductos' in data) || (data.detalleProductos is string && data.detalleProductos.size() <= 2000)) &&
-        (!('oc' in data) || (data.oc is string && data.oc.size() <= 100)) &&
-        (!('deal' in data) || (data.deal is string && data.deal.size() <= 200)) &&
-        (!('productos' in data) || (data.productos is number && data.productos >= 0)) &&
-        (!('suscripciones' in data) || (data.suscripciones is number && data.suscripciones >= 0)) &&
-        (!('servicios' in data) || (data.servicios is number && data.servicios >= 0)) &&
-        (!('meraki' in data) || (data.meraki is number && data.meraki >= 0)) &&
-        (!('am' in data) || (data.am is string && data.am.size() <= 200)) &&
-        (!('grupoVentas' in data) || (data.grupoVentas is string && data.grupoVentas.size() <= 100)) &&
-        (!('observacion' in data) || (data.observacion is string && data.observacion.size() <= 2000)) &&
-        (!('dsvSubmission' in data) || (data.dsvSubmission is string && data.dsvSubmission.size() <= 100)) &&
-        (!('po' in data) || (data.po is string && data.po.size() <= 100)) &&
-        (!('so' in data) || (data.so is string && data.so.size() <= 100)) &&
-        (!('submittedDate' in data) || (data.submittedDate is string && data.submittedDate.size() <= 100)) &&
-        (!('clienteCisco' in data) || (data.clienteCisco is string && data.clienteCisco.size() <= 100)) &&
-        (!('promotionAuthorizationNumber' in data) || (data.promotionAuthorizationNumber is string && data.promotionAuthorizationNumber.size() <= 200)) &&
-        (!('endCustomerName' in data) || (data.endCustomerName is string && data.endCustomerName.size() <= 200)) &&
-        (!('endCustomerAddress1' in data) || (data.endCustomerAddress1 is string && data.endCustomerAddress1.size() <= 500)) &&
-        (!('numeroVenta' in data) || (data.numeroVenta is string && data.numeroVenta.size() <= 100)) &&
-        (!('bodega' in data) || (data.bodega is string && data.bodega.size() <= 100)) &&
-        (!('caso' in data) || (data.caso is string && data.caso.size() <= 200)) &&
-        (!('priceProtectionExpiryDate' in data) || (data.priceProtectionExpiryDate is string && data.priceProtectionExpiryDate.size() <= 100)) &&
-        (!('credit' in data) || (data.credit is string && data.credit.size() <= 100)) &&
-        (!('nuevoCaso' in data) || (data.nuevoCaso is string && data.nuevoCaso.size() <= 200)) &&
-        (!('confirmacionCredito' in data) || (data.confirmacionCredito is string && data.confirmacionCredito.size() <= 200)) &&
-        (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100)) &&
-        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100)) &&
-        (!('isSeed' in data) || data.isSeed is bool) &&
-        (!('sourceEstimateId' in data) || (data.sourceEstimateId is string && data.sourceEstimateId.size() <= 100)) &&
-        (!('sourceBoTrackingId' in data) || (data.sourceBoTrackingId is string && data.sourceBoTrackingId.size() <= 100)) &&
-        (!('sourceDsvId' in data) || (data.sourceDsvId is string && data.sourceDsvId.size() <= 100)) &&
-        (!('sourcePipelineId' in data) || (data.sourcePipelineId is string && data.sourcePipelineId.size() <= 100));
+        data.id == recordDocId &&
+        isValidOptionalString(data, 'fechaLevantamiento', 0, 100) &&
+        isValidOptionalString(data, 'fechaCotizacion', 0, 100) &&
+        isValidOptionalString(data, 'marca', 0, 100) &&
+        isValidOptionalString(data, 'pmResponsable', 0, 200) &&
+        isValidOptionalString(data, 'partner', 0, 200) &&
+        isValidOptionalString(data, 'ejecutivoPartner', 0, 200) &&
+        isValidOptionalString(data, 'endUser', 0, 200) &&
+        isValidOptionalNumber(data, 'usdIntcomex', 0) &&
+        isValidOptionalString(data, 'emailEjecutivoPartner', 0, 200) &&
+        isValidOptionalString(data, 'mesFacturacion', 0, 100) &&
+        isValidOptionalString(data, 'emailClienteFinal', 0, 200) &&
+        isValidOptionalString(data, 'detalleProductos', 0, 2000) &&
+        isValidOptionalString(data, 'oc', 0, 100) &&
+        isValidOptionalString(data, 'deal', 0, 200) &&
+        isValidOptionalNumber(data, 'productos', 0) &&
+        isValidOptionalNumber(data, 'suscripciones', 0) &&
+        isValidOptionalNumber(data, 'servicios', 0) &&
+        isValidOptionalNumber(data, 'meraki', 0) &&
+        isValidOptionalString(data, 'am', 0, 200) &&
+        isValidOptionalString(data, 'grupoVentas', 0, 100) &&
+        isValidOptionalString(data, 'observacion', 0, 2000) &&
+        isValidOptionalString(data, 'dsvSubmission', 0, 100) &&
+        isValidOptionalString(data, 'po', 0, 100) &&
+        isValidOptionalString(data, 'so', 0, 100) &&
+        isValidOptionalString(data, 'submittedDate', 0, 100) &&
+        isValidOptionalString(data, 'clienteCisco', 0, 100) &&
+        isValidOptionalString(data, 'promotionAuthorizationNumber', 0, 200) &&
+        isValidOptionalString(data, 'endCustomerName', 0, 200) &&
+        isValidOptionalString(data, 'endCustomerAddress1', 0, 500) &&
+        isValidOptionalString(data, 'numeroVenta', 0, 100) &&
+        isValidOptionalString(data, 'bodega', 0, 100) &&
+        isValidOptionalString(data, 'caso', 0, 200) &&
+        isValidOptionalString(data, 'priceProtectionExpiryDate', 0, 100) &&
+        isValidOptionalString(data, 'credit', 0, 100) &&
+        isValidOptionalString(data, 'nuevoCaso', 0, 200) &&
+        isValidOptionalString(data, 'confirmacionCredito', 0, 200) &&
+        isValidOptionalString(data, 'createdAt', 0, 100) &&
+        isValidOptionalString(data, 'updatedAt', 0, 100) &&
+        isValidOptionalBool(data, 'isSeed') &&
+        isValidOptionalString(data, 'sourceEstimateId', 0, 100) &&
+        isValidOptionalString(data, 'sourceBoTrackingId', 0, 100) &&
+        isValidOptionalString(data, 'sourceDsvId', 0, 100) &&
+        isValidOptionalString(data, 'sourcePipelineId', 0, 100);
     }
 
     // ------------------------------------------------------------------------
@@ -490,17 +724,28 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /estimates/{estimateId} {
       allow read: if true;
-      allow create: if isValidEstimate(request.resource.data);
-      allow update: if isValidEstimate(request.resource.data) &&
+      allow create: if hasOnlyAllowedFields(allowedEstimateFields()) &&
+        isValidEstimate(request.resource.data);
+      allow update: if affectedKeysOnlyAllowed(allowedEstimateFields()) &&
+        isValidEstimate(request.resource.data) &&
         (isAdmin() || isDocOwner(resource.data) || !isAuthenticated());
       allow delete: if isAdmin() || isDocOwner(resource.data) || !isAuthenticated();
 
       // Subcolección: versions (Historial y versiones de la cotización)
       match /versions/{versionId} {
         allow read: if true;
-        allow create, update: if isValidPayloadSize(request.resource.data) &&
+        allow create: if hasOnlyAllowedFields(allowedEstimateVersionFields()) &&
+          isValidEstimateVersion(request.resource.data) &&
+          existsAfter(/databases/$(database)/documents/estimates/$(estimateId)) &&
+          (isAdmin() || isDocOwner(getAfter(/databases/$(database)/documents/estimates/$(estimateId)).data) || !isAuthenticated());
+        allow update: if versionId != 'v0_RAW' &&
+          versionId != 'v0' &&
+          affectedKeysOnlyAllowed(allowedEstimateVersionFields()) &&
+          isValidEstimateVersion(request.resource.data) &&
           (isAdmin() || isDocOwner(get(/databases/$(database)/documents/estimates/$(estimateId)).data) || !isAuthenticated());
-        allow delete: if isAdmin() || !isAuthenticated();
+        allow delete: if isAdmin() ||
+          isDocOwner(get(/databases/$(database)/documents/estimates/$(estimateId)).data) ||
+          !isAuthenticated();
       }
     }
 
@@ -509,8 +754,10 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /dsv_records/{dsvId} {
       allow read: if true;
-      allow create: if isValidDsvRecord(request.resource.data);
-      allow update: if isValidDsvRecord(request.resource.data) &&
+      allow create: if hasOnlyAllowedFields(allowedDsvFields()) &&
+        isValidDsvRecord(request.resource.data);
+      allow update: if affectedKeysOnlyAllowed(allowedDsvFields()) &&
+        isValidDsvRecord(request.resource.data) &&
         (isAdmin() || isDocOwner(resource.data) || !isAuthenticated());
       allow delete: if isAdmin() || isDocOwner(resource.data) || !isAuthenticated();
     }
@@ -520,7 +767,16 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /users/{userId} {
       allow read: if true;
-      allow create, update: if isValidUser(request.resource.data, userId);
+      allow create: if isValidUser(request.resource.data, userId) &&
+        (!('email' in request.resource.data) || request.resource.data.email == '' || isValidEmail(request.resource.data.email)) &&
+        (isAdmin() || !isAuthenticated());
+      allow update: if isValidUser(request.resource.data, userId) &&
+        isUserImmutableFieldsUnchanged() &&
+        (
+          isAdmin() ||
+          (isOwner(userId) && areImmutableFieldsUnchanged(['role', 'is_active', 'password_hash'])) ||
+          !isAuthenticated()
+        );
       allow delete: if false;
     }
 
@@ -529,7 +785,10 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /shared_sku_rules/{skuId} {
       allow read: if true;
-      allow create, update: if isValidSharedSkuRule(request.resource.data);
+      allow create: if hasOnlyAllowedFields(allowedSharedSkuFields()) &&
+        isValidSharedSkuRule(request.resource.data);
+      allow update: if affectedKeysOnlyAllowed(allowedSharedSkuFields()) &&
+        isValidSharedSkuRule(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
 
@@ -538,7 +797,10 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /partner_custom_params/{paramId} {
       allow read: if true;
-      allow create, update: if isValidPartnerCustomParam(request.resource.data);
+      allow create: if hasOnlyAllowedFields(allowedPartnerParamFields()) &&
+        isValidPartnerCustomParam(request.resource.data);
+      allow update: if affectedKeysOnlyAllowed(allowedPartnerParamFields()) &&
+        isValidPartnerCustomParam(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
 
@@ -547,7 +809,10 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /partners_xcl/{partnerId} {
       allow read: if true;
-      allow create, update: if isValidPartnerXcl(request.resource.data);
+      allow create: if hasOnlyAllowedFields(allowedPartnerXclFields()) &&
+        isValidPartnerXcl(request.resource.data);
+      allow update: if affectedKeysOnlyAllowed(allowedPartnerXclFields()) &&
+        isValidPartnerXcl(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
 
@@ -556,7 +821,10 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /cisco_bo_sku_catalog/{skuKey} {
       allow read: if true;
-      allow create, update: if isValidBoSkuCatalog(request.resource.data);
+      allow create: if hasOnlyAllowedFields(allowedBoSkuCatalogFields()) &&
+        isValidBoSkuCatalog(request.resource.data);
+      allow update: if affectedKeysOnlyAllowed(allowedBoSkuCatalogFields()) &&
+        isValidBoSkuCatalog(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
 
@@ -565,7 +833,10 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /bo_order_tracking/{trackingId} {
       allow read: if true;
-      allow create, update: if isValidBoOrderTracking(request.resource.data);
+      allow create: if hasOnlyAllowedFields(allowedBoTrackingFields()) &&
+        isValidBoOrderTracking(request.resource.data);
+      allow update: if affectedKeysOnlyAllowed(allowedBoTrackingFields()) &&
+        isValidBoOrderTracking(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
 
@@ -574,7 +845,10 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /cisco_fast_track_catalog/{docId} {
       allow read: if true;
-      allow create, update: if isValidFastTrackCatalog(request.resource.data);
+      allow create: if hasOnlyAllowedFields(allowedFastTrackFields()) &&
+        isValidFastTrackCatalog(request.resource.data);
+      allow update: if affectedKeysOnlyAllowed(allowedFastTrackFields()) &&
+        isValidFastTrackCatalog(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
 
@@ -583,7 +857,10 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /deal_reminders/{reminderId} {
       allow read: if true;
-      allow create, update: if isValidDealReminder(request.resource.data);
+      allow create: if hasOnlyAllowedFields(allowedDealReminderFields()) &&
+        isValidDealReminder(request.resource.data);
+      allow update: if affectedKeysOnlyAllowed(allowedDealReminderFields()) &&
+        isValidDealReminder(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
 
@@ -592,7 +869,10 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /app_feedback_tickets/{ticketId} {
       allow read: if true;
-      allow create, update: if isValidFeedbackTicket(request.resource.data);
+      allow create: if hasOnlyAllowedFields(allowedFeedbackTicketFields()) &&
+        isValidFeedbackTicket(request.resource.data);
+      allow update: if affectedKeysOnlyAllowed(allowedFeedbackTicketFields()) &&
+        isValidFeedbackTicket(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
 
@@ -601,7 +881,10 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /cisco_pipeline_deals/{dealId} {
       allow read: if true;
-      allow create, update: if isValidPipelineDeal(request.resource.data);
+      allow create: if hasOnlyAllowedFields(allowedPipelineDealFields()) &&
+        isValidPipelineDeal(request.resource.data, dealId);
+      allow update: if affectedKeysOnlyAllowed(allowedPipelineDealFields()) &&
+        isValidPipelineDeal(request.resource.data, dealId);
       allow delete: if isAdmin() || !isAuthenticated();
     }
 
@@ -610,8 +893,11 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /cisco_forecast_records/{recordId} {
       allow read: if true;
-      allow create, update: if isValidForecastRecord(request.resource.data);
-      allow delete: if true;
+      allow create: if hasOnlyAllowedFields(allowedForecastRecordFields()) &&
+        isValidForecastRecord(request.resource.data, recordId);
+      allow update: if affectedKeysOnlyAllowed(allowedForecastRecordFields()) &&
+        isValidForecastRecord(request.resource.data, recordId);
+      allow delete: if isAdmin() || !isAuthenticated();
     }
 
     // ------------------------------------------------------------------------

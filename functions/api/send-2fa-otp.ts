@@ -3,21 +3,84 @@
 // International Access 2FA Dispatch & Cryptographic Verification Service
 // ============================================================================
 
+import { buildEdgeCorsHeaders } from '../../src/utils/edgeCors';
+
 interface Env {
   RESEND_API_KEY?: string;
   NOTIFY_SECRET?: string;
+  ADMIN_OVERRIDE_SECRET?: string;
+  VITE_FIREBASE_PROJECT_ID?: string;
+  FIREBASE_PROJECT_ID?: string;
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
-export const onRequestOptions: PagesFunction<Env> = async () => {
+function timingSafeEqualStr(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const aBytes = enc.encode(a);
+  const bBytes = enc.encode(b);
+  const maxLen = Math.max(aBytes.length, bBytes.length);
+  let diff = aBytes.length ^ bBytes.length;
+  for (let i = 0; i < maxLen; i++) {
+    diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
+  }
+  return diff === 0;
+}
+
+async function sha256SaltedServer(password: string): Promise<string> {
+  const salt = 'Cisco_Automated_Intcomex_Salt_2026!';
+  const data = new TextEncoder().encode(password + salt);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function verifyAdminViaFirestore(
+  projectId: string,
+  adminUsername: string,
+  adminPassword: string
+): Promise<boolean> {
+  const cleanUser = adminUsername.trim().toLowerCase();
+  const cleanPass = adminPassword.trim();
+  if (!cleanUser || !cleanPass || !/^[a-z0-9._-]{1,64}$/.test(cleanUser)) {
+    return false;
+  }
+  const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/users/${encodeURIComponent(cleanUser)}`;
+  const res = await fetch(firestoreUrl, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) {
+    return false;
+  }
+  const docJson: any = await res.json();
+  const fields = docJson?.fields;
+  if (!fields) return false;
+
+  const role = String(fields.role?.stringValue || '').trim().toLowerCase();
+  const isActiveRaw = fields.is_active?.integerValue ?? fields.is_active?.doubleValue ?? '0';
+  const isActive = Number(isActiveRaw);
+  const storedHash = String(fields.password_hash?.stringValue || '').trim();
+  if (role !== 'admin' || isActive !== 1 || !storedHash) {
+    return false;
+  }
+
+  const computedHash = await sha256SaltedServer(cleanPass);
+  return timingSafeEqualStr(storedHash, computedHash);
+}
+
+export const onRequestOptions: PagesFunction<Env> = async (context) => {
   return new Response(null, {
     status: 204,
-    headers: corsHeaders,
+    headers: buildEdgeCorsHeaders(context.request, 'POST, OPTIONS'),
   });
 };
 
@@ -92,6 +155,11 @@ async function dispatchEmail(
 }
 
 function build2FaEmailHtml(code: string, username: string, country: string, city: string, ip: string): string {
+  const safeCode = escapeHtml(code);
+  const safeUser = escapeHtml(username);
+  const safeCountry = escapeHtml(country);
+  const safeCity = escapeHtml(city || 'Desconocida');
+  const safeIp = escapeHtml(ip);
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -114,26 +182,26 @@ function build2FaEmailHtml(code: string, username: string, country: string, city
     <div class="badge">Autenticación Adaptativa 2FA • Ingreso Internacional</div>
     <h2 style="margin: 0 0 8px 0; font-size: 20px; color: #ffffff;">Verificación de Acceso Seguro</h2>
     <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5; margin: 0 0 16px 0;">
-      Hola <strong>${username}</strong>, se ha detectado un inicio de sesión fuera de Chile. Para autorizar tu ingreso, introduce el siguiente código de 6 dígitos:
+      Hola <strong>${safeUser}</strong>, se ha detectado un inicio de sesión fuera de Chile. Para autorizar tu ingreso, introduce el siguiente código de 6 dígitos:
     </p>
 
     <div class="code-box">
       <div style="font-size: 11px; text-transform: uppercase; color: #818cf8; font-weight: bold; margin-bottom: 6px;">Código de Acceso Temporal (Válido 10 min)</div>
-      <div class="code">${code}</div>
+      <div class="code">${safeCode}</div>
     </div>
 
     <table class="meta-table">
       <tr>
         <td>📍 País detectado:</td>
-        <td class="val">${country}</td>
+        <td class="val">${safeCountry}</td>
       </tr>
       <tr>
         <td>🏙️ Ciudad / Nodo:</td>
-        <td class="val">${city || 'Desconocida'}</td>
+        <td class="val">${safeCity}</td>
       </tr>
       <tr>
         <td>🌐 Dirección IP:</td>
-        <td class="val">${ip}</td>
+        <td class="val">${safeIp}</td>
       </tr>
       <tr>
         <td>⏱️ Validez:</td>
@@ -151,6 +219,12 @@ function build2FaEmailHtml(code: string, username: string, country: string, city
 }
 
 function buildAdminAlertHtml(username: string, email: string, country: string, city: string, ip: string, tempAdminCode: string): string {
+  const safeUser = escapeHtml(username);
+  const safeEmail = escapeHtml(email);
+  const safeCountry = escapeHtml(country);
+  const safeCity = escapeHtml(city || 'Desconocida');
+  const safeIp = escapeHtml(ip);
+  const safeCode = escapeHtml(tempAdminCode);
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -167,12 +241,12 @@ function buildAdminAlertHtml(username: string, email: string, country: string, c
     <div style="color: #f43f5e; font-weight: bold; font-size: 12px; text-transform: uppercase;">⚠️ Alerta de Administrador Root (mskill)</div>
     <h3 style="color: #ffffff; margin: 8px 0;">Solicitud de Desbloqueo de Acceso Internacional</h3>
     <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5;">
-      El colaborador <strong>${username}</strong> (${email}) está intentando ingresar desde el extranjero (<strong>${country} - ${city}</strong>, IP: <code>${ip}</code>) y ha solicitado autorización.
+      El colaborador <strong>${safeUser}</strong> (${safeEmail}) está intentando ingresar desde el extranjero (<strong>${safeCountry} - ${safeCity}</strong>, IP: <code>${safeIp}</code>) y ha solicitado autorización.
     </p>
     <p style="font-size: 13px; color: #cbd5e1;">
       Puedes entregarle el siguiente <strong>Código Maestro de Contingencia</strong> (válido por 24 horas para este usuario):
     </p>
-    <div class="code">${tempAdminCode}</div>
+    <div class="code">${safeCode}</div>
     <div style="font-size: 11px; color: #94a3b8; text-align: center;">Cisco Automated • Portal de Administración Intcomex</div>
   </div>
 </body>
@@ -180,6 +254,7 @@ function buildAdminAlertHtml(username: string, email: string, country: string, c
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
+  const corsHeaders = buildEdgeCorsHeaders(context.request, 'POST, OPTIONS');
   try {
     const body: any = await context.request.json().catch(() => ({}));
     const action = body?.action || 'send';
@@ -283,7 +358,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       const rootMasterPayload = `ROOT_MASTER:${dayStamp}`;
       const expectedRootMaster = (await createHmacSignature(rootMasterPayload, secretKey)).slice(0, 8).toUpperCase();
 
-      if (inputCode.toUpperCase() === expectedAdminSig || inputCode.toUpperCase() === expectedRootMaster) {
+      if (
+        timingSafeEqualStr(inputCode.toUpperCase(), expectedAdminSig) ||
+        timingSafeEqualStr(inputCode.toUpperCase(), expectedRootMaster)
+      ) {
         return new Response(
           JSON.stringify({
             success: true,
@@ -295,9 +373,16 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }
 
       // 2. Verificación de Código OTP numérico de 6 dígitos
-      if (Date.now() > expiresAt) {
+      if (!Number.isFinite(expiresAt) || expiresAt <= 0 || Date.now() > expiresAt) {
         return new Response(
           JSON.stringify({ success: false, error: 'El código 2FA ha expirado (validez de 10 minutos). Solicita uno nuevo.' }),
+          { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+
+      if (!/^[0-9a-f]{64}$/i.test(otpSignature)) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Firma de sesión 2FA inválida.' }),
           { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
         );
       }
@@ -305,7 +390,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       const expectedPayload = `${username}:${inputCode}:${expiresAt}`;
       const expectedSignature = await createHmacSignature(expectedPayload, secretKey);
 
-      if (otpSignature !== expectedSignature) {
+      if (!timingSafeEqualStr(otpSignature.toLowerCase(), expectedSignature.toLowerCase())) {
         return new Response(
           JSON.stringify({ success: false, error: 'Código de verificación incorrecto. Intente nuevamente.' }),
           { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
@@ -322,9 +407,41 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     // ========================================================================
-    // ACCIÓN 4: GENERAR CÓDIGO MAESTRO DE CONTINGENCIA (ADMIN PANEL / MSKILL)
+    // ACCIÓN 4: GENERAR CÓDIGO MAESTRO DE CONTINGENCIA (SOLO ADMIN AUTENTICADO)
     // ========================================================================
     if (action === 'generate_admin_override') {
+      const authHeader = context.request.headers.get('Authorization') || '';
+      const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+      const configuredAdminSecret = (context.env.ADMIN_OVERRIDE_SECRET || context.env.NOTIFY_SECRET || '').trim();
+      const hasSecretAuth =
+        Boolean(configuredAdminSecret) &&
+        Boolean(bearerToken || body?.adminSecret) &&
+        timingSafeEqualStr(bearerToken || String(body?.adminSecret || ''), configuredAdminSecret);
+
+      let isVerifiedAdmin = hasSecretAuth;
+      if (!isVerifiedAdmin) {
+        const adminUsername = String(body?.adminUsername || '').trim().toLowerCase();
+        const adminPassword = String(body?.adminPassword || '');
+        const projectId = (
+          context.env.FIREBASE_PROJECT_ID ||
+          context.env.VITE_FIREBASE_PROJECT_ID ||
+          'cisco-automated'
+        ).trim();
+        if (adminUsername && adminPassword) {
+          isVerifiedAdmin = await verifyAdminViaFirestore(projectId, adminUsername, adminPassword);
+        }
+      }
+
+      if (!isVerifiedAdmin) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Autorización requerida: ingrese credenciales válidas de Administrador.',
+          }),
+          { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+
       const username = (body?.username || '').trim().toLowerCase();
       const dayStamp = new Date().toISOString().slice(0, 10);
       const adminCodePayload = username ? `ADMIN_OVERRIDE:${username}:${dayStamp}` : `ROOT_MASTER:${dayStamp}`;

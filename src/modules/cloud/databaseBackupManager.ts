@@ -11,13 +11,21 @@ import {
   saveCloudUser,
   getLocalUsersCache,
   saveLocalUsersCache,
+  getLocalDsvCache,
+  hydrateDsvCacheFromIndexedDb,
   sanitizeForFirestore,
 } from './firestoreService';
 import { getLocalBoTrackingCache, saveLocalBoTrackingCache, saveBoTracking } from '../bo/boTrackingService';
 import { getLocalDealRemindersCache, saveLocalDealRemindersCache, saveDealReminder } from '../bo/dealReminderService';
 import { getLocalProfilesCache, saveLocalProfilesCache, saveParamProfile } from './partnerParamsService';
 import { getLocalBoSkuCache, saveLocalBoSkuCache, batchSaveBoSkuMappings } from '../bo/boSkuCatalogService';
-import { LOCAL_STORAGE_PARTNERS_KEY, LOCAL_STORAGE_PARTNERS_VAULT_KEY } from '../../hooks/usePartnerDatabase';
+import {
+  LOCAL_STORAGE_PARTNERS_KEY,
+  LOCAL_STORAGE_PARTNERS_VAULT_KEY,
+  loadPartnersFromStorage,
+  persistPartnersToStorage,
+  hydratePartnersFromIndexedDb,
+} from '../../hooks/usePartnerDatabase';
 import { getFirestoreInstance } from './firebaseConfig';
 import { doc, setDoc } from 'firebase/firestore';
 import { downloadBlobSafe } from '../../utils/downloadHelper';
@@ -139,12 +147,19 @@ const FAST_TRACK_STORAGE_KEY_MAP: Record<keyof FastTrackMetadataSnapshot, string
 
 let inMemoryPendingQueue: PendingSyncQueueItem[] = [];
 
+let inMemorySharedSkuSnapshot: any[] = [];
+
 function getDsvLocalSnapshot(): any[] {
   try {
+    const hydratedOrMem = getLocalDsvCache();
+    if (Array.isArray(hydratedOrMem) && hydratedOrMem.length > 0) {
+      return hydratedOrMem;
+    }
     if (typeof localStorage === 'undefined') return [];
     const raw =
       localStorage.getItem('cisco_cloud_dsv_cache_v2') ||
-      localStorage.getItem('cisco_dsv_permanent_vault_v1');
+      localStorage.getItem('cisco_dsv_permanent_vault_v1') ||
+      localStorage.getItem('cisco_dsv_backup_cache_v1');
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -154,6 +169,10 @@ function getDsvLocalSnapshot(): any[] {
 
 function getPartnersXclSnapshot(): any[] {
   try {
+    const loaded = loadPartnersFromStorage();
+    if (Array.isArray(loaded) && loaded.length > 0) {
+      return loaded;
+    }
     if (typeof localStorage === 'undefined') return [];
     const raw =
       localStorage.getItem(LOCAL_STORAGE_PARTNERS_KEY) ||
@@ -167,14 +186,15 @@ function getPartnersXclSnapshot(): any[] {
 
 function getSharedSkuRulesSnapshot(): any[] {
   try {
-    if (typeof localStorage === 'undefined') return [];
+    if (typeof localStorage === 'undefined') return inMemorySharedSkuSnapshot;
     const raw =
       localStorage.getItem('cisco_shared_sku_rules_cache_v2') ||
       localStorage.getItem('cisco_shared_sku_permanent_vault_v1');
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    return inMemorySharedSkuSnapshot;
   } catch {
-    return [];
+    return inMemorySharedSkuSnapshot;
   }
 }
 
@@ -367,14 +387,65 @@ export function exportAllDatabasesSnapshot(user: string = 'mskill'): CiscoDataba
 }
 
 /**
+ * Versión asíncrona completa de snapshot que hidrata DSV, Partners XCL y reglas SKU desde IndexedDB/SQLite
+ * antes de construir el respaldo maestro (evita respaldos vacíos cuando superan los 20 KB).
+ */
+export async function exportAllDatabasesSnapshotAsync(user: string = 'mskill'): Promise<CiscoDatabaseMasterBackup> {
+  const [hydratedDsv, hydratedPartners, idbSharedSku] = await Promise.all([
+    hydrateDsvCacheFromIndexedDb().catch(() => []),
+    hydratePartnersFromIndexedDb().catch(() => []),
+    idbGet<any[]>(STORES.KEYVAL, 'cisco_shared_sku_rules_cache_v2').catch(() => null),
+  ]);
+
+  if (Array.isArray(idbSharedSku) && idbSharedSku.length > 0) {
+    inMemorySharedSkuSnapshot = idbSharedSku;
+  }
+
+  const baseSnapshot = exportAllDatabasesSnapshot(user);
+  const dsvRecords =
+    baseSnapshot.data.dsvRecords && baseSnapshot.data.dsvRecords.length > 0
+      ? baseSnapshot.data.dsvRecords
+      : hydratedDsv;
+  const partnersXcl =
+    baseSnapshot.data.partnersXcl && baseSnapshot.data.partnersXcl.length > 0
+      ? baseSnapshot.data.partnersXcl
+      : hydratedPartners;
+  const sharedSkuRules =
+    baseSnapshot.data.sharedSkuRules && baseSnapshot.data.sharedSkuRules.length > 0
+      ? baseSnapshot.data.sharedSkuRules
+      : Array.isArray(idbSharedSku)
+      ? idbSharedSku
+      : [];
+
+  return {
+    ...baseSnapshot,
+    stats: {
+      ...baseSnapshot.stats,
+      dsvCount: dsvRecords.length,
+      partnersXclCount: partnersXcl.length,
+      sharedSkuRulesCount: sharedSkuRules.length,
+    },
+    data: {
+      ...baseSnapshot.data,
+      dsvRecords,
+      partnersXcl,
+      sharedSkuRules,
+    },
+  };
+}
+
+/**
  * Guarda una copia de seguridad rodante (rolling emergency backup) en el motor moderno IndexedDB de alta capacidad.
  * Elimina la necesidad de almacenar el snapshot masivo en LocalStorage (evitando saturar el límite de 5 MB).
  */
 export function saveRollingEmergencyBackup(): void {
   try {
-    const snapshot = exportAllDatabasesSnapshot('auto_scheduler');
-    // Guardar en motor moderno IndexedDB (sin límite de 5 MB)
-    idbSet(STORES.KEYVAL, 'cisco_emergency_vault_backup_v2', snapshot).catch(() => {});
+    // Guardar copia inmediata y actualizar asíncronamente con hidratación IDB completa
+    const immediateSnapshot = exportAllDatabasesSnapshot('auto_scheduler');
+    idbSet(STORES.KEYVAL, 'cisco_emergency_vault_backup_v2', immediateSnapshot).catch(() => {});
+    exportAllDatabasesSnapshotAsync('auto_scheduler')
+      .then((fullSnapshot) => idbSet(STORES.KEYVAL, 'cisco_emergency_vault_backup_v2', fullSnapshot))
+      .catch(() => {});
 
     // Limpiar snapshot pesado de LocalStorage para liberar espacio
     if (typeof localStorage !== 'undefined') {
@@ -447,8 +518,8 @@ export function checkAndAutoHealFromEmergencyBackup(): boolean {
 /**
  * Descarga el archivo de respaldo maestro en formato JSON utilizando liberación segura de recursos.
  */
-export function downloadDatabaseBackupFile(user: string = 'mskill'): void {
-  const snapshot = exportAllDatabasesSnapshot(user);
+export async function downloadDatabaseBackupFile(user: string = 'mskill'): Promise<void> {
+  const snapshot = await exportAllDatabasesSnapshotAsync(user);
   const jsonStr = JSON.stringify(snapshot, null, 2);
   const blob = new Blob([jsonStr], { type: 'application/json' });
 
@@ -651,9 +722,10 @@ export async function restoreAllDatabasesFromSnapshot(
     await syncCollectionItems('dealReminders', toSync);
   }
 
-  // 4. Restaurar DSV Records
+  // 4. Restaurar DSV Records (hidratando primero desde IDB si no está en localStorage)
   if (Array.isArray(backup.data.dsvRecords)) {
-    const current = isReplace ? [] : getDsvLocalSnapshot();
+    const existingDsv = isReplace ? [] : await hydrateDsvCacheFromIndexedDb().catch(() => []);
+    const current = isReplace ? [] : existingDsv.length > 0 ? existingDsv : getDsvLocalSnapshot();
     const map = new Map<string, any>();
     current.forEach((d) => {
       const k = d?.id || d?.soNumber || d?.dealId;
@@ -726,9 +798,10 @@ export async function restoreAllDatabasesFromSnapshot(
     await syncCollectionItems('partnerProfiles', toSync);
   }
 
-  // 7. Restaurar Partners XCL
+  // 7. Restaurar Partners XCL (hidratando primero desde IDB cuando supera 20 KB)
   if (Array.isArray(backup.data.partnersXcl)) {
-    const current = isReplace ? [] : getPartnersXclSnapshot();
+    const existingPartners = isReplace ? [] : await hydratePartnersFromIndexedDb().catch(() => []);
+    const current = isReplace ? [] : existingPartners.length > 0 ? existingPartners : getPartnersXclSnapshot();
     const map = new Map<string, any>();
     current.forEach((p) => {
       if (p?.resellerName) map.set(String(p.resellerName).toUpperCase(), p);
@@ -738,16 +811,9 @@ export async function restoreAllDatabasesFromSnapshot(
     });
     const merged = Array.from(map.values());
     try {
-      // Guardar en motor moderno IndexedDB de alta capacidad para no saturar LocalStorage
-      idbSet(STORES.KEYVAL, LOCAL_STORAGE_PARTNERS_KEY, merged).catch(() => {});
+      persistPartnersToStorage(merged);
       if (typeof localStorage !== 'undefined') {
         localStorage.removeItem(LOCAL_STORAGE_PARTNERS_VAULT_KEY);
-        const serialized = JSON.stringify(merged);
-        if (serialized.length < 20_000) {
-          localStorage.setItem(LOCAL_STORAGE_PARTNERS_KEY, serialized);
-        } else {
-          localStorage.removeItem(LOCAL_STORAGE_PARTNERS_KEY);
-        }
       }
     } catch (_) {}
     restoredStats.partnersXcl = merged.length;
