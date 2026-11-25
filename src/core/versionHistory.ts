@@ -15,11 +15,25 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.26.4',
+    date: '2026-11-25',
+    commit: 'desktop-security-exporters-ui-and-cache-fixes',
+    title: 'Seguridad Desktop SQLite, Escape HTML/CSV, Calculadora Rápida y Caché O(1)',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Aislamiento estricto por user_id en get_estimates_list / get_user_kpis / search_storage_files y validación HTTPS + SHA-256 en actualizaciones Desktop (#6)',
+      'Escape HTML contra XSS en correo y PDF comercial, historial CCW-R calculado y entrecomillado CSV para descartados BO (#7)',
+      'Conexión end-to-end de Calculadora Rápida desde Búsqueda Rápida y registros reales de auditoría web sin datos mock (#8)',
+      'Huella O(1) unificada buildMirrorFingerprint entre saveEstimatesMirrorSnapshot y getEstimatesMirrorSnapshot (#9)',
+    ],
+  },
+  {
     version: '2.26.3',
     date: '2026-11-25',
     commit: 'offline-queue-auth-and-financial-precision-fixes',
     title: 'Cola Offline Real, Autenticación Endurecida y Correcciones Financieras/Temporales',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Cola Offline y Conflictos (offlineSyncQueue.ts, offlineConflictDetector.ts): Sincronización real de save_sku_override y save_ticket, rechazo seguro en default, y normalización numérica de timestamps al detectar conflictos.',

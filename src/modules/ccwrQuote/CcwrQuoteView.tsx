@@ -171,18 +171,19 @@ export function CcwrQuoteView() {
       }
 
       const parsed = parseCcwrWorkbook(buffer, file.name);
+      const initialRecalc = recalculateCcwrQuote(parsed.items, params, onlyServicesWithCost);
 
       setHeaderInfo(parsed.headerInfo);
       setItems(parsed.items);
       setFileName(file.name);
 
-      // Guardar en historial
+      // Guardar en historial con ítems ya valorizados y calculados
       const processed: ProcessedCcwrQuote = {
         fileName: file.name,
         headerInfo: parsed.headerInfo,
-        items: parsed.items,
+        items: initialRecalc.calculatedItems,
         params,
-        summary: recalculateCcwrQuote(parsed.items, params, onlyServicesWithCost).summary,
+        summary: initialRecalc.summary,
         processedAt: new Date().toISOString(),
       };
       await saveCcwrQuoteHistory(processed);

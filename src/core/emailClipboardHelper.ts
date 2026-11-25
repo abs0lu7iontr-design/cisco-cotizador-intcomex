@@ -250,6 +250,15 @@ export interface EstimateEmailOptions {
  * Excluye etiquetas internas de margen/arancel/licencia y omite la firma personal
  * por defecto para respetar la firma predeterminada que el usuario ya tiene configurada en Outlook.
  */
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function generateEstimateEmailHtml(
   data: ProcessedEstimateResult,
   detectedPartner?: string,
@@ -283,20 +292,20 @@ export function generateEstimateEmailHtml(
       const bg = isEven ? '#ffffff' : '#f8fafc';
       const isSub = String(item.lineNumber || '').includes('.');
       const indent = isSub ? 'padding-left: 12px;' : '';
-      const leadTime = item.transformedLeadTime || 'Estándar';
+      const leadTime = escapeHtml(item.transformedLeadTime || 'Estándar');
 
       // Descripción oficial Cisco limpia (sin etiquetas internas como "(Licencia)" o "(Arancel 6%)")
-      const cleanDesc = (item.description || '-').trim();
+      const cleanDesc = escapeHtml((item.description || '-').trim());
 
       return `
       <tr style="background-color: ${bg}; font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 9pt; color: #1e293b;">
-        <td width="36" style="border: 1px solid #cbd5e1; padding: 5px 3px; width: 36px; text-align: center; color: #64748b; font-size: 8.5pt;">${item.lineNumber || String(idx + 1)}</td>
-        <td width="135" style="border: 1px solid #cbd5e1; padding: 5px 8px; width: 135px; font-weight: bold; color: #0f172a; font-family: Consolas, 'Courier New', monospace; word-wrap: break-word; ${indent}">${item.partNumber}</td>
+        <td width="36" style="border: 1px solid #cbd5e1; padding: 5px 3px; width: 36px; text-align: center; color: #64748b; font-size: 8.5pt;">${escapeHtml(item.lineNumber || String(idx + 1))}</td>
+        <td width="135" style="border: 1px solid #cbd5e1; padding: 5px 8px; width: 135px; font-weight: bold; color: #0f172a; font-family: Consolas, 'Courier New', monospace; word-wrap: break-word; ${indent}">${escapeHtml(item.partNumber)}</td>
         <td width="245" style="border: 1px solid #cbd5e1; padding: 5px 8px; width: 245px; text-align: left; word-wrap: break-word; overflow-wrap: break-word; ${indent}">${cleanDesc}</td>
         <td width="84" style="border: 1px solid #cbd5e1; padding: 5px 4px; width: 84px; text-align: center; color: #4338ca; font-size: 8pt; font-weight: 600; white-space: nowrap;">${leadTime}</td>
-        <td width="35" style="border: 1px solid #cbd5e1; padding: 5px 3px; width: 35px; text-align: center; font-weight: bold;">${item.qty}</td>
-        <td width="95" style="border: 1px solid #cbd5e1; padding: 5px 8px; width: 95px; text-align: right; white-space: nowrap;">${formatUsdCurrency(item.precioVentaUnitario)}</td>
-        <td width="100" style="border: 1px solid #cbd5e1; padding: 5px 8px; width: 100px; text-align: right; font-weight: bold; color: #0f172a; white-space: nowrap;">${formatUsdCurrency(item.precioVentaExtendido)}</td>
+        <td width="35" style="border: 1px solid #cbd5e1; padding: 5px 3px; width: 35px; text-align: center; font-weight: bold;">${Number(item.qty) || 0}</td>
+        <td width="95" style="border: 1px solid #cbd5e1; padding: 5px 8px; width: 95px; text-align: right; white-space: nowrap;">${escapeHtml(formatUsdCurrency(item.precioVentaUnitario))}</td>
+        <td width="100" style="border: 1px solid #cbd5e1; padding: 5px 8px; width: 100px; text-align: right; font-weight: bold; color: #0f172a; white-space: nowrap;">${escapeHtml(formatUsdCurrency(item.precioVentaExtendido))}</td>
       </tr>`;
     })
     .join('');
@@ -304,19 +313,26 @@ export function generateEstimateEmailHtml(
   // Firma opcional (sólo se incluye si se solicita explícitamente en options.includeSignature)
   let signatureBlock = '';
   if (options?.includeSignature && signatureProfile) {
+    const safeSenderName = escapeHtml(signatureProfile.senderName);
+    const safeJobTitle = escapeHtml(signatureProfile.jobTitle);
+    const safePhone = escapeHtml(signatureProfile.phone);
+    const safeEmail = escapeHtml(signatureProfile.email);
+    const safeDisclaimer = escapeHtml(
+      signatureProfile.disclaimerText || DEFAULT_EMAIL_SIGNATURE.disclaimerText
+    );
     signatureBlock = `
   <!-- Firma Personalizada del PM -->
   <table width="730" border="0" cellpadding="0" cellspacing="0" style="width: 730px; max-width: 730px; border-collapse: collapse; font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 9.5pt; color: #334155; margin-top: 14px;">
     <tr>
       <td style="padding-right: 12px; border-right: 2px solid #4338ca; vertical-align: top; width: 240px;">
-        <strong style="color: #0f172a; font-size: 10.5pt; display: block;">${signatureProfile.senderName}</strong>
-        <span style="color: #4338ca; font-weight: bold; font-size: 9pt; display: block;">${signatureProfile.jobTitle}</span>
+        <strong style="color: #0f172a; font-size: 10.5pt; display: block;">${safeSenderName}</strong>
+        <span style="color: #4338ca; font-weight: bold; font-size: 9pt; display: block;">${safeJobTitle}</span>
         <span style="color: #64748b; font-size: 8.5pt; display: block;">Intcomex Chile &bull; Cisco Division</span>
       </td>
       <td style="padding-left: 12px; vertical-align: top; font-size: 8.5pt; color: #475569;">
-        ${signatureProfile.phone ? `<span>📞 ${signatureProfile.phone}</span><br/>` : ''}
-        ${signatureProfile.email ? `<span>✉️ <a href="mailto:${signatureProfile.email}" style="color: #4338ca; text-decoration: none;">${signatureProfile.email}</a></span><br/>` : ''}
-        <span style="color: #94a3b8; font-size: 8pt;">${signatureProfile.disclaimerText || DEFAULT_EMAIL_SIGNATURE.disclaimerText}</span>
+        ${signatureProfile.phone ? `<span>📞 ${safePhone}</span><br/>` : ''}
+        ${signatureProfile.email ? `<span>✉️ <a href="mailto:${safeEmail}" style="color: #4338ca; text-decoration: none;">${safeEmail}</a></span><br/>` : ''}
+        <span style="color: #94a3b8; font-size: 8pt;">${safeDisclaimer}</span>
       </td>
     </tr>
   </table>`;
@@ -327,7 +343,7 @@ export function generateEstimateEmailHtml(
   <tr>
     <td style="padding: 0; margin: 0;">
       <p style="margin: 0 0 4px 0; font-size: 11pt; color: #1e293b;">Estimados,</p>
-      <p style="margin: 0 0 14px 0; font-size: 11pt; color: #1e293b;">${greeting}, adjunto cotización solicitada.</p>
+      <p style="margin: 0 0 14px 0; font-size: 11pt; color: #1e293b;">${escapeHtml(greeting)}, adjunto cotización solicitada.</p>
 
       <!-- Encabezado Oficial Price Estimate Cisco CCW -->
       <table width="730" border="0" cellpadding="0" cellspacing="0" style="border-collapse: collapse; width: 730px; max-width: 730px; margin-bottom: 6px; background-color: #f8fafc; border-radius: 6px; border: 1px solid #cbd5e1; font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 9pt;">
@@ -335,18 +351,18 @@ export function generateEstimateEmailHtml(
           <td width="420" style="padding: 8px 12px; width: 420px; vertical-align: top;">
             <div style="font-size: 12pt; font-weight: bold; color: #0f172a; margin-bottom: 1px;">Price Estimate</div>
             <div style="font-size: 9pt; font-weight: bold; color: #64748b; text-transform: uppercase;">INTCOMEX CHILE SA</div>
-            <div style="font-size: 8.5pt; color: #475569; margin-top: 3px;"><strong>Partner:</strong> ${partnerName} &bull; <strong>Cliente Final:</strong> ${clientName}</div>
+            <div style="font-size: 8.5pt; color: #475569; margin-top: 3px;"><strong>Partner:</strong> ${escapeHtml(partnerName)} &bull; <strong>Cliente Final:</strong> ${escapeHtml(clientName)}</div>
           </td>
           <td width="310" style="padding: 8px 12px; width: 310px; vertical-align: top; text-align: right;">
             <span style="color: #64748b; font-size: 8pt; text-transform: uppercase; font-weight: bold; display: block;">Datos de Cotización</span>
             <div style="margin-top: 2px;">
-              <span style="color: #64748b; font-size: 8.5pt;">Estimate ID:</span> <strong style="color: #4338ca; font-family: Consolas, monospace; font-size: 9.5pt;">${estimateId}${data.versionTag ? ` (${data.versionTag})` : ''}</strong>
+              <span style="color: #64748b; font-size: 8.5pt;">Estimate ID:</span> <strong style="color: #4338ca; font-family: Consolas, monospace; font-size: 9.5pt;">${escapeHtml(estimateId)}${data.versionTag ? ` (${escapeHtml(data.versionTag)})` : ''}</strong>
             </div>
             <div>
-              <span style="color: #64748b; font-size: 8.5pt;">Deal ID:</span> <strong style="color: #0f172a; font-family: Consolas, monospace; font-size: 9.5pt;">${dealId}</strong>
+              <span style="color: #64748b; font-size: 8.5pt;">Deal ID:</span> <strong style="color: #0f172a; font-family: Consolas, monospace; font-size: 9.5pt;">${escapeHtml(dealId)}</strong>
             </div>
             <div>
-              <span style="color: #64748b; font-size: 8.5pt;">Fecha / Date:</span> <span style="color: #334155; font-size: 8.5pt;">${fechaStr}</span>
+              <span style="color: #64748b; font-size: 8.5pt;">Fecha / Date:</span> <span style="color: #334155; font-size: 8.5pt;">${escapeHtml(fechaStr)}</span>
             </div>
           </td>
         </tr>

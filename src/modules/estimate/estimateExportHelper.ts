@@ -365,6 +365,15 @@ export function generatePartnerEmailDraft(options: {
   return { subject, bodyText, bodyHtml };
 }
 
+function escapePrintHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 /**
  * Genera el documento HTML completo de alta resolución para impresión / exportación en PDF Comercial.
  */
@@ -413,7 +422,7 @@ export function generateCommercialPdfHtml(options: {
           tableRowsHtml += `
             <tr class="info-row">
               <td class="text-center"></td>
-              <td colspan="6" class="info-cell"><em>${item.description || ''}</em></td>
+              <td colspan="6" class="info-cell"><em>${escapePrintHtml(item.description || '')}</em></td>
             </tr>
           `;
           return;
@@ -423,13 +432,13 @@ export function generateCommercialPdfHtml(options: {
         const isMain = String(item.lineNumber || '').endsWith('.0');
         tableRowsHtml += `
           <tr class="${isAlt ? 'row-alt' : ''}">
-            <td class="text-center ${isMain ? 'font-bold' : ''}">${item.lineNumber || ''}</td>
-            <td class="${isMain ? 'font-bold' : 'indent-part'}">${item.partNumber || ''}</td>
-            <td class="desc-cell">${item.description || ''}</td>
-            <td class="text-center text-slate">${item.transformedLeadTime || '-'}</td>
-            <td class="text-center">${item.qty ?? 1}</td>
-            <td class="text-right">${formatUSD(item.precioVentaUnitario)}</td>
-            <td class="text-right font-medium">${formatUSD(item.precioVentaExtendido)}</td>
+            <td class="text-center ${isMain ? 'font-bold' : ''}">${escapePrintHtml(item.lineNumber || '')}</td>
+            <td class="${isMain ? 'font-bold' : 'indent-part'}">${escapePrintHtml(item.partNumber || '')}</td>
+            <td class="desc-cell">${escapePrintHtml(item.description || '')}</td>
+            <td class="text-center text-slate">${escapePrintHtml(item.transformedLeadTime || '-')}</td>
+            <td class="text-center">${Number(item.qty ?? 1)}</td>
+            <td class="text-right">${escapePrintHtml(formatUSD(item.precioVentaUnitario))}</td>
+            <td class="text-right font-medium">${escapePrintHtml(formatUSD(item.precioVentaExtendido))}</td>
           </tr>
         `;
       });
@@ -437,10 +446,10 @@ export function generateCommercialPdfHtml(options: {
       // Fila de Subtotal de Línea Madre
       tableRowsHtml += `
         <tr class="subtotal-row">
-          <td colspan="4" class="text-right font-bold">Subtotal Línea ${group.motherKey}:</td>
-          <td class="text-center font-bold">${group.totalQty}</td>
+          <td colspan="4" class="text-right font-bold">Subtotal Línea ${escapePrintHtml(group.motherKey)}:</td>
+          <td class="text-center font-bold">${Number(group.totalQty) || 0}</td>
           <td class="text-right"></td>
-          <td class="text-right font-bold">${formatUSD(group.subtotal)}</td>
+          <td class="text-right font-bold">${escapePrintHtml(formatUSD(group.subtotal))}</td>
         </tr>
       `;
     }
@@ -453,7 +462,7 @@ export function generateCommercialPdfHtml(options: {
           tableRowsHtml += `
             <tr class="info-row">
               <td class="text-center"></td>
-              <td colspan="6" class="info-cell"><em>${item.description || ''}</em></td>
+              <td colspan="6" class="info-cell"><em>${escapePrintHtml(item.description || '')}</em></td>
             </tr>
           `;
           return;
@@ -464,13 +473,13 @@ export function generateCommercialPdfHtml(options: {
         const isMain = String(item.lineNumber || '').endsWith('.0');
         tableRowsHtml += `
           <tr class="${isAlt ? 'row-alt' : ''}">
-            <td class="text-center ${isMain ? 'font-bold' : ''}">${item.lineNumber || ''}</td>
-            <td class="${isMain ? 'font-bold' : 'indent-part'}">${item.partNumber || ''}</td>
-            <td class="desc-cell">${item.description || ''}</td>
-            <td class="text-center text-slate">${item.transformedLeadTime || '-'}</td>
-            <td class="text-center">${item.qty ?? 1}</td>
-            <td class="text-right">${formatUSD(item.precioVentaUnitario)}</td>
-            <td class="text-right font-medium">${formatUSD(item.precioVentaExtendido)}</td>
+            <td class="text-center ${isMain ? 'font-bold' : ''}">${escapePrintHtml(item.lineNumber || '')}</td>
+            <td class="${isMain ? 'font-bold' : 'indent-part'}">${escapePrintHtml(item.partNumber || '')}</td>
+            <td class="desc-cell">${escapePrintHtml(item.description || '')}</td>
+            <td class="text-center text-slate">${escapePrintHtml(item.transformedLeadTime || '-')}</td>
+            <td class="text-center">${Number(item.qty ?? 1)}</td>
+            <td class="text-right">${escapePrintHtml(formatUSD(item.precioVentaUnitario))}</td>
+            <td class="text-right font-medium">${escapePrintHtml(formatUSD(item.precioVentaExtendido))}</td>
           </tr>
         `;
       });
@@ -482,7 +491,7 @@ export function generateCommercialPdfHtml(options: {
     <html lang="es">
     <head>
       <meta charset="UTF-8" />
-      <title>Cotización Comercial Cisco - ${clientName || 'Cliente Final'}</title>
+      <title>Cotización Comercial Cisco - ${escapePrintHtml(clientName || 'Cliente Final')}</title>
       <style>
         @page {
           size: letter portrait;
@@ -697,21 +706,21 @@ export function generateCommercialPdfHtml(options: {
       <table class="meta-card">
         <tr>
           <td class="meta-label">Canal / Partner:</td>
-          <td class="meta-value"><strong>${partnerName || 'Intcomex'}</strong></td>
+          <td class="meta-value"><strong>${escapePrintHtml(partnerName || 'Intcomex')}</strong></td>
           <td class="meta-label">Fecha Emisión:</td>
-          <td class="meta-value">${dateStr}</td>
+          <td class="meta-value">${escapePrintHtml(dateStr)}</td>
         </tr>
         <tr>
           <td class="meta-label">Cliente Final:</td>
-          <td class="meta-value"><strong>${clientName || 'Cliente Final'}</strong></td>
+          <td class="meta-value"><strong>${escapePrintHtml(clientName || 'Cliente Final')}</strong></td>
           <td class="meta-label">Estimate ID:</td>
-          <td class="meta-value"><strong>${estimateId}</strong></td>
+          <td class="meta-value"><strong>${escapePrintHtml(estimateId)}</strong></td>
         </tr>
         <tr>
           <td class="meta-label">Price List:</td>
-          <td class="meta-value">${priceList}</td>
+          <td class="meta-value">${escapePrintHtml(priceList)}</td>
           <td class="meta-label">Deal ID:</td>
-          <td class="meta-value">${dealId}</td>
+          <td class="meta-value">${escapePrintHtml(dealId)}</td>
         </tr>
       </table>
 

@@ -372,7 +372,7 @@ export async function generateCcwrQuoteExcel(
 
   worksheet.mergeCells(`G${currentExcelRow}:H${currentExcelRow}`);
   const totalLabelCell = worksheet.getCell(`G${currentExcelRow}`);
-  totalLabelCell.value = 'TOTAL GENERAL:';
+  totalLabelCell.value = 'TOTAL COTIZACIÓN (USD):';
   totalLabelCell.font = boldFont;
   totalLabelCell.alignment = { vertical: 'middle', horizontal: 'right' };
   totalLabelCell.border = tableHeaderBorder;

@@ -6,6 +6,16 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.26.4] - 2026-11-25
+
+### Corregido y Mejorado
+- **Seguridad Desktop SQLite y Auto-Update (#6):** Validación estricta de dominio HTTPS confiable (`_is_trusted_update_url`) y hash SHA-256 opcional en actualizaciones Desktop (`desktop_app/desktop_window.py`); eliminación del fallback silencioso a `"usr-001-admin"` al guardar cotizaciones y aislamiento por `user_id` en `search_storage_files`, `get_estimates_list` y `get_user_kpis` (`desktop_app/db_manager.py`).
+- **Escape HTML, CCW-R Calculado y CSV BO (#7):** Escape de entidades HTML contra XSS (`escapeHtml` / `escapePrintHtml`) en correo nativo (`src/core/emailClipboardHelper.ts`) y PDF comercial (`src/modules/estimate/estimateExportHelper.ts`); exportación del historial CCW-R con ítems y totales ya calculados (`src/modules/ccwrQuote/CcwrQuoteView.tsx`), etiqueta de total `'TOTAL COTIZACIÓN (USD):'` en Excel CCW-R (`src/modules/ccwrQuote/ccwrExcelExporter.ts`) y entrecomillado RFC-4180 para descartados CSV en BO (`src/modules/bo/BoRequestModal.tsx`).
+- **Calculadora Rápida y Audit Logs Reales (#8):** Conexión funcional de `onLoadIntoQuickCalc` con estado `quickCalcPrefill` y soporte de montaje directo sin Excel cargado (`src/App.tsx`, `src/components/QuickCalculator.tsx`); reemplazo de logs ficticios por registro real de auditoría de sesión web en `localStorage` (`appendWebAuditLog` en `src/components/AuditLogsView.tsx`).
+- **Caché O(1) e Igualdad Referencial (#9):** Unificación del cálculo de huella `buildMirrorFingerprint` entre lectura y escritura en `useEstimatesMirror` (`src/hooks/useEstimatesMirror.ts`) evitando invalidaciones espurias por discrepancia de clave.
+
+---
+
 ## [v2.26.3] - 2026-11-25
 ### 🛠️ Cola Offline, Autenticación Segura y Precisión Financiera/Temporal (#3, #4 y #5)
 - **Cola Offline y Detector de Conflictos (`src/core/storage/offlineSyncQueue.ts`, `offlineConflictDetector.ts`):**

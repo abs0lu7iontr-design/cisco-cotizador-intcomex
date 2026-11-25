@@ -7,10 +7,30 @@ import { AuditLog } from '../core/types';
 import { ShieldAlert, Search, RefreshCw } from 'lucide-react';
 import { APP_DISPLAY_NAME, getFormattedAppVersion } from '../core/appVersion';
 
+const WEB_AUDIT_LOGS_STORAGE_KEY = 'cisco_web_audit_logs_v1';
+
+export function appendWebAuditLog(username: string, action: string, details: string): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const raw = localStorage.getItem(WEB_AUDIT_LOGS_STORAGE_KEY);
+    const current: AuditLog[] = raw ? JSON.parse(raw) : [];
+    const next: AuditLog = {
+      id: `web-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      username: username || 'usuario',
+      action,
+      details,
+      created_at: new Date().toISOString(),
+    };
+    const updated = [next, ...(Array.isArray(current) ? current : [])].slice(0, 200);
+    localStorage.setItem(WEB_AUDIT_LOGS_STORAGE_KEY, JSON.stringify(updated));
+  } catch {}
+}
+
 export function AuditLogsView() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isDesktopSource, setIsDesktopSource] = useState(false);
 
   const fetchLogs = async () => {
     setIsLoading(true);
@@ -18,43 +38,20 @@ export function AuditLogsView() {
       if ((window as any).pywebview?.api?.get_audit_logs) {
         const data = await (window as any).pywebview.api.get_audit_logs();
         if (data && Array.isArray(data)) {
+          setIsDesktopSource(true);
           setLogs(data);
           return;
         }
       }
 
-      setLogs([
-        {
-          id: 'log-1',
-          username: 'mskill',
-          action: 'LOGIN',
-          details: `Inicio de sesión exitoso en ${APP_DISPLAY_NAME} ${getFormattedAppVersion()}`,
-          created_at: new Date().toISOString(),
-        },
-        {
-          id: 'log-2',
-          username: 'mskill',
-          action: 'MIGRATE_ROLES',
-          details: 'Migración automática de usuarios no-admin al rol PM (Product Manager)',
-          created_at: new Date(Date.now() - 1800000).toISOString(),
-        },
-        {
-          id: 'log-3',
-          username: 'mskill',
-          action: 'UPLOAD_ESTIMATE',
-          details: 'Archivo Intcomex_BancoDeChile_011682708571Z_Madasme_2026-08.xlsx procesado y almacenado',
-          created_at: new Date(Date.now() - 3600000).toISOString(),
-        },
-        {
-          id: 'log-4',
-          username: 'mskill',
-          action: 'EXPORT_EXCEL',
-          details: 'Cotización exportada con logo oficial y validez de 14 días',
-          created_at: new Date(Date.now() - 7200000).toISOString(),
-        },
-      ]);
+      setIsDesktopSource(false);
+      // En modo web, leer únicamente eventos reales registrados en esta sesión/equipo (nunca datos mock ficticios)
+      const rawWeb = typeof localStorage !== 'undefined' ? localStorage.getItem(WEB_AUDIT_LOGS_STORAGE_KEY) : null;
+      const parsed = rawWeb ? JSON.parse(rawWeb) : [];
+      setLogs(Array.isArray(parsed) ? parsed : []);
     } catch (err) {
       console.error('Error fetching logs:', err);
+      setLogs([]);
     } finally {
       setIsLoading(false);
     }
@@ -106,7 +103,9 @@ export function AuditLogsView() {
             <span>Registro de Auditoría &bull; {APP_DISPLAY_NAME} {getFormattedAppVersion()}</span>
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            Historial de eventos de seguridad, cambios de roles, subidas y exportaciones.
+            {isDesktopSource
+              ? 'Historial SQLite local de eventos de seguridad, cambios de roles, subidas y exportaciones.'
+              : 'Eventos reales registrados en la sesión web actual (el historial completo SQLite reside en la App Desktop).'}
           </p>
         </div>
 

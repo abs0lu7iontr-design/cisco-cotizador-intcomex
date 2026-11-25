@@ -1378,10 +1378,12 @@ class DatabaseManager:
 
     def get_user_kpis(self, user_id: str = None, is_admin: bool = False) -> Dict[str, Any]:
         """Calculates global or personal KPIs for dashboard deduplicated by commercial_scope_key."""
+        if not is_admin and not user_id:
+            return {"total_files": 0, "total_revenue": 0, "total_baseline": 0, "total_profit": 0}
         with self.get_connection() as conn:
             cursor = conn.cursor()
             scope_expr = "CASE WHEN commercial_scope_key != '' THEN commercial_scope_key ELSE estimate_id_cisco END"
-            if is_admin or user_id is None:
+            if is_admin:
                 query = f"""
                     SELECT 
                         COUNT(DISTINCT {scope_expr}) as total_files,
@@ -1405,7 +1407,7 @@ class DatabaseManager:
             row = cursor.fetchone()
             d = dict(row)
             if d.get("total_revenue", 0) == 0 and d.get("total_files", 0) > 0:
-                if is_admin or user_id is None:
+                if is_admin:
                     cursor.execute(f"""
                         SELECT 
                             COALESCE(SUM(total_cotizado_intcomex), 0) as rev, 
@@ -1430,9 +1432,11 @@ class DatabaseManager:
 
     def get_estimates_list(self, user_id: str = None, is_admin: bool = False) -> List[Dict[str, Any]]:
         """Retrieves estimate history list filtered by user role isolation using fail-safe LEFT JOIN."""
+        if not is_admin and not user_id:
+            return []
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            if is_admin or user_id is None:
+            if is_admin:
                 query = """
                     SELECT e.*, 
                            COALESCE(u.username, e.user_id, 'Usuario') AS username, 

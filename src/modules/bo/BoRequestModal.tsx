@@ -683,14 +683,22 @@ export const BoRequestModal: React.FC<Props> = ({
     }
   };
 
-  // Descargar CSV con los P/N descartados de costo 0
+  // Descargar CSV con los P/N descartados de costo 0 (campos entrecomillados por decimales con coma en es-CL)
   const handleDownloadDiscardedCsv = () => {
     if (discardedLines.length === 0) return;
+    const csvCell = (val: unknown) => `"${String(val ?? '').replace(/"/g, '""')}"`;
     const headers = 'SKU,Part Number,Bodega,Qty,Unit Net Price,Extended Net Price\n';
     const rows = discardedLines
       .map(
         (l) =>
-          `"${l.sku || ''}","${l.partNumber}","${currentBodega}",${l.qty},${formatCLP(l.unitNetPrice, 2)},${formatCLP(l.extendedNetPrice, 2)}`
+          [
+            csvCell(l.sku || ''),
+            csvCell(l.partNumber),
+            csvCell(currentBodega),
+            Number(l.qty) || 0,
+            csvCell(formatCLP(l.unitNetPrice, 2)),
+            csvCell(formatCLP(l.extendedNetPrice, 2)),
+          ].join(',')
       )
       .join('\n');
     const blob = new Blob(['\uFEFF' + headers + rows], { type: 'text/csv;charset=utf-8;' });

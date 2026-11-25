@@ -2,23 +2,45 @@
 // CISCO AUTOMATED v2.1 - QUICK CALCULATOR SIMULATOR
 // ============================================================================
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { QuoteParameters } from '../core/types';
 import { calculateLineItemCosts, formatLeadTime } from '../core/calculations';
 import { Calculator, ArrowRight, ShieldCheck, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useUiExperience } from '../core/themeEngine';
 
-interface QuickCalculatorProps {
-  params: QuoteParameters;
+export interface QuickCalculatorPrefillItem {
+  partNumber: string;
+  qty: number;
+  netPrice: number;
+  description: string;
 }
 
-export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ params }) => {
+interface QuickCalculatorProps {
+  params: QuoteParameters;
+  initialItem?: QuickCalculatorPrefillItem | null;
+}
+
+export const QuickCalculator: React.FC<QuickCalculatorProps> = ({ params, initialItem }) => {
   const { isAesthetic } = useUiExperience();
-  const [partNumber, setPartNumber] = useState('MR46-HW');
-  const [description, setDescription] = useState('Cisco Meraki MR46 Cloud Managed AP');
-  const [netPrice, setNetPrice] = useState<number>(1250.0);
-  const [qty, setQty] = useState<number>(2);
+  const [partNumber, setPartNumber] = useState(initialItem?.partNumber || 'MR46-HW');
+  const [description, setDescription] = useState(
+    initialItem?.description || 'Cisco Meraki MR46 Cloud Managed AP'
+  );
+  const [netPrice, setNetPrice] = useState<number>(initialItem?.netPrice ?? 1250.0);
+  const [qty, setQty] = useState<number>(initialItem?.qty ?? 2);
   const [leadDays, setLeadDays] = useState<number>(35);
+
+  useEffect(() => {
+    if (!initialItem) return;
+    if (initialItem.partNumber) setPartNumber(initialItem.partNumber);
+    if (initialItem.description !== undefined) setDescription(initialItem.description);
+    if (typeof initialItem.netPrice === 'number' && !Number.isNaN(initialItem.netPrice)) {
+      setNetPrice(initialItem.netPrice);
+    }
+    if (typeof initialItem.qty === 'number' && initialItem.qty > 0) {
+      setQty(initialItem.qty);
+    }
+  }, [initialItem]);
 
   const calculated = calculateLineItemCosts(netPrice, qty, partNumber, description, params, undefined, '1.0');
   const leadTimeFormatted = formatLeadTime(leadDays) || 'Stock / En Blanco (≤ 2 días)';

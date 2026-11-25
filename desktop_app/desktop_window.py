@@ -322,7 +322,13 @@ class DesktopBridge:
             # Also search in SQLite DB records if query is specified or results < 50
             if len(results) < 50:
                 try:
-                    db_estimates = self._db.get_estimates_list()
+                    curr_uid = self._auth.get_current_user_id()
+                    curr_is_admin = self._auth.is_admin()
+                    db_estimates = (
+                        self._db.get_estimates_list(user_id=curr_uid, is_admin=curr_is_admin)
+                        if (curr_uid or curr_is_admin)
+                        else []
+                    )
                     for est in db_estimates:
                         est_id = str(est.get("estimate_id", "")).lower()
                         deal_id = str(est.get("deal_id", "")).lower()
@@ -372,7 +378,7 @@ class DesktopBridge:
                     pass
         return {
             "name": "cisco-automated",
-            "version": "2.26.3",
+            "version": "2.26.4",
             "git_commit": "12379f3",
             "git_branch": "develop",
             "build_timestamp": "2026-10-15T00:00:00.000Z",
@@ -388,7 +394,7 @@ class DesktopBridge:
         Compares git_commit, build_timestamp, and version.
         """
         local_meta = self._get_local_version_metadata()
-        current_version = local_meta.get("version", "2.26.3")
+        current_version = local_meta.get("version", "2.26.4")
         current_commit = str(local_meta.get("git_commit", "12379f3"))
         current_timestamp = str(local_meta.get("build_timestamp", ""))
 
@@ -465,6 +471,22 @@ class DesktopBridge:
             "release_notes": "La aplicación está en su versión más reciente (al día)."
         }
 
+    @staticmethod
+    def _is_trusted_update_url(url: str) -> bool:
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(str(url or "").strip())
+            if parsed.scheme.lower() != "https" or parsed.username or parsed.password:
+                return False
+            host = (parsed.hostname or "").lower()
+            if host in ("develop.cisco-automated.pages.dev", "cisco-automated.pages.dev"):
+                return True
+            if host == "raw.githubusercontent.com" and parsed.path.startswith("/abs0lu7iontr-design/cisco-cotizador-intcomex/"):
+                return True
+            return False
+        except Exception:
+            return False
+
     def apply_desktop_update(self, download_url=None):
         """
         Downloads and hot-replaces the portable singlefile bundle (index.html)
@@ -472,6 +494,7 @@ class DesktopBridge:
         """
         import urllib.request
         import shutil
+        import hashlib
 
         # 1. Determine destination path
         target_path = get_index_html_path()
@@ -484,14 +507,32 @@ class DesktopBridge:
         target_dir = os.path.dirname(target_path)
         os.makedirs(target_dir, exist_ok=True)
 
-        # 2. URLs to attempt
+        # 2. Allowlisted HTTPS URLs only (never allow arbitrary domains or file:// schemes)
         urls_to_try = []
-        if download_url and isinstance(download_url, str) and (download_url.startswith("http") or download_url.startswith("file:")):
-            urls_to_try.append(download_url)
+        if download_url and isinstance(download_url, str) and self._is_trusted_update_url(download_url):
+            urls_to_try.append(download_url.strip())
+        elif download_url:
+            return {"success": False, "error": "URL de actualización rechazada: origen no confiable."}
+
         urls_to_try.extend([
             "https://develop.cisco-automated.pages.dev/desktop_build.html",
             "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
         ])
+
+        expected_sha256 = None
+        try:
+            v_req = urllib.request.Request(
+                "https://develop.cisco-automated.pages.dev/version.json",
+                headers={'User-Agent': 'CiscoAutomatedDesktop/2.1', 'Cache-Control': 'no-cache'}
+            )
+            with urllib.request.urlopen(v_req, timeout=4) as v_resp:
+                if v_resp.status == 200:
+                    v_meta = json.loads(v_resp.read().decode('utf-8'))
+                    raw_hash = v_meta.get("desktop_bundle_sha256") or v_meta.get("sha256")
+                    if isinstance(raw_hash, str) and len(raw_hash.strip()) == 64:
+                        expected_sha256 = raw_hash.strip().lower()
+        except Exception:
+            pass
 
         downloaded_bytes = None
         last_error = "No se pudo conectar a los servidores de actualización"
@@ -499,24 +540,24 @@ class DesktopBridge:
         for u in urls_to_try:
             try:
                 content = None
-                if u.startswith("file:"):
-                    with urllib.request.urlopen(u) as resp:
-                        if resp.status in (200, None):
-                            content = resp.read()
-                else:
-                    req = urllib.request.Request(
-                        u,
-                        headers={
-                            'User-Agent': 'CiscoAutomatedDesktop/2.1',
-                            'Cache-Control': 'no-cache',
-                            'Pragma': 'no-cache'
-                        }
-                    )
-                    with urllib.request.urlopen(req, timeout=30) as resp:
-                        if resp.status == 200:
-                            content = resp.read()
+                req = urllib.request.Request(
+                    u,
+                    headers={
+                        'User-Agent': 'CiscoAutomatedDesktop/2.1',
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache'
+                    }
+                )
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    if resp.status == 200:
+                        content = resp.read()
 
                 if content:
+                    if expected_sha256:
+                        actual_hash = hashlib.sha256(content).hexdigest().lower()
+                        if actual_hash != expected_sha256:
+                            last_error = f"Verificación SHA-256 fallida para {u}"
+                            continue
                     # Minimum sanity check: must be > 500 KB and contain html declaration
                     if len(content) > 500 * 1024:
                         head_chunk = content[:2048].decode('utf-8', errors='ignore').lower()
@@ -611,12 +652,14 @@ class DesktopBridge:
     # 4. DATABASE & ANALYTICS
     # -------------------------------------------------------------------------
     def save_processed_estimate(self, estimate_data_json):
-        """Saves estimate headers and line items into database."""
+        """Saves estimate headers and line items into database (requires authenticated user)."""
         try:
+            user_id = self._auth.get_current_user_id()
+            if not user_id:
+                return {"success": False, "error": "Sesión de usuario requerida para guardar cotización."}
             data = json.loads(estimate_data_json)
-            user_id = self._auth.get_current_user_id() or "usr-001-admin"
             data["user_id"] = user_id
-            
+
             est_id = self._db.save_estimate_record(data, data.get("items", []))
             return {"success": True, "estimate_id": est_id}
         except Exception as e:
@@ -626,12 +669,16 @@ class DesktopBridge:
         """Returns Power BI style analytics metrics for dashboard views."""
         user_id = self._auth.get_current_user_id()
         is_admin = self._auth.is_admin()
+        if not is_admin and not user_id:
+            return {}
         return self._analytics.generate_dashboard_metrics(user_id=user_id, is_admin=is_admin)
 
     def get_estimates_list(self):
         """Returns list of stored estimates filtered by role."""
         user_id = self._auth.get_current_user_id()
         is_admin = self._auth.is_admin()
+        if not is_admin and not user_id:
+            return []
         return self._db.get_estimates_list(user_id=user_id, is_admin=is_admin)
 
     def get_audit_logs(self):

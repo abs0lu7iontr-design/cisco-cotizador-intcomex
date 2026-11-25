@@ -17,7 +17,8 @@ import { SummaryCards } from './components/SummaryCards';
 import { ParameterSidebar } from './components/ParameterSidebar';
 import { InteractiveTable } from './components/InteractiveTable';
 import { ExcelSheetPreview } from './components/ExcelSheetPreview';
-import { QuickCalculator } from './components/QuickCalculator';
+import { QuickCalculator, QuickCalculatorPrefillItem } from './components/QuickCalculator';
+import { appendWebAuditLog } from './components/AuditLogsView';
 import { RulesExplanationModal } from './components/RulesExplanationModal';
 import { DownloadModal } from './components/DownloadModal';
 import { isPureLicensingQuote } from './core/exportUtils';
@@ -197,6 +198,17 @@ function AuthenticatedApp() {
   const [isNavSidebarOpen, setIsNavSidebarOpen] = useState(true);
   const [isParamSidebarOpen, setIsParamSidebarOpen] = useState(true);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [quickCalcPrefill, setQuickCalcPrefill] = useState<QuickCalculatorPrefillItem | null>(null);
+
+  useEffect(() => {
+    if (currentUser?.username) {
+      appendWebAuditLog(
+        currentUser.username,
+        'LOGIN',
+        `Sesión activa en ${getFormattedAppVersion()} (${currentUser.role})`
+      );
+    }
+  }, [currentUser?.username, currentUser?.role]);
 
   const handleToggleNavSidebar = () => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
@@ -616,7 +628,9 @@ function AuthenticatedApp() {
         isOpen={isQuickIngestOpen}
         onClose={() => setIsQuickIngestOpen(false)}
         onLoadIntoQuickCalc={(item) => {
+          setQuickCalcPrefill(item);
           setCurrentView('quoter');
+          setActiveQuoterTab('calculator');
         }}
       />
 
@@ -1307,11 +1321,32 @@ function AuthenticatedApp() {
                           onReturnToSafeView={() => setActiveQuoterTab('excel')}
                           safeViewLabel="Volver a Vista Excel CCW"
                         >
-                          <QuickCalculator params={params} />
+                          <QuickCalculator params={params} initialItem={quickCalcPrefill} />
                         </ErrorBoundary>
                       )}
                     </div>
                   </div>
+                </div>
+              ) : activeQuoterTab === 'calculator' && !isClientMode ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-2xl px-4 py-3 text-xs">
+                    <span className="font-bold text-indigo-300">
+                      Calculadora Rápida Unitaria (Modo independiente sin Excel abierto)
+                    </span>
+                    <button
+                      onClick={() => setActiveQuoterTab('excel')}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold cursor-pointer"
+                    >
+                      Volver a Inicio
+                    </button>
+                  </div>
+                  <ErrorBoundary
+                    fallbackTitle="Error en Calculadora"
+                    resetKeys={[activeQuoterTab]}
+                    onReturnToSafeView={() => setActiveQuoterTab('excel')}
+                  >
+                    <QuickCalculator params={params} initialItem={quickCalcPrefill} />
+                  </ErrorBoundary>
                 </div>
               ) : (
                 /* Empty state */

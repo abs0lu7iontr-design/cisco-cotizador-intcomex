@@ -162,6 +162,17 @@ export function mergeAndDeduplicateEstimates(records: CloudEstimateRecord[]): Cl
   });
 }
 
+function buildMirrorFingerprint(
+  scopeKey: string,
+  idbCount: number,
+  rawPrimary: string,
+  rawVault: string,
+  rawMirror: string,
+  rawLegacy: string
+): string {
+  return `${scopeKey}:::${idbCount}:::${rawPrimary.length}:::${rawVault.length}:::${rawMirror.length}:::${rawLegacy.length}:::${rawPrimary.slice(0, 32)}:::${rawPrimary.slice(-32)}`;
+}
+
 /**
  * Returns instantaneous local snapshot. Reads across IndexedDB collection store and redundant vaults,
  * self-heals any missing keys, and ensures referential equality when data is unchanged.
@@ -185,7 +196,14 @@ export function getEstimatesMirrorSnapshot(): CloudEstimateRecord[] {
     const rawLegacy = readProjectScopedStorage(LOCAL_ESTIMATES_LEGACY_KEY, scopeKey) || '';
 
     // Fast path: O(1) fingerprint check prevents creating 10-20 MB strings on every render pass
-    const currentFingerprint = `${scopeKey}:::${idbRecords.length}:::${rawPrimary.length}:::${rawVault.length}:::${rawMirror.length}:::${rawLegacy.length}:::${rawPrimary.slice(0, 32)}:::${rawPrimary.slice(-32)}`;
+    const currentFingerprint = buildMirrorFingerprint(
+      scopeKey,
+      idbRecords.length,
+      rawPrimary,
+      rawVault,
+      rawMirror,
+      rawLegacy
+    );
     if (cachedHash !== null && currentFingerprint === cachedHash) {
       return cachedSnapshot;
     }
@@ -371,8 +389,18 @@ export function saveEstimatesMirrorSnapshot(
     }
 
     cachedSnapshot = cleanList;
+    const postPrimary = readProjectScopedStorage(LOCAL_ESTIMATES_PRIMARY_KEY, scopeKey) || payloadForLocalStorage;
+    const postVault = readProjectScopedStorage(LOCAL_ESTIMATES_VAULT_KEY, scopeKey) || '';
+    const postMirror = readProjectScopedStorage(LOCAL_ESTIMATES_MIRROR_KEY, scopeKey) || '';
     const postLegacy = readProjectScopedStorage(LOCAL_ESTIMATES_LEGACY_KEY, scopeKey) || '';
-    cachedHash = `${scopeKey}:::${idbEntries.length}:::${payloadForLocalStorage}:::${payloadForLocalStorage}:::${payloadForLocalStorage}:::${postLegacy}`;
+    cachedHash = buildMirrorFingerprint(
+      scopeKey,
+      idbEntries.length,
+      postPrimary,
+      postVault,
+      postMirror,
+      postLegacy
+    );
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('cisco-estimates-mirror-updated'));
