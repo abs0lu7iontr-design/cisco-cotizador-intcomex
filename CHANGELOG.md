@@ -6,6 +6,16 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.26.5] - 2026-11-25
+
+### Optimizado
+- **División de Código (*Code-Splitting*) y Carga Diferida (#10):**
+  - Implementado `React.lazy` + `<Suspense>` en `src/App.tsx` para las 15 vistas secundarias (`DashboardView`, `UploadView`, `EstimatesHistoryView`, `UserManagementView`, `AuditLogsView`, `SettingsView`, `DsvView`, `PipelineView`, `ForecastView`, `CcwrQuoteView`, `ConfiguriatorView`, `FeedbackView`, `HealthDashboardView`, `DemandIntelligenceView`, `BoTrackingView`), `QuickCalculator` y 14 modales pesados bajo demanda.
+  - Eliminadas importaciones desde archivos *barrel* (`modules/bo`, `modules/pipeline`, `modules/forecast`, `modules/feedback`, etc.) en `src/App.tsx` y `src/components/EstimatesHistoryView.tsx`, extrayendo `src/core/webAuditLog.ts` para aislar `AuditLogsView` y eliminando la importación mixta en `src/modules/feedback/CreateTicketModal.tsx`.
+  - Diferida la carga de `sql.js/dist/sql-wasm-inline.js` en `src/core/storage/sqliteStorageEngine.ts` y agregados los *chunks* dedicados `vendor-sqljs`, `vendor-genai` y `vendor-zod` en `vite.config.ts` (reduciendo el chunk principal web de `3,672.64 kB` a `728.37 kB` / `207.13 kB` gzip).
+
+---
+
 ## [v2.26.4] - 2026-11-25
 
 ### Corregido y Mejorado

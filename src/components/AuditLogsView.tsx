@@ -6,25 +6,9 @@ import React, { useState, useEffect } from 'react';
 import { AuditLog } from '../core/types';
 import { ShieldAlert, Search, RefreshCw } from 'lucide-react';
 import { APP_DISPLAY_NAME, getFormattedAppVersion } from '../core/appVersion';
+import { appendWebAuditLog, getWebAuditLogs } from '../core/webAuditLog';
 
-const WEB_AUDIT_LOGS_STORAGE_KEY = 'cisco_web_audit_logs_v1';
-
-export function appendWebAuditLog(username: string, action: string, details: string): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    const raw = localStorage.getItem(WEB_AUDIT_LOGS_STORAGE_KEY);
-    const current: AuditLog[] = raw ? JSON.parse(raw) : [];
-    const next: AuditLog = {
-      id: `web-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      username: username || 'usuario',
-      action,
-      details,
-      created_at: new Date().toISOString(),
-    };
-    const updated = [next, ...(Array.isArray(current) ? current : [])].slice(0, 200);
-    localStorage.setItem(WEB_AUDIT_LOGS_STORAGE_KEY, JSON.stringify(updated));
-  } catch {}
-}
+export { appendWebAuditLog };
 
 export function AuditLogsView() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -46,9 +30,7 @@ export function AuditLogsView() {
 
       setIsDesktopSource(false);
       // En modo web, leer únicamente eventos reales registrados en esta sesión/equipo (nunca datos mock ficticios)
-      const rawWeb = typeof localStorage !== 'undefined' ? localStorage.getItem(WEB_AUDIT_LOGS_STORAGE_KEY) : null;
-      const parsed = rawWeb ? JSON.parse(rawWeb) : [];
-      setLogs(Array.isArray(parsed) ? parsed : []);
+      setLogs(getWebAuditLogs());
     } catch (err) {
       console.error('Error fetching logs:', err);
       setLogs([]);

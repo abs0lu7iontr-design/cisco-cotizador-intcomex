@@ -1,10 +1,10 @@
 {
   "name": "cisco-automated",
-  "version": "2.26.4",
-  "git_commit": "01ff4d8",
+  "version": "2.26.5",
+  "git_commit": "58cd308",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-25T04:30:54.187Z",
-  "release_notes": "fix(v2.26.3): offline sync queue/conflict fixes, auth hardening, and financial/date precision",
+  "build_timestamp": "2026-11-25T10:27:49.078Z",
+  "release_notes": "fix(v2.26.4): desktop security isolation, exporter/HTML escaping, quick calc, audit logs & cache fingerprint",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop"

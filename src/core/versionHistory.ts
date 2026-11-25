@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.26.5',
+    date: '2026-11-25',
+    commit: 'code-splitting-lazy-views-and-sqljs-chunk-isolation',
+    title: 'Code-Splitting Web (-80% Bundle Inicial), Lazy Views y Carga Diferida SQLite WASM',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Carga bajo demanda (React.lazy + Suspense) en 15 vistas secundarias, QuickCalculator y 14 modales pesados de App.tsx (#10)',
+      'Reemplazo de imports barrel en App.tsx y EstimatesHistoryView.tsx, extracción de webAuditLog.ts y unificación en CreateTicketModal.tsx (#10)',
+      'Carga diferida de sql-wasm-inline.js y separación de chunks vendor-sqljs / vendor-genai / vendor-zod en vite.config.ts (bundle inicial de 3,672.64 kB -> 728.37 kB)',
+    ],
+  },
+  {
     version: '2.26.4',
     date: '2026-11-25',
     commit: 'desktop-security-exporters-ui-and-cache-fixes',
     title: 'Seguridad Desktop SQLite, Escape HTML/CSV, Calculadora Rápida y Caché O(1)',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Aislamiento estricto por user_id en get_estimates_list / get_user_kpis / search_storage_files y validación HTTPS + SHA-256 en actualizaciones Desktop (#6)',

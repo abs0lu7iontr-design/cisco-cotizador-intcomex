@@ -40,6 +40,9 @@ export default defineConfig(() => {
             output: {
               manualChunks(id: string) {
                 if (!id.includes('node_modules')) return undefined;
+                if (id.includes('sql.js')) return 'vendor-sqljs';
+                if (id.includes('@google/genai')) return 'vendor-genai';
+                if (id.includes('zod')) return 'vendor-zod';
                 if (id.includes('exceljs')) return 'vendor-exceljs';
                 if (id.includes('xlsx') || id.includes('jszip')) return 'vendor-xlsx';
                 if (id.includes('firebase')) return 'vendor-firebase';

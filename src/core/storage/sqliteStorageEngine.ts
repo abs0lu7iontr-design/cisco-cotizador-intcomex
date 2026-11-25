@@ -5,9 +5,13 @@
 // Capacidad masiva en Gigabytes, libre de limitaciones de LocalStorage (5 MB)
 // ============================================================================
 
-// @ts-ignore - sql-wasm-inline.js incluye el binario WASM embebido para ejecución autónoma sin red
-import initSqlJs from 'sql.js/dist/sql-wasm-inline.js';
 import type { Database } from 'sql.js';
+
+async function loadSqlJs() {
+  // @ts-ignore - sql-wasm-inline.js incluye el binario WASM embebido y se difiere para aligerar el chunk inicial web
+  const mod = await import('sql.js/dist/sql-wasm-inline.js');
+  return (mod.default ?? mod) as () => Promise<any>;
+}
 
 export const SQLITE_DB_FILENAME = 'cisco_automated.sqlite';
 const FALLBACK_IDB_DB_NAME = 'CiscoSqliteFallbackDB';
@@ -251,6 +255,7 @@ export async function getSqliteDb(): Promise<Database | null> {
 
   dbInitPromise = (async () => {
     try {
+      const initSqlJs = await loadSqlJs();
       const SQL = await initSqlJs();
 
       // 1. Intentar cargar binario previo desde OPFS
@@ -638,6 +643,7 @@ export async function downloadSqliteDatabase(): Promise<boolean> {
  */
 export async function importSqliteDatabase(bytes: Uint8Array): Promise<boolean> {
   try {
+    const initSqlJs = await loadSqlJs();
     const SQL = await initSqlJs();
     const newDb = new SQL.Database(bytes);
     ensureSqliteSchemas(newDb);

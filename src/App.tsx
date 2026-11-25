@@ -2,7 +2,7 @@
 // CISCO AUTOMATED v2.1 - MAIN APPLICATION ENTRYPOINT
 // ============================================================================
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, lazy, Suspense } from 'react';
 import {
   CiscoAutomatedProvider,
   useCiscoAutomatedStore,
@@ -17,68 +17,33 @@ import { SummaryCards } from './components/SummaryCards';
 import { ParameterSidebar } from './components/ParameterSidebar';
 import { InteractiveTable } from './components/InteractiveTable';
 import { ExcelSheetPreview } from './components/ExcelSheetPreview';
-import { QuickCalculator, QuickCalculatorPrefillItem } from './components/QuickCalculator';
-import { appendWebAuditLog } from './components/AuditLogsView';
-import { RulesExplanationModal } from './components/RulesExplanationModal';
-import { DownloadModal } from './components/DownloadModal';
+import type { OverrideRuleType } from './core/types';
+import type { QuickCalculatorPrefillItem } from './components/QuickCalculator';
+import { appendWebAuditLog } from './core/webAuditLog';
 import { isPureLicensingQuote } from './core/exportUtils';
 import { getMotherLineKey } from './core/calculations';
 import { openDesktopFileDialog } from './core/desktopBridge';
 import { PriorAuditDetectedModal } from './components/PriorAuditDetectedModal';
 import { AutoUpdateBanner } from './components/AutoUpdateBanner';
-import {
-  MiningAuditModal,
-  MiningAlertModal,
-  MiningFastTrackWarningModal,
-} from './modules/mining';
-import {
-  BoRequestModal,
-  resolveWarehouseForLines,
-  BoLineItem,
-  findSkuInCatalog,
-  getLocalBoSkuCache,
-  BoTrackingView,
-  getBoTrackings,
-  DealReminderAlertModal,
-  useDealReminderAlerts,
-} from './modules/bo';
-import { DashboardView } from './components/DashboardView';
-import { UploadView } from './components/UploadView';
-import { EstimatesHistoryView } from './components/EstimatesHistoryView';
-import { UserManagementView } from './components/UserManagementView';
-import { AuditLogsView } from './components/AuditLogsView';
-import { SettingsView } from './components/SettingsView';
-import { ThemeSelectorModal } from './components/ThemeSelectorModal';
+import { MiningAuditModal } from './modules/mining/MiningAuditModal';
+import { MiningAlertModal } from './modules/mining/MiningAlertModal';
+import { MiningFastTrackWarningModal } from './modules/mining/MiningFastTrackWarningModal';
+import { BoLineItem, resolveWarehouseForLines } from './modules/bo/boTypes';
+import { findSkuInCatalog, getLocalBoSkuCache } from './modules/bo/boSkuCatalogService';
+import { getBoTrackings } from './modules/bo/boTrackingService';
+import { useDealReminderAlerts } from './modules/bo/useDealReminderAlerts';
 import { AmbientMeshGlow } from './components/AmbientMeshGlow';
-import { LiveStudioModal } from './components/LiveStudioModal';
 import { MisroutedFileModal } from './components/MisroutedFileModal';
-import { QuickBomIngestModal } from './components/QuickBomIngestModal';
-import { DsvView } from './modules/dsv';
-import { PipelineView, importEstimateIntoPipeline } from './modules/pipeline';
-import {
-  ForecastView,
-  getForecastRecords,
-  crossSyncEstimateToForecast,
-  saveForecastRecord,
-} from './modules/forecast';
-import { CcwrQuoteView } from './modules/ccwrQuote';
-import { ConfiguriatorView } from './modules/configuriator';
-import { FastTrackAdminModal, FastTrackOpportunityModal } from './modules/fasttrack';
 import { applyTheme, getSavedThemeId } from './core/themeEngine';
-import { useSessionInactivity, SessionInactivityModal } from './modules/security';
-import { SharedSkuManagerModal, SkuOverrideAuthorizationModal } from './modules/skuOverrides';
-import { EstimateDiffModal } from './modules/estimate';
-import { FeedbackView, CreateTicketModal, getFeedbackTickets } from './modules/feedback';
+import { useSessionInactivity } from './modules/security/useSessionInactivity';
+import { SessionInactivityModal } from './modules/security/SessionInactivityModal';
+import { SkuOverrideAuthorizationModal } from './modules/skuOverrides/SkuOverrideAuthorizationModal';
+import { getFeedbackTickets } from './modules/feedback/feedbackService';
 import { getFormattedAppVersion } from './core/appVersion';
 import { MobileBottomNav, MobileStickyBar } from './components/mobile';
-import { OfflineSyncModal } from './components/OfflineSyncModal';
 import { OnlineRequirementModal } from './components/OnlineRequirementModal';
-import { SaveEstimateModal } from './components/SaveEstimateModal';
-import { HealthDashboardView } from './modules/health';
 import { useEstimatesMirror } from './hooks/useEstimatesMirror';
 import { getPendingAccessRequestsForUser } from './modules/notifications/estimateAccessNotificationService';
-import { DemandIntelligenceView } from './modules/demandIntelligence';
-import { CiscoCloudEstimateImportModal } from './modules/ciscoApi';
 import {
   useOfflineMode,
   setManualOfflineMode,
@@ -86,6 +51,113 @@ import {
   OFFLINE_SYNC_COMPLETED_EVENT,
 } from './core/storage/offlineModeManager';
 import { getOfflineQueueSummary } from './core/storage/offlineSyncQueue';
+
+// Vistas y modales secundarios cargados bajo demanda (Code-Splitting para Web CDN)
+const QuickCalculator = lazy(() =>
+  import('./components/QuickCalculator').then((m) => ({ default: m.QuickCalculator }))
+);
+const DashboardView = lazy(() =>
+  import('./components/DashboardView').then((m) => ({ default: m.DashboardView }))
+);
+const UploadView = lazy(() =>
+  import('./components/UploadView').then((m) => ({ default: m.UploadView }))
+);
+const EstimatesHistoryView = lazy(() =>
+  import('./components/EstimatesHistoryView').then((m) => ({ default: m.EstimatesHistoryView }))
+);
+const UserManagementView = lazy(() =>
+  import('./components/UserManagementView').then((m) => ({ default: m.UserManagementView }))
+);
+const AuditLogsView = lazy(() =>
+  import('./components/AuditLogsView').then((m) => ({ default: m.AuditLogsView }))
+);
+const SettingsView = lazy(() =>
+  import('./components/SettingsView').then((m) => ({ default: m.SettingsView }))
+);
+const DsvView = lazy(() =>
+  import('./modules/dsv/DsvView').then((m) => ({ default: m.DsvView }))
+);
+const PipelineView = lazy(() =>
+  import('./modules/pipeline/PipelineView').then((m) => ({ default: m.PipelineView }))
+);
+const ForecastView = lazy(() =>
+  import('./modules/forecast/ForecastView').then((m) => ({ default: m.ForecastView }))
+);
+const CcwrQuoteView = lazy(() =>
+  import('./modules/ccwrQuote/CcwrQuoteView').then((m) => ({ default: m.CcwrQuoteView }))
+);
+const ConfiguriatorView = lazy(() =>
+  import('./modules/configuriator/ConfiguriatorView').then((m) => ({ default: m.ConfiguriatorView }))
+);
+const FeedbackView = lazy(() =>
+  import('./modules/feedback/FeedbackView').then((m) => ({ default: m.FeedbackView }))
+);
+const HealthDashboardView = lazy(() =>
+  import('./modules/health/HealthDashboardView').then((m) => ({ default: m.HealthDashboardView }))
+);
+const DemandIntelligenceView = lazy(() =>
+  import('./modules/demandIntelligence/DemandIntelligenceView').then((m) => ({ default: m.DemandIntelligenceView }))
+);
+const BoTrackingView = lazy(() =>
+  import('./modules/bo/BoTrackingView').then((m) => ({ default: m.BoTrackingView }))
+);
+
+const BoRequestModal = lazy(() =>
+  import('./modules/bo/BoRequestModal').then((m) => ({ default: m.BoRequestModal }))
+);
+const DealReminderAlertModal = lazy(() =>
+  import('./modules/bo/DealReminderAlertModal').then((m) => ({ default: m.DealReminderAlertModal }))
+);
+const RulesExplanationModal = lazy(() =>
+  import('./components/RulesExplanationModal').then((m) => ({ default: m.RulesExplanationModal }))
+);
+const DownloadModal = lazy(() =>
+  import('./components/DownloadModal').then((m) => ({ default: m.DownloadModal }))
+);
+const ThemeSelectorModal = lazy(() =>
+  import('./components/ThemeSelectorModal').then((m) => ({ default: m.ThemeSelectorModal }))
+);
+const LiveStudioModal = lazy(() =>
+  import('./components/LiveStudioModal').then((m) => ({ default: m.LiveStudioModal }))
+);
+const QuickBomIngestModal = lazy(() =>
+  import('./components/QuickBomIngestModal').then((m) => ({ default: m.QuickBomIngestModal }))
+);
+const FastTrackAdminModal = lazy(() =>
+  import('./modules/fasttrack/FastTrackAdminModal').then((m) => ({ default: m.FastTrackAdminModal }))
+);
+const FastTrackOpportunityModal = lazy(() =>
+  import('./modules/fasttrack/FastTrackOpportunityModal').then((m) => ({ default: m.FastTrackOpportunityModal }))
+);
+const SharedSkuManagerModal = lazy(() =>
+  import('./modules/skuOverrides/SharedSkuManagerModal').then((m) => ({ default: m.SharedSkuManagerModal }))
+);
+const EstimateDiffModal = lazy(() =>
+  import('./modules/estimate/components/EstimateDiffModal').then((m) => ({ default: m.EstimateDiffModal }))
+);
+const CreateTicketModal = lazy(() =>
+  import('./modules/feedback/CreateTicketModal').then((m) => ({ default: m.CreateTicketModal }))
+);
+const OfflineSyncModal = lazy(() =>
+  import('./components/OfflineSyncModal').then((m) => ({ default: m.OfflineSyncModal }))
+);
+const SaveEstimateModal = lazy(() =>
+  import('./components/SaveEstimateModal').then((m) => ({ default: m.SaveEstimateModal }))
+);
+const CiscoCloudEstimateImportModal = lazy(() =>
+  import('./modules/ciscoApi/CiscoCloudEstimateImportModal').then((m) => ({ default: m.CiscoCloudEstimateImportModal }))
+);
+
+function LazyViewFallback() {
+  return (
+    <div className="max-w-md mx-auto text-center py-20 space-y-3">
+      <div className="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center mx-auto border border-indigo-500/30 animate-spin">
+        <RefreshCw className="w-5 h-5" />
+      </div>
+      <p className="text-xs font-semibold text-slate-400">Cargando módulo...</p>
+    </div>
+  );
+}
 
 import {
   FileSpreadsheet,
@@ -437,6 +509,7 @@ function AuthenticatedApp() {
   const handlePipelineClick = async () => {
     if (processedResult) {
       try {
+        const { importEstimateIntoPipeline } = await import('./modules/pipeline/pipelineService');
         await importEstimateIntoPipeline(processedResult, currentUser);
         setCloudToast({
           message: `📌 Cotización vinculada al Pipeline Comercial exitosamente (${processedResult.headerInfo?.companyName || 'Partner'}).`,
@@ -453,6 +526,12 @@ function AuthenticatedApp() {
   const handleForecastClick = async () => {
     if (processedResult) {
       try {
+        const [{ getForecastRecords }, { crossSyncEstimateToForecast }, { saveForecastRecord }] =
+          await Promise.all([
+            import('./modules/forecast/forecastStorage'),
+            import('./modules/forecast/forecastService'),
+            import('./modules/forecast/forecastStorage'),
+          ]);
         const existing = await getForecastRecords();
         const res = crossSyncEstimateToForecast(processedResult, existing);
         await saveForecastRecord(res.affectedRecord);
@@ -549,10 +628,14 @@ function AuthenticatedApp() {
       />
 
       {/* Global Business Rules Modal */}
-      <RulesExplanationModal
-        isOpen={isRulesModalOpen}
-        onClose={() => setIsRulesModalOpen(false)}
-      />
+      {isRulesModalOpen && (
+        <Suspense fallback={null}>
+          <RulesExplanationModal
+            isOpen={isRulesModalOpen}
+            onClose={() => setIsRulesModalOpen(false)}
+          />
+        </Suspense>
+      )}
 
       {/* Misrouted Cisco File Detection Modal (CCW Estimate vs CCW-R Quote) */}
       <MisroutedFileModal
@@ -562,100 +645,128 @@ function AuthenticatedApp() {
       />
 
       {/* Fast Track Administration Modal */}
-      <FastTrackAdminModal
-        isOpen={isFastTrackAdminModalOpen}
-        onClose={() => setIsFastTrackAdminModalOpen(false)}
-      />
+      {isFastTrackAdminModalOpen && (
+        <Suspense fallback={null}>
+          <FastTrackAdminModal
+            isOpen={isFastTrackAdminModalOpen}
+            onClose={() => setIsFastTrackAdminModalOpen(false)}
+          />
+        </Suspense>
+      )}
 
       {/* Fast Track Opportunity Cross-Check Pop-up */}
-      <FastTrackOpportunityModal
-        isOpen={isFastTrackOpportunityModalOpen}
-        auditResult={pendingFastTrackAudit}
-        onApply={applyFastTrackPromos}
-        onSkip={skipFastTrackPromos}
-      />
+      {isFastTrackOpportunityModalOpen && (
+        <Suspense fallback={null}>
+          <FastTrackOpportunityModal
+            isOpen={isFastTrackOpportunityModalOpen}
+            auditResult={pendingFastTrackAudit}
+            onApply={applyFastTrackPromos}
+            onSkip={skipFastTrackPromos}
+          />
+        </Suspense>
+      )}
 
       {/* Theme Customization Modal */}
-      <ThemeSelectorModal
-        isOpen={isThemeModalOpen}
-        onClose={() => setIsThemeModalOpen(false)}
-      />
+      {isThemeModalOpen && (
+        <Suspense fallback={null}>
+          <ThemeSelectorModal
+            isOpen={isThemeModalOpen}
+            onClose={() => setIsThemeModalOpen(false)}
+          />
+        </Suspense>
+      )}
 
       {/* Live Custom Studio Modal (Aesthetic Mode Real-time Customization) */}
-      <LiveStudioModal
-        isOpen={isLiveStudioOpen}
-        onClose={() => setIsLiveStudioOpen(false)}
-      />
+      {isLiveStudioOpen && (
+        <Suspense fallback={null}>
+          <LiveStudioModal
+            isOpen={isLiveStudioOpen}
+            onClose={() => setIsLiveStudioOpen(false)}
+          />
+        </Suspense>
+      )}
 
       {/* Offline -> Online Sync & Conflict Warning Modal */}
-      <OfflineSyncModal
-        isOpen={isOfflineSyncModalOpen}
-        onClose={() => setIsOfflineSyncModalOpen(false)}
-        onSyncFinished={(result) => {
-          getOfflineQueueSummary()
-            .then((s) => setPendingOfflineCount(s.total))
-            .catch(() => {});
-          if (result.uploadedCount > 0 && result.failedCount === 0) {
-            setCloudToast({
-              message: `Sincronización completada: ${result.uploadedCount} cambio(s) subidos a la nube y vistas actualizadas.`,
-              type: 'success',
-            });
-            setTimeout(() => setCloudToast(null), 5000);
-          } else if (result.failedCount > 0) {
-            setCloudToast({
-              message: `Sincronización parcial: ${result.uploadedCount} subido(s), ${result.failedCount} fallaron y permanecen guardados en tu PC.`,
-              type: 'error',
-            });
-            setTimeout(() => setCloudToast(null), 6000);
-          } else if (result.wentOnline && result.remainingCount > 0) {
-            setCloudToast({
-              message: `Volviste a modo Online con ${result.remainingCount} cambio(s) aún pendientes en este PC.`,
-              type: 'success',
-            });
-            setTimeout(() => setCloudToast(null), 5000);
-          } else if (result.wentOnline) {
-            setCloudToast({
-              message: 'Modo Online reactivado correctamente.',
-              type: 'success',
-            });
-            setTimeout(() => setCloudToast(null), 3500);
-          }
-        }}
-      />
+      {isOfflineSyncModalOpen && (
+        <Suspense fallback={null}>
+          <OfflineSyncModal
+            isOpen={isOfflineSyncModalOpen}
+            onClose={() => setIsOfflineSyncModalOpen(false)}
+            onSyncFinished={(result) => {
+              getOfflineQueueSummary()
+                .then((s) => setPendingOfflineCount(s.total))
+                .catch(() => {});
+              if (result.uploadedCount > 0 && result.failedCount === 0) {
+                setCloudToast({
+                  message: `Sincronización completada: ${result.uploadedCount} cambio(s) subidos a la nube y vistas actualizadas.`,
+                  type: 'success',
+                });
+                setTimeout(() => setCloudToast(null), 5000);
+              } else if (result.failedCount > 0) {
+                setCloudToast({
+                  message: `Sincronización parcial: ${result.uploadedCount} subido(s), ${result.failedCount} fallaron y permanecen guardados en tu PC.`,
+                  type: 'error',
+                });
+                setTimeout(() => setCloudToast(null), 6000);
+              } else if (result.wentOnline && result.remainingCount > 0) {
+                setCloudToast({
+                  message: `Volviste a modo Online con ${result.remainingCount} cambio(s) aún pendientes en este PC.`,
+                  type: 'success',
+                });
+                setTimeout(() => setCloudToast(null), 5000);
+              } else if (result.wentOnline) {
+                setCloudToast({
+                  message: 'Modo Online reactivado correctamente.',
+                  type: 'success',
+                });
+                setTimeout(() => setCloudToast(null), 3500);
+              }
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Quick BOM Ingest Modal (Clipboard & Raw Text Parser) */}
-      <QuickBomIngestModal
-        isOpen={isQuickIngestOpen}
-        onClose={() => setIsQuickIngestOpen(false)}
-        onLoadIntoQuickCalc={(item) => {
-          setQuickCalcPrefill(item);
-          setCurrentView('quoter');
-          setActiveQuoterTab('calculator');
-        }}
-      />
+      {isQuickIngestOpen && (
+        <Suspense fallback={null}>
+          <QuickBomIngestModal
+            isOpen={isQuickIngestOpen}
+            onClose={() => setIsQuickIngestOpen(false)}
+            onLoadIntoQuickCalc={(item) => {
+              setQuickCalcPrefill(item);
+              setCurrentView('quoter');
+              setActiveQuoterTab('calculator');
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Shared SKU Rules Manager Modal (Cloud & Local) */}
-      <SharedSkuManagerModal
-        isOpen={isSharedSkuManagerOpen}
-        onClose={() => setIsSharedSkuManagerOpen(false)}
-        currentUser={currentUser}
-        skuOverridesMap={skuOverridesMap}
-        onApplyOverrides={async (newOverrides) => {
-          const records = Object.entries(newOverrides).map(([sku, rule]) => ({
-            sku,
-            rule,
-            previousType: 'Hardware',
-            author: {
-              username: currentUser?.username || 'user',
-              fullName: currentUser?.full_name || 'Product Manager',
-              role: (currentUser?.role as string) || 'pm',
-            },
-            updatedAt: new Date().toISOString(),
-            createdAt: new Date().toISOString(),
-          }));
-          await applyApprovedSkuOverrides(records, true);
-        }}
-      />
+      {isSharedSkuManagerOpen && (
+        <Suspense fallback={null}>
+          <SharedSkuManagerModal
+            isOpen={isSharedSkuManagerOpen}
+            onClose={() => setIsSharedSkuManagerOpen(false)}
+            currentUser={currentUser}
+            skuOverridesMap={skuOverridesMap}
+            onApplyOverrides={async (newOverrides: Record<string, OverrideRuleType>) => {
+              const records = Object.entries(newOverrides).map(([sku, rule]) => ({
+                sku,
+                rule,
+                previousType: 'Hardware',
+                author: {
+                  username: currentUser?.username || 'user',
+                  fullName: currentUser?.full_name || 'Product Manager',
+                  role: (currentUser?.role as string) || 'pm',
+                },
+                updatedAt: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+              }));
+              await applyApprovedSkuOverrides(records, true);
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Prior Authorization Modal for Incoming/Colleague SKU Changes */}
       <SkuOverrideAuthorizationModal
@@ -707,122 +818,142 @@ function AuthenticatedApp() {
       />
 
       {/* Back Order (BO) Request Modal for Ventas Core */}
-      <BoRequestModal
-        isOpen={isBoModalOpen}
-        initialClientName={defaultClient}
-        initialLines={boLines}
-        assignedBodega={boLines.length > 0 ? boLines[0].bodega : 'E1'}
-        estimateResult={processedResult}
-        detectedPartner={detectedPartner}
-        currentUser={currentUser}
-        onClose={() => setIsBoModalOpen(false)}
-        onRegisterTracking={() => setCurrentView('bo_tracking')}
-        onOrderSynced={() => {
-          getBoTrackings()
-            .then((records) => {
-              const count = records.filter((r) => r.currentStage !== 'DELIVERED').length;
-              setActiveBoCount(count);
-            })
-            .catch(() => {});
-        }}
-      />
+      {isBoModalOpen && (
+        <Suspense fallback={null}>
+          <BoRequestModal
+            isOpen={isBoModalOpen}
+            initialClientName={defaultClient}
+            initialLines={boLines}
+            assignedBodega={boLines.length > 0 ? boLines[0].bodega : 'E1'}
+            estimateResult={processedResult}
+            detectedPartner={detectedPartner}
+            currentUser={currentUser}
+            onClose={() => setIsBoModalOpen(false)}
+            onRegisterTracking={() => setCurrentView('bo_tracking')}
+            onOrderSynced={() => {
+              getBoTrackings()
+                .then((records) => {
+                  const count = records.filter((r) => r.currentStage !== 'DELIVERED').length;
+                  setActiveBoCount(count);
+                })
+                .catch(() => {});
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Global Proactive Deal Reminder Pop-up (12:00 Midday & 17:30 End-of-Day) */}
-      <DealReminderAlertModal
-        deals={reminderDueDeals}
-        isOpen={isDealAlertOpen}
-        onClose={closeDealAlert}
-        onRefreshData={refreshDealAlerts}
-      />
+      {isDealAlertOpen && (
+        <Suspense fallback={null}>
+          <DealReminderAlertModal
+            deals={reminderDueDeals}
+            isOpen={isDealAlertOpen}
+            onClose={closeDealAlert}
+            onRefreshData={refreshDealAlerts}
+          />
+        </Suspense>
+      )}
 
       {/* Global Quick Feedback & Bug Report Modal */}
-      {currentUser && (
-        <CreateTicketModal
-          isOpen={isCreateFeedbackModalOpen}
-          onClose={() => setIsCreateFeedbackModalOpen(false)}
-          currentUser={currentUser}
-          onTicketCreated={() => {
-            setCloudToast({
-              message: '✅ ¡Reporte / Sugerencia registrada exitosamente en la base de datos!',
-              type: 'success',
-            });
-            setTimeout(() => setCloudToast(null), 4000);
-            getFeedbackTickets()
-              .then((tickets) => {
-                const isSupport = currentUser.role === 'admin' || currentUser.role === 'pm';
-                const unread = tickets.filter((t) => {
-                  if (isSupport && !t.readBySupport) return true;
-                  if (t.author.username === currentUser.username && !t.readByAuthor) return true;
-                  return false;
-                }).length;
-                setUnreadFeedbackCount(unread);
-              })
-              .catch(() => {});
-          }}
-          currentEstimateFileName={currentFileName}
-          dealId={processedResult?.headerInfo?.dealId}
-        />
+      {currentUser && isCreateFeedbackModalOpen && (
+        <Suspense fallback={null}>
+          <CreateTicketModal
+            isOpen={isCreateFeedbackModalOpen}
+            onClose={() => setIsCreateFeedbackModalOpen(false)}
+            currentUser={currentUser}
+            onTicketCreated={() => {
+              setCloudToast({
+                message: '✅ ¡Reporte / Sugerencia registrada exitosamente en la base de datos!',
+                type: 'success',
+              });
+              setTimeout(() => setCloudToast(null), 4000);
+              getFeedbackTickets()
+                .then((tickets) => {
+                  const isSupport = currentUser.role === 'admin' || currentUser.role === 'pm';
+                  const unread = tickets.filter((t) => {
+                    if (isSupport && !t.readBySupport) return true;
+                    if (t.author.username === currentUser.username && !t.readByAuthor) return true;
+                    return false;
+                  }).length;
+                  setUnreadFeedbackCount(unread);
+                })
+                .catch(() => {});
+            }}
+            currentEstimateFileName={currentFileName}
+            dealId={processedResult?.headerInfo?.dealId}
+          />
+        </Suspense>
       )}
 
       {/* Estimate Version History & Snapshot Diff Modal */}
-      {processedResult && (
-        <EstimateDiffModal
-          isOpen={isDiffModalOpen}
-          onClose={() => setIsDiffModalOpen(false)}
-          currentResult={processedResult}
-          shadowSnapshot={processedResult.shadowSnapshot}
-          overrides={customOverrideMap}
-        />
+      {processedResult && isDiffModalOpen && (
+        <Suspense fallback={null}>
+          <EstimateDiffModal
+            isOpen={isDiffModalOpen}
+            onClose={() => setIsDiffModalOpen(false)}
+            currentResult={processedResult}
+            shadowSnapshot={processedResult.shadowSnapshot}
+            overrides={customOverrideMap}
+          />
+        </Suspense>
       )}
 
       {/* Structured Dual Download Modal (Web & Desktop) */}
-      {processedResult && (() => {
+      {processedResult && isDownloadModalOpen && (() => {
         const isOnlyLicensing = processedResult.items ? isPureLicensingQuote(processedResult.items) : false;
         return (
-          <DownloadModal
-            isOpen={isDownloadModalOpen}
-            onClose={() => setIsDownloadModalOpen(false)}
-            defaultFilename={processedResult.fileName || 'Cotizacion_Cisco_CALC.xlsx'}
-            defaultPartner={defaultPartner}
-            defaultClient={defaultClient}
-            defaultModel={defaultModel}
-            workbookBuffer={processedResult.workbookBuffer || new ArrayBuffer(0)}
-            rawWorkbookBuffer={rawWorkbookBuffer}
-            params={params}
-            customOverrides={customOverrideMap}
-            promoNetPrices={fastTrackPromoMap}
-            headerInfo={processedResult.headerInfo}
-            isOnlyLicensing={isOnlyLicensing}
-            isRecalculated={
-              isRecalculated ||
-              (!isOnlyLicensing && params.internacionPct !== 7.0) ||
-              params.margenPct !== 5.0 ||
-              Object.keys(customOverrideMap).length > 0
-            }
-          />
+          <Suspense fallback={null}>
+            <DownloadModal
+              isOpen={isDownloadModalOpen}
+              onClose={() => setIsDownloadModalOpen(false)}
+              defaultFilename={processedResult.fileName || 'Cotizacion_Cisco_CALC.xlsx'}
+              defaultPartner={defaultPartner}
+              defaultClient={defaultClient}
+              defaultModel={defaultModel}
+              workbookBuffer={processedResult.workbookBuffer || new ArrayBuffer(0)}
+              rawWorkbookBuffer={rawWorkbookBuffer}
+              params={params}
+              customOverrides={customOverrideMap}
+              promoNetPrices={fastTrackPromoMap}
+              headerInfo={processedResult.headerInfo}
+              isOnlyLicensing={isOnlyLicensing}
+              isRecalculated={
+                isRecalculated ||
+                (!isOnlyLicensing && params.internacionPct !== 7.0) ||
+                params.margenPct !== 5.0 ||
+                Object.keys(customOverrideMap).length > 0
+              }
+            />
+          </Suspense>
         );
       })()}
 
       {/* Save Estimate & Privacy Level Modal */}
-      {processedResult && (
-        <SaveEstimateModal
-          isOpen={isSaveModalOpen}
-          onClose={() => setIsSaveModalOpen(false)}
-          defaultPartner={defaultPartner}
-          defaultClient={defaultClient}
-          defaultModel={defaultModel}
-          onSuccess={(msg) => {
-            setCloudToast({ message: msg, type: 'success' });
-            setTimeout(() => setCloudToast(null), 5000);
-          }}
-        />
+      {processedResult && isSaveModalOpen && (
+        <Suspense fallback={null}>
+          <SaveEstimateModal
+            isOpen={isSaveModalOpen}
+            onClose={() => setIsSaveModalOpen(false)}
+            defaultPartner={defaultPartner}
+            defaultClient={defaultClient}
+            defaultModel={defaultModel}
+            onSuccess={(msg) => {
+              setCloudToast({ message: msg, type: 'success' });
+              setTimeout(() => setCloudToast(null), 5000);
+            }}
+          />
+        </Suspense>
       )}
 
       {/* Cisco Cloud Estimate GraphQL Import Modal */}
-      <CiscoCloudEstimateImportModal
-        isOpen={isCiscoCloudModalOpen}
-        onClose={() => setIsCiscoCloudModalOpen(false)}
-      />
+      {isCiscoCloudModalOpen && (
+        <Suspense fallback={null}>
+          <CiscoCloudEstimateImportModal
+            isOpen={isCiscoCloudModalOpen}
+            onClose={() => setIsCiscoCloudModalOpen(false)}
+          />
+        </Suspense>
+      )}
 
       {/* Collapsible Navigation Sidebar (Hidden on mobile < md, full on desktop >= md) */}
       <div className="hidden md:flex shrink-0">
@@ -957,17 +1088,19 @@ function AuthenticatedApp() {
             </div>
           )}
 
-          {/* Views with Localized Error Boundaries */}
+          {/* Views with Localized Error Boundaries & Lazy Suspense */}
           {currentView === 'dashboard' && (
             <ErrorBoundary
               fallbackTitle="Error en Dashboard Analítico"
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <DashboardView
-                onOpenQuoter={() => setCurrentView('quoter')}
-                onOpenUpload={() => setCurrentView('upload')}
-              />
+              <Suspense fallback={<LazyViewFallback />}>
+                <DashboardView
+                  onOpenQuoter={() => setCurrentView('quoter')}
+                  onOpenUpload={() => setCurrentView('upload')}
+                />
+              </Suspense>
             </ErrorBoundary>
           )}
 
@@ -977,12 +1110,14 @@ function AuthenticatedApp() {
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <UploadView
-                onProcessFile={async (buf, name) => {
-                  await processFileBuffer(buf, name);
-                  setCurrentView('quoter');
-                }}
-              />
+              <Suspense fallback={<LazyViewFallback />}>
+                <UploadView
+                  onProcessFile={async (buf, name) => {
+                    await processFileBuffer(buf, name);
+                    setCurrentView('quoter');
+                  }}
+                />
+              </Suspense>
             </ErrorBoundary>
           )}
 
@@ -992,7 +1127,9 @@ function AuthenticatedApp() {
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <CcwrQuoteView />
+              <Suspense fallback={<LazyViewFallback />}>
+                <CcwrQuoteView />
+              </Suspense>
             </ErrorBoundary>
           )}
 
@@ -1002,10 +1139,12 @@ function AuthenticatedApp() {
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <PipelineView
-                onOpenQuoter={() => setCurrentView('quoter')}
-                onOpenBoTracking={() => setCurrentView('bo_tracking')}
-              />
+              <Suspense fallback={<LazyViewFallback />}>
+                <PipelineView
+                  onOpenQuoter={() => setCurrentView('quoter')}
+                  onOpenBoTracking={() => setCurrentView('bo_tracking')}
+                />
+              </Suspense>
             </ErrorBoundary>
           )}
 
@@ -1015,7 +1154,9 @@ function AuthenticatedApp() {
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <ForecastView />
+              <Suspense fallback={<LazyViewFallback />}>
+                <ForecastView />
+              </Suspense>
             </ErrorBoundary>
           )}
 
@@ -1025,7 +1166,9 @@ function AuthenticatedApp() {
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <DsvView />
+              <Suspense fallback={<LazyViewFallback />}>
+                <DsvView />
+              </Suspense>
             </ErrorBoundary>
           )}
 
@@ -1035,11 +1178,13 @@ function AuthenticatedApp() {
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <ConfiguriatorView
-                isNavSidebarOpen={isNavSidebarOpen}
-                onToggleNavSidebar={() => setIsNavSidebarOpen((prev) => !prev)}
-                onCollapseNavSidebar={() => setIsNavSidebarOpen(false)}
-              />
+              <Suspense fallback={<LazyViewFallback />}>
+                <ConfiguriatorView
+                  isNavSidebarOpen={isNavSidebarOpen}
+                  onToggleNavSidebar={() => setIsNavSidebarOpen((prev) => !prev)}
+                  onCollapseNavSidebar={() => setIsNavSidebarOpen(false)}
+                />
+              </Suspense>
             </ErrorBoundary>
           )}
 
@@ -1049,7 +1194,9 @@ function AuthenticatedApp() {
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <EstimatesHistoryView />
+              <Suspense fallback={<LazyViewFallback />}>
+                <EstimatesHistoryView />
+              </Suspense>
             </ErrorBoundary>
           )}
 
@@ -1059,7 +1206,9 @@ function AuthenticatedApp() {
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <BoTrackingView />
+              <Suspense fallback={<LazyViewFallback />}>
+                <BoTrackingView />
+              </Suspense>
             </ErrorBoundary>
           )}
 
@@ -1069,7 +1218,9 @@ function AuthenticatedApp() {
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <FeedbackView />
+              <Suspense fallback={<LazyViewFallback />}>
+                <FeedbackView />
+              </Suspense>
             </ErrorBoundary>
           )}
 
@@ -1079,7 +1230,9 @@ function AuthenticatedApp() {
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <UserManagementView />
+              <Suspense fallback={<LazyViewFallback />}>
+                <UserManagementView />
+              </Suspense>
             </ErrorBoundary>
           )}
 
@@ -1089,7 +1242,9 @@ function AuthenticatedApp() {
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <AuditLogsView />
+              <Suspense fallback={<LazyViewFallback />}>
+                <AuditLogsView />
+              </Suspense>
             </ErrorBoundary>
           )}
 
@@ -1099,13 +1254,15 @@ function AuthenticatedApp() {
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <SettingsView
-                onOpenThemes={() => setIsThemeModalOpen(true)}
-                onOpenLiveStudio={() => setIsLiveStudioOpen(true)}
-                onOpenRules={() => setIsRulesModalOpen(true)}
-                onOpenSharedSku={() => setIsSharedSkuManagerOpen(true)}
-                onOpenFastTrack={() => setIsFastTrackAdminModalOpen(true)}
-              />
+              <Suspense fallback={<LazyViewFallback />}>
+                <SettingsView
+                  onOpenThemes={() => setIsThemeModalOpen(true)}
+                  onOpenLiveStudio={() => setIsLiveStudioOpen(true)}
+                  onOpenRules={() => setIsRulesModalOpen(true)}
+                  onOpenSharedSku={() => setIsSharedSkuManagerOpen(true)}
+                  onOpenFastTrack={() => setIsFastTrackAdminModalOpen(true)}
+                />
+              </Suspense>
             </ErrorBoundary>
           )}
 
@@ -1115,7 +1272,9 @@ function AuthenticatedApp() {
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <HealthDashboardView onOpenOfflineModal={() => setIsOfflineSyncModalOpen(true)} />
+              <Suspense fallback={<LazyViewFallback />}>
+                <HealthDashboardView onOpenOfflineModal={() => setIsOfflineSyncModalOpen(true)} />
+              </Suspense>
             </ErrorBoundary>
           )}
 
@@ -1125,7 +1284,9 @@ function AuthenticatedApp() {
               resetKeys={[currentView]}
               onReturnToSafeView={() => setCurrentView('quoter')}
             >
-              <DemandIntelligenceView />
+              <Suspense fallback={<LazyViewFallback />}>
+                <DemandIntelligenceView />
+              </Suspense>
             </ErrorBoundary>
           )}
 
@@ -1321,7 +1482,9 @@ function AuthenticatedApp() {
                           onReturnToSafeView={() => setActiveQuoterTab('excel')}
                           safeViewLabel="Volver a Vista Excel CCW"
                         >
-                          <QuickCalculator params={params} initialItem={quickCalcPrefill} />
+                          <Suspense fallback={<LazyViewFallback />}>
+                            <QuickCalculator params={params} initialItem={quickCalcPrefill} />
+                          </Suspense>
                         </ErrorBoundary>
                       )}
                     </div>
@@ -1345,7 +1508,9 @@ function AuthenticatedApp() {
                     resetKeys={[activeQuoterTab]}
                     onReturnToSafeView={() => setActiveQuoterTab('excel')}
                   >
-                    <QuickCalculator params={params} initialItem={quickCalcPrefill} />
+                    <Suspense fallback={<LazyViewFallback />}>
+                      <QuickCalculator params={params} initialItem={quickCalcPrefill} />
+                    </Suspense>
                   </ErrorBoundary>
                 </div>
               ) : (

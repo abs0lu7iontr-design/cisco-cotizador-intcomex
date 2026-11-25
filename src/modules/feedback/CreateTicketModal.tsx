@@ -27,7 +27,12 @@ import {
   CreateTicketInput,
   TicketAttachment,
 } from './types';
-import { createFeedbackTicket, SLA_TARGET_HOURS, captureTechnicalContext } from './feedbackService';
+import {
+  createFeedbackTicket,
+  saveTicketAiDiagnosis,
+  SLA_TARGET_HOURS,
+  captureTechnicalContext,
+} from './feedbackService';
 
 interface CreateTicketModalProps {
   isOpen: boolean;
@@ -279,9 +284,7 @@ export function CreateTicketModal({
           .then(({ analyzeTicketWithAi }) => analyzeTicketWithAi(res.ticket!))
           .then((diagnosis) => {
             if (res.ticket) {
-              return import('./feedbackService').then(({ saveTicketAiDiagnosis }) =>
-                saveTicketAiDiagnosis(res.ticket!.id, diagnosis)
-              );
+              return saveTicketAiDiagnosis(res.ticket.id, diagnosis);
             }
           })
           .catch(() => {});

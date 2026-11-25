@@ -28,7 +28,8 @@ import {
   publishLocalEstimateToCloud,
 } from '../modules/cloud';
 import { useCiscoAutomatedStore } from '../core/store';
-import { savePipelineDeal, PipelineDealRecord, MESES_ANO } from '../modules/pipeline';
+import { savePipelineDeal } from '../modules/pipeline/pipelineStorage';
+import { PipelineDealRecord, MESES_ANO } from '../modules/pipeline/pipelineTypes';
 import { formatShortUserFirstName } from '../utils/userNameUtils';
 import { useToast } from '../context/ToastContext';
 import { useVirtualList } from '../hooks/useVirtualList';
