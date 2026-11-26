@@ -186,6 +186,7 @@ function AuthenticatedApp() {
     setParams,
     detectedPartner,
     activePartnerProfile,
+    setActivePartnerProfile,
     rawWorkbookBuffer,
     currentFileName,
     processedResult,
@@ -1340,6 +1341,7 @@ function AuthenticatedApp() {
                           currentTotal={processedResult.calculatedProductTotal}
                           detectedPartner={detectedPartner}
                           activeProfile={activePartnerProfile}
+                          onProfileUpdated={setActivePartnerProfile}
                         />
                       </div>
                     )}

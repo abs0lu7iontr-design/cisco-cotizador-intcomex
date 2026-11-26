@@ -10,7 +10,6 @@ import { getPartnerDocId } from '../../utils/partnerDbUtils';
 import { getFirestoreInstance } from './firebaseConfig';
 import { sanitizeForFirestore } from './firestoreService';
 import { isAppOffline } from '../../core/storage/offlineModeManager';
-import { getLocalPlatformConfig } from '../../core/storage/localPlatformConfig';
 
 export type ParamProfileScope = 'partner' | 'global';
 export type ParamDurationType = 'permanent' | '15_days' | '30_days' | 'end_of_month';
@@ -277,7 +276,10 @@ export async function deleteParamProfile(options: {
  * 2. Perfil Global personalizado (Local -> Firestore).
  * 3. Parámetros de Fábrica estándar (7/6/5).
  */
-export async function resolveActiveParams(partnerName?: string): Promise<{
+export async function resolveActiveParams(
+  partnerName?: string,
+  secondaryPartnerName?: string
+): Promise<{
   params: QuoteParameters;
   appliedProfile: ParamProfileRecord | null;
   source: 'partner_custom' | 'global_custom' | 'factory_default';
@@ -295,46 +297,64 @@ export async function resolveActiveParams(partnerName?: string): Promise<{
     }
   } catch (_) {}
 
-  // 1. Buscar perfil del Partner específico
-  const cleanPartner = (partnerName || '').trim();
-  const partnerDocId = cleanPartner ? getPartnerDocId(cleanPartner) : '';
+  // 1. Buscar perfil del Partner específico (primero por nombre detectado y luego por companyName del BOM)
+  const candidateNames = [partnerName, secondaryPartnerName]
+    .map((n) => (n || '').trim())
+    .filter((n) => n && n.toUpperCase() !== 'INTCOMEX' && n.toUpperCase() !== 'CISCO');
+  const candidateDocIds = Array.from(
+    new Set(candidateNames.map((n) => getPartnerDocId(n)).filter(Boolean))
+  );
 
-  if (partnerDocId && isProfileActive(cache[partnerDocId])) {
-    return {
-      params: cache[partnerDocId].params,
-      appliedProfile: cache[partnerDocId],
-      source: 'partner_custom',
-    };
-  }
+  for (const partnerDocId of candidateDocIds) {
+    if (isProfileActive(cache[partnerDocId])) {
+      return {
+        params: {
+          ...cache[partnerDocId].params,
+          parameterMode: cache[partnerDocId].params.parameterMode || 'standard',
+          lineCustomParams: cache[partnerDocId].params.lineCustomParams || {},
+        },
+        appliedProfile: cache[partnerDocId],
+        source: 'partner_custom',
+      };
+    }
 
-  // Si no está en caché local y no estamos en modo offline, intentar lectura rápida a Firestore
-  if (partnerDocId && !isAppOffline()) {
-    try {
-      const { db, isReady } = getFirestoreInstance();
-      if (isReady && db) {
-        const docRef = doc(db, 'partner_custom_params', partnerDocId);
-        const snap = await withFailsafeTimeout(getDoc(docRef), 3500);
+    // Si no está en caché local y no estamos en modo offline, intentar lectura rápida a Firestore
+    if (!isAppOffline()) {
+      try {
+        const { db, isReady } = getFirestoreInstance();
+        if (isReady && db) {
+          const docRef = doc(db, 'partner_custom_params', partnerDocId);
+          const snap = await withFailsafeTimeout(getDoc(docRef), 3500);
 
-        if (snap && snap.exists()) {
-          const cloudData = snap.data() as ParamProfileRecord;
-          if (isProfileActive(cloudData)) {
-            cache[partnerDocId] = cloudData;
-            saveLocalProfilesCache(cache);
-            return {
-              params: cloudData.params,
-              appliedProfile: cloudData,
-              source: 'partner_custom',
-            };
+          if (snap && snap.exists()) {
+            const cloudData = snap.data() as ParamProfileRecord;
+            if (isProfileActive(cloudData)) {
+              cache[partnerDocId] = cloudData;
+              saveLocalProfilesCache(cache);
+              return {
+                params: {
+                  ...cloudData.params,
+                  parameterMode: cloudData.params.parameterMode || 'standard',
+                  lineCustomParams: cloudData.params.lineCustomParams || {},
+                },
+                appliedProfile: cloudData,
+                source: 'partner_custom',
+              };
+            }
           }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
   }
 
   // 2. Buscar perfil Global en local
   if (isProfileActive(cache[GLOBAL_DOC_ID])) {
     return {
-      params: cache[GLOBAL_DOC_ID].params,
+      params: {
+        ...cache[GLOBAL_DOC_ID].params,
+        parameterMode: cache[GLOBAL_DOC_ID].params.parameterMode || 'standard',
+        lineCustomParams: cache[GLOBAL_DOC_ID].params.lineCustomParams || {},
+      },
       appliedProfile: cache[GLOBAL_DOC_ID],
       source: 'global_custom',
     };
@@ -354,7 +374,11 @@ export async function resolveActiveParams(partnerName?: string): Promise<{
             cache[GLOBAL_DOC_ID] = globalCloudData;
             saveLocalProfilesCache(cache);
             return {
-              params: globalCloudData.params,
+              params: {
+                ...globalCloudData.params,
+                parameterMode: globalCloudData.params.parameterMode || 'standard',
+                lineCustomParams: globalCloudData.params.lineCustomParams || {},
+              },
               appliedProfile: globalCloudData,
               source: 'global_custom',
             };
@@ -364,17 +388,15 @@ export async function resolveActiveParams(partnerName?: string): Promise<{
     } catch (_) {}
   }
 
-  // 3. Fallback a parámetros base guardados localmente en este equipo
-  const localConfig = getLocalPlatformConfig();
-  const effectiveBaseParams: QuoteParameters = {
-    internacionPct: localConfig.defaultParams?.internacionPct ?? DEFAULT_FACTORY_PARAMS.internacionPct,
-    arancelPct: localConfig.defaultParams?.arancelPct ?? DEFAULT_FACTORY_PARAMS.arancelPct,
-    margenPct: localConfig.defaultParams?.margenPct ?? DEFAULT_FACTORY_PARAMS.margenPct,
-    parameterMode: localConfig.defaultParams?.parameterMode || 'standard',
-  };
-
+  // 3. Regla Corporativa Inmutable por Defecto: Todo Estimate nuevo parte en 7% Internación / 6% Arancel / 5% Margen
   return {
-    params: effectiveBaseParams,
+    params: {
+      internacionPct: DEFAULT_FACTORY_PARAMS.internacionPct,
+      arancelPct: DEFAULT_FACTORY_PARAMS.arancelPct,
+      margenPct: DEFAULT_FACTORY_PARAMS.margenPct,
+      parameterMode: 'standard',
+      lineCustomParams: {},
+    },
     appliedProfile: null,
     source: 'factory_default',
   };

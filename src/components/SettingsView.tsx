@@ -30,14 +30,12 @@ import {
   WifiOff,
   Laptop,
   RotateCcw,
-  Check,
   UserCheck,
 } from 'lucide-react';
 import { APP_THEMES, getSavedThemeId, useUiExperience } from '../core/themeEngine';
 import { useAppTheme } from '../context/ThemeContext';
 import {
   useLocalPlatformConfig,
-  saveLocalPlatformConfig,
   resetLocalPlatformConfig,
 } from '../core/storage/localPlatformConfig';
 import {
@@ -370,46 +368,23 @@ export function SettingsView({
             </button>
           </div>
 
-          {/* Card: Parámetros Comerciales Predeterminados del PC */}
+          {/* Card: Estándar Base de Cotización Intcomex */}
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex flex-col justify-between space-y-3">
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center space-x-2 text-white font-bold text-xs">
                   <HardDrive className="w-4 h-4 text-indigo-400" />
-                  <span>Parámetros Base de Cotización del PC</span>
+                  <span>Estándar Base Obligatorio por Estimate</span>
                 </div>
                 <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 font-mono">
-                  {localConfig.defaultParams.internacionPct}% / {localConfig.defaultParams.arancelPct}% / {localConfig.defaultParams.margenPct}%
+                  7% / 6% / 5%
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                Valores predeterminados cargados al abrir el cotizador en este equipo sin consultar perfiles en la nube:
-                Internación ({localConfig.defaultParams.internacionPct}%), Arancel ({localConfig.defaultParams.arancelPct}%), Margen ({localConfig.defaultParams.margenPct}%).
+                Cada nuevo Estimate inicia automáticamente en <strong className="text-slate-200">7% Internación, 6% Arancel y 5% Margen</strong>, salvo que el archivo ya venga editado con tasas propias o exista un perfil vigente del Cliente/Partner en la nube.
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  saveLocalPlatformConfig({
-                    defaultParams: {
-                      internacionPct: params.internacionPct,
-                      arancelPct: params.arancelPct,
-                      margenPct: params.margenPct,
-                      parameterMode: params.parameterMode || 'standard',
-                    },
-                  });
-                  setLocalFeedbackMsg(
-                    `💾 Parámetros actuales (${params.internacionPct}% / ${params.arancelPct}% / ${params.margenPct}%) guardados como predeterminados en este PC.`
-                  );
-                  setTimeout(() => setLocalFeedbackMsg(null), 4000);
-                }}
-                className="flex-1 flex items-center justify-center space-x-1.5 px-3 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-bold transition-all cursor-pointer"
-                title="Guarda los parámetros activos actualmente en la barra de cotización como los predeterminados de este computador."
-              >
-                <Check className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Fijar Actuales ({params.margenPct}%)</span>
-              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -420,14 +395,16 @@ export function SettingsView({
                     arancelPct: 6.0,
                     margenPct: 5.0,
                     parameterMode: 'standard',
+                    lineCustomParams: {},
                   }));
-                  setLocalFeedbackMsg('🔄 Configuración local del equipo restablecida a valores de fábrica (7% / 6% / 5%).');
+                  setLocalFeedbackMsg('🔄 Parámetros restablecidos al estándar oficial (7% Internación / 6% Arancel / 5% Margen).');
                   setTimeout(() => setLocalFeedbackMsg(null), 4000);
                 }}
-                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
-                title="Restablece los parámetros a 7% Internación, 6% Arancel y 5% Margen."
+                className="w-full flex items-center justify-center space-x-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all cursor-pointer"
+                title="Restablece la cotización activa a 7% Internación, 6% Arancel y 5% Margen."
               >
-                <RotateCcw className="w-3.5 h-3.5" />
+                <RotateCcw className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Restablecer Estándar Actual (7% / 6% / 5%)</span>
               </button>
             </div>
           </div>

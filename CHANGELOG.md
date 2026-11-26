@@ -6,6 +6,15 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.26.9] - 2026-11-26
+
+### Corregido y Reforzado
+- **Regla Inmutable Base (7% Internación / 6% Arancel / 5% Margen) y Jerarquía de Perfiles:**
+  - En [store.tsx](src/core/store.tsx), el ajuste temporal de sliders o recálculos ya no sobreescribe `localPlatformConfig.defaultParams`, evitando que pruebas en `0% / 0% / 0%` contaminen cotizaciones nuevas posteriores; además se sanea al arranque cualquier residuo previo fuera de `7% / 6% / 5%`.
+  - En [partnerParamsService.ts](src/modules/cloud/partnerParamsService.ts), `resolveActiveParams` retorna siempre `DEFAULT_FACTORY_PARAMS` (`7% / 6% / 5%`) cuando no existe perfil activo de Cliente/Partner o Global, e incorpora búsqueda dual por nombre detectado del archivo y `companyName` de la cabecera del BOM.
+  - En `processFileBuffer` ([store.tsx](src/core/store.tsx)), si un archivo ya modificado (`detectedAudit.isRecalculated`) tiene overrides de SKU, se preserva `restoredParams` (`effectiveLoadedParams`) al recalcular en lugar de pisarlo con los parámetros base.
+  - En [App.tsx](src/App.tsx) y [ParameterSidebar.tsx](src/components/ParameterSidebar.tsx), conectado `onProfileUpdated` y restaurado `7% / 6% / 5%` al eliminar una regla personalizada; actualizada la tarjeta de [SettingsView.tsx](src/components/SettingsView.tsx) para reflejar el estándar corporativo fijo.
+
 ## [v2.26.8] - 2026-11-26
 
 ### Corregido

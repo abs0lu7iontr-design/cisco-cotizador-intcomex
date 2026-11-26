@@ -348,39 +348,35 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     return unsub;
   }, []);
 
-  // 2. Dominio de Parámetros Comerciales (cargados desde configuración local del equipo)
+  // 2. Dominio de Parámetros Comerciales (Regla obligatoria base Intcomex: 7% Int / 6% Ar / 5% Mg;
+  // nunca se sobreescriben por mover sliders en una cotización temporal)
   const [params, setParamsState] = useState<QuoteParameters>(() => {
     try {
       const cfg = getLocalPlatformConfig();
-      if (cfg?.defaultParams) {
-        return {
-          internacionPct: cfg.defaultParams.internacionPct ?? DEFAULT_PARAMS.internacionPct,
-          arancelPct: cfg.defaultParams.arancelPct ?? DEFAULT_PARAMS.arancelPct,
-          margenPct: cfg.defaultParams.margenPct ?? DEFAULT_PARAMS.margenPct,
-          parameterMode: cfg.defaultParams.parameterMode || DEFAULT_PARAMS.parameterMode,
-          lineCustomParams: {},
-        };
+      if (
+        cfg?.defaultParams &&
+        (cfg.defaultParams.internacionPct !== DEFAULT_PARAMS.internacionPct ||
+          cfg.defaultParams.arancelPct !== DEFAULT_PARAMS.arancelPct ||
+          cfg.defaultParams.margenPct !== DEFAULT_PARAMS.margenPct ||
+          cfg.defaultParams.parameterMode !== 'standard')
+      ) {
+        // Sanear cualquier residuo antiguo en localStorage para garantizar inicio limpio 7 / 6 / 5
+        saveLocalPlatformConfig({
+          defaultParams: {
+            internacionPct: DEFAULT_PARAMS.internacionPct,
+            arancelPct: DEFAULT_PARAMS.arancelPct,
+            margenPct: DEFAULT_PARAMS.margenPct,
+            parameterMode: 'standard',
+          },
+        });
       }
     } catch {}
-    return DEFAULT_PARAMS;
+    return { ...DEFAULT_PARAMS, lineCustomParams: {} };
   });
 
   const setParams = useCallback(
     (newParams: QuoteParameters | ((prev: QuoteParameters) => QuoteParameters)) => {
-      setParamsState((prev) => {
-        const resolved = typeof newParams === 'function' ? newParams(prev) : newParams;
-        try {
-          saveLocalPlatformConfig({
-            defaultParams: {
-              internacionPct: resolved.internacionPct,
-              arancelPct: resolved.arancelPct,
-              margenPct: resolved.margenPct,
-              parameterMode: resolved.parameterMode || 'standard',
-            },
-          });
-        } catch {}
-        return resolved;
-      });
+      setParamsState((prev) => (typeof newParams === 'function' ? newParams(prev) : newParams));
     },
     []
   );
@@ -619,7 +615,10 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         );
         setDetectedPartner(partner);
 
-        const { params: resolvedParams, appliedProfile } = await resolveActiveParams(partner);
+        const { params: resolvedParams, appliedProfile } = await resolveActiveParams(
+          partner,
+          rawResult?.headerInfo?.companyName
+        );
         setActivePartnerProfile(appliedProfile);
         const activeInitialParams = resolvedParams;
 
@@ -667,6 +666,8 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         setEstimateVersionTag(currentVerTag);
         setBaselineV0Amount(baseV0Cost);
 
+        let effectiveLoadedParams: QuoteParameters = activeInitialParams;
+
         if (rawResult?.detectedAudit?.isRecalculated) {
           const priorInt = rawResult.detectedAudit.previousInternacionPct;
           const priorAr = rawResult.detectedAudit.previousArancelPct ?? 6.0;
@@ -684,6 +685,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
             lineCustomParams: priorCustomLines,
           };
 
+          effectiveLoadedParams = restoredParams;
           setParams(restoredParams);
           setIsRecalculated(true);
           setDetectedAudit(rawResult.detectedAudit);
@@ -702,12 +704,14 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           !rawResult?.detectedAudit?.isRecalculated &&
           (activeInitialParams.internacionPct !== DEFAULT_PARAMS.internacionPct ||
             activeInitialParams.arancelPct !== DEFAULT_PARAMS.arancelPct ||
-            activeInitialParams.margenPct !== DEFAULT_PARAMS.margenPct);
+            activeInitialParams.margenPct !== DEFAULT_PARAMS.margenPct ||
+            (activeInitialParams.parameterMode === 'custom_lines' &&
+              Object.keys(activeInitialParams.lineCustomParams || {}).length > 0));
 
         if (Object.keys(matchedOverrides).length > 0 || hasCustomParams) {
           await recompute(
             safeBuffer.slice(0),
-            activeInitialParams,
+            effectiveLoadedParams,
             fileName,
             matchedOverrides,
             {}

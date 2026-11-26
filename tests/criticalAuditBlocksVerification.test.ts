@@ -11,6 +11,9 @@ import { synthesizeOfficialEstimateWorkbook, parseEstimateWorkbook } from '../sr
 import { generateQuotationFileName } from '../src/core/exportUtils';
 import { reconstructProcessedResultFromCloudRecord } from '../src/core/storePersistence';
 import { solveGoalSeekParameters, recalculateEstimateResult } from '../src/core/calculations';
+import { resolveActiveParams, saveParamProfile, deleteParamProfile } from '../src/modules/cloud/partnerParamsService';
+import { saveLocalPlatformConfig, resetLocalPlatformConfig } from '../src/core/storage/localPlatformConfig';
+import { setManualOfflineMode } from '../src/core/storage/offlineModeManager';
 import { sanitizeCsvCell, sanitizeRichClipboardHtml } from '../src/utils/exportSanitizers';
 import { generateBoHtmlTable } from '../src/modules/bo/boEmailHelper';
 import { generateDealReminderEmail } from '../src/modules/bo/dealEmailHelper';
@@ -283,6 +286,40 @@ async function runTests() {
 
   const summaryCardsCode = fs.readFileSync(path.join(rootDir, 'src/components/SummaryCards.tsx'), 'utf8');
   assert.ok(summaryCardsCode.includes("totalDelta >= 0 ? '+' : ''"), 'Spread en SummaryCards no debe prefijar + ante valores negativos');
+
+  // Regla obligatoria por defecto 7/6/5 + precedencia Archivo Pre-Editado > Perfil Partner/Cliente > 7/6/5
+  if (typeof (globalThis as any).localStorage === 'undefined') {
+    const lsMem: Record<string, string> = {};
+    (globalThis as any).localStorage = {
+      getItem: (k: string) => (k in lsMem ? lsMem[k] : null),
+      setItem: (k: string, v: string) => { lsMem[k] = String(v); },
+      removeItem: (k: string) => { delete lsMem[k]; },
+      clear: () => { for (const k of Object.keys(lsMem)) delete lsMem[k]; },
+    };
+  }
+  setManualOfflineMode(true);
+  saveLocalPlatformConfig({ defaultParams: { internacionPct: 0, arancelPct: 0, margenPct: 0, parameterMode: 'standard' } });
+  const factoryFallback = await resolveActiveParams('PartnerSinReglaX', 'EmpresaSinReglaY');
+  assert.strictEqual(factoryFallback.source, 'factory_default');
+  assert.deepStrictEqual(
+    { int: factoryFallback.params.internacionPct, ar: factoryFallback.params.arancelPct, mg: factoryFallback.params.margenPct },
+    { int: 7, ar: 6, mg: 5 },
+    'Todo estimate nuevo sin perfil ni edición previa debe cargar en 7% Int / 6% Ar / 5% Mg'
+  );
+  await saveParamProfile({
+    scope: 'partner',
+    partnerName: 'Computronic SPA',
+    params: { internacionPct: 4, arancelPct: 6, margenPct: 3.5 },
+    durationType: 'permanent',
+  });
+  const partnerMatched = await resolveActiveParams('prueba', 'Computronic SPA');
+  assert.strictEqual(partnerMatched.source, 'partner_custom');
+  assert.strictEqual(partnerMatched.params.margenPct, 3.5);
+  await deleteParamProfile({ scope: 'partner', partnerName: 'Computronic SPA' });
+  resetLocalPlatformConfig();
+  setManualOfflineMode(false);
+  assert.ok(storeCode.includes('effectiveLoadedParams'), 'processFileBuffer debe preservar parámetros detectados del archivo cuando existen overrides');
+  assert.ok(!storeCode.includes('defaultParams: {\n              internacionPct: resolved.internacionPct'), 'setParams temporal no debe sobreescribir defaultParams globales');
 
   const authPy = fs.readFileSync(path.join(rootDir, 'desktop_app/auth_manager.py'), 'utf8');
   assert.ok(!authPy.includes('return password == password_hash'), 'auth_manager.py no debe tener fallback en texto plano');

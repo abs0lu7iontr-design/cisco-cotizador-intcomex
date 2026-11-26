@@ -281,7 +281,16 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
       });
       setCurrentActiveProfile(null);
       if (onProfileUpdated) onProfileUpdated(null);
-      setToastFeedback('Regla personalizada eliminada. Vuelve a parámetros estándar.');
+      if (notifyChange) {
+        notifyChange({
+          internacionPct: 7.0,
+          arancelPct: 6.0,
+          margenPct: 5.0,
+          parameterMode: 'standard',
+          lineCustomParams: {},
+        });
+      }
+      setToastFeedback('Regla personalizada eliminada. Vuelve a parámetros estándar (7% / 6% / 5%).');
       setShowConfigModal(false);
       setTimeout(() => setToastFeedback(null), 4000);
     } catch (err) {

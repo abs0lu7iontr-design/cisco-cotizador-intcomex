@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.26.9',
+    date: '2026-11-26',
+    commit: 'enforce-7-6-5-baseline-and-partner-override-hierarchy',
+    title: 'Blindaje de Regla Base 7/6/5 por Estimate y Precedencia Cliente/Archivo Editado',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Aislamiento de sliders temporales respecto a localPlatformConfig: mover tasas a 0%/0%/0% ya no contamina nuevos Estimates.',
+      'Jerarquía garantizada al cargar Excel: Archivo pre-editado (detectedAudit) > Perfil Cliente/Partner (nombre o header) > Perfil Global > Estándar fijo 7% Internación / 6% Arancel / 5% Margen.',
+      'Preservación exacta de tasas detectadas en archivos pre-modificados incluso con overrides locales de SKU y restablecimiento automático al eliminar perfiles.'
+    ]
+  },
+  {
     version: '2.26.8',
     date: '2026-11-26',
     commit: 'fast-track-cogs-and-zero-params-parity',
     title: 'Paridad Exacta COGS vs Facturación al Aplicar Fast Track (Parámetros en 0%)',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Corregido cálculo de originalProductTotal (Net Cost COGS Cisco) en recalculateEstimateResult para reflejar el costo neto promocional Fast Track activo.',

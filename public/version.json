@@ -1,12 +1,12 @@
 {
   "name": "cisco-automated",
-  "version": "2.26.8",
-  "git_commit": "b2610d8",
+  "version": "2.26.9",
+  "git_commit": "25289d9",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-26T10:15:46.482Z",
-  "release_notes": "fix(v2.26.7): complete critical audit blocks A, B and C hardening, Meraki/financial accuracy, offline hydration and XSS/CSV protection",
+  "build_timestamp": "2026-11-26T10:47:19.654Z",
+  "release_notes": "fix(v2.26.8): align Fast Track COGS total and zero-param revenue parity in memory recalc",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop",
-  "desktop_bundle_sha256": "fc6ac85ec207d445077697ae1e4ff2112e11119be435715b7efebd3c562ff7ca"
+  "desktop_bundle_sha256": "41fa7f79b269063e0c564c6d6d0439823f050d9ea427d333e694da187683f39a"
 }
