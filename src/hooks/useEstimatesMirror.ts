@@ -15,7 +15,9 @@ import {
 import {
   getCollectionRecordsSync,
   putCollectionRecordsBatch,
+  hydrateAndMigrateCollection,
 } from '../modules/storage/indexedDbCollectionStore';
+import { idbGet, STORES } from '../core/storage/indexedDbStorage';
 
 // ----------------------------------------------------------------------------
 // Redundant Multi-Tier Storage Keys ("Blindaje de Persistencia Local")
@@ -410,6 +412,80 @@ export function saveEstimatesMirrorSnapshot(
   }
 }
 
+const hydratedScopes = new Set<string>();
+const hydratingPromises = new Map<string, Promise<void>>();
+
+/**
+ * Hidrata de forma idempotente `CiscoAppCollectionsDB.estimates` desde IndexedDB
+ * (incluyendo respaldo `cisco_estimates_full_history_backup` de modernStorageEngine)
+ * para conservar todos los `items` y el historial >15 registros en recargas offline.
+ */
+export async function hydrateEstimatesMirrorFromIdb(projectId?: string): Promise<void> {
+  const scopeKey = projectId || getActiveProjectScopeKey();
+  if (hydratedScopes.has(scopeKey)) return;
+  const existing = hydratingPromises.get(scopeKey);
+  if (existing) return existing;
+
+  const task = (async () => {
+    try {
+      const legacyBackup = await idbGet<CloudEstimateRecord[]>(
+        STORES.KEYVAL,
+        'cisco_estimates_full_history_backup'
+      ).catch(() => null);
+
+      const res = await hydrateAndMigrateCollection<CloudEstimateRecord>(
+        'estimates',
+        [
+          LOCAL_ESTIMATES_PRIMARY_KEY,
+          LOCAL_ESTIMATES_VAULT_KEY,
+          LOCAL_ESTIMATES_MIRROR_KEY,
+          LOCAL_ESTIMATES_LEGACY_KEY,
+        ],
+        (r) => String(r?.id || r?.estimateId || '').trim(),
+        scopeKey
+      );
+
+      if (
+        Array.isArray(legacyBackup) &&
+        legacyBackup.length > res.records.length &&
+        scopeKey === getActiveProjectScopeKey()
+      ) {
+        const deletedIds = getDeletedEstimateIds(scopeKey);
+        const entries = legacyBackup
+          .filter((r) => {
+            const id = String(r?.id || '').trim();
+            const eid = String(r?.estimateId || '').trim();
+            return (
+              Boolean(id || eid) &&
+              !deletedIds.has(id) &&
+              !deletedIds.has(eid.toUpperCase())
+            );
+          })
+          .map((r) => ({ id: String(r.id || r.estimateId), record: r }));
+        if (entries.length > 0) {
+          await putCollectionRecordsBatch('estimates', entries, {
+            projectScope: scopeKey,
+            replaceAllInScope: false,
+          });
+        }
+      }
+
+      hydratedScopes.add(scopeKey);
+      cachedHash = null;
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('cisco-estimates-mirror-updated'));
+      }
+    } catch {
+      // Silencioso en entornos sin IndexedDB
+    } finally {
+      hydratingPromises.delete(scopeKey);
+    }
+  })();
+
+  hydratingPromises.set(scopeKey, task);
+  return task;
+}
+
 /**
  * Subscribes to local mirror updates dispatched within the app window,
  * project switches, or across browser tabs via 'storage' events.
@@ -419,18 +495,26 @@ export function subscribeEstimatesMirror(onStoreChange: () => void): () => void 
     return () => {};
   }
 
+  hydrateEstimatesMirrorFromIdb().catch(() => {});
+
   const handler = () => {
     cachedHash = null; // force re-evaluation on next getSnapshot call
     onStoreChange();
   };
 
+  const projectSwitchHandler = () => {
+    cachedHash = null;
+    hydrateEstimatesMirrorFromIdb().catch(() => {});
+    onStoreChange();
+  };
+
   window.addEventListener('cisco-estimates-mirror-updated', handler);
-  window.addEventListener('cisco-firebase-project-switched', handler);
+  window.addEventListener('cisco-firebase-project-switched', projectSwitchHandler);
   window.addEventListener('storage', handler);
 
   return () => {
     window.removeEventListener('cisco-estimates-mirror-updated', handler);
-    window.removeEventListener('cisco-firebase-project-switched', handler);
+    window.removeEventListener('cisco-firebase-project-switched', projectSwitchHandler);
     window.removeEventListener('storage', handler);
   };
 }

@@ -8,3 +8,4 @@ export * from './useSessionInactivity';
 export * from './SessionInactivityModal';
 export * from './twoFactorService';
 export * from './TwoFactorModal';
+export * from './edgeSessionService';

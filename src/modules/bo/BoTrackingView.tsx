@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { sanitizeCsvCell } from '../../utils/exportSanitizers';
 import {
   Truck,
   Package,
@@ -348,26 +349,26 @@ export function BoTrackingView() {
     ];
 
     const rows = orders.map((o) => [
-      `"${o.id}"`,
-      `"${o.estimateId}"`,
-      `"${o.estimateVersionTag}"`,
-      `"${o.dealId}"`,
-      `"${o.partnerName.replace(/"/g, '""')}"`,
-      `"${o.endCustomerName.replace(/"/g, '""')}"`,
-      `"${o.clientPoNumber}"`,
-      `"${formatShortTrackingDate(getEffectivePoAddedDate(o))}"`,
-      `"${o.ciscoSoNumber || ''}"`,
-      `"${formatShortTrackingDate(getEffectiveSoAddedDate(o))}"`,
-      `"${BO_STAGES_METADATA[o.currentStage].title}"`,
-      `"${o.courier}"`,
-      `"${o.courierTrackingNumber || ''}"`,
-      `"${o.courierTrackingUrl || ''}"`,
+      sanitizeCsvCell(o.id),
+      sanitizeCsvCell(o.estimateId),
+      sanitizeCsvCell(o.estimateVersionTag),
+      sanitizeCsvCell(o.dealId),
+      sanitizeCsvCell(o.partnerName),
+      sanitizeCsvCell(o.endCustomerName),
+      sanitizeCsvCell(o.clientPoNumber),
+      sanitizeCsvCell(formatShortTrackingDate(getEffectivePoAddedDate(o))),
+      sanitizeCsvCell(o.ciscoSoNumber || ''),
+      sanitizeCsvCell(formatShortTrackingDate(getEffectiveSoAddedDate(o))),
+      sanitizeCsvCell(BO_STAGES_METADATA[o.currentStage].title),
+      sanitizeCsvCell(o.courier),
+      sanitizeCsvCell(o.courierTrackingNumber || ''),
+      sanitizeCsvCell(o.courierTrackingUrl || ''),
       o.totalSaleUsd.toFixed(2),
       o.grossProfitUsd.toFixed(2),
-      `"${o.bodegaDestino || 'E1'}"`,
-      `"${o.estimatedShipDate || ''}"`,
-      `"${o.estimatedArrivalDate || ''}"`,
-      `"${o.updatedAt.slice(0, 10)}"`,
+      sanitizeCsvCell(o.bodegaDestino || 'E1'),
+      sanitizeCsvCell(o.estimatedShipDate || ''),
+      sanitizeCsvCell(o.estimatedArrivalDate || ''),
+      sanitizeCsvCell(o.updatedAt.slice(0, 10)),
     ]);
 
     const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\r\n');

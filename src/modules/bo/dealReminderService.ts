@@ -28,6 +28,7 @@ import {
   checkDealPopupDue,
 } from './dealReminderTypes';
 import { ProcessedEstimateResult } from '../../core/types';
+import { getEdgeSessionHeaders } from '../security/edgeSessionService';
 import { sanitizeForFirestore } from '../cloud/firestoreService';
 import {
   isAppOffline,
@@ -926,7 +927,7 @@ export async function triggerOfflineEmailNotification(
   try {
     const res = await fetch('/api/deal-reminder-cron', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getEdgeSessionHeaders() },
       body: JSON.stringify({
         dealId: deal.dealId,
         recipientEmail: recipientEmail.trim() || deal.notificationEmail || 'mauricio.skill@intcomex.com',

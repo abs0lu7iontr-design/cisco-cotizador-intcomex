@@ -15,6 +15,7 @@ import {
   getCiscoAccessTokenWithMeta,
   getCiscoConfig,
 } from './ciscoAuthService';
+import { getEdgeSessionHeaders } from '../security/edgeSessionService';
 import {
   PsirtAdvisory,
   PoeBudgetInfo,
@@ -72,14 +73,14 @@ export async function callCiscoGateway(
     try {
       const proxyRes = await fetch('/api/cisco-proxy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getEdgeSessionHeaders() },
         body: JSON.stringify({
           action: 'request',
           url,
           method,
           token: tokenRecord.token,
-          clientId: cfg.clientId,
-          clientSecret: cfg.clientSecret,
+          ...(cfg.clientId ? { clientId: cfg.clientId } : {}),
+          ...(cfg.clientSecret ? { clientSecret: cfg.clientSecret } : {}),
           authUrl: cfg.authUrl,
         }),
       });

@@ -50,6 +50,14 @@ export interface CloudEstimateItem {
   precioVentaUnitario: number;
   precioVentaExtendido: number;
 
+  // Periodic Subscription & Info Row Metadata (Critical for cloud round-trip fidelity)
+  isInfoRow?: boolean;
+  months?: number;
+  detectedDurationMonths?: number;
+  isPeriodicSubscription?: boolean;
+  realUnitCost?: number;
+  serviceDurationMonths?: string;
+
   // Fast Track fields
   isFastTrackPromo?: boolean;
   originalNetCiscoUnit?: number;

@@ -5,15 +5,14 @@
 // ============================================================================
 
 import { CiscoOAuthTokenResponse, CiscoApiConfig } from './types';
+import { getEdgeSessionHeaders } from '../security/edgeSessionService';
 
 const TOKEN_CACHE_KEY = 'cisco_oauth_token_v2';
 const CONFIG_CACHE_KEY = 'cisco_api_config_v2';
 
 export const DEFAULT_CISCO_CONFIG: CiscoApiConfig = {
-  clientId:
-    ((import.meta as any).env?.VITE_CISCO_CLIENT_ID || '3400130c-8528-49a1-9c71-f40e68e0f9bc').trim(),
-  clientSecret:
-    ((import.meta as any).env?.VITE_CISCO_CLIENT_SECRET || '801e3a4f-950f-4951-ba4f-3c63d3684bb6').trim(),
+  clientId: ((import.meta as any).env?.VITE_CISCO_CLIENT_ID || '').trim(),
+  clientSecret: ((import.meta as any).env?.VITE_CISCO_CLIENT_SECRET || '').trim(),
   authUrl:
     (import.meta as any).env?.VITE_CISCO_AUTH_URL ||
     'https://id.cisco.com/oauth2/default/v1/token',
@@ -151,11 +150,11 @@ export async function getCiscoAccessTokenWithMeta(
   // 2. Modo Navegador Web (Cloudflare Pages Edge Proxy para evitar error 401 Origin / CORS de Okta)
   if (typeof window !== 'undefined' && window.location?.protocol?.startsWith('http')) {
     try {
-      const hasCustomId = cfg.clientId !== DEFAULT_CISCO_CONFIG.clientId;
-      const hasCustomSecret = cfg.clientSecret !== DEFAULT_CISCO_CONFIG.clientSecret;
+      const hasCustomId = Boolean(cfg.clientId && cfg.clientId !== DEFAULT_CISCO_CONFIG.clientId);
+      const hasCustomSecret = Boolean(cfg.clientSecret && cfg.clientSecret !== DEFAULT_CISCO_CONFIG.clientSecret);
       const proxyRes = await fetch('/api/cisco-proxy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getEdgeSessionHeaders() },
         body: JSON.stringify({
           action: 'token',
           ...(hasCustomId ? { clientId: cfg.clientId } : {}),
@@ -182,10 +181,20 @@ export async function getCiscoAccessTokenWithMeta(
           }
           return record;
         }
+      } else if (proxyRes.status === 401) {
+        const errBody: any = await proxyRes.json().catch(() => ({}));
+        throw new Error(errBody?.error || 'Sesión no autorizada o credenciales Cisco M2M sin configurar.');
       }
-    } catch {
-      // Si estamos en vite dev local sin wrangler, continuamos al fetch directo
+    } catch (err: any) {
+      if (err?.message?.includes('Credenciales') || err?.message?.includes('Sesión')) {
+        throw err;
+      }
+      // Si estamos en vite dev local sin wrangler, continuamos al fetch directo cuando existan credenciales
     }
+  }
+
+  if (!cfg.clientId || !cfg.clientSecret) {
+    throw new Error('Credenciales Cisco M2M no configuradas.');
   }
 
   // 3. Solicitud directa OAuth2 Client Credentials (Node CLI / Server / Fallback)

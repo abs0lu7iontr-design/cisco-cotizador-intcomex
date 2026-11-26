@@ -7,6 +7,7 @@ import {
   collection,
   addDoc,
   setDoc,
+  updateDoc,
   doc,
   getDoc,
   getDocs,
@@ -24,6 +25,8 @@ import {
   isProjectContextCurrent,
   readProjectScopedStorage,
   writeProjectScopedStorage,
+  getActiveProjectScopeKey,
+  registerProjectScopedCleanup,
 } from './firebaseConfig';
 import {
   CloudEstimateRecord,
@@ -107,12 +110,25 @@ export { getEstimatesMirrorSnapshot, getMirrorLastSyncTimestamp, getDeletedEstim
 let inMemoryDsvCache: CloudDsvRecord[] = [];
 let isDsvHydratedFromIdb = false;
 
+registerProjectScopedCleanup(() => {
+  inMemoryDsvCache = [];
+  isDsvHydratedFromIdb = false;
+});
+
+function getScopedDsvIdbKey(): string {
+  return `${LOCAL_DSV_BACKUP_KEY}::${getActiveProjectScopeKey()}`;
+}
+
 /**
  * Hidratación asíncrona de caché DSV desde IndexedDB (STORES.KEYVAL) para máxima resiliencia.
  */
 export async function hydrateDsvCacheFromIndexedDb(): Promise<CloudDsvRecord[]> {
   try {
-    const idbRecords = await idbGet<CloudDsvRecord[]>(STORES.KEYVAL, LOCAL_DSV_BACKUP_KEY);
+    const scopedIdbRecords = await idbGet<CloudDsvRecord[]>(STORES.KEYVAL, getScopedDsvIdbKey());
+    const idbRecords =
+      Array.isArray(scopedIdbRecords) && scopedIdbRecords.length > 0
+        ? scopedIdbRecords
+        : await idbGet<CloudDsvRecord[]>(STORES.KEYVAL, LOCAL_DSV_BACKUP_KEY);
     if (Array.isArray(idbRecords) && idbRecords.length > 0) {
       const deletedIds = getDeletedDsvIds();
       const clean = idbRecords.filter((r) => r && r.id && !deletedIds.has(r.id));
@@ -179,8 +195,8 @@ function saveLocalDsvCache(list: CloudDsvRecord[]) {
     const cleanList = list.filter((r) => r && r.id && !deletedIds.has(r.id)).slice(0, 500);
     inMemoryDsvCache = cleanList;
 
-    // Guardar siempre en motor de alta capacidad IndexedDB (STORES.KEYVAL) sin riesgo de saturación
-    idbSet(STORES.KEYVAL, LOCAL_DSV_BACKUP_KEY, cleanList).catch(() => {});
+    // Guardar siempre en motor de alta capacidad IndexedDB (STORES.KEYVAL) aislado por proyecto
+    idbSet(STORES.KEYVAL, getScopedDsvIdbKey(), cleanList).catch(() => {});
     
     if (typeof localStorage === 'undefined') return;
 
@@ -3096,8 +3112,16 @@ export async function deleteCloudUser(
 
     const { db, isReady } = getFirestoreInstance();
     if (isReady && db) {
+      // Las reglas de Firestore prohíben borrado físico de users (`allow delete: if false;`),
+      // por lo que la baja en la nube desactiva la cuenta de forma consistente.
       const userDocRef = doc(db, USERS_COLLECTION, clean);
-      await withTimeout(deleteDoc(userDocRef), 2000);
+      await withTimeout(
+        updateDoc(userDocRef, {
+          is_active: 0,
+          updated_at: new Date().toISOString(),
+        }),
+        2000
+      );
     }
 
     return { success: true };

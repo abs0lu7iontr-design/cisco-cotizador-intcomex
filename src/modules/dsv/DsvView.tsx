@@ -23,6 +23,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { parseRawDealBom, RawBomParsedResult, RawBomItem, sanitizeTrim } from './dsvBomParser';
+import { sanitizeCsvCell } from '../../utils/exportSanitizers';
 import { DsvModal } from './DsvModal';
 import {
   isSaasIneligibleForDsv,
@@ -286,11 +287,12 @@ export const DsvView: React.FC = () => {
     const headers = 'Línea,Part Number / SKU,Descripción,Cantidad,List Price (USD),Motivo de Exclusión\n';
     const rows = discardedItems
       .map((it) => {
-        const sku = `"${(it.ciscoSku || it.partNumber || '').replace(/"/g, '""')}"`;
-        const desc = `"${(it.description || '').replace(/"/g, '""')}"`;
+        const line = sanitizeCsvCell(it.lineNumber);
+        const sku = sanitizeCsvCell(it.ciscoSku || it.partNumber || '');
+        const desc = sanitizeCsvCell(it.description || '');
         const reasonObj = getDsvExclusionReason(it);
-        const reason = `"${reasonObj.label}"`;
-        return `"${it.lineNumber}",${sku},${desc},${it.qty || 0},${(it.listPrice || 0).toFixed(2)},${reason}`;
+        const reason = sanitizeCsvCell(reasonObj.label);
+        return `${line},${sku},${desc},${it.qty || 0},${(it.listPrice || 0).toFixed(2)},${reason}`;
       })
       .join('\n');
     const blob = new Blob(['\uFEFF' + headers + rows], { type: 'text/csv;charset=utf-8;' });

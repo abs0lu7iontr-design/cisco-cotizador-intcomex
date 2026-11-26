@@ -378,7 +378,7 @@ class DesktopBridge:
                     pass
         return {
             "name": "cisco-automated",
-            "version": "2.26.6",
+            "version": "2.26.7",
             "git_commit": "12379f3",
             "git_branch": "develop",
             "build_timestamp": "2026-10-15T00:00:00.000Z",
@@ -394,7 +394,7 @@ class DesktopBridge:
         Compares git_commit, build_timestamp, and version.
         """
         local_meta = self._get_local_version_metadata()
-        current_version = local_meta.get("version", "2.26.6")
+        current_version = local_meta.get("version", "2.26.7")
         current_commit = str(local_meta.get("git_commit", "12379f3"))
         current_timestamp = str(local_meta.get("build_timestamp", ""))
 
@@ -553,11 +553,13 @@ class DesktopBridge:
                         content = resp.read()
 
                 if content:
-                    if expected_sha256:
-                        actual_hash = hashlib.sha256(content).hexdigest().lower()
-                        if actual_hash != expected_sha256:
-                            last_error = f"Verificación SHA-256 fallida para {u}"
-                            continue
+                    if not expected_sha256:
+                        last_error = "Manifiesto remoto version.json sin firma SHA-256 verificable (actualización bloqueada)."
+                        break
+                    actual_hash = hashlib.sha256(content).hexdigest().lower()
+                    if actual_hash != expected_sha256:
+                        last_error = f"Verificación SHA-256 fallida para {u}"
+                        continue
                     # Minimum sanity check: must be > 500 KB and contain html declaration
                     if len(content) > 500 * 1024:
                         head_chunk = content[:2048].decode('utf-8', errors='ignore').lower()
@@ -1002,6 +1004,15 @@ class DesktopBridge:
     # -------------------------------------------------------------------------
     # 7. CISCO DEVELOPER API SUITE (OAUTH2 M2M & APIX GATEWAY BRIDGE)
     # -------------------------------------------------------------------------
+    @staticmethod
+    def _is_allowed_cisco_url(raw_url: str, allowed_hosts: tuple) -> bool:
+        try:
+            parsed = urllib.parse.urlparse((raw_url or "").strip())
+            host = (parsed.hostname or "").lower()
+            return parsed.scheme == "https" and not parsed.username and not parsed.password and host in allowed_hosts
+        except Exception:
+            return False
+
     def get_cisco_token(
         self,
         client_id: str,
@@ -1015,6 +1026,9 @@ class DesktopBridge:
 
         try:
             target_url = (auth_url or "https://id.cisco.com/oauth2/default/v1/token").strip()
+            allowed_auth = ("id.cisco.com", "cloudsso.cisco.com", "cloudsso1.cisco.com")
+            if not self._is_allowed_cisco_url(target_url, allowed_auth):
+                return {"error": "untrusted_auth_url", "error_description": "URL de autenticación Cisco no permitida."}
             payload = urllib.parse.urlencode(
                 {
                     "grant_type": "client_credentials",
@@ -1045,19 +1059,44 @@ class DesktopBridge:
     def call_cisco_api(self, url: str, token: str, method: str = "GET"):
         """Calls https://apix.cisco.com endpoints natively from Python without browser CORS restrictions."""
         import urllib.request
+        import urllib.parse
         import urllib.error
         import time
 
         start_ts = time.time()
         try:
+            target_url = (url or "").strip()
+            allowed_api = (
+                "apix.cisco.com",
+                "api.cisco.com",
+                "sec.cloudapps.cisco.com",
+                "capitest.cisco.com",
+                "capi.cisco.com",
+                "it-api.cisco.com",
+            )
+            if not self._is_allowed_cisco_url(target_url, allowed_api):
+                return {
+                    "success": False,
+                    "httpStatus": 400,
+                    "latencyMs": 0,
+                    "error": "Dominio de destino no permitido en DesktopBridge.",
+                }
+            clean_method = (method or "GET").upper().strip()
+            if clean_method not in ("GET", "POST"):
+                return {
+                    "success": False,
+                    "httpStatus": 405,
+                    "latencyMs": 0,
+                    "error": f"Método HTTP no permitido en DesktopBridge ({clean_method}).",
+                }
             req = urllib.request.Request(
-                url.strip(),
+                target_url,
                 headers={
                     "Authorization": f"Bearer {token.strip()}",
                     "Accept": "application/json",
                     "User-Agent": "CiscoAutomated-Desktop/3.3",
                 },
-                method=(method or "GET").upper(),
+                method=clean_method,
             )
             with urllib.request.urlopen(req, timeout=15) as resp:
                 raw_body = resp.read().decode("utf-8", errors="ignore")
@@ -1135,6 +1174,20 @@ def get_index_html_path() -> str:
             os.path.join(sys._MEIPASS, "dist", "index.html"),
             os.path.join(sys._MEIPASS, "index.html"),
         ]
+
+    # En binarios empaquetados (PyInstaller frozen), jamás cargar HTML arbitrario desde CWD
+    if getattr(sys, "frozen", False) or hasattr(sys, "_MEIPASS"):
+        trusted_frozen_paths = [
+            os.path.join(exe_dir, "_internal", "dist", "index.html"),
+            os.path.join(exe_dir, "_internal", "index.html"),
+            os.path.join(exe_dir, "dist", "index.html"),
+            os.path.join(exe_dir, "index.html"),
+        ] + bundled_candidates
+        existing_trusted = [os.path.abspath(p) for p in trusted_frozen_paths if os.path.exists(os.path.abspath(p))]
+        if existing_trusted:
+            return max(existing_trusted, key=lambda p: os.path.getmtime(p))
+        fallback_frozen = bundled_candidates[0] if bundled_candidates else trusted_frozen_paths[0]
+        return os.path.abspath(fallback_frozen)
 
     existing_external = [os.path.abspath(p) for p in external_candidates if os.path.exists(os.path.abspath(p))]
     existing_bundled = [os.path.abspath(p) for p in bundled_candidates if os.path.exists(os.path.abspath(p))]

@@ -320,16 +320,41 @@ export async function putCollectionRecordsBatch<T extends Record<string, any>>(
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction([collectionName], 'readwrite');
         const store = tx.objectStore(collectionName);
-        for (const entry of entries) {
-          if (!entry || !entry.id) continue;
-          store.put({
-            storageKey: makeScopedRecordKey(entry.id, scope),
-            projectScope: scope,
-            recordId: entry.id,
-            updatedAt: new Date().toISOString(),
-            payload: entry.record,
-          });
+        const putAllEntries = () => {
+          for (const entry of entries) {
+            if (!entry || !entry.id) continue;
+            store.put({
+              storageKey: makeScopedRecordKey(entry.id, scope),
+              projectScope: scope,
+              recordId: entry.id,
+              updatedAt: new Date().toISOString(),
+              payload: entry.record,
+            });
+          }
+        };
+
+        if (options?.replaceAllInScope) {
+          const cursorReq = store.openCursor();
+          cursorReq.onsuccess = () => {
+            const cursor = cursorReq.result;
+            if (cursor) {
+              if (cursor.value && cursor.value.projectScope === scope) {
+                if (typeof cursor.delete === 'function') {
+                  cursor.delete();
+                } else if (cursor.value.storageKey) {
+                  store.delete(cursor.value.storageKey);
+                }
+              }
+              cursor.continue();
+            } else {
+              putAllEntries();
+            }
+          };
+          cursorReq.onerror = () => reject(cursorReq.error);
+        } else {
+          putAllEntries();
         }
+
         tx.oncomplete = () => resolve();
         tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
         tx.onerror = () => reject(tx.error || new Error('Transaction error'));

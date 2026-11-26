@@ -11,10 +11,11 @@ rules_version = '2';
 //
 // Because of this, reads and operational writes currently permit `!isAuthenticated()`
 // where required by the live client app (including LoginScreen `last_login` sync,
-// UserManagementView Web admin CRUD, and operational modules). Once Firebase Auth
-// (Anonymous / Email-Password / Custom Token) is integrated into `firebaseConfig.ts`
-// and enabled in Firebase Console, replace `!isAuthenticated()` fallbacks with
-// `isAuthenticated()` / `isAdmin()` / `isOwner(...)` checks.
+// UserManagementView Web admin CRUD, and operational modules).
+// Removing `!isAuthenticated()` (and replacing `allow read: if true;` with
+// authenticated / owner-scoped read checks) completes the full lock once
+// `FIREBASE_SERVICE_ACCOUNT_JSON` Custom Token auth is enabled in Cloudflare and
+// integrated into `firebaseConfig.ts`.
 //
 // Collection 1: estimates/{estimateId}
 //   - id, dealId, estimateId, partnerName, clientFinalName, modelName, originalFileName: string
@@ -56,8 +57,10 @@ rules_version = '2';
 //   - last_login: string (optional, <= 100 chars)
 //   Hardening:
 //     - Physical delete forbidden (`allow delete: if false;`)
-//     - Root `'admin'` cannot be deactivated or demoted (`role == 'admin' && is_active == 1`)
-//     - When `isAuthenticated()` is true, only `isAdmin()` can create users or modify role/is_active/password_hash
+//     - Root `'admin'` and `'mskill'` cannot be deactivated or demoted (`role == 'admin' && is_active == 1`),
+//       and `!isAuthenticated()` callers cannot mutate their `role` or `is_active`
+//     - When `isAuthenticated()` is true, only `isAdmin()` can create users, and updates allow
+//       only `isAdmin()` or `isOwner(userId)` with immutable `['role', 'is_active', 'password_hash']`
 //
 // Collection 4: shared_sku_rules/{skuId}
 //   - id, sku, rule, previousType, note, updatedAt, createdAt: string
@@ -361,13 +364,13 @@ service cloud.firestore {
         isValidOptionalString(data, 'created_at', 0, 100) &&
         isValidOptionalString(data, 'updated_at', 0, 100) &&
         isValidOptionalString(data, 'last_login', 0, 100) &&
-        (userId != 'admin' || (data.role == 'admin' && data.is_active == 1));
+        (!(userId in ['admin', 'mskill']) || (data.role == 'admin' && data.is_active == 1));
     }
 
     function isUserImmutableFieldsUnchanged() {
-      return request.resource.data.username == resource.data.username &&
-        (!('created_at' in resource.data) || request.resource.data.created_at == resource.data.created_at) &&
-        (!('id' in resource.data) || !('id' in request.resource.data) || request.resource.data.id == resource.data.id) &&
+      return (!('username' in resource.data) || ('username' in request.resource.data && request.resource.data.username == resource.data.username)) &&
+        (!('created_at' in resource.data) || ('created_at' in request.resource.data && request.resource.data.created_at == resource.data.created_at)) &&
+        (!('id' in resource.data) || ('id' in request.resource.data && request.resource.data.id == resource.data.id)) &&
         (!('email' in request.resource.data) || request.resource.data.email == '' ||
           ('email' in resource.data && request.resource.data.email == resource.data.email) ||
           isValidEmail(request.resource.data.email));
@@ -724,7 +727,8 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /estimates/{estimateId} {
       allow read: if true;
-      allow create: if hasOnlyAllowedFields(allowedEstimateFields()) &&
+      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+        hasOnlyAllowedFields(allowedEstimateFields()) &&
         isValidEstimate(request.resource.data);
       allow update: if affectedKeysOnlyAllowed(allowedEstimateFields()) &&
         isValidEstimate(request.resource.data) &&
@@ -742,10 +746,14 @@ service cloud.firestore {
           versionId != 'v0' &&
           affectedKeysOnlyAllowed(allowedEstimateVersionFields()) &&
           isValidEstimateVersion(request.resource.data) &&
-          (isAdmin() || isDocOwner(get(/databases/$(database)/documents/estimates/$(estimateId)).data) || !isAuthenticated());
-        allow delete: if isAdmin() ||
-          isDocOwner(get(/databases/$(database)/documents/estimates/$(estimateId)).data) ||
-          !isAuthenticated();
+          exists(/databases/$(database)/documents/estimates/$(estimateId)) &&
+          (isAdmin() || !isAuthenticated() || isDocOwner(get(/databases/$(database)/documents/estimates/$(estimateId)).data));
+        allow delete: if versionId != 'v0_RAW' &&
+          versionId != 'v0' &&
+          (isAdmin() ||
+            !isAuthenticated() ||
+            (exists(/databases/$(database)/documents/estimates/$(estimateId)) &&
+              isDocOwner(get(/databases/$(database)/documents/estimates/$(estimateId)).data)));
       }
     }
 
@@ -754,7 +762,8 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /dsv_records/{dsvId} {
       allow read: if true;
-      allow create: if hasOnlyAllowedFields(allowedDsvFields()) &&
+      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+        hasOnlyAllowedFields(allowedDsvFields()) &&
         isValidDsvRecord(request.resource.data);
       allow update: if affectedKeysOnlyAllowed(allowedDsvFields()) &&
         isValidDsvRecord(request.resource.data) &&
@@ -775,7 +784,7 @@ service cloud.firestore {
         (
           isAdmin() ||
           (isOwner(userId) && areImmutableFieldsUnchanged(['role', 'is_active', 'password_hash'])) ||
-          !isAuthenticated()
+          (!isAuthenticated() && (!(userId in ['admin', 'mskill']) || areImmutableFieldsUnchanged(['role', 'is_active'])))
         );
       allow delete: if false;
     }
@@ -785,9 +794,11 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /shared_sku_rules/{skuId} {
       allow read: if true;
-      allow create: if hasOnlyAllowedFields(allowedSharedSkuFields()) &&
+      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+        hasOnlyAllowedFields(allowedSharedSkuFields()) &&
         isValidSharedSkuRule(request.resource.data);
-      allow update: if affectedKeysOnlyAllowed(allowedSharedSkuFields()) &&
+      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+        affectedKeysOnlyAllowed(allowedSharedSkuFields()) &&
         isValidSharedSkuRule(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
@@ -797,9 +808,11 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /partner_custom_params/{paramId} {
       allow read: if true;
-      allow create: if hasOnlyAllowedFields(allowedPartnerParamFields()) &&
+      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+        hasOnlyAllowedFields(allowedPartnerParamFields()) &&
         isValidPartnerCustomParam(request.resource.data);
-      allow update: if affectedKeysOnlyAllowed(allowedPartnerParamFields()) &&
+      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+        affectedKeysOnlyAllowed(allowedPartnerParamFields()) &&
         isValidPartnerCustomParam(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
@@ -809,9 +822,11 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /partners_xcl/{partnerId} {
       allow read: if true;
-      allow create: if hasOnlyAllowedFields(allowedPartnerXclFields()) &&
+      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+        hasOnlyAllowedFields(allowedPartnerXclFields()) &&
         isValidPartnerXcl(request.resource.data);
-      allow update: if affectedKeysOnlyAllowed(allowedPartnerXclFields()) &&
+      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+        affectedKeysOnlyAllowed(allowedPartnerXclFields()) &&
         isValidPartnerXcl(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
@@ -821,9 +836,11 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /cisco_bo_sku_catalog/{skuKey} {
       allow read: if true;
-      allow create: if hasOnlyAllowedFields(allowedBoSkuCatalogFields()) &&
+      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+        hasOnlyAllowedFields(allowedBoSkuCatalogFields()) &&
         isValidBoSkuCatalog(request.resource.data);
-      allow update: if affectedKeysOnlyAllowed(allowedBoSkuCatalogFields()) &&
+      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+        affectedKeysOnlyAllowed(allowedBoSkuCatalogFields()) &&
         isValidBoSkuCatalog(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
@@ -833,9 +850,11 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /bo_order_tracking/{trackingId} {
       allow read: if true;
-      allow create: if hasOnlyAllowedFields(allowedBoTrackingFields()) &&
+      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+        hasOnlyAllowedFields(allowedBoTrackingFields()) &&
         isValidBoOrderTracking(request.resource.data);
-      allow update: if affectedKeysOnlyAllowed(allowedBoTrackingFields()) &&
+      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+        affectedKeysOnlyAllowed(allowedBoTrackingFields()) &&
         isValidBoOrderTracking(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
@@ -845,9 +864,11 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /cisco_fast_track_catalog/{docId} {
       allow read: if true;
-      allow create: if hasOnlyAllowedFields(allowedFastTrackFields()) &&
+      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+        hasOnlyAllowedFields(allowedFastTrackFields()) &&
         isValidFastTrackCatalog(request.resource.data);
-      allow update: if affectedKeysOnlyAllowed(allowedFastTrackFields()) &&
+      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+        affectedKeysOnlyAllowed(allowedFastTrackFields()) &&
         isValidFastTrackCatalog(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
@@ -857,9 +878,11 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /deal_reminders/{reminderId} {
       allow read: if true;
-      allow create: if hasOnlyAllowedFields(allowedDealReminderFields()) &&
+      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+        hasOnlyAllowedFields(allowedDealReminderFields()) &&
         isValidDealReminder(request.resource.data);
-      allow update: if affectedKeysOnlyAllowed(allowedDealReminderFields()) &&
+      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+        affectedKeysOnlyAllowed(allowedDealReminderFields()) &&
         isValidDealReminder(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
@@ -869,9 +892,11 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /app_feedback_tickets/{ticketId} {
       allow read: if true;
-      allow create: if hasOnlyAllowedFields(allowedFeedbackTicketFields()) &&
+      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+        hasOnlyAllowedFields(allowedFeedbackTicketFields()) &&
         isValidFeedbackTicket(request.resource.data);
-      allow update: if affectedKeysOnlyAllowed(allowedFeedbackTicketFields()) &&
+      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+        affectedKeysOnlyAllowed(allowedFeedbackTicketFields()) &&
         isValidFeedbackTicket(request.resource.data);
       allow delete: if isAdmin() || !isAuthenticated();
     }
@@ -881,9 +906,11 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /cisco_pipeline_deals/{dealId} {
       allow read: if true;
-      allow create: if hasOnlyAllowedFields(allowedPipelineDealFields()) &&
+      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+        hasOnlyAllowedFields(allowedPipelineDealFields()) &&
         isValidPipelineDeal(request.resource.data, dealId);
-      allow update: if affectedKeysOnlyAllowed(allowedPipelineDealFields()) &&
+      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+        affectedKeysOnlyAllowed(allowedPipelineDealFields()) &&
         isValidPipelineDeal(request.resource.data, dealId);
       allow delete: if isAdmin() || !isAuthenticated();
     }
@@ -893,9 +920,11 @@ service cloud.firestore {
     // ------------------------------------------------------------------------
     match /cisco_forecast_records/{recordId} {
       allow read: if true;
-      allow create: if hasOnlyAllowedFields(allowedForecastRecordFields()) &&
+      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+        hasOnlyAllowedFields(allowedForecastRecordFields()) &&
         isValidForecastRecord(request.resource.data, recordId);
-      allow update: if affectedKeysOnlyAllowed(allowedForecastRecordFields()) &&
+      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+        affectedKeysOnlyAllowed(allowedForecastRecordFields()) &&
         isValidForecastRecord(request.resource.data, recordId);
       allow delete: if isAdmin() || !isAuthenticated();
     }

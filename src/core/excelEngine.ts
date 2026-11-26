@@ -536,12 +536,12 @@ export async function parseEstimateWorkbook(
 
       if (parsed.token === 'cisco-ca-v2' && Array.isArray(parsed.huerto)) {
         isPreviouslyProcessed = true;
-        const rawPlatano = parsed.platano !== undefined ? parsed.platano : 5.0;
-        priorMargin = rawPlatano > 0 && rawPlatano <= 1 ? rawPlatano * 100 : rawPlatano;
-        const rawUva = parsed.uva !== undefined ? parsed.uva : 7.0;
-        priorInternacion = rawUva > 0 && rawUva <= 1 ? rawUva * 100 : rawUva;
-        const rawNaranja = parsed.naranja !== undefined ? parsed.naranja : 6.0;
-        priorArancel = rawNaranja > 0 && rawNaranja <= 1 ? rawNaranja * 100 : rawNaranja;
+        const rawPlatano = parsed.platano !== undefined ? Number(parsed.platano) : 5.0;
+        priorMargin = Number.isFinite(rawPlatano) ? rawPlatano : 5.0;
+        const rawUva = parsed.uva !== undefined ? Number(parsed.uva) : 7.0;
+        priorInternacion = Number.isFinite(rawUva) ? rawUva : 7.0;
+        const rawNaranja = parsed.naranja !== undefined ? Number(parsed.naranja) : 6.0;
+        priorArancel = Number.isFinite(rawNaranja) ? rawNaranja : 6.0;
         priorTimestamp = parsed.kiwi ?? '';
         priorParameterMode = parsed.modo === 'custom_lines' ? 'custom_lines' : 'standard';
         if (parsed.lineasCustom && typeof parsed.lineasCustom === 'object') {
@@ -996,16 +996,18 @@ export async function parseEstimateWorkbook(
     let realUnitCost = hierLine ? hierLine.realUnitCost : rawNetCiscoUnit;
 
     // Dentro del bucle de items: Si el archivo fue previamente procesado, restaurar costos de fábrica
+    const isShadowPeriodic = Boolean(
+      isPreviouslyProcessed && shadowSnapshot[lineNumStr]?.sandia === true
+    );
     if (isPreviouslyProcessed && shadowSnapshot[lineNumStr]) {
       const snap = shadowSnapshot[lineNumStr];
       let healedPera = snap.pera;
-      let healedSandia = snap.sandia !== undefined ? Boolean(snap.sandia) : false;
+      const healedSandia = snap.sandia !== undefined ? Boolean(snap.sandia) : false;
 
-      // Autocuración: Si un archivo previo fue grabado con el bug de multiplicación (pera > manzana con descuento),
-      // restaurar el costo neto original unitario dividiendo por los meses
+      // Autocuración: Si un archivo previo guardó el costo total de N meses en `pera`,
+      // recuperar el costo neto mensual unitario SIN borrar `sandia = true` en suscripciones periódicas.
       if (snap.manzana > 0 && snap.mango && snap.mango > 1 && healedPera > snap.manzana * 1.05) {
         healedPera = roundFinancial(healedPera / snap.mango);
-        healedSandia = false;
       }
 
       netCiscoUnit = healedPera;        // Costo base original
@@ -1177,8 +1179,9 @@ export async function parseEstimateWorkbook(
     // 2) Y el parser jerárquico lo marcó como periódica (ratio > 1.05) O es un SKU Meraki en catálogo
     const shouldCalculatePeriodic =
       !isExplicitPrepaid &&
-      !isRatioConsolidated &&
-      (isPeriodicSubscription || (hierLine === undefined && isCloudSubscriptionSku(sku, nextDesc1)));
+      (isShadowPeriodic ||
+        (!isRatioConsolidated &&
+          (isPeriodicSubscription || (hierLine === undefined && isCloudSubscriptionSku(sku, nextDesc1)))));
 
     if (shouldCalculatePeriodic) {
       try {
@@ -1401,12 +1404,17 @@ function renderEstimateTableAndFooters(
   exportOptions?: EstimateExportGroupingOptions,
   startHeaderRow: number = 13
 ): { totalRowIndex: number; finalTotal: number } {
-  // 1. Filtrar ítems si se seleccionó una Línea Madre específica
+  // 1. Filtrar ítems si se seleccionó una Línea Madre específica (incluyendo sus filas info asociadas)
   let activeItems = items;
   if (exportOptions?.selectedLine && exportOptions.selectedLine !== 'ALL') {
+    let lastObservedMother = '';
     activeItems = items.filter((it) => {
-      if (it.isInfoRow) return true;
+      if (it.isInfoRow) {
+        const infoMother = it.inheritedFromMotherLine || (it.lineNumber ? getMotherLineKey(it.lineNumber) : lastObservedMother);
+        return infoMother === exportOptions.selectedLine;
+      }
       const mKey = getMotherLineKey(it.lineNumber);
+      lastObservedMother = mKey;
       return mKey === exportOptions.selectedLine;
     });
   }
@@ -1681,7 +1689,15 @@ function renderEstimateTableAndFooters(
       writeItemRow(it, currentRow, idx % 2 === 1);
       currentRow++;
     }
-    calculatedGrandTotal = calculatedProductTotal;
+    calculatedGrandTotal =
+      exportOptions?.selectedLine && exportOptions.selectedLine !== 'ALL'
+        ? roundFinancial(
+            activeItems.reduce(
+              (sum, it) => sum + (it.isInfoRow ? 0 : it.precioVentaExtendido || 0),
+              0
+            )
+          )
+        : calculatedProductTotal;
   }
 
   // 4. Fila de Total General (Price Total:)
@@ -2156,7 +2172,12 @@ export async function generateOptimizedWorkbook(
     cereza: (item.unitNetPriceCcw ?? 0) > 0 && (item.unitListPrice ?? 0) > 0
       ? ((1 - ((item.unitNetPriceCcw ?? 0) / item.unitListPrice)) * 100)
       : (item.discPct ?? 0),
-    pera: item.realUnitCost ?? item.originalUnitCost ?? item.originalNetCiscoUnit ?? item.netCiscoUnit ?? 0,
+    pera: item.isPeriodicSubscription
+      ? (item.unitNetPriceCcw ??
+          (item.months && item.months > 1
+            ? roundFinancial((item.netCiscoUnit ?? 0) / item.months)
+            : (item.netCiscoUnit ?? 0)))
+      : (item.realUnitCost ?? item.originalUnitCost ?? item.originalNetCiscoUnit ?? item.netCiscoUnit ?? 0),
     mango: item.detectedDurationMonths ?? item.months ?? (parseInt(item.serviceDurationMonths, 10) || 1),
     sandia: Boolean(item.isPeriodicSubscription),
     limon: item.originalLeadTimeDays !== undefined && item.originalLeadTimeDays !== '' ? item.originalLeadTimeDays : 0,
@@ -2170,6 +2191,7 @@ export async function generateOptimizedWorkbook(
     kiwi: new Date().toISOString(),
     huerto: shadowLedger,
     token: 'cisco-ca-v2',
+    pctUnit: 'percent',
     modo: params.parameterMode ?? 'standard',
     lineasCustom: params.lineCustomParams ?? {},
   };
@@ -2618,7 +2640,12 @@ export async function synthesizeOfficialEstimateWorkbook(
     cereza: (item.unitNetPriceCcw ?? 0) > 0 && (item.unitListPrice ?? 0) > 0
       ? ((1 - ((item.unitNetPriceCcw ?? 0) / item.unitListPrice)) * 100)
       : (item.discPct ?? 0),
-    pera: item.realUnitCost ?? item.originalUnitCost ?? item.originalNetCiscoUnit ?? item.netCiscoUnit ?? 0,
+    pera: item.isPeriodicSubscription
+      ? (item.unitNetPriceCcw ??
+          (item.months && item.months > 1
+            ? roundFinancial((item.netCiscoUnit ?? 0) / item.months)
+            : (item.netCiscoUnit ?? 0)))
+      : (item.realUnitCost ?? item.originalUnitCost ?? item.originalNetCiscoUnit ?? item.netCiscoUnit ?? 0),
     mango: item.detectedDurationMonths ?? item.months ?? (parseInt(item.serviceDurationMonths, 10) || 1),
     sandia: Boolean(item.isPeriodicSubscription),
     limon: item.originalLeadTimeDays !== undefined && item.originalLeadTimeDays !== '' ? item.originalLeadTimeDays : 0,
@@ -2632,6 +2659,7 @@ export async function synthesizeOfficialEstimateWorkbook(
     kiwi: new Date().toISOString(),
     huerto: shadowLedger,
     token: 'cisco-ca-v2',
+    pctUnit: 'percent',
     modo: params.parameterMode ?? 'standard',
     lineasCustom: params.lineCustomParams ?? {},
   };

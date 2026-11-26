@@ -9,6 +9,7 @@
 // ============================================================================
 
 import ExcelJS from 'exceljs';
+import { sanitizeCsvCell } from '../../utils/exportSanitizers';
 import {
   ExtractedRequirementResult,
   ExtractedRequirementItem,
@@ -952,11 +953,11 @@ export function generateNetformxCsv(
 ): { content: string; filename: string } {
   const headers = 'Part Number,Quantity,Description,Category,Parent Index\n';
   const lines = assembledRows.map((r) => {
-    const pn = `"${(r.partNumber || '').replace(/"/g, '""')}"`;
+    const pn = sanitizeCsvCell(r.partNumber || '');
     const qty = r.quantity || 1;
-    const desc = `"${(r.notes || r.partNumber || '').replace(/"/g, '""')}"`;
+    const desc = sanitizeCsvCell(r.notes || r.partNumber || '');
     const cat = r.isParent ? '"Chassis / Parent"' : '"Sub-Item / License"';
-    const parentIdx = r.isParent ? '""' : `"${r.parentIndex}"`;
+    const parentIdx = r.isParent ? '""' : sanitizeCsvCell(r.parentIndex);
     return `${pn},${qty},${desc},${cat},${parentIdx}`;
   });
 

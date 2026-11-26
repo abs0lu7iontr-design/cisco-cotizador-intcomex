@@ -254,7 +254,11 @@ export async function optimizeAndMigrateLocalStorage(): Promise<{
             }
           }
         } catch (_) {}
-      } else if ((isHeavyVault && raw.length > 15_000) || raw.length > 30_000) {
+      } else if (
+        !key.includes('cisco_sku_overrides_v2') &&
+        !key.includes('cisco_partners_xcl_pending_writes_v1') &&
+        ((isHeavyVault && raw.length > 15_000) || raw.length > 30_000)
+      ) {
         let migratedOk = false;
         try {
           const parsed = JSON.parse(raw);

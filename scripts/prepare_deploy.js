@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
@@ -27,7 +28,26 @@ if (!fs.existsSync(portableHtmlPath)) {
 }
 
 const portableBundleBuffer = fs.readFileSync(portableHtmlPath);
-console.log(`✅ [deploy-prep] Bundle portable compilado: ${(portableBundleBuffer.length / (1024 * 1024)).toFixed(2)} MB`);
+const desktopBundleSha256 = crypto.createHash('sha256').update(portableBundleBuffer).digest('hex');
+console.log(`✅ [deploy-prep] Bundle portable compilado: ${(portableBundleBuffer.length / (1024 * 1024)).toFixed(2)} MB (sha256: ${desktopBundleSha256.slice(0, 12)}...)`);
+
+// Inyectar `desktop_bundle_sha256` en todos los version.json generados para verificación obligatoria en Desktop
+for (const vPath of [
+  path.join(rootDir, 'public', 'version.json'),
+  path.join(rootDir, 'dist', 'version.json'),
+  path.join(rootDir, 'desktop_app', 'version.json'),
+  path.join(rootDir, 'dist_exe', 'GravityDesktop', '_internal', 'version.json'),
+]) {
+  try {
+    if (fs.existsSync(vPath)) {
+      const meta = JSON.parse(fs.readFileSync(vPath, 'utf8'));
+      meta.desktop_bundle_sha256 = desktopBundleSha256;
+      fs.writeFileSync(vPath, JSON.stringify(meta, null, 2), 'utf8');
+    }
+  } catch (e) {
+    console.warn(`⚠️ [deploy-prep] No se pudo inyectar SHA-256 en ${vPath}:`, e.message);
+  }
+}
 
 // Copiar bundle portable a los destinos locales de Desktop
 const desktopTargets = [

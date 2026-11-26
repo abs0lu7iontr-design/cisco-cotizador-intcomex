@@ -253,15 +253,9 @@ export function generateQuotationFileName(params: QuotationFileNameParams): stri
     effectiveMargin = resolved.marginPct;
   }
 
-  // Soporta tanto formato decimal (0.07) como entero/porcentual (7.0)
-  const intVal =
-    effectiveInt > 0 && effectiveInt <= 1
-      ? Math.round(effectiveInt * 100)
-      : Math.round(effectiveInt);
-  const maVal =
-    effectiveMargin > 0 && effectiveMargin <= 1
-      ? Math.round(effectiveMargin * 100)
-      : Math.round(effectiveMargin);
+  // Porcentajes almacenados siempre en puntos base 0..100 (ej. 7.0, 5.0, 0.5, 1.0)
+  const intVal = Math.round(effectiveInt);
+  const maVal = Math.round(effectiveMargin);
 
   // Formato compacto y disimulado (stealth):
   // - Si es solo licencias: "M5" (omite internación por no requerir aduana/flete)

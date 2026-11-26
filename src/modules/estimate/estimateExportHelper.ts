@@ -288,8 +288,8 @@ export function generatePartnerEmailDraft(options: {
               .map(
                 (m) => `
               <tr>
-                <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #1e293b;">Línea ${m.motherKey}</td>
-                <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; color: #475569;">${m.typeBadge}</td>
+                <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #1e293b;">Línea ${escapePrintHtml(m.motherKey)}</td>
+                <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; color: #475569;">${escapePrintHtml(m.typeBadge)}</td>
                 <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: center; color: #475569;">${m.totalQty}</td>
                 <td style="padding: 6px 10px; border-bottom: 1px solid #e2e8f0; text-align: right; font-weight: bold; color: #0f172a;">${formatUSD(m.subtotal)}</td>
               </tr>
@@ -318,20 +318,20 @@ export function generatePartnerEmailDraft(options: {
   const bodyHtml = `
     <div style="font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #1f2937; line-height: 1.5; max-width: 680px;">
       <p>Estimados,</p>
-      <p>Junto con saludar, compartimos la propuesta comercial formal de preventa Cisco para el cliente <strong>${clientName || 'Cliente Final'}</strong>.</p>
+      <p>Junto con saludar, compartimos la propuesta comercial formal de preventa Cisco para el cliente <strong>${escapePrintHtml(clientName || 'Cliente Final')}</strong>.</p>
       
       <table style="width: 100%; border-collapse: collapse; margin: 14px 0; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 10pt;">
         <tr>
           <td style="padding: 6px 10px; font-weight: bold; width: 140px; color: #475569;">Canal / Partner:</td>
-          <td style="padding: 6px 10px; color: #0f172a; font-weight: 600;">${partnerName || 'Intcomex'}</td>
+          <td style="padding: 6px 10px; color: #0f172a; font-weight: 600;">${escapePrintHtml(partnerName || 'Intcomex')}</td>
         </tr>
         <tr>
           <td style="padding: 6px 10px; font-weight: bold; color: #475569;">Cliente Final:</td>
-          <td style="padding: 6px 10px; color: #0f172a;">${clientName || 'Cliente Final'}</td>
+          <td style="padding: 6px 10px; color: #0f172a;">${escapePrintHtml(clientName || 'Cliente Final')}</td>
         </tr>
         <tr>
           <td style="padding: 6px 10px; font-weight: bold; color: #475569;">Deal ID / Estimate ID:</td>
-          <td style="padding: 6px 10px; color: #0f172a;">${dealLabel} / <strong>${estimateLabel}</strong></td>
+          <td style="padding: 6px 10px; color: #0f172a;">${escapePrintHtml(dealLabel)} / <strong>${escapePrintHtml(estimateLabel)}</strong></td>
         </tr>
       </table>
 

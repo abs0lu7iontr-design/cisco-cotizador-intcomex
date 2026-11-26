@@ -1,11 +1,12 @@
 {
   "name": "cisco-automated",
-  "version": "2.26.6",
-  "git_commit": "50507cd",
+  "version": "2.26.7",
+  "git_commit": "adc0d45",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-25T10:42:19.204Z",
-  "release_notes": "perf(v2.26.5): code-splitting, lazy views/modals and deferred sql.js bundle",
+  "build_timestamp": "2026-11-26T02:33:04.513Z",
+  "release_notes": "fix(v2.26.6): full PWA offline precaching for code-split chunks & SW registration timing",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
-  "channel": "develop"
+  "channel": "develop",
+  "desktop_bundle_sha256": "6e28a56eebaf068c215c9c43b2292e7ed58965060ab14d019b4f21f256e2c126"
 }

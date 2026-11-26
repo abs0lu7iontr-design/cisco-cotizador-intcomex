@@ -13,7 +13,12 @@ import {
   orderBy,
   limit,
 } from 'firebase/firestore';
-import { getFirestoreInstance } from '../cloud/firebaseConfig';
+import {
+  getFirestoreInstance,
+  registerProjectScopedCleanup,
+  readProjectScopedStorage,
+  writeProjectScopedStorage,
+} from '../cloud/firebaseConfig';
 import { sanitizeForFirestore } from '../cloud/firestoreService';
 import { UserSession } from '../../core/types';
 import { APP_VERSION } from '../../core/appVersion';
@@ -41,6 +46,10 @@ export const SLA_TARGET_HOURS: Record<TicketPriority, number> = {
 
 // In-Memory Cache for fast UI renders
 let inMemoryTickets: FeedbackTicket[] = [];
+
+registerProjectScopedCleanup(() => {
+  inMemoryTickets = [];
+});
 
 /**
  * Computes live SLA status and remaining time for any ticket.
@@ -156,7 +165,7 @@ export function captureTechnicalContext(
 export function getLocalCachedTickets(): FeedbackTicket[] {
   if (inMemoryTickets.length > 0) return inMemoryTickets;
   try {
-    const raw = localStorage.getItem(LOCAL_FEEDBACK_CACHE_KEY);
+    const raw = readProjectScopedStorage(LOCAL_FEEDBACK_CACHE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
@@ -176,7 +185,7 @@ export function getLocalCachedTickets(): FeedbackTicket[] {
 function setLocalCachedTickets(tickets: FeedbackTicket[]) {
   inMemoryTickets = tickets;
   try {
-    localStorage.setItem(LOCAL_FEEDBACK_CACHE_KEY, JSON.stringify(tickets));
+    writeProjectScopedStorage(LOCAL_FEEDBACK_CACHE_KEY, JSON.stringify(tickets));
   } catch (err) {
     console.warn('[feedbackService] No se pudo guardar caché local de tickets:', err);
   }

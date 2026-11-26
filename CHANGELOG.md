@@ -6,6 +6,24 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.26.7] - 2026-11-25
+
+### Corregido y Endurecido (Auditoría Crítica Integral: Bloques A, B y C)
+- **Bloque A — Seguridad Edge, Proxy Cisco, 2FA, Cron y Reglas Firestore:**
+  - Eliminación de credenciales Cisco M2M hardcodeadas y del fallback estático de secreto 2FA; emisión de tokens de sesión HMAC firmados en servidor (`functions/lib/edgeAuth.ts`, `functions/api/session-auth.ts`, `src/modules/security/edgeSessionService.ts`).
+  - Exigencia de sesión Edge autenticada en `/api/cisco-proxy`, restricción estricta a `GET`/`POST`, verificación de correo contra Firestore en `send-2fa-otp.ts` con límite de 5 intentos y consumo de un solo uso, y geolocalización fail-closed en orígenes HTTPS productivos.
+  - Protección de `/api/deal-reminder-cron` con CORS restringido, autenticación (`NOTIFY_SECRET` o sesión Edge), lista blanca de dominios (`intcomex.com`, `mayor.cl`) y escape HTML en notificaciones.
+  - Endurecimiento de `firestore.rules` protegiendo ambos administradores (`admin` y `mskill`), bloqueando borrado de snapshots base (`v0_RAW`/`v0`) e impidiendo mutaciones de campos inmutables.
+- **Bloque B — Integridad Financiera, Round-Trip Cloud y Aislamiento de Sesión:**
+  - Preservación de suscripciones periódicas Meraki (`isPeriodicSubscription`) al re-importar Excel sin multiplicar 36x, más eliminación de heurísticas `<= 1 ? * 100` en parseo y nombres de archivo (`1.0%` -> `I1M1`).
+  - Preservación completa en la nube de filas informativas (`isInfoRow`, `qty = 0`), duración y costo unitario real (`months`, `realUnitCost`, `serviceDurationMonths`) sin doble multiplicación de totales.
+  - Limpieza integral de estado residual (`rawWorkbookBuffer`, overrides, auditorías, promos, partner seleccionado y token de sesión) en carga directa/nube y `logout()`.
+- **Bloque C — Caché Offline/IDB, Seguridad Desktop, Sanitización XSS/CSV y UI/Matemática:**
+  - Hidratación automática del mirror desde IndexedDB (`hydrateEstimatesMirrorFromIdb`) y limpieza atómica en IndexedDB para reemplazos por ámbito (`putCollectionRecordsBatch`).
+  - Verificación obligatoria SHA-256 en actualizaciones Desktop (`desktop_bundle_sha256`), aislamiento del directorio de trabajo (`CWD`), lista blanca de URLs Cisco, eliminación de fallback de contraseña en texto plano y protección `admin`/`mskill` en SQLite Desktop.
+  - Sanitización de fórmulas CSV (`sanitizeCsvCell`) en los 4 exportadores y escape HTML/portapapeles (`escapeHtml`, `sanitizeRichClipboardHtml`) en ayudas de correo.
+  - Clamping seguro de margen CCW-R (`[0, 99]`), sincronización correcta de `parameterMode` y `arancelPct` en Goal Seek, filtro consistente de línea única e `isLoadingBufferRef`, limpieza de cachés por proyecto (DSV/Feedback) y desactivación lógica en `deleteCloudUser`.
+
 ## [v2.26.6] - 2026-11-25
 
 ### Corregido y Blindado

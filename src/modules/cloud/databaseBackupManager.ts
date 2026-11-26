@@ -873,9 +873,11 @@ export async function restoreAllDatabasesFromSnapshot(
     collectionResults.users.restoredLocally = mergedUsers.length;
 
     const toSync = backup.data.users
-      .filter((u) => u && u.username)
+      .filter((u) => u && u.username && /^[0-9a-f]{64}$/i.test(String(u.password_hash || '')))
       .map((u) => ({ key: String(u.username).toLowerCase(), payload: u }));
-    await syncCollectionItems('users', toSync);
+    if (toSync.length > 0) {
+      await syncCollectionItems('users', toSync);
+    }
   }
 
   // 10. Restaurar Metadatos Fast Track (sin anunciar recuperación del catálogo completo de SKUs)

@@ -15,10 +15,19 @@ export interface GeoLocationInfo {
 export interface OtpSessionState {
   otpSignature: string;
   expiresAt: number;
+  nonce?: string;
+}
+
+function isLocalOrDesktopRuntime(): boolean {
+  if (typeof window === 'undefined') return true;
+  if (Boolean((window as any).pywebview?.api)) return true;
+  const host = (window.location?.hostname || '').toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || window.location?.protocol === 'file:';
 }
 
 /**
- * Detects the client connection origin via Cloudflare Pages Edge (/api/geo-auth)
+ * Detects the client connection origin via Cloudflare Pages Edge (/api/geo-auth).
+ * Fails closed (`requires2FA: true`) on non-local HTTPS web origins if geo-auth errors/times out.
  */
 export async function checkGeoLocation(): Promise<GeoLocationInfo> {
   try {
@@ -30,10 +39,10 @@ export async function checkGeoLocation(): Promise<GeoLocationInfo> {
     if (res.ok) {
       const data: any = await res.json();
       return {
-        country: data.country || 'CL',
-        city: data.city || 'Santiago',
-        region: data.region || 'RM',
-        ip: data.ip || '127.0.0.1',
+        country: data.country || 'UNKNOWN',
+        city: data.city || 'Desconocida',
+        region: data.region || 'N/A',
+        ip: data.ip || '0.0.0.0',
         isChile: Boolean(data.isChile),
         requires2FA: Boolean(data.requires2FA),
         detectedAt: data.detectedAt,
@@ -43,14 +52,14 @@ export async function checkGeoLocation(): Promise<GeoLocationInfo> {
     console.warn('[2FA Geo Check] Local dev or offline fallback:', err);
   }
 
-  // Fallback for local development, PyWebView (.exe) or local testing
+  const allowDomesticLocalFallback = isLocalOrDesktopRuntime();
   return {
-    country: 'CL',
-    city: 'Santiago',
-    region: 'RM',
-    ip: '127.0.0.1',
-    isChile: true,
-    requires2FA: false,
+    country: allowDomesticLocalFallback ? 'CL' : 'UNKNOWN',
+    city: allowDomesticLocalFallback ? 'Santiago' : 'Desconocida',
+    region: allowDomesticLocalFallback ? 'RM' : 'N/A',
+    ip: allowDomesticLocalFallback ? '127.0.0.1' : '0.0.0.0',
+    isChile: allowDomesticLocalFallback,
+    requires2FA: !allowDomesticLocalFallback,
   };
 }
 
@@ -84,6 +93,7 @@ export async function sendTwoFactorOtp(
         otpSession: {
           otpSignature: data.otpSignature,
           expiresAt: data.expiresAt,
+          nonce: data.nonce,
         },
       };
     }
@@ -119,6 +129,7 @@ export async function verifyTwoFactorOtp(
         code,
         otpSignature: otpSession?.otpSignature,
         expiresAt: otpSession?.expiresAt,
+        nonce: otpSession?.nonce,
       }),
     });
 

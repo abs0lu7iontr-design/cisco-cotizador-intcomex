@@ -43,8 +43,8 @@ class AuthManager:
             except Exception:
                 pass
                 
-        # Exact fallback match
-        return password == password_hash
+        # Prohibido fallback en texto plano
+        return False
 
     def login(self, username: str, password: str) -> Tuple[bool, str]:
         """Authenticates user with 3-attempt brute-force protection and account lockout."""

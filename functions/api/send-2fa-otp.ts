@@ -1,116 +1,80 @@
 // ============================================================================
 // CLOUDFLARE PAGES FUNCTIONS: /api/send-2fa-otp
 // International Access 2FA Dispatch & Cryptographic Verification Service
+// Hardened: server-side Firestore email lookup, domain-separated HMAC secret,
+// attempt-throttling & single-use OTP signature revocation via caches.default.
 // ============================================================================
 
 import { buildEdgeCorsHeaders } from '../../src/utils/edgeCors';
+import {
+  createHmacSignature,
+  deriveScopedEdgeSecret,
+  EdgeEnv,
+  escapeHtml,
+  fetchFirestoreUserRecord,
+  resolveFirebaseProjectId,
+  timingSafeEqualStr,
+  verifyFirestoreUserCredentials,
+} from '../lib/edgeAuth';
 
-interface Env {
-  RESEND_API_KEY?: string;
-  NOTIFY_SECRET?: string;
-  ADMIN_OVERRIDE_SECRET?: string;
-  VITE_FIREBASE_PROJECT_ID?: string;
-  FIREBASE_PROJECT_ID?: string;
-}
+const MAX_OTP_ATTEMPTS = 5;
+const otpAttemptMemoryMap = new Map<string, { fails: number; used: boolean; exp: number }>();
 
-function escapeHtml(value: unknown): string {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function timingSafeEqualStr(a: string, b: string): boolean {
-  const enc = new TextEncoder();
-  const aBytes = enc.encode(a);
-  const bBytes = enc.encode(b);
-  const maxLen = Math.max(aBytes.length, bBytes.length);
-  let diff = aBytes.length ^ bBytes.length;
-  for (let i = 0; i < maxLen; i++) {
-    diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
+async function readOtpGuardState(signature: string): Promise<{ fails: number; used: boolean }> {
+  const mem = otpAttemptMemoryMap.get(signature);
+  if (mem && Date.now() <= mem.exp) {
+    return { fails: mem.fails, used: mem.used };
   }
-  return diff === 0;
+  const cacheStorage = typeof caches !== 'undefined' ? (caches as any).default : null;
+  if (cacheStorage) {
+    try {
+      const res = await cacheStorage.match(`https://otp-guard.internal/${signature}`);
+      if (res) {
+        const data: any = await res.json();
+        return { fails: Number(data?.fails) || 0, used: Boolean(data?.used) };
+      }
+    } catch {}
+  }
+  return { fails: 0, used: false };
 }
 
-async function sha256SaltedServer(password: string, usernameSalt?: string): Promise<string> {
-  const salt = 'Cisco_Automated_Intcomex_Salt_2026!';
-  const normalizedUser = (usernameSalt || '').trim().toLowerCase();
-  const payload = normalizedUser ? `${normalizedUser}:${password}:${salt}` : `${password}${salt}`;
-  const data = new TextEncoder().encode(payload);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+async function writeOtpGuardState(
+  signature: string,
+  state: { fails: number; used: boolean },
+  expiresAt: number
+): Promise<void> {
+  const expMs = Math.max(Date.now() + 60_000, expiresAt || Date.now() + 600_000);
+  otpAttemptMemoryMap.set(signature, { ...state, exp: expMs });
+  const cacheStorage = typeof caches !== 'undefined' ? (caches as any).default : null;
+  if (cacheStorage) {
+    try {
+      const ttl = Math.max(60, Math.ceil((expMs - Date.now()) / 1000));
+      await cacheStorage.put(
+        `https://otp-guard.internal/${signature}`,
+        new Response(JSON.stringify(state), {
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': `public, max-age=${ttl}`,
+          },
+        })
+      );
+    } catch {}
+  }
 }
 
-async function verifyAdminViaFirestore(
-  projectId: string,
-  adminUsername: string,
-  adminPassword: string
-): Promise<boolean> {
-  const cleanUser = adminUsername.trim().toLowerCase();
-  const cleanPass = adminPassword.trim();
-  if (!cleanUser || !cleanPass || !/^[a-z0-9._-]{1,64}$/.test(cleanUser)) {
-    return false;
-  }
-  const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/users/${encodeURIComponent(cleanUser)}`;
-  const res = await fetch(firestoreUrl, {
-    method: 'GET',
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) {
-    return false;
-  }
-  const docJson: any = await res.json();
-  const fields = docJson?.fields;
-  if (!fields) return false;
-
-  const role = String(fields.role?.stringValue || '').trim().toLowerCase();
-  const isActiveRaw = fields.is_active?.integerValue ?? fields.is_active?.doubleValue ?? '0';
-  const isActive = Number(isActiveRaw);
-  const storedHash = String(fields.password_hash?.stringValue || '').trim();
-  if (role !== 'admin' || isActive !== 1 || !storedHash) {
-    return false;
-  }
-
-  const perUserHash = await sha256SaltedServer(cleanPass, cleanUser);
-  const legacyHash = await sha256SaltedServer(cleanPass);
-  return timingSafeEqualStr(storedHash, perUserHash) || timingSafeEqualStr(storedHash, legacyHash);
-}
-
-export const onRequestOptions: PagesFunction<Env> = async (context) => {
+export const onRequestOptions: PagesFunction<EdgeEnv> = async (context) => {
   return new Response(null, {
     status: 204,
     headers: buildEdgeCorsHeaders(context.request, 'POST, OPTIONS'),
   });
 };
 
-// Cryptographic HMAC-SHA256 signature helper (Web Crypto API)
-async function createHmacSignature(payload: string, secretKey: string): Promise<string> {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw',
-    enc.encode(secretKey),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const signature = await crypto.subtle.sign('HMAC', key, enc.encode(payload));
-  return Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-// Mail Dispatcher using MailChannels (free Cloudflare edge) or Resend
 async function dispatchEmail(
   toEmail: string,
   subject: string,
   htmlContent: string,
-  env: Env
+  env: EdgeEnv
 ): Promise<{ success: boolean; error?: string }> {
-  // 1. Resend API
   if (env.RESEND_API_KEY) {
     try {
       const res = await fetch('https://api.resend.com/emails', {
@@ -132,7 +96,6 @@ async function dispatchEmail(
     }
   }
 
-  // 2. MailChannels (Cloudflare Edge native)
   try {
     const res = await fetch('https://api.mailchannels.net/tx/v1/send', {
       method: 'POST',
@@ -152,9 +115,10 @@ async function dispatchEmail(
     console.warn('[2FA Dispatch] MailChannels error:', err);
   }
 
-  // Fallback log for development
-  console.log(`[2FA Simulation] Email dispatched to ${toEmail}`);
-  return { success: true };
+  return {
+    success: false,
+    error: 'No se pudo despachar el correo 2FA mediante los proveedores configurados.',
+  };
 }
 
 function build2FaEmailHtml(code: string, username: string, country: string, city: string, ip: string): string {
@@ -173,7 +137,7 @@ function build2FaEmailHtml(code: string, username: string, country: string, city
     .card { max-width: 540px; margin: 0 auto; background-color: #1e293b; border-radius: 16px; border: 1px solid #334155; padding: 32px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
     .badge { display: inline-block; background-color: #0369a1; color: #e0f2fe; padding: 4px 12px; border-radius: 9999px; font-size: 11px; font-weight: bold; text-transform: uppercase; margin-bottom: 16px; letter-spacing: 0.5px; }
     .code-box { background: linear-gradient(135deg, #0f172a, #1e1b4b); border: 2px dashed #6366f1; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0; }
-    .code { font-family: 'Courier New', Courier, monospace; font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #38bdf8; text-shadow: 0 0 12px rgba(56,189,248,0.4); }
+    .code { font-family: 'Courier New', Courier, monospace; font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #38bdf8; }
     .meta-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; color: #94a3b8; }
     .meta-table td { padding: 6px 0; border-bottom: 1px solid #334155; }
     .meta-table td.val { text-align: right; color: #f1f5f9; font-weight: 600; }
@@ -187,31 +151,16 @@ function build2FaEmailHtml(code: string, username: string, country: string, city
     <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5; margin: 0 0 16px 0;">
       Hola <strong>${safeUser}</strong>, se ha detectado un inicio de sesión fuera de Chile. Para autorizar tu ingreso, introduce el siguiente código de 6 dígitos:
     </p>
-
     <div class="code-box">
       <div style="font-size: 11px; text-transform: uppercase; color: #818cf8; font-weight: bold; margin-bottom: 6px;">Código de Acceso Temporal (Válido 10 min)</div>
       <div class="code">${safeCode}</div>
     </div>
-
     <table class="meta-table">
-      <tr>
-        <td>📍 País detectado:</td>
-        <td class="val">${safeCountry}</td>
-      </tr>
-      <tr>
-        <td>🏙️ Ciudad / Nodo:</td>
-        <td class="val">${safeCity}</td>
-      </tr>
-      <tr>
-        <td>🌐 Dirección IP:</td>
-        <td class="val">${safeIp}</td>
-      </tr>
-      <tr>
-        <td>⏱️ Validez:</td>
-        <td class="val">10 Minutos</td>
-      </tr>
+      <tr><td>País detectado:</td><td class="val">${safeCountry}</td></tr>
+      <tr><td>Ciudad / Nodo:</td><td class="val">${safeCity}</td></tr>
+      <tr><td>Dirección IP:</td><td class="val">${safeIp}</td></tr>
+      <tr><td>Validez:</td><td class="val">10 Minutos</td></tr>
     </table>
-
     <div class="footer">
       Si no has solicitado este acceso, informa de inmediato al Administrador Principal (<strong>mskill</strong>).<br>
       Cisco Automated • Distribución Intcomex Chile
@@ -221,7 +170,14 @@ function build2FaEmailHtml(code: string, username: string, country: string, city
 </html>`;
 }
 
-function buildAdminAlertHtml(username: string, email: string, country: string, city: string, ip: string, tempAdminCode: string): string {
+function buildAdminAlertHtml(
+  username: string,
+  email: string,
+  country: string,
+  city: string,
+  ip: string,
+  tempAdminCode: string
+): string {
   const safeUser = escapeHtml(username);
   const safeEmail = escapeHtml(email);
   const safeCountry = escapeHtml(country);
@@ -241,7 +197,7 @@ function buildAdminAlertHtml(username: string, email: string, country: string, c
 </head>
 <body>
   <div class="card">
-    <div style="color: #f43f5e; font-weight: bold; font-size: 12px; text-transform: uppercase;">⚠️ Alerta de Administrador Root (mskill)</div>
+    <div style="color: #f43f5e; font-weight: bold; font-size: 12px; text-transform: uppercase;">Alerta de Administrador Root (mskill)</div>
     <h3 style="color: #ffffff; margin: 8px 0;">Solicitud de Desbloqueo de Acceso Internacional</h3>
     <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5;">
       El colaborador <strong>${safeUser}</strong> (${safeEmail}) está intentando ingresar desde el extranjero (<strong>${safeCountry} - ${safeCity}</strong>, IP: <code>${safeIp}</code>) y ha solicitado autorización.
@@ -256,67 +212,93 @@ function buildAdminAlertHtml(username: string, email: string, country: string, c
 </html>`;
 }
 
-export const onRequestPost: PagesFunction<Env> = async (context) => {
+export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
   const corsHeaders = buildEdgeCorsHeaders(context.request, 'POST, OPTIONS');
   try {
     const body: any = await context.request.json().catch(() => ({}));
     const action = body?.action || 'send';
-    const secretKey = context.env.NOTIFY_SECRET || 'Cisco_2FA_Edge_Master_Secret_2026!';
+    const secretKey = await deriveScopedEdgeSecret(context.env, '2fa-otp-v1');
+    if (!secretKey) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Servicio criptográfico 2FA no configurado en el servidor.' }),
+        { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+      );
+    }
 
-    // ========================================================================
-    // ACCIÓN 1: GENERAR Y ENVIAR CÓDIGO OTP POR CORREO
-    // ========================================================================
+    const projectId = resolveFirebaseProjectId(context.env);
+
+    // ACCIÓN 1: GENERAR Y ENVIAR CÓDIGO OTP AL CORREO REGISTRADO EN FIRESTORE
     if (action === 'send') {
-      const username = (body?.username || '').trim().toLowerCase();
-      const email = (body?.email || '').trim();
-      const country = (body?.country || 'EXTERIOR').toUpperCase();
-      const city = body?.city || 'Desconocida';
-      const ip = context.request.headers.get('CF-Connecting-IP') || body?.ip || '127.0.0.1';
+      const username = String(body?.username || '').trim().toLowerCase();
+      const country = String(body?.country || 'EXTERIOR').toUpperCase();
+      const city = String(body?.city || 'Desconocida');
+      const ip = context.request.headers.get('CF-Connecting-IP') || '0.0.0.0';
 
-      if (!username || !email) {
+      if (!username) {
         return new Response(
-          JSON.stringify({ success: false, error: 'Usuario y correo son obligatorios para despachar 2FA.' }),
+          JSON.stringify({ success: false, error: 'El nombre de usuario es obligatorio para despachar 2FA.' }),
           { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
         );
       }
 
-      // Generar código numérico criptográficamente aleatorio de 6 dígitos
-      const randomBuffer = new Uint32Array(1);
-      crypto.getRandomValues(randomBuffer);
-      const otpCode = (100000 + (randomBuffer[0] % 900000)).toString();
+      const userRecord = await fetchFirestoreUserRecord(projectId, username);
+      if (!userRecord || userRecord.is_active !== 1 || !userRecord.email) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Usuario inactivo o sin correo corporativo registrado en Firestore para recibir 2FA.',
+          }),
+          { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
 
-      // Validez de 10 minutos
+      const verifiedEmail = userRecord.email.trim().toLowerCase();
+      const randomBytes = new Uint32Array(3);
+      crypto.getRandomValues(randomBytes);
+      const otpCode = (100000 + (randomBytes[0] % 900000)).toString();
+      const nonce = `${randomBytes[1].toString(16)}${randomBytes[2].toString(16)}`;
       const expiresAt = Date.now() + 10 * 60 * 1000;
-      const signaturePayload = `${username}:${otpCode}:${expiresAt}`;
+
+      const signaturePayload = `${username}:${verifiedEmail}:${otpCode}:${expiresAt}:${nonce}`;
       const otpSignature = await createHmacSignature(signaturePayload, secretKey);
 
-      // Despachar correo electrónico al usuario
       const subject = `🔐 [2FA Cisco Automated] Código de Acceso Internacional (${country})`;
       const html = build2FaEmailHtml(otpCode, username, country, city, ip);
-      await dispatchEmail(email, subject, html, context.env);
+      const sent = await dispatchEmail(verifiedEmail, subject, html, context.env);
+      if (!sent.success) {
+        return new Response(
+          JSON.stringify({ success: false, error: sent.error || 'Error enviando correo 2FA.' }),
+          { status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
 
       return new Response(
         JSON.stringify({
           success: true,
-          message: `Código 2FA enviado exitosamente al correo ${email.replace(/(.{2})(.*)(@.*)/, '$1***$3')}.`,
+          message: `Código 2FA enviado exitosamente al correo ${verifiedEmail.replace(/(.{2})(.*)(@.*)/, '$1***$3')}.`,
           expiresAt,
+          nonce,
           otpSignature,
         }),
         { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
       );
     }
 
-    // ========================================================================
-    // ACCIÓN 2: SOLICITAR DESBLOQUEO / CÓDIGO MAESTRO AL ADMINISTRADOR (mskill)
-    // ========================================================================
+    // ACCIÓN 2: SOLICITAR DESBLOQUEO AL ADMINISTRADOR (mskill)
     if (action === 'request_admin_unlock') {
-      const username = (body?.username || '').trim().toLowerCase();
-      const email = (body?.email || '').trim();
-      const country = (body?.country || 'EXTERIOR').toUpperCase();
-      const city = body?.city || 'Desconocida';
-      const ip = context.request.headers.get('CF-Connecting-IP') || body?.ip || '127.0.0.1';
+      const username = String(body?.username || '').trim().toLowerCase();
+      const country = String(body?.country || 'EXTERIOR').toUpperCase();
+      const city = String(body?.city || 'Desconocida');
+      const ip = context.request.headers.get('CF-Connecting-IP') || '0.0.0.0';
 
-      // Código maestro diario para el usuario basado en fecha y secreto
+      const userRecord = await fetchFirestoreUserRecord(projectId, username);
+      if (!userRecord || userRecord.is_active !== 1) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Usuario no válido o inactivo.' }),
+          { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+
       const dayStamp = new Date().toISOString().slice(0, 10);
       const adminCodePayload = `ADMIN_OVERRIDE:${username}:${dayStamp}`;
       const fullSig = await createHmacSignature(adminCodePayload, secretKey);
@@ -324,8 +306,21 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
       const adminEmail = 'mauricio.skill@intcomex.com';
       const adminSubject = `🚨 [URGENTE 2FA] Solicitud de Desbloqueo Internacional: ${username} (${country})`;
-      const adminHtml = buildAdminAlertHtml(username, email, country, city, ip, tempAdminCode);
-      await dispatchEmail(adminEmail, adminSubject, adminHtml, context.env);
+      const adminHtml = buildAdminAlertHtml(
+        username,
+        userRecord.email || 'sin-correo-registrado',
+        country,
+        city,
+        ip,
+        tempAdminCode
+      );
+      const sent = await dispatchEmail(adminEmail, adminSubject, adminHtml, context.env);
+      if (!sent.success) {
+        return new Response(
+          JSON.stringify({ success: false, error: sent.error || 'No se pudo notificar al Administrador.' }),
+          { status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
 
       return new Response(
         JSON.stringify({
@@ -336,13 +331,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       );
     }
 
-    // ========================================================================
-    // ACCIÓN 3: VERIFICAR CÓDIGO OTP O CÓDIGO MAESTRO DE ADMINISTRADOR
-    // ========================================================================
+    // ACCIÓN 3: VERIFICAR CÓDIGO OTP (CON LÍMITE DE INTENTOS Y USO ÚNICO) O CÓDIGO MAESTRO
     if (action === 'verify') {
-      const username = (body?.username || '').trim().toLowerCase();
-      const inputCode = (body?.code || '').trim().replace(/\s+/g, '');
-      const otpSignature = (body?.otpSignature || '').trim();
+      const username = String(body?.username || '').trim().toLowerCase();
+      const inputCode = String(body?.code || '').trim().replace(/\s+/g, '');
+      const otpSignature = String(body?.otpSignature || '').trim().toLowerCase();
+      const nonce = String(body?.nonce || '').trim();
       const expiresAt = Number(body?.expiresAt) || 0;
 
       if (!username || !inputCode) {
@@ -352,12 +346,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         );
       }
 
-      // 1. Verificación de Código Maestro de Administrador (8 caracteres alfanuméricos)
       const dayStamp = new Date().toISOString().slice(0, 10);
       const adminCodePayload = `ADMIN_OVERRIDE:${username}:${dayStamp}`;
       const expectedAdminSig = (await createHmacSignature(adminCodePayload, secretKey)).slice(0, 8).toUpperCase();
-
-      // Master override global por mskill
       const rootMasterPayload = `ROOT_MASTER:${dayStamp}`;
       const expectedRootMaster = (await createHmacSignature(rootMasterPayload, secretKey)).slice(0, 8).toUpperCase();
 
@@ -375,7 +366,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         );
       }
 
-      // 2. Verificación de Código OTP numérico de 6 dígitos
       if (!Number.isFinite(expiresAt) || expiresAt <= 0 || Date.now() > expiresAt) {
         return new Response(
           JSON.stringify({ success: false, error: 'El código 2FA ha expirado (validez de 10 minutos). Solicita uno nuevo.' }),
@@ -383,23 +373,48 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         );
       }
 
-      if (!/^[0-9a-f]{64}$/i.test(otpSignature)) {
+      if (!/^[0-9a-f]{64}$/i.test(otpSignature) || !nonce) {
         return new Response(
-          JSON.stringify({ success: false, error: 'Firma de sesión 2FA inválida.' }),
+          JSON.stringify({ success: false, error: 'Firma o nonce de sesión 2FA inválidos.' }),
           { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
         );
       }
 
-      const expectedPayload = `${username}:${inputCode}:${expiresAt}`;
+      const guard = await readOtpGuardState(otpSignature);
+      if (guard.used) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Este código 2FA ya fue utilizado. Solicita uno nuevo.' }),
+          { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+      if (guard.fails >= MAX_OTP_ATTEMPTS) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Demasiados intentos fallidos. Solicita un nuevo código 2FA.' }),
+          { status: 429, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+
+      const userRecord = await fetchFirestoreUserRecord(projectId, username);
+      if (!userRecord || userRecord.is_active !== 1 || !userRecord.email) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Usuario no válido o sin correo corporativo.' }),
+          { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+
+      const verifiedEmail = userRecord.email.trim().toLowerCase();
+      const expectedPayload = `${username}:${verifiedEmail}:${inputCode}:${expiresAt}:${nonce}`;
       const expectedSignature = await createHmacSignature(expectedPayload, secretKey);
 
-      if (!timingSafeEqualStr(otpSignature.toLowerCase(), expectedSignature.toLowerCase())) {
+      if (!timingSafeEqualStr(otpSignature, expectedSignature.toLowerCase())) {
+        await writeOtpGuardState(otpSignature, { fails: guard.fails + 1, used: false }, expiresAt);
         return new Response(
           JSON.stringify({ success: false, error: 'Código de verificación incorrecto. Intente nuevamente.' }),
           { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
         );
       }
 
+      await writeOtpGuardState(otpSignature, { fails: guard.fails, used: true }, expiresAt);
       return new Response(
         JSON.stringify({
           success: true,
@@ -409,9 +424,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       );
     }
 
-    // ========================================================================
     // ACCIÓN 4: GENERAR CÓDIGO MAESTRO DE CONTINGENCIA (SOLO ADMIN AUTENTICADO)
-    // ========================================================================
     if (action === 'generate_admin_override') {
       const authHeader = context.request.headers.get('Authorization') || '';
       const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
@@ -425,13 +438,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       if (!isVerifiedAdmin) {
         const adminUsername = String(body?.adminUsername || '').trim().toLowerCase();
         const adminPassword = String(body?.adminPassword || '');
-        const projectId = (
-          context.env.FIREBASE_PROJECT_ID ||
-          context.env.VITE_FIREBASE_PROJECT_ID ||
-          'cisco-automated'
-        ).trim();
         if (adminUsername && adminPassword) {
-          isVerifiedAdmin = await verifyAdminViaFirestore(projectId, adminUsername, adminPassword);
+          const adminUser = await verifyFirestoreUserCredentials(projectId, adminUsername, adminPassword, 'admin');
+          isVerifiedAdmin = Boolean(adminUser);
         }
       }
 
@@ -445,7 +454,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         );
       }
 
-      const username = (body?.username || '').trim().toLowerCase();
+      const username = String(body?.username || '').trim().toLowerCase();
       const dayStamp = new Date().toISOString().slice(0, 10);
       const adminCodePayload = username ? `ADMIN_OVERRIDE:${username}:${dayStamp}` : `ROOT_MASTER:${dayStamp}`;
       const sig = (await createHmacSignature(adminCodePayload, secretKey)).slice(0, 8).toUpperCase();

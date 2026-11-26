@@ -337,8 +337,10 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
 
     notifyChange({
       ...params,
+      parameterMode: 'standard',
+      lineCustomParams: {},
       internacionPct: goalSeekResult.newInternacionPct ?? params.internacionPct,
-      arancelPct: 6.0, // Strictly fixed
+      arancelPct: goalSeekResult.newArancelPct ?? params.arancelPct,
       margenPct: goalSeekResult.newMargenPct ?? params.margenPct,
     });
 

@@ -311,13 +311,6 @@ class DatabaseManager:
                         target_conn.commit()
                     except Exception as merge_err:
                         print(f"[DB Merge Warning from {src_path}]: {merge_err}")
-
-            root_db = os.path.join(os.getcwd(), "gravity_database.db")
-            if os.path.normpath(os.path.abspath(root_db)) != os.path.normpath(os.path.abspath(canonical_path)):
-                try:
-                    shutil.copy2(canonical_path, root_db)
-                except Exception:
-                    pass
         except Exception as e:
             print(f"[DB Consolidation Error]: {e}")
 
@@ -1161,8 +1154,10 @@ class DatabaseManager:
 
     def update_user_full(self, original_username: str, full_name: str, email: str, role: str, pwd_hash: Optional[str] = None, is_active: Optional[int] = None) -> Tuple[bool, str]:
         """Updates full user record including name, email, role, password, and active state."""
-        if original_username == "mskill" and role != "admin":
-            return (False, "No es posible degradar al administrador principal (mskill).")
+        if (original_username or "").strip().lower() in ("admin", "mskill") and role != "admin":
+            return (False, "No es posible degradar al administrador principal (admin / mskill).")
+        if (original_username or "").strip().lower() in ("admin", "mskill") and is_active == 0:
+            return (False, "No es posible desactivar al administrador principal (admin / mskill).")
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
@@ -1468,8 +1463,8 @@ class DatabaseManager:
 
     def toggle_user_active(self, username: str, is_active: bool) -> Tuple[bool, str]:
         """Activates or deactivates a user."""
-        if username == "mskill":
-            return (False, "No es posible desactivar al usuario administrador principal (mskill).")
+        if (username or "").strip().lower() in ("admin", "mskill"):
+            return (False, "No es posible desactivar al usuario administrador principal (admin / mskill).")
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
@@ -1485,8 +1480,8 @@ class DatabaseManager:
         If the user has associated estimates, blocks deletion (`ON DELETE RESTRICT` policy)
         to prevent loss of financial history and recommends deactivation (`is_active = 0`).
         """
-        if username == "mskill":
-            return (False, "No es posible eliminar al usuario administrador principal (mskill).")
+        if (username or "").strip().lower() in ("admin", "mskill"):
+            return (False, "No es posible eliminar al usuario administrador principal (admin / mskill).")
         try:
             with self.get_connection(enforce_foreign_keys=True) as conn:
                 cursor = conn.cursor()

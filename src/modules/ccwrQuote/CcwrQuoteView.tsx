@@ -117,9 +117,20 @@ export function CcwrQuoteView() {
     }
   }, [pendingCcwrFile, setPendingCcwrFile]);
 
-  // Recalcular finanzas en vivo
+  // Recalcular finanzas en vivo (con resguardo ante valores temporales inválidos en inputs)
   const { calculatedItems, summary } = useMemo(() => {
-    return recalculateCcwrQuote(items, params, onlyServicesWithCost);
+    try {
+      const safeMargin = Math.min(99, Math.max(0, Number.isFinite(params.margenPct) ? params.margenPct : 0));
+      const safeParams = {
+        ...params,
+        internacionPct: Math.max(0, Number.isFinite(params.internacionPct) ? params.internacionPct : 0),
+        arancelPct: Math.max(0, Number.isFinite(params.arancelPct) ? params.arancelPct : 0),
+        margenPct: safeMargin,
+      };
+      return recalculateCcwrQuote(items, safeParams, onlyServicesWithCost);
+    } catch {
+      return recalculateCcwrQuote(items, { ...params, margenPct: 0 }, onlyServicesWithCost);
+    }
   }, [items, params, onlyServicesWithCost]);
 
   // Vigencia del contrato calculada en meses
@@ -864,17 +875,23 @@ export function CcwrQuoteView() {
                 max="30"
                 step="0.1"
                 value={params.margenPct}
-                onChange={(e) => setParams({ ...params, margenPct: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => {
+                  const val = Math.min(99, Math.max(0, parseFloat(e.target.value) || 0));
+                  setParams({ ...params, margenPct: val });
+                }}
                 className="w-full accent-emerald-500 cursor-pointer"
               />
               <div className="flex items-center gap-2">
                 <input
                   type="number"
                   min="0"
-                  max="90"
+                  max="99"
                   step="0.1"
                   value={params.margenPct}
-                  onChange={(e) => setParams({ ...params, margenPct: parseFloat(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const val = Math.min(99, Math.max(0, parseFloat(e.target.value) || 0));
+                    setParams({ ...params, margenPct: val });
+                  }}
                   className="w-24 px-2 py-1 bg-slate-950 border border-slate-700 rounded text-xs text-right font-mono text-emerald-300 focus:outline-none focus:border-emerald-500"
                 />
                 <span className="text-xs text-slate-400">% sobre precio venta</span>

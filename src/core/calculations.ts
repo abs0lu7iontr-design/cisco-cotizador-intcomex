@@ -701,7 +701,11 @@ export function solveGoalSeekParameters(
     return roundFinancial(sum);
   };
 
-  const currentTotal = computeTotal(currentParams);
+  const currentTotal = computeTotal({
+    ...currentParams,
+    parameterMode: 'standard',
+    lineCustomParams: {},
+  });
 
   let targetTotal: number;
   let requestedDiscount: number;

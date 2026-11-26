@@ -44,6 +44,7 @@ import {
 import {
   checkGeoLocation,
   sendTwoFactorOtp,
+  requestEdgeSessionToken,
   GeoLocationInfo,
   OtpSessionState,
   TwoFactorModal,
@@ -322,9 +323,12 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               }
             } catch {}
           }
+          if (!isOffline) {
+            await requestEdgeSessionToken(cleanUser, cleanPass).catch(() => ({ success: false }));
+          }
           const currentGeo = geoInfo || (await checkGeoLocation());
           if (!geoInfo) setGeoInfo(currentGeo);
-          if (currentGeo.requires2FA) {
+          if (currentGeo.requires2FA && !isOffline) {
             const otpRes = await sendTwoFactorOtp(cleanUser, res.user.email || '', currentGeo);
             setPendingUserSession(res.user);
             setPendingOtpSession(otpRes.otpSession);
@@ -428,12 +432,13 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         } catch {}
       }
 
-      // Update last_login asynchronously in background si está Online
+      // Update last_login asynchronously & emit Edge session token si está Online
       if (!isOffline) {
         saveCloudUser({
           ...foundUser,
           last_login: new Date().toISOString(),
         }).catch(() => {});
+        await requestEdgeSessionToken(cleanUser, cleanPass).catch(() => ({ success: false }));
       }
 
         const userSession: UserSession = {

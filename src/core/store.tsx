@@ -47,6 +47,7 @@ import {
   MiningFastTrackAlertData,
 } from '../modules/mining';
 import { detectCiscoFileType } from './fileTypeDetector';
+import { clearEdgeSessionToken } from '../modules/security/edgeSessionService';
 import {
   getDesktopPyWebViewApi,
   readLocalSkuOverrides,
@@ -558,8 +559,11 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     [currentUser, fastTrackPromoMap]
   );
 
+  const isLoadingBufferRef = useRef<boolean>(false);
+
   // Recalcular en memoria al cambiar parámetros, overrides o promociones Fast Track
   useEffect(() => {
+    if (isLoadingBufferRef.current) return;
     if (processedResult && processedResult.items && processedResult.items.length > 0) {
       setProcessedResult((prev) =>
         prev ? recalculateEstimateResult(prev, params, customOverrideMap, fastTrackPromoMap) : prev
@@ -571,6 +575,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
 
   const processFileBuffer = useCallback(
     async (buffer: ArrayBuffer, fileName: string) => {
+      isLoadingBufferRef.current = true;
       setIsProcessing(true);
       setErrorMessage(null);
 
@@ -802,6 +807,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
             : msg || 'Error procesando archivo.'
         );
       } finally {
+        isLoadingBufferRef.current = false;
         setIsProcessing(false);
       }
     },
@@ -960,8 +966,18 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
   const loadCloudEstimateIntoStore = useCallback(async (record: CloudEstimateRecord) => {
     try {
       setIsProcessing(true);
+      setRawWorkbookBuffer(null);
+      setDetectedAudit(null);
+      setIsDetectedAuditModalOpen(false);
+      setPendingFastTrackAudit(null);
+      setIsFastTrackOpportunityModalOpen(false);
+      setActivePartnerProfile(null);
+      setDetectedPartner(record.partnerName || record.headerInfo?.companyName || '');
+
       if (record.financialSummary?.params) {
         setParams(record.financialSummary.params);
+      } else {
+        setParams(DEFAULT_PARAMS);
       }
 
       setCustomOverrideMap(record.customOverrideMap || {});
@@ -1046,11 +1062,26 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
   }, []);
 
   const loadDirectEstimateIntoStore = useCallback((estimate: ProcessedEstimateResult) => {
+    setRawWorkbookBuffer(null);
+    setCustomOverrideMap({});
+    setFastTrackPromoMap({});
+    setDetectedAudit(null);
+    setIsDetectedAuditModalOpen(false);
+    setPendingFastTrackAudit(null);
+    setIsFastTrackOpportunityModalOpen(false);
+    setMiningAuditData(null);
+    setMiningAlertData(null);
+    setIsMiningAlertModalOpen(false);
+    setMiningFastTrackWarningData(null);
+    setIsMiningFastTrackWarningModalOpen(false);
+    setActivePartnerProfile(null);
+    setErrorMessage(null);
+    setEstimateVersionNumber(1);
+    setEstimateVersionTag('v1');
+    setBaselineV0Amount(0);
     setProcessedResult(estimate);
     setCurrentFileName(estimate.fileName || `Cisco_API_${estimate.headerInfo?.estimateId || 'Estimate'}.xlsx`);
-    if (estimate.headerInfo?.customerName) {
-      setDetectedPartner(estimate.headerInfo.customerName);
-    }
+    setDetectedPartner(estimate.headerInfo?.companyName || estimate.headerInfo?.customerName || '');
     setCurrentView('quoter');
     setActiveQuoterTab('table');
     setIsRecalculated(false);
@@ -1062,18 +1093,20 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         return { success: false, error: 'No hay ninguna cotización activa para guardar.' };
       }
 
+      // netCiscoUnit y costoTotalUnitario en EstimateLineItem YA contemplan la duración contractual (safeMonths);
+      // volver a multiplicar por months subestimaba ganancia a $0 en licencias periódicas Meraki.
       const totalNetCisco =
         processedResult.originalProductTotal ||
         processedResult.items.reduce(
           (sum, i) =>
-            sum + (i.isInfoRow ? 0 : (i.netCiscoUnit || 0) * (i.qty || 1) * (i.months || 1)),
+            sum + (i.isInfoRow ? 0 : (i.netCiscoUnit || 0) * (i.qty ?? 0)),
           0
         );
       const totalVenta =
         processedResult.finalTotalPrice || processedResult.calculatedProductTotal || 0;
       const totalCosto = processedResult.items.reduce(
         (sum, i) =>
-          sum + (i.isInfoRow ? 0 : (i.costoTotalUnitario || 0) * (i.qty || 1) * (i.months || 1)),
+          sum + (i.isInfoRow ? 0 : (i.costoTotalUnitario || 0) * (i.qty ?? 0)),
         0
       );
       const profit = Math.max(0, totalVenta - (totalCosto > 0 ? totalCosto : totalNetCisco));
@@ -1161,7 +1194,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           lineNumber: it.lineNumber || '',
           partNumber: it.partNumber || '',
           description: it.description || '',
-          qty: it.qty || 1,
+          qty: it.isInfoRow ? 0 : (it.qty ?? 0),
           unitListPrice: it.unitListPrice || 0,
           netCiscoUnit: it.netCiscoUnit || 0,
           discPct: it.discPct || 0,
@@ -1172,6 +1205,12 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
             (it.isIntangible ? 'intangible' : it.llevaArancel ? 'arancel' : 'equipo'),
           isIntangible: Boolean(it.isIntangible),
           llevaArancel: Boolean(it.llevaArancel),
+          isInfoRow: Boolean(it.isInfoRow),
+          months: it.months,
+          detectedDurationMonths: it.detectedDurationMonths,
+          isPeriodicSubscription: it.isPeriodicSubscription,
+          realUnitCost: it.realUnitCost,
+          serviceDurationMonths: it.serviceDurationMonths || '',
           costoInternacion: it.costoInternacion || 0,
           costoArancel: it.costoArancel || 0,
           costoTotalUnitario: it.costoTotalUnitario || 0,
@@ -1339,10 +1378,19 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     setIsRecalculated(false);
     setDetectedAudit(null);
     setIsDetectedAuditModalOpen(false);
+    setEstimateVersionNumber(1);
+    setEstimateVersionTag('v1');
+    setBaselineV0Amount(0);
     setMiningAuditData(null);
     setIsMiningAuditModalOpen(false);
     setMiningAlertData(null);
     setIsMiningAlertModalOpen(false);
+    setMiningFastTrackWarningData(null);
+    setIsMiningFastTrackWarningModalOpen(false);
+    setMisroutedFileAlert(null);
+    setPendingCcwrFile(null);
+    setPendingSkuAuthOverridesState([]);
+    setSkuAuthAuthorName('');
     setErrorMessage(null);
     setParams(DEFAULT_PARAMS);
     setDetectedPartner('');
@@ -1350,6 +1398,8 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
   }, []);
 
   const logout = useCallback(async () => {
+    clearEdgeSessionToken();
+    clearEstimate();
     const desktopApi = getDesktopPyWebViewApi();
     if (desktopApi?.logout_user) {
       try {
@@ -1362,7 +1412,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     checkAndApplyUpdateOnLogout().catch(() => {});
     setCurrentUser(null);
     setCurrentView('dashboard');
-  }, []);
+  }, [clearEstimate]);
 
   const value = useMemo<CiscoAutomatedState>(
     () => ({

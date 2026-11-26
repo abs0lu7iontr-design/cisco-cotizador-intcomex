@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.26.7',
+    date: '2026-11-25',
+    commit: 'critical-audit-blocks-a-b-c-hardening',
+    title: 'Auditoría Crítica Integral: Seguridad Edge/Desktop, Motor Financiero y Offline',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Bloque A: Tokens de sesión Edge HMAC, eliminación de secretos hardcodeados en proxy Cisco y 2FA, cron autenticado y reglas Firestore endurecidas para admin/mskill y v0_RAW.',
+      'Bloque B: Round-trip exacto de suscripciones Meraki (sin 36x al re-importar), tasas <= 1% preservadas, carga/guardado Cloud fiel para isInfoRow y limpieza total al cerrar sesión.',
+      'Bloque C: Hidratación offline desde IndexedDB, SHA-256 obligatorio en updates Desktop, sanitización CSV/HTML contra inyección y estabilización de CCW-R, Goal Seek y cachés por proyecto.'
+    ]
+  },
+  {
     version: '2.26.6',
     date: '2026-11-25',
     commit: 'pwa-offline-chunk-precaching-for-code-splitting',
     title: 'Pre-cacheo Automático PWA Offline para Todos los Chunks Code-Split',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Inyección automática de todos los chunks /assets/*.js y .css en dist-pages/sw.js (scripts/prepare_deploy.js + public/sw.js) con versión sincronizada en CACHE_NAME',

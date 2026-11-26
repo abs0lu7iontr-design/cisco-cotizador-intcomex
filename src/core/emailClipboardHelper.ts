@@ -70,13 +70,14 @@ export async function copyHtmlAndTextToClipboard(
       };
 
       if (document.body) {
+        const { sanitizeRichClipboardHtml } = await import('../utils/exportSanitizers');
         tempContainer = document.createElement('div');
         tempContainer.contentEditable = 'true';
         tempContainer.style.position = 'fixed';
         tempContainer.style.left = '-9999px';
         tempContainer.style.top = '0';
         tempContainer.style.opacity = '0';
-        tempContainer.innerHTML = htmlContent;
+        tempContainer.innerHTML = sanitizeRichClipboardHtml(htmlContent);
         document.body.appendChild(tempContainer);
 
         const selection = window.getSelection();

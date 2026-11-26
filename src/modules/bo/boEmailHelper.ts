@@ -8,6 +8,7 @@ import {
   copyHtmlAndTextToClipboard,
   ClipboardCopyDetailedResult,
 } from '../../core/emailClipboardHelper';
+import { escapeHtml } from '../../utils/exportSanitizers';
 
 export const DEFAULT_BO_EMAIL_TO = 'ventascore.cl@intcomex.com';
 export const DEFAULT_BO_EMAIL_CC = 'ciscoteam.cl@intcomex.com';
@@ -155,13 +156,13 @@ export function generateBoHtmlTable(
         : ' [📦 Mixto HW + SW]';
 
       const partnerPo = options?.partnerPosByLine?.[motherKey]?.trim();
-      const poLabel = partnerPo ? ` — OC Partner: ${partnerPo}` : '';
+      const poLabel = partnerPo ? ` — OC Partner: ${escapeHtml(partnerPo)}` : '';
 
       // Fila de encabezado de bloque de línea madre con Badge de Tipo y OC
       const headerRow = `
       <tr style="background-color: #e2e8f0; font-family: Calibri, sans-serif; font-size: 11pt; font-weight: bold; color: #1e293b;">
         <td colspan="6" style="border: 1px solid #000; padding: 6px; text-align: left;">
-          📦 Bloque Línea ${motherKey}${typeBadge}${poLabel} (${groupItems.length} ${groupItems.length === 1 ? 'ítem' : 'ítems'})
+          📦 Bloque Línea ${escapeHtml(motherKey)}${escapeHtml(typeBadge)}${poLabel} (${groupItems.length} ${groupItems.length === 1 ? 'ítem' : 'ítems'})
         </td>
       </tr>
       <tr style="background-color: #cbd5e1; color: #000; font-weight: bold; font-family: Calibri, sans-serif; font-size: 10pt; text-align: center;">
@@ -178,9 +179,9 @@ export function generateBoHtmlTable(
         .map(
           (line) => `
       <tr style="text-align: center; font-family: Calibri, sans-serif; font-size: 11pt;">
-        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.sku || 'N/A'}</td>
-        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.partNumber}</td>
-        <td style="border: 1px solid #000; padding: 6px; text-align: center; font-weight: bold;">${line.bodega}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${escapeHtml(line.sku || 'N/A')}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${escapeHtml(line.partNumber)}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center; font-weight: bold;">${escapeHtml(line.bodega)}</td>
         <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.qty}</td>
         <td style="border: 1px solid #000; padding: 6px; text-align: right;">${formatCLP(line.unitNetPrice, 2)}</td>
         <td style="border: 1px solid #000; padding: 6px; text-align: right; font-weight: bold;">${formatCLP(line.extendedNetPrice, 2)}</td>
@@ -191,7 +192,7 @@ export function generateBoHtmlTable(
       // Fila de Subtotal de este bloque de línea
       const subtotalRow = `
       <tr style="background-color: #f1f5f9; font-family: Calibri, sans-serif; font-size: 11pt; font-weight: bold; color: #334155;">
-        <td colspan="3" style="border: 1px solid #000; padding: 6px; text-align: right;">Subtotal Línea ${motherKey}:</td>
+        <td colspan="3" style="border: 1px solid #000; padding: 6px; text-align: right;">Subtotal Línea ${escapeHtml(motherKey)}:</td>
         <td style="border: 1px solid #000; padding: 6px; text-align: center;">${groupQty}</td>
         <td style="border: 1px solid #000; padding: 6px; text-align: right;">—</td>
         <td style="border: 1px solid #000; padding: 6px; text-align: right; color: #059669;">$${formatCLP(groupSubtotal, 2)}</td>
@@ -207,9 +208,9 @@ export function generateBoHtmlTable(
       .map(
         (line) => `
       <tr style="text-align: center; font-family: Calibri, sans-serif; font-size: 11pt;">
-        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.sku || 'N/A'}</td>
-        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.partNumber}</td>
-        <td style="border: 1px solid #000; padding: 6px; text-align: center; font-weight: bold;">${line.bodega}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${escapeHtml(line.sku || 'N/A')}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center;">${escapeHtml(line.partNumber)}</td>
+        <td style="border: 1px solid #000; padding: 6px; text-align: center; font-weight: bold;">${escapeHtml(line.bodega)}</td>
         <td style="border: 1px solid #000; padding: 6px; text-align: center;">${line.qty}</td>
         <td style="border: 1px solid #000; padding: 6px; text-align: right;">${formatCLP(line.unitNetPrice, 2)}</td>
         <td style="border: 1px solid #000; padding: 6px; text-align: right; font-weight: bold;">${formatCLP(line.extendedNetPrice, 2)}</td>
@@ -219,7 +220,7 @@ export function generateBoHtmlTable(
   }
 
   const grandTotalLabel = selectedLine
-    ? `Total Línea ${selectedLine}:`
+    ? `Total Línea ${escapeHtml(selectedLine)}:`
     : isGrouped
     ? `Total General (Todas las Líneas):`
     : `Total General:`;
@@ -227,11 +228,13 @@ export function generateBoHtmlTable(
   // Ficha de Referencia y Cruce Comercial: Partner y Cliente Final (como abajo de la cotización)
   let referenceBlockHtml = '';
   if (options?.partnerName || options?.clientName || options?.dealId || options?.estimateId) {
-    const partner = capitalizeBusinessName(options.partnerName) || 'Intcomex Partner';
-    const client = capitalizeBusinessName(options.clientName) || 'Cliente Final';
-    const dealId = options.dealId && options.dealId !== 'NA' ? options.dealId : null;
-    const estimateId = options.estimateId && options.estimateId !== 'NA' ? options.estimateId : null;
-    const currentPo = selectedLine ? options.partnerPosByLine?.[selectedLine]?.trim() : null;
+    const partner = escapeHtml(capitalizeBusinessName(options.partnerName) || 'Intcomex Partner');
+    const client = escapeHtml(capitalizeBusinessName(options.clientName) || 'Cliente Final');
+    const dealId = options.dealId && options.dealId !== 'NA' ? escapeHtml(options.dealId) : null;
+    const estimateId = options.estimateId && options.estimateId !== 'NA' ? escapeHtml(options.estimateId) : null;
+    const currentPo = selectedLine && options.partnerPosByLine?.[selectedLine]?.trim()
+      ? escapeHtml(options.partnerPosByLine[selectedLine].trim())
+      : null;
 
     referenceBlockHtml = `
   <!-- Ficha de Referencia y Cruce Comercial: Partner y Cliente Final -->
@@ -270,7 +273,7 @@ export function generateBoHtmlTable(
 
   return `
   <p style="font-family: Calibri, sans-serif; font-size: 11pt;">Estimados,</p>
-  <p style="font-family: Calibri, sans-serif; font-size: 11pt;">${greeting}, por favor crear BO${selectedLine ? ` para Línea ${selectedLine}` : ''}.</p>
+  <p style="font-family: Calibri, sans-serif; font-size: 11pt;">${greeting}, por favor crear BO${selectedLine ? ` para Línea ${escapeHtml(selectedLine)}` : ''}.</p>
   <table style="border-collapse: collapse; width: 100%; max-width: 850px; font-family: Calibri, sans-serif; font-size: 11pt; border: 1px solid #000;">
     <thead>
       <tr style="background-color: #808080; color: #000; font-weight: bold; text-align: center;">

@@ -34,7 +34,7 @@ export function isAllowedEdgeOrigin(origin: string | null | undefined): boolean 
 export function buildEdgeCorsHeaders(
   request: Request | undefined | null,
   methods: string = 'GET, POST, OPTIONS',
-  allowHeaders: string = 'Content-Type, Authorization'
+  allowHeaders: string = 'Content-Type, Authorization, X-Session-Token'
 ): Record<string, string> {
   const origin = request?.headers?.get('Origin');
   const baseHeaders: Record<string, string> = {

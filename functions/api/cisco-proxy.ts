@@ -1,15 +1,15 @@
 // ============================================================================
 // CLOUDFLARE PAGES FUNCTIONS: /api/cisco-proxy
-// Proxy Server-to-Server (Edge) para Cisco OAuth2 M2M (id.cisco.com) y
-// Gateway Oficial Cisco APIX (https://apix.cisco.com) evitando bloqueos CORS
-// y el rechazo HTTP 401 de Okta cuando el navegador envía cabecera Origin.
+// Authenticated Server-to-Server (Edge) Proxy para Cisco OAuth2 M2M & APIX.
+// Requiere token de sesión Edge firmado, elimina secretos hardcodeados en repo,
+// restringe métodos HTTP y mantiene el token de servidor aislado del navegador.
 // ============================================================================
 
 import { buildEdgeCorsHeaders } from '../../src/utils/edgeCors';
+import { EdgeEnv, sha256Hex, verifyEdgeSessionToken } from '../lib/edgeAuth';
 
 const DEFAULT_AUTH_URL = 'https://id.cisco.com/oauth2/default/v1/token';
-const DEFAULT_CLIENT_ID = '3400130c-8528-49a1-9c71-f40e68e0f9bc';
-const DEFAULT_CLIENT_SECRET = '801e3a4f-950f-4951-ba4f-3c63d3684bb6';
+const SERVER_MANAGED_TOKEN_SENTINEL = '__EDGE_MANAGED__';
 
 const ALLOWED_AUTH_HOSTS = new Set<string>([
   'id.cisco.com',
@@ -26,35 +26,133 @@ const ALLOWED_API_HOSTS = new Set<string>([
   'it-api.cisco.com',
 ]);
 
+const ALLOWED_PROXY_METHODS = new Set<string>(['GET', 'POST']);
+
 function isAllowedCiscoUrl(rawUrl: string, allowedHosts: Set<string>): boolean {
   try {
     const parsed = new URL(rawUrl);
-    return parsed.protocol === 'https:' && !parsed.username && !parsed.password && allowedHosts.has(parsed.hostname.toLowerCase());
+    return (
+      parsed.protocol === 'https:' &&
+      !parsed.username &&
+      !parsed.password &&
+      allowedHosts.has(parsed.hostname.toLowerCase())
+    );
   } catch {
     return false;
   }
 }
 
-export const onRequestOptions: PagesFunction = async (context) => {
+async function mintCiscoOAuthToken(
+  authUrl: string,
+  clientId: string,
+  clientSecret: string,
+  useCache: boolean
+): Promise<
+  | { ok: true; status: number; data: any; token: string }
+  | { ok: false; status: number; error: string }
+> {
+  const cacheStorage = typeof caches !== 'undefined' ? (caches as any).default : null;
+  const cacheUrl = useCache
+    ? `https://cisco-token-cache.internal/${await sha256Hex(`${authUrl}:${clientId}`)}`
+    : null;
+
+  if (cacheStorage && cacheUrl) {
+    try {
+      const cached = await cacheStorage.match(cacheUrl);
+      if (cached) {
+        const cachedData: any = await cached.json();
+        if (cachedData?.access_token) {
+          return { ok: true, status: 200, data: cachedData, token: cachedData.access_token };
+        }
+      }
+    } catch {}
+  }
+
+  const form = new URLSearchParams();
+  form.append('grant_type', 'client_credentials');
+  form.append('client_id', clientId);
+  form.append('client_secret', clientSecret);
+
+  const tokenRes = await fetch(authUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: form.toString(),
+  });
+
+  const rawText = await tokenRes.text();
+  let parsed: any = null;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    parsed = { raw: rawText };
+  }
+
+  if (!tokenRes.ok || !parsed?.access_token) {
+    return {
+      ok: false,
+      status: tokenRes.status || 502,
+      error: parsed?.error_description || parsed?.error || `Error autenticando con Cisco ID (${tokenRes.status})`,
+    };
+  }
+
+  if (cacheStorage && cacheUrl) {
+    try {
+      const ttl = Math.max(60, Math.min(3500, (Number(parsed.expires_in) || 3600) - 90));
+      await cacheStorage.put(
+        cacheUrl,
+        new Response(JSON.stringify(parsed), {
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': `public, max-age=${ttl}`,
+          },
+        })
+      );
+    } catch {}
+  }
+
+  return { ok: true, status: 200, data: parsed, token: parsed.access_token };
+}
+
+export const onRequestOptions: PagesFunction<EdgeEnv> = async (context) => {
   return new Response(null, {
     status: 204,
     headers: buildEdgeCorsHeaders(context.request, 'POST, OPTIONS'),
   });
 };
 
-export const onRequestPost: PagesFunction = async (context) => {
+export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
   const start = Date.now();
   const corsHeaders = buildEdgeCorsHeaders(context.request, 'POST, OPTIONS');
   try {
+    const env = (context.env || {}) as EdgeEnv;
+
+    // Verificación obligatoria de sesión autenticada en servidor Edge
+    const sessionCheck = await verifyEdgeSessionToken(context.request, env);
+    if (!sessionCheck.valid) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: sessionCheck.error || 'Acceso no autorizado al proxy Cisco.',
+        }),
+        {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        }
+      );
+    }
+
     const body: any = await context.request.json();
     const action = body?.action || 'token';
 
-    const env = (context.env || {}) as Record<string, string | undefined>;
-    // Prefer server-side secrets configured in Cloudflare Pages when client uses default or omits them
     const bodyClientId = typeof body?.clientId === 'string' ? body.clientId.trim() : '';
     const bodyClientSecret = typeof body?.clientSecret === 'string' ? body.clientSecret.trim() : '';
-    const clientId = (env.CISCO_CLIENT_ID || bodyClientId || DEFAULT_CLIENT_ID).trim();
-    const clientSecret = (env.CISCO_CLIENT_SECRET || bodyClientSecret || DEFAULT_CLIENT_SECRET).trim();
+    const usingServerCreds = Boolean(env.CISCO_CLIENT_ID && env.CISCO_CLIENT_SECRET && !bodyClientId && !bodyClientSecret);
+
+    const clientId = (env.CISCO_CLIENT_ID || bodyClientId).trim();
+    const clientSecret = (env.CISCO_CLIENT_SECRET || bodyClientSecret).trim();
     const authUrl = (body?.authUrl || env.CISCO_AUTH_URL || DEFAULT_AUTH_URL).trim();
 
     if (!isAllowedCiscoUrl(authUrl, ALLOWED_AUTH_HOSTS)) {
@@ -70,55 +168,57 @@ export const onRequestPost: PagesFunction = async (context) => {
       );
     }
 
-    if (!clientId || !clientSecret) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: 'Credenciales Cisco M2M no configuradas.',
-        }),
-        {
-          status: 401,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
-        }
-      );
-    }
-
     if (action === 'token') {
-      const form = new URLSearchParams();
-      form.append('grant_type', 'client_credentials');
-      form.append('client_id', clientId);
-      form.append('client_secret', clientSecret);
-
-      const tokenRes = await fetch(authUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'application/json',
-        },
-        body: form.toString(),
-      });
-
-      const rawText = await tokenRes.text();
-      let parsed: any = null;
-      try {
-        parsed = JSON.parse(rawText);
-      } catch {
-        parsed = { raw: rawText };
+      if (!clientId || !clientSecret) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error:
+              'Credenciales Cisco M2M no configuradas en Cloudflare Pages (CISCO_CLIENT_ID / CISCO_CLIENT_SECRET) ni en la configuración personalizada del usuario.',
+          }),
+          {
+            status: 401,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          }
+        );
       }
 
+      const tokenOutcome = await mintCiscoOAuthToken(authUrl, clientId, clientSecret, usingServerCreds);
+      if (tokenOutcome.ok === false) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            httpStatus: tokenOutcome.status,
+            latencyMs: Date.now() - start,
+            error: 'error' in tokenOutcome ? tokenOutcome.error : 'Error autenticando con Cisco ID.',
+          }),
+          {
+            status: tokenOutcome.status,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          }
+        );
+      }
+
+      // Nunca filtrar access_token emitido con secretos de servidor hacia el navegador
+      const responseData = usingServerCreds
+        ? {
+            access_token: SERVER_MANAGED_TOKEN_SENTINEL,
+            token_type: tokenOutcome.data?.token_type || 'Bearer',
+            expires_in: tokenOutcome.data?.expires_in || 3600,
+            scope: tokenOutcome.data?.scope || 'customscope',
+          }
+        : tokenOutcome.data;
+
       return new Response(
         JSON.stringify({
-          success: tokenRes.ok,
-          httpStatus: tokenRes.status,
+          success: true,
+          httpStatus: 200,
           latencyMs: Date.now() - start,
-          data: parsed,
+          data: responseData,
         }),
         {
-          status: tokenRes.ok ? 200 : tokenRes.status,
-          headers: {
-            'Content-Type': 'application/json',
-            ...corsHeaders,
-          },
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
         }
       );
     }
@@ -133,44 +233,54 @@ export const onRequestPost: PagesFunction = async (context) => {
           }),
           {
             status: 400,
-            headers: {
-              'Content-Type': 'application/json',
-              ...corsHeaders,
-            },
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          }
+        );
+      }
+
+      const reqMethod = String(body?.method || 'GET').toUpperCase().trim();
+      if (!ALLOWED_PROXY_METHODS.has(reqMethod)) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: `Método HTTP no permitido por el proxy Cisco (${reqMethod}). Solo GET y POST.`,
+          }),
+          {
+            status: 405,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
           }
         );
       }
 
       let token = String(body?.token || '').trim();
-      if (!token) {
-        const form = new URLSearchParams();
-        form.append('grant_type', 'client_credentials');
-        form.append('client_id', clientId);
-        form.append('client_secret', clientSecret);
-        const tokenRes = await fetch(authUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            Accept: 'application/json',
-          },
-          body: form.toString(),
-        });
-        if (!tokenRes.ok) {
-          const errTxt = await tokenRes.text();
+      if (!token || token === SERVER_MANAGED_TOKEN_SENTINEL) {
+        if (!clientId || !clientSecret) {
           return new Response(
             JSON.stringify({
               success: false,
-              httpStatus: tokenRes.status,
-              error: `Error autenticando con Cisco ID: ${errTxt}`,
+              error: 'Credenciales Cisco M2M no configuradas para emitir token en servidor.',
             }),
             {
-              status: tokenRes.status,
+              status: 401,
               headers: { 'Content-Type': 'application/json', ...corsHeaders },
             }
           );
         }
-        const tokenData: any = await tokenRes.json();
-        token = tokenData.access_token;
+        const tokenOutcome = await mintCiscoOAuthToken(authUrl, clientId, clientSecret, usingServerCreds);
+        if (tokenOutcome.ok === false) {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              httpStatus: tokenOutcome.status,
+              error: 'error' in tokenOutcome ? tokenOutcome.error : 'Error autenticando con Cisco ID.',
+            }),
+            {
+              status: tokenOutcome.status,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            }
+          );
+        }
+        token = tokenOutcome.token;
       }
 
       const reqHeaders: Record<string, string> = {
@@ -178,10 +288,8 @@ export const onRequestPost: PagesFunction = async (context) => {
         Accept: 'application/json',
       };
 
-      const reqMethod = (body?.method || 'GET').toUpperCase();
       let reqBody: string | undefined = undefined;
-
-      if (reqMethod === 'POST' || reqMethod === 'PUT' || reqMethod === 'PATCH') {
+      if (reqMethod === 'POST') {
         reqHeaders['Content-Type'] = 'application/json';
         const rawPayload = body?.body ?? body?.data;
         if (rawPayload !== undefined) {

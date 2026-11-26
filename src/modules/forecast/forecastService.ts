@@ -22,6 +22,7 @@ import {
   parseDateBySource,
   matchesPeriodFilter,
 } from '../../utils/dateUtils';
+import { sanitizeCsvCell } from '../../utils/exportSanitizers';
 
 export { formatCommercialDate, formatCommercialDateHyphen };
 
@@ -825,8 +826,7 @@ export function exportForecastToCsv(records: ForecastRecord[]): string {
     return FORECAST_36_COLUMNS.map((col) => {
       const val = r[col.key];
       if (val === undefined || val === null) return '""';
-      if (typeof val === 'number') return `"${val}"`;
-      return `"${String(val).replace(/"/g, '""')}"`;
+      return sanitizeCsvCell(val);
     }).join(',');
   });
 

@@ -6,6 +6,7 @@
 // ============================================================================
 
 import { DealReminderRecord, calculateDealAging } from './dealReminderTypes';
+import { escapeHtml } from '../../utils/exportSanitizers';
 
 export interface DealEmailPayload {
   subject: string;
@@ -82,7 +83,7 @@ Equipo Especialistas Cisco - Intcomex Chile`;
     
     <!-- Encabezado / Saludo -->
     <p style="margin: 0 0 12px 0; font-size: 14px; color: #0f172a;">
-      <strong>${greeting} ${recipientLabel},</strong>
+      <strong>${escapeHtml(greeting)} ${escapeHtml(recipientLabel)},</strong>
     </p>
 
     <p style="margin: 0 0 16px 0; color: #334155; font-size: 13px;">
@@ -99,19 +100,19 @@ Equipo Especialistas Cisco - Intcomex Chile`;
       <tr style="background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">
         <td style="padding: 8px 14px; font-weight: bold; color: #475569; width: 38%; font-size: 12px;">Deal ID / OIP-TIP:</td>
         <td style="padding: 8px 14px; font-family: Consolas, monospace; font-weight: bold; color: #0284c7; font-size: 13px;">
-          ${deal.dealId}
+          ${escapeHtml(deal.dealId)}
         </td>
       </tr>
       <tr style="background-color: #ffffff; border-bottom: 1px solid #e2e8f0;">
         <td style="padding: 8px 14px; font-weight: bold; color: #475569; font-size: 12px;">Partner / Canal:</td>
         <td style="padding: 8px 14px; font-weight: bold; color: #0f172a; font-size: 12px;">
-          ${deal.partnerName}
+          ${escapeHtml(deal.partnerName)}
         </td>
       </tr>
       <tr style="background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">
         <td style="padding: 8px 14px; font-weight: bold; color: #475569; font-size: 12px;">Cliente Final:</td>
         <td style="padding: 8px 14px; font-weight: bold; color: #0f172a; font-size: 12px;">
-          ${deal.endCustomerName}
+          ${escapeHtml(deal.endCustomerName)}
         </td>
       </tr>
       <tr style="background-color: #ffffff; border-bottom: 1px solid #e2e8f0;">
@@ -125,21 +126,21 @@ Equipo Especialistas Cisco - Intcomex Chile`;
       <tr style="background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">
         <td style="padding: 8px 14px; font-weight: bold; color: #475569; font-size: 12px;">Fecha de Escalamiento:</td>
         <td style="padding: 8px 14px; color: #334155; font-size: 12px;">
-          ${dateFormatted} <span style="color: #d97706; font-weight: bold;">(Tiempo transcurrido: ${timeElapsedText})</span>
+          ${escapeHtml(dateFormatted)} <span style="color: #d97706; font-weight: bold;">(Tiempo transcurrido: ${escapeHtml(timeElapsedText)})</span>
         </td>
       </tr>
       ${deal.vfTicketNumber ? `
       <tr style="background-color: #ffffff; border-bottom: 1px solid #e2e8f0;">
         <td style="padding: 8px 14px; font-weight: bold; color: #475569; font-size: 12px;">Caso / Ticket VF:</td>
         <td style="padding: 8px 14px; font-family: Consolas, monospace; font-weight: bold; color: #0284c7; font-size: 12px;">
-          ${deal.vfTicketNumber}
+          ${escapeHtml(deal.vfTicketNumber)}
         </td>
       </tr>` : ''}
       ${deal.targetDiscountPct ? `
       <tr style="background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">
         <td style="padding: 8px 14px; font-weight: bold; color: #475569; font-size: 12px;">Descuento Solicitado:</td>
         <td style="padding: 8px 14px; font-weight: bold; color: #16a34a; font-size: 12px;">
-          ${deal.targetDiscountPct}%
+          ${escapeHtml(deal.targetDiscountPct)}%
         </td>
       </tr>` : ''}
       ${deal.estimatedTotalUsd ? `
@@ -153,7 +154,7 @@ Equipo Especialistas Cisco - Intcomex Chile`;
       <tr style="background-color: #ffffff;">
         <td style="padding: 8px 14px; font-weight: bold; color: #475569; font-size: 12px; vertical-align: top;">Notas / Justificación:</td>
         <td style="padding: 8px 14px; color: #475569; font-style: italic; font-size: 12px;">
-          ${deal.notes}
+          ${escapeHtml(deal.notes)}
         </td>
       </tr>` : ''}
     </table>
