@@ -1,12 +1,12 @@
 {
   "name": "cisco-automated",
-  "version": "2.26.7",
-  "git_commit": "adc0d45",
+  "version": "2.26.8",
+  "git_commit": "b2610d8",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-26T02:33:04.513Z",
-  "release_notes": "fix(v2.26.6): full PWA offline precaching for code-split chunks & SW registration timing",
+  "build_timestamp": "2026-11-26T10:15:46.482Z",
+  "release_notes": "fix(v2.26.7): complete critical audit blocks A, B and C hardening, Meraki/financial accuracy, offline hydration and XSS/CSV protection",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop",
-  "desktop_bundle_sha256": "6e28a56eebaf068c215c9c43b2292e7ed58965060ab14d019b4f21f256e2c126"
+  "desktop_bundle_sha256": "fc6ac85ec207d445077697ae1e4ff2112e11119be435715b7efebd3c562ff7ca"
 }

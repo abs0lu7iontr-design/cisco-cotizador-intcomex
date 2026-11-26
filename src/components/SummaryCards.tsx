@@ -186,7 +186,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
 
   const totalDelta = data.calculatedProductTotal - data.originalProductTotal;
   const totalCostSum = data.items.reduce(
-    (acc, item) => acc + item.costoTotalUnitario * item.qty,
+    (acc, item) => acc + (item.isInfoRow ? 0 : item.costoTotalUnitario * item.qty),
     0
   );
   const netProfit = data.calculatedProductTotal - totalCostSum;
@@ -198,6 +198,10 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
   const intangiblesCount = data.items.filter((i) => !i.isInfoRow && i.isIntangible).length;
   const arancelCount = data.items.filter((i) => !i.isInfoRow && i.llevaArancel).length;
   const ftCount = data.items.filter((i) => !i.isInfoRow && i.isFastTrackPromo).length;
+  const totalFastTrackSavings = data.items.reduce(
+    (acc, i) => acc + (!i.isInfoRow && i.isFastTrackPromo ? i.fastTrackSavings || 0 : 0),
+    0
+  );
 
   return (
     <div className="space-y-3">
@@ -403,7 +407,9 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
             </span>
           </div>
           <p className="text-[10px] text-slate-500">
-            Costo base de compra Cisco (sin internación ni margen)
+            {ftCount > 0 && totalFastTrackSavings > 0
+              ? `Costo base Cisco con Fast Track (-${formatCurrency(totalFastTrackSavings)} dcto)`
+              : 'Costo base de compra Cisco (sin internación ni margen)'}
           </p>
         </div>
 
@@ -428,7 +434,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({
           </div>
           <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-indigo-500/20">
             <span>
-              Spread: <strong className="text-indigo-300">+{formatCurrency(totalDelta)}</strong>
+              Spread: <strong className="text-indigo-300">{totalDelta >= 0 ? '+' : ''}{formatCurrency(totalDelta)}</strong>
             </span>
             <span className="text-emerald-400 font-bold">
               Target Margen {params.margenPct}%

@@ -1243,7 +1243,7 @@ export async function parseEstimateWorkbook(
         isFastTrackPromo: hasPromo,
         originalNetCiscoUnit: hasPromo ? (rawNetCiscoUnit * merakiResult.months) : undefined,
         fastTrackDiscountPct: hasPromo ? discPct : undefined,
-        fastTrackSavings: hasPromo ? Number((((rawNetCiscoUnit * merakiResult.months) - merakiResult.costoTotalUnitario) * qty).toFixed(2)) : undefined,
+        fastTrackSavings: hasPromo ? Number((((rawNetCiscoUnit * merakiResult.months) - merakiResult.netCiscoUnitCalculated) * qty).toFixed(2)) : undefined,
         effectiveInternacionPct,
         effectiveArancelPct,
         effectiveMargenPct,
@@ -2169,15 +2169,23 @@ export async function generateOptimizedWorkbook(
   const shadowLedger = items.map((item) => ({
     line: item.lineNumber,
     manzana: item.unitListPrice ?? 0,
-    cereza: (item.unitNetPriceCcw ?? 0) > 0 && (item.unitListPrice ?? 0) > 0
-      ? ((1 - ((item.unitNetPriceCcw ?? 0) / item.unitListPrice)) * 100)
-      : (item.discPct ?? 0),
+    cereza: item.isFastTrackPromo
+      ? (item.fastTrackDiscountPct ?? item.discPct ?? 0)
+      : ((item.unitNetPriceCcw ?? 0) > 0 && (item.unitListPrice ?? 0) > 0
+          ? ((1 - ((item.unitNetPriceCcw ?? 0) / item.unitListPrice)) * 100)
+          : (item.discPct ?? 0)),
     pera: item.isPeriodicSubscription
-      ? (item.unitNetPriceCcw ??
-          (item.months && item.months > 1
-            ? roundFinancial((item.netCiscoUnit ?? 0) / item.months)
-            : (item.netCiscoUnit ?? 0)))
-      : (item.realUnitCost ?? item.originalUnitCost ?? item.originalNetCiscoUnit ?? item.netCiscoUnit ?? 0),
+      ? (item.isFastTrackPromo
+          ? (item.months && item.months > 1
+              ? roundFinancial((item.netCiscoUnit ?? 0) / item.months)
+              : (item.netCiscoUnit ?? 0))
+          : (item.unitNetPriceCcw ??
+              (item.months && item.months > 1
+                ? roundFinancial((item.netCiscoUnit ?? 0) / item.months)
+                : (item.netCiscoUnit ?? 0))))
+      : (item.isFastTrackPromo
+          ? (item.netCiscoUnit ?? item.realUnitCost ?? 0)
+          : (item.realUnitCost ?? item.originalUnitCost ?? item.originalNetCiscoUnit ?? item.netCiscoUnit ?? 0)),
     mango: item.detectedDurationMonths ?? item.months ?? (parseInt(item.serviceDurationMonths, 10) || 1),
     sandia: Boolean(item.isPeriodicSubscription),
     limon: item.originalLeadTimeDays !== undefined && item.originalLeadTimeDays !== '' ? item.originalLeadTimeDays : 0,
@@ -2637,15 +2645,23 @@ export async function synthesizeOfficialEstimateWorkbook(
   const shadowLedger = items.map((item) => ({
     line: item.lineNumber,
     manzana: item.unitListPrice ?? 0,
-    cereza: (item.unitNetPriceCcw ?? 0) > 0 && (item.unitListPrice ?? 0) > 0
-      ? ((1 - ((item.unitNetPriceCcw ?? 0) / item.unitListPrice)) * 100)
-      : (item.discPct ?? 0),
+    cereza: item.isFastTrackPromo
+      ? (item.fastTrackDiscountPct ?? item.discPct ?? 0)
+      : ((item.unitNetPriceCcw ?? 0) > 0 && (item.unitListPrice ?? 0) > 0
+          ? ((1 - ((item.unitNetPriceCcw ?? 0) / item.unitListPrice)) * 100)
+          : (item.discPct ?? 0)),
     pera: item.isPeriodicSubscription
-      ? (item.unitNetPriceCcw ??
-          (item.months && item.months > 1
-            ? roundFinancial((item.netCiscoUnit ?? 0) / item.months)
-            : (item.netCiscoUnit ?? 0)))
-      : (item.realUnitCost ?? item.originalUnitCost ?? item.originalNetCiscoUnit ?? item.netCiscoUnit ?? 0),
+      ? (item.isFastTrackPromo
+          ? (item.months && item.months > 1
+              ? roundFinancial((item.netCiscoUnit ?? 0) / item.months)
+              : (item.netCiscoUnit ?? 0))
+          : (item.unitNetPriceCcw ??
+              (item.months && item.months > 1
+                ? roundFinancial((item.netCiscoUnit ?? 0) / item.months)
+                : (item.netCiscoUnit ?? 0))))
+      : (item.isFastTrackPromo
+          ? (item.netCiscoUnit ?? item.realUnitCost ?? 0)
+          : (item.realUnitCost ?? item.originalUnitCost ?? item.originalNetCiscoUnit ?? item.netCiscoUnit ?? 0)),
     mango: item.detectedDurationMonths ?? item.months ?? (parseInt(item.serviceDurationMonths, 10) || 1),
     sandia: Boolean(item.isPeriodicSubscription),
     limon: item.originalLeadTimeDays !== undefined && item.originalLeadTimeDays !== '' ? item.originalLeadTimeDays : 0,

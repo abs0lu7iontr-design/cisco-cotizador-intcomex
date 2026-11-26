@@ -10,7 +10,7 @@ const rootDir = path.resolve(__dirname, '..');
 import { synthesizeOfficialEstimateWorkbook, parseEstimateWorkbook } from '../src/core/excelEngine';
 import { generateQuotationFileName } from '../src/core/exportUtils';
 import { reconstructProcessedResultFromCloudRecord } from '../src/core/storePersistence';
-import { solveGoalSeekParameters } from '../src/core/calculations';
+import { solveGoalSeekParameters, recalculateEstimateResult } from '../src/core/calculations';
 import { sanitizeCsvCell, sanitizeRichClipboardHtml } from '../src/utils/exportSanitizers';
 import { generateBoHtmlTable } from '../src/modules/bo/boEmailHelper';
 import { generateDealReminderEmail } from '../src/modules/bo/dealEmailHelper';
@@ -243,6 +243,46 @@ async function runTests() {
     { internacionPct: 7, arancelPct: 6, margenPct: 5, parameterMode: 'custom_lines', lineCustomParams: { '1.0': { internacionPct: 7, arancelPct: 6, margenPct: 25 } } }
   );
   assert.strictEqual(gsCustom.success, true);
+
+  // Fast Track + 0% Internación / 0% Arancel / 0% Margen debe igualar Costo Net Cisco y Facturación sin Spread negativo
+  const ftBaseResult: any = {
+    fileName: 'prueba_soloprueba_equipo_Estimate_AL169066246QY.xlsx',
+    headerInfo: {
+      customerName: 'Minera', companyName: 'Computronic', address: '', city: 'Santiago', country: 'Chile',
+      phone: '', estimateId: 'AL169066246QY', dealId: 'NA', priceList: 'GPL', date: '2026-10-05',
+    },
+    originalProductTotal: 3627.27,
+    calculatedProductTotal: 3627.27,
+    serviceTotal: 0,
+    subscriptionTotal: 0,
+    finalTotalPrice: 3627.27,
+    headerRowIndex: 13,
+    items: [
+      {
+        rowIdx: 14, lineNumber: '1.0', partNumber: 'C9200L-24P-4G-E', smartAccountMandatory: 'No',
+        description: 'Catalyst Switch', serviceDurationMonths: '-', originalLeadTimeDays: 14,
+        transformedLeadTime: '4-6 semanas', unitListPrice: 7254.54, pricingTerm: '', qty: 1,
+        netCiscoUnit: 3627.27, discPct: 50, isIntangible: false, llevaArancel: false,
+        realUnitCost: 3627.27, isPeriodicSubscription: false, months: 1,
+        costoInternacion: 0, costoArancel: 0, costoTotalUnitario: 3627.27,
+        precioVentaUnitario: 3627.27, precioVentaExtendido: 3627.27,
+      },
+    ],
+  };
+  const ftZeroParams = recalculateEstimateResult(
+    ftBaseResult,
+    { internacionPct: 0, arancelPct: 0, margenPct: 0 },
+    {},
+    { 14: 2656.93 }
+  );
+  assert.strictEqual(ftZeroParams.originalProductTotal, 2656.93, 'COGS Cisco debe reflejar costo neto Fast Track ($2656.93)');
+  assert.strictEqual(ftZeroParams.calculatedProductTotal, 2656.93, 'Facturación a 0%/0%/0% debe igualar exactamente al costo ($2656.93)');
+  assert.strictEqual(ftZeroParams.items[0].fastTrackSavings, 970.34, 'Debe preservar el ahorro Fast Track ($970.34)');
+  assert.strictEqual(ftZeroParams.items[0].originalNetCiscoUnit, 3627.27, 'Debe preservar costo pre-promo como referencia');
+  assert.ok(storeCode.includes('setPendingFastTrackAudit(null)'), 'applyFastTrackPromos debe limpiar el banner de oportunidad pendiente');
+
+  const summaryCardsCode = fs.readFileSync(path.join(rootDir, 'src/components/SummaryCards.tsx'), 'utf8');
+  assert.ok(summaryCardsCode.includes("totalDelta >= 0 ? '+' : ''"), 'Spread en SummaryCards no debe prefijar + ante valores negativos');
 
   const authPy = fs.readFileSync(path.join(rootDir, 'desktop_app/auth_manager.py'), 'utf8');
   assert.ok(!authPy.includes('return password == password_hash'), 'auth_manager.py no debe tener fallback en texto plano');

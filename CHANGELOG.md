@@ -6,6 +6,15 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.26.8] - 2026-11-26
+
+### Corregido
+- **Consistencia de Costo Base (COGS) con Fast Track y Parámetros en 0%:**
+  - En `recalculateEstimateResult` ([calculations.ts](src/core/calculations.ts)), `originalProductTotal` (`NET COST (COGS) CISCO`) ahora acumula `netCiscoUnit * qty` (costo activo con promoción Fast Track aplicada) en lugar de `baseNetCiscoUnit * qty` (pre-promo), eliminando el falso Spread negativo y garantizando que con Internación `0%`, Arancel `0%` y Margen `0%`, el Total Revenue iguale exactamente al Net Cost Cisco.
+  - Sincronizados `realUnitCost`, `discPct`, `originalNetCiscoUnit`, `fastTrackDiscountPct` y `fastTrackSavings` en recálculos en memoria y en el `shadowLedger` (`pera`/`cereza`) de [excelEngine.ts](src/core/excelEngine.ts).
+  - Limpiado el estado pendiente de oportunidad Fast Track (`setPendingFastTrackAudit(null)`) en `applyFastTrackPromos` de [store.tsx](src/core/store.tsx) para retirar el banner de ahorro pendiente una vez aplicado.
+  - Corregido el signo prefijado `+` en `Spread` de [SummaryCards.tsx](src/components/SummaryCards.tsx) y agregada indicación transparente del ahorro Fast Track aplicado en la tarjeta COGS.
+
 ## [v2.26.7] - 2026-11-25
 
 ### Corregido y Endurecido (Auditoría Crítica Integral: Bloques A, B y C)

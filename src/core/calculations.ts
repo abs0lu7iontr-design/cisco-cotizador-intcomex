@@ -1038,8 +1038,13 @@ export function recalculateEstimateResult(
         inheritedFromMotherLine: motherKey,
       };
     } else if (isPeriodic && durationMonths > 1 && item.unitListPrice > 0) {
-      const effectiveDisc = hasPromo && item.unitListPrice > 0
-        ? Number((((item.unitListPrice - netCiscoUnit) / item.unitListPrice) * 100).toFixed(2))
+      const effectiveUnitNetForDisc = hasPromo
+        ? netCiscoUnit
+        : (item.isFastTrackPromo && item.originalNetCiscoUnit !== undefined
+            ? item.originalNetCiscoUnit / durationMonths
+            : undefined);
+      const effectiveDisc = effectiveUnitNetForDisc !== undefined && item.unitListPrice > 0
+        ? Number((((item.unitListPrice - effectiveUnitNetForDisc) / item.unitListPrice) * 100).toFixed(2))
         : item.discPct;
 
       const meraki = calculateMerakiLicenseCosts(
@@ -1061,12 +1066,12 @@ export function recalculateEstimateResult(
         realUnitCost: meraki.costoTotalUnitario,
         discPct: effectiveDisc,
         ...meraki,
-        isFastTrackPromo: hasPromo || item.isFastTrackPromo,
-        originalNetCiscoUnit: item.originalNetCiscoUnit ?? meraki.netCiscoUnitCalculated,
-        fastTrackDiscountPct: hasPromo ? effectiveDisc : item.fastTrackDiscountPct,
+        isFastTrackPromo: hasPromo,
+        originalNetCiscoUnit: hasPromo ? (item.originalNetCiscoUnit ?? baseNetCiscoUnit) : undefined,
+        fastTrackDiscountPct: hasPromo ? effectiveDisc : undefined,
         fastTrackSavings: hasPromo
-          ? Number(((baseNetCiscoUnit - meraki.costoTotalUnitario) * item.qty).toFixed(2))
-          : item.fastTrackSavings,
+          ? Number(((baseNetCiscoUnit - meraki.netCiscoUnitCalculated) * item.qty).toFixed(2))
+          : undefined,
         effectiveInternacionPct,
         effectiveArancelPct,
         effectiveMargenPct,
@@ -1084,14 +1089,25 @@ export function recalculateEstimateResult(
         normalizedLineNumber
       );
 
-      originalProductTotal += baseNetCiscoUnit * item.qty;
+      originalProductTotal += netCiscoUnit * item.qty;
       calculatedProductTotal += calculated.precioVentaExtendido;
+
+      const effectiveDisc = item.unitListPrice > 0 && (hasPromo || item.isFastTrackPromo)
+        ? Number((((item.unitListPrice - netCiscoUnit) / item.unitListPrice) * 100).toFixed(2))
+        : item.discPct;
 
       return {
         ...item,
         lineNumber: normalizedLineNumber,
         netCiscoUnit,
+        realUnitCost: netCiscoUnit,
+        discPct: effectiveDisc,
         isFastTrackPromo: hasPromo,
+        originalNetCiscoUnit: hasPromo ? baseNetCiscoUnit : undefined,
+        fastTrackDiscountPct: hasPromo ? effectiveDisc : undefined,
+        fastTrackSavings: hasPromo
+          ? Number(((baseNetCiscoUnit - netCiscoUnit) * item.qty).toFixed(2))
+          : undefined,
         ...calculated,
         effectiveInternacionPct,
         effectiveArancelPct,

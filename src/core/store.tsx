@@ -867,6 +867,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
     });
 
     setFastTrackPromoMap(newPromoMap);
+    setPendingFastTrackAudit(null);
     setIsFastTrackOpportunityModalOpen(false);
 
     await recompute(

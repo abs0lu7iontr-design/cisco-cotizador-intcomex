@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.26.8',
+    date: '2026-11-26',
+    commit: 'fast-track-cogs-and-zero-params-parity',
+    title: 'Paridad Exacta COGS vs Facturación al Aplicar Fast Track (Parámetros en 0%)',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Corregido cálculo de originalProductTotal (Net Cost COGS Cisco) en recalculateEstimateResult para reflejar el costo neto promocional Fast Track activo.',
+      'Garantizada igualdad exacta entre Net Cost (COGS) Cisco y Total Revenue / Facturación cuando Internación, Arancel y Margen se ajustan a 0%.',
+      'Limpieza automática del banner de oportunidad Fast Track una vez aplicado, sincronización del shadowLedger Excel y etiqueta informativa de descuento en SummaryCards.'
+    ]
+  },
+  {
     version: '2.26.7',
     date: '2026-11-25',
     commit: 'critical-audit-blocks-a-b-c-hardening',
     title: 'Auditoría Crítica Integral: Seguridad Edge/Desktop, Motor Financiero y Offline',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Bloque A: Tokens de sesión Edge HMAC, eliminación de secretos hardcodeados en proxy Cisco y 2FA, cron autenticado y reglas Firestore endurecidas para admin/mskill y v0_RAW.',
