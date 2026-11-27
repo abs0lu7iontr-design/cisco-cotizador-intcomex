@@ -14,6 +14,10 @@ export interface EdgeEnv {
   CISCO_CLIENT_ID?: string;
   CISCO_CLIENT_SECRET?: string;
   CISCO_AUTH_URL?: string;
+  GEMINI_API_KEY?: string;
+  OPENROUTER_API_KEY?: string;
+  GROQ_API_KEY?: string;
+  DEEPSEEK_API_KEY?: string;
   FIREBASE_PROJECT_ID?: string;
   VITE_FIREBASE_PROJECT_ID?: string;
   FIREBASE_SERVICE_ACCOUNT_JSON?: string;
@@ -23,9 +27,15 @@ export interface EdgeEnv {
 export interface EdgeSessionPayload {
   u: string; // username
   r: string; // role
+  jti: string; // unique revocable session id
   iat: number;
   exp: number;
 }
+
+const EDGE_SESSION_COOKIE_NAME = 'cisco_edge_session';
+const PBKDF2_ITERATIONS = 310000;
+const revokedJtiMemory = new Map<string, number>();
+const rateLimitMemory = new Map<string, { count: number; resetAt: number }>();
 
 export interface FirestoreUserInfo {
   username: string;
@@ -65,6 +75,52 @@ export async function sha256Hex(payload: string): Promise<string> {
     .join('');
 }
 
+export async function hashPasswordPbkdf2Server(password: string): Promise<string> {
+  const saltBytes = new Uint8Array(16);
+  crypto.getRandomValues(saltBytes);
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+  const derived = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: saltBytes, iterations: PBKDF2_ITERATIONS },
+    keyMaterial,
+    256
+  );
+  const saltHex = Array.from(saltBytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  const hashHex = Array.from(new Uint8Array(derived)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${saltHex}$${hashHex}`;
+}
+
+async function verifyPbkdf2Server(password: string, storedHash: string): Promise<boolean> {
+  const parts = storedHash.split('$');
+  if (parts.length !== 4 || parts[0] !== 'pbkdf2') return false;
+  const iterations = parseInt(parts[1], 10);
+  const saltHex = parts[2];
+  const expectedHex = parts[3].toLowerCase();
+  if (!Number.isFinite(iterations) || iterations < 10000 || !/^[0-9a-f]{16,64}$/i.test(saltHex) || !/^[0-9a-f]{64}$/.test(expectedHex)) {
+    return false;
+  }
+  const saltBytes = new Uint8Array(saltHex.match(/.{2}/g)!.map((h) => parseInt(h, 16)));
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+  const derived = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: saltBytes, iterations },
+    keyMaterial,
+    256
+  );
+  const actualHex = Array.from(new Uint8Array(derived)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  return timingSafeEqualStr(actualHex, expectedHex);
+}
+
 export async function sha256SaltedServer(password: string, usernameSalt?: string): Promise<string> {
   const salt = 'Cisco_Automated_Intcomex_Salt_2026!';
   const normalizedUser = (usernameSalt || '').trim().toLowerCase();
@@ -87,8 +143,14 @@ export async function createHmacSignature(payload: string, secretKey: string): P
     .join('');
 }
 
-export async function deriveScopedEdgeSecret(env: EdgeEnv, scope: string): Promise<string | null> {
+export async function deriveScopedEdgeSecret(
+  env: EdgeEnv,
+  scope: string,
+  preferredKey?: keyof EdgeEnv
+): Promise<string | null> {
+  const preferredVal = preferredKey ? String(env[preferredKey] || '') : '';
   const rawMaster = (
+    preferredVal ||
     env.EDGE_SESSION_SECRET ||
     env.NOTIFY_SECRET ||
     env.ADMIN_OVERRIDE_SECRET ||
@@ -159,6 +221,11 @@ export async function verifyFirestoreUserCredentials(
     return null;
   }
 
+  if (record.password_hash.startsWith('pbkdf2$')) {
+    const pbkdf2Ok = await verifyPbkdf2Server(cleanPass, record.password_hash);
+    return pbkdf2Ok ? record : null;
+  }
+
   const perUserHash = await sha256SaltedServer(cleanPass, record.username);
   const legacyHash = await sha256SaltedServer(cleanPass);
   const isMatch =
@@ -166,6 +233,133 @@ export async function verifyFirestoreUserCredentials(
     timingSafeEqualStr(record.password_hash, legacyHash);
 
   return isMatch ? record : null;
+}
+
+function generateRandomHex(bytesLen = 8): string {
+  const arr = new Uint8Array(bytesLen);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+export async function checkEdgeRateLimit(
+  bucket: string,
+  maxRequests: number,
+  windowSeconds: number
+): Promise<{ allowed: boolean; remaining: number; resetAt: number }> {
+  const now = Date.now();
+  const cacheKey = `https://edge-ratelimit.internal/${await sha256Hex(bucket)}`;
+  const cacheStorage = typeof caches !== 'undefined' ? (caches as any).default : null;
+
+  let current = rateLimitMemory.get(bucket);
+  if (!current || now >= current.resetAt) {
+    if (cacheStorage) {
+      try {
+        const cached = await cacheStorage.match(cacheKey);
+        if (cached) {
+          const parsed: any = await cached.json();
+          if (parsed && now < Number(parsed.resetAt)) {
+            current = { count: Number(parsed.count) || 0, resetAt: Number(parsed.resetAt) };
+          }
+        }
+      } catch {}
+    }
+  }
+
+  if (!current || now >= current.resetAt) {
+    current = { count: 0, resetAt: now + windowSeconds * 1000 };
+  }
+
+  current.count += 1;
+  rateLimitMemory.set(bucket, current);
+
+  if (cacheStorage) {
+    try {
+      const ttl = Math.max(10, Math.ceil((current.resetAt - now) / 1000));
+      await cacheStorage.put(
+        cacheKey,
+        new Response(JSON.stringify(current), {
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}` },
+        })
+      );
+    } catch {}
+  }
+
+  return {
+    allowed: current.count <= maxRequests,
+    remaining: Math.max(0, maxRequests - current.count),
+    resetAt: current.resetAt,
+  };
+}
+
+export async function revokeEdgeSessionJti(jti: string, expSeconds: number): Promise<void> {
+  if (!jti || !/^[0-9a-f]{8,64}$/i.test(jti)) return;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const ttl = Math.max(60, expSeconds - nowSec);
+  revokedJtiMemory.set(jti, Date.now() + ttl * 1000);
+  const cacheStorage = typeof caches !== 'undefined' ? (caches as any).default : null;
+  if (cacheStorage) {
+    try {
+      await cacheStorage.put(
+        `https://edge-revoked-jti.internal/${jti}`,
+        new Response(JSON.stringify({ revoked: true }), {
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}` },
+        })
+      );
+    } catch {}
+  }
+}
+
+export async function isEdgeSessionRevoked(jti?: string): Promise<boolean> {
+  if (!jti) return false;
+  const memExp = revokedJtiMemory.get(jti);
+  if (memExp && Date.now() < memExp) return true;
+  const cacheStorage = typeof caches !== 'undefined' ? (caches as any).default : null;
+  if (cacheStorage) {
+    try {
+      const res = await cacheStorage.match(`https://edge-revoked-jti.internal/${jti}`);
+      if (res) return true;
+    } catch {}
+  }
+  return false;
+}
+
+export function extractEdgeTokenFromRequest(request: Request): string {
+  const cookieHeader = request.headers.get('Cookie') || '';
+  if (cookieHeader) {
+    const cookies = cookieHeader.split(';');
+    for (const part of cookies) {
+      const idx = part.indexOf('=');
+      if (idx === -1) continue;
+      const name = part.slice(0, idx).trim();
+      if (name === EDGE_SESSION_COOKIE_NAME) {
+        const val = decodeURIComponent(part.slice(idx + 1).trim());
+        if (val) return val;
+      }
+    }
+  }
+  const sessionHeader = request.headers.get('X-Session-Token')?.trim() || '';
+  if (sessionHeader) return sessionHeader;
+  const authHeader = request.headers.get('Authorization')?.trim() || '';
+  return authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+}
+
+export function buildEdgeSessionCookie(token: string, maxAgeSeconds: number, request: Request): string {
+  const isHttps = (() => {
+    try {
+      return new URL(request.url).protocol === 'https:';
+    } catch {
+      return true;
+    }
+  })();
+  const parts = [
+    `${EDGE_SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    'Path=/api',
+    `Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`,
+    'HttpOnly',
+    'SameSite=Strict',
+  ];
+  if (isHttps) parts.push('Secure');
+  return parts.join('; ');
 }
 
 function toBase64Url(input: string | Uint8Array): string {
@@ -192,15 +386,17 @@ export async function mintEdgeSessionToken(
   role: string,
   env: EdgeEnv,
   ttlSeconds = 43200
-): Promise<{ token: string; expiresAt: number } | null> {
-  const signingKey = await deriveScopedEdgeSecret(env, 'edge-session-v1');
+): Promise<{ token: string; expiresAt: number; jti: string } | null> {
+  const signingKey = await deriveScopedEdgeSecret(env, 'edge-session-v1', 'EDGE_SESSION_SECRET');
   if (!signingKey) return null;
 
   const now = Math.floor(Date.now() / 1000);
   const exp = now + ttlSeconds;
+  const jti = generateRandomHex(8);
   const payload: EdgeSessionPayload = {
     u: username.trim().toLowerCase(),
     r: role.trim().toLowerCase() || 'user',
+    jti,
     iat: now,
     exp,
   };
@@ -209,23 +405,120 @@ export async function mintEdgeSessionToken(
   return {
     token: `v1.${encodedPayload}.${sig}`,
     expiresAt: exp * 1000,
+    jti,
   };
+}
+
+export async function mintTwoFactorChallengeToken(
+  username: string,
+  ip: string,
+  env: EdgeEnv,
+  ttlSeconds = 900
+): Promise<string | null> {
+  const signingKey = await deriveScopedEdgeSecret(env, '2fa-preauth-challenge-v1', 'EDGE_SESSION_SECRET');
+  if (!signingKey) return null;
+  const now = Math.floor(Date.now() / 1000);
+  const ipHash = (await sha256Hex(ip || '0.0.0.0')).slice(0, 16);
+  const payload = {
+    u: username.trim().toLowerCase(),
+    iph: ipHash,
+    n: generateRandomHex(6),
+    exp: now + ttlSeconds,
+  };
+  const encoded = toBase64Url(JSON.stringify(payload));
+  const sig = await createHmacSignature(encoded, signingKey);
+  return `ch1.${encoded}.${sig}`;
+}
+
+export async function verifyTwoFactorChallengeToken(
+  token: string,
+  username: string,
+  ip: string,
+  env: EdgeEnv
+): Promise<boolean> {
+  if (!token) return false;
+  const signingKey = await deriveScopedEdgeSecret(env, '2fa-preauth-challenge-v1', 'EDGE_SESSION_SECRET');
+  if (!signingKey) return false;
+  const parts = token.split('.');
+  if (parts.length !== 3 || parts[0] !== 'ch1') return false;
+  const [, encoded, sig] = parts;
+  if (!/^[0-9a-f]{64}$/i.test(sig)) return false;
+  const expectedSig = await createHmacSignature(encoded, signingKey);
+  if (!timingSafeEqualStr(sig.toLowerCase(), expectedSig.toLowerCase())) return false;
+  try {
+    const parsed = JSON.parse(fromBase64Url(encoded));
+    const expectedIpHash = (await sha256Hex(ip || '0.0.0.0')).slice(0, 16);
+    const nowSec = Math.floor(Date.now() / 1000);
+    return (
+      parsed?.u === username.trim().toLowerCase() &&
+      parsed?.iph === expectedIpHash &&
+      Number(parsed?.exp) > nowSec
+    );
+  } catch {
+    return false;
+  }
+}
+
+export async function mintTwoFactorProofToken(
+  username: string,
+  ip: string,
+  env: EdgeEnv,
+  ttlSeconds = 300
+): Promise<string | null> {
+  const signingKey = await deriveScopedEdgeSecret(env, '2fa-verified-proof-v1', 'EDGE_SESSION_SECRET');
+  if (!signingKey) return null;
+  const now = Math.floor(Date.now() / 1000);
+  const ipHash = (await sha256Hex(ip || '0.0.0.0')).slice(0, 16);
+  const payload = {
+    u: username.trim().toLowerCase(),
+    iph: ipHash,
+    n: generateRandomHex(6),
+    exp: now + ttlSeconds,
+  };
+  const encoded = toBase64Url(JSON.stringify(payload));
+  const sig = await createHmacSignature(encoded, signingKey);
+  return `pf1.${encoded}.${sig}`;
+}
+
+export async function verifyTwoFactorProofToken(
+  token: string,
+  username: string,
+  ip: string,
+  env: EdgeEnv
+): Promise<boolean> {
+  if (!token) return false;
+  const signingKey = await deriveScopedEdgeSecret(env, '2fa-verified-proof-v1', 'EDGE_SESSION_SECRET');
+  if (!signingKey) return false;
+  const parts = token.split('.');
+  if (parts.length !== 3 || parts[0] !== 'pf1') return false;
+  const [, encoded, sig] = parts;
+  if (!/^[0-9a-f]{64}$/i.test(sig)) return false;
+  const expectedSig = await createHmacSignature(encoded, signingKey);
+  if (!timingSafeEqualStr(sig.toLowerCase(), expectedSig.toLowerCase())) return false;
+  try {
+    const parsed = JSON.parse(fromBase64Url(encoded));
+    const expectedIpHash = (await sha256Hex(ip || '0.0.0.0')).slice(0, 16);
+    const nowSec = Math.floor(Date.now() / 1000);
+    return (
+      parsed?.u === username.trim().toLowerCase() &&
+      parsed?.iph === expectedIpHash &&
+      Number(parsed?.exp) > nowSec
+    );
+  } catch {
+    return false;
+  }
 }
 
 export async function verifyEdgeSessionToken(
   request: Request,
   env: EdgeEnv
-): Promise<{ valid: boolean; username?: string; role?: string; error?: string }> {
-  const signingKey = await deriveScopedEdgeSecret(env, 'edge-session-v1');
+): Promise<{ valid: boolean; username?: string; role?: string; jti?: string; exp?: number; error?: string }> {
+  const signingKey = await deriveScopedEdgeSecret(env, 'edge-session-v1', 'EDGE_SESSION_SECRET');
   if (!signingKey) {
     return { valid: false, error: 'Secreto de sesión Edge no configurado en el servidor.' };
   }
 
-  const sessionHeader = request.headers.get('X-Session-Token')?.trim() || '';
-  const authHeader = request.headers.get('Authorization')?.trim() || '';
-  const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-  const rawToken = sessionHeader || bearerToken;
-
+  const rawToken = extractEdgeTokenFromRequest(request);
   if (!rawToken) {
     return { valid: false, error: 'Sesión autenticada requerida.' };
   }
@@ -251,10 +544,15 @@ export async function verifyEdgeSessionToken(
     if (!parsed?.u || !parsed?.exp || nowSec > Number(parsed.exp)) {
       return { valid: false, error: 'La sesión autenticada ha expirado.' };
     }
+    if (parsed.jti && (await isEdgeSessionRevoked(parsed.jti))) {
+      return { valid: false, error: 'La sesión autenticada fue revocada.' };
+    }
     return {
       valid: true,
       username: String(parsed.u).toLowerCase(),
       role: String(parsed.r || 'user').toLowerCase(),
+      jti: parsed.jti,
+      exp: Number(parsed.exp),
     };
   } catch {
     return { valid: false, error: 'Payload de sesión corrupto.' };

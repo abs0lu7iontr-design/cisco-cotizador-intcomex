@@ -69,11 +69,13 @@ export async function checkGeoLocation(): Promise<GeoLocationInfo> {
 export async function sendTwoFactorOtp(
   username: string,
   email: string,
-  geoInfo: GeoLocationInfo
+  geoInfo: GeoLocationInfo,
+  twoFactorChallenge?: string
 ): Promise<{ success: boolean; message: string; otpSession?: OtpSessionState; error?: string }> {
   try {
     const res = await fetch('/api/send-2fa-otp', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'send',
@@ -82,6 +84,7 @@ export async function sendTwoFactorOtp(
         country: geoInfo.country,
         city: geoInfo.city,
         ip: geoInfo.ip,
+        ...(twoFactorChallenge ? { twoFactorChallenge } : {}),
       }),
     });
 
@@ -118,10 +121,11 @@ export async function verifyTwoFactorOtp(
   username: string,
   code: string,
   otpSession?: OtpSessionState
-): Promise<{ success: boolean; message?: string; isOverride?: boolean; error?: string }> {
+): Promise<{ success: boolean; message?: string; isOverride?: boolean; twoFactorProof?: string; error?: string }> {
   try {
     const res = await fetch('/api/send-2fa-otp', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'verify',
@@ -139,6 +143,7 @@ export async function verifyTwoFactorOtp(
         success: true,
         message: data.message,
         isOverride: data.isOverride,
+        twoFactorProof: data.twoFactorProof,
       };
     }
     return {
@@ -159,11 +164,13 @@ export async function verifyTwoFactorOtp(
 export async function requestAdminUnlock(
   username: string,
   email: string,
-  geoInfo: GeoLocationInfo
+  geoInfo: GeoLocationInfo,
+  twoFactorChallenge?: string
 ): Promise<{ success: boolean; message: string }> {
   try {
     const res = await fetch('/api/send-2fa-otp', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'request_admin_unlock',
@@ -172,6 +179,7 @@ export async function requestAdminUnlock(
         country: geoInfo.country,
         city: geoInfo.city,
         ip: geoInfo.ip,
+        ...(twoFactorChallenge ? { twoFactorChallenge } : {}),
       }),
     });
     const data: any = await res.json();

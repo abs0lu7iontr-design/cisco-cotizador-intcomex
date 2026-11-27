@@ -7,12 +7,15 @@
 import { CiscoOAuthTokenResponse, CiscoApiConfig } from './types';
 import { getEdgeSessionHeaders } from '../security/edgeSessionService';
 
-const TOKEN_CACHE_KEY = 'cisco_oauth_token_v2';
+const LEGACY_TOKEN_CACHE_KEY = 'cisco_oauth_token_v2';
 const CONFIG_CACHE_KEY = 'cisco_api_config_v2';
+
+// Secreto M2M y tokens OAuth2 viven solo en memoria de ejecución (nunca persistidos en localStorage)
+let memoryClientSecret = '';
 
 export const DEFAULT_CISCO_CONFIG: CiscoApiConfig = {
   clientId: ((import.meta as any).env?.VITE_CISCO_CLIENT_ID || '').trim(),
-  clientSecret: ((import.meta as any).env?.VITE_CISCO_CLIENT_SECRET || '').trim(),
+  clientSecret: '',
   authUrl:
     (import.meta as any).env?.VITE_CISCO_AUTH_URL ||
     'https://id.cisco.com/oauth2/default/v1/token',
@@ -23,15 +26,25 @@ export const DEFAULT_CISCO_CONFIG: CiscoApiConfig = {
 
 export function getCiscoConfig(): CiscoApiConfig {
   if (typeof localStorage === 'undefined') {
-    return { ...DEFAULT_CISCO_CONFIG };
+    return { ...DEFAULT_CISCO_CONFIG, clientSecret: memoryClientSecret };
   }
   try {
+    // Limpiar cualquier token o secreto legado previamente persistido en Web Storage
+    localStorage.removeItem(LEGACY_TOKEN_CACHE_KEY);
     const raw = localStorage.getItem(CONFIG_CACHE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<CiscoApiConfig>;
+      if (parsed.clientSecret) {
+        if (!memoryClientSecret) {
+          memoryClientSecret = String(parsed.clientSecret).trim();
+        }
+        const cleaned = { ...parsed };
+        delete cleaned.clientSecret;
+        localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify(cleaned));
+      }
       return {
         clientId: parsed.clientId?.trim() || DEFAULT_CISCO_CONFIG.clientId,
-        clientSecret: parsed.clientSecret?.trim() || DEFAULT_CISCO_CONFIG.clientSecret,
+        clientSecret: memoryClientSecret,
         authUrl: parsed.authUrl?.trim() || DEFAULT_CISCO_CONFIG.authUrl,
         gatewayBaseUrl: parsed.gatewayBaseUrl?.trim() || DEFAULT_CISCO_CONFIG.gatewayBaseUrl,
         cxCustomerId: parsed.cxCustomerId?.trim() || '',
@@ -41,17 +54,19 @@ export function getCiscoConfig(): CiscoApiConfig {
   } catch {
     // Fallback a configuración por defecto
   }
-  return { ...DEFAULT_CISCO_CONFIG };
+  return { ...DEFAULT_CISCO_CONFIG, clientSecret: memoryClientSecret };
 }
 
 export function saveCiscoConfig(cfg: Partial<CiscoApiConfig>): CiscoApiConfig {
   const current = getCiscoConfig();
+  const nextSecret = (cfg.clientSecret ?? current.clientSecret ?? '').trim();
+  memoryClientSecret = nextSecret;
+
   const updated: CiscoApiConfig = {
     ...current,
     ...cfg,
     clientId: (cfg.clientId ?? current.clientId).trim() || DEFAULT_CISCO_CONFIG.clientId,
-    clientSecret:
-      (cfg.clientSecret ?? current.clientSecret).trim() || DEFAULT_CISCO_CONFIG.clientSecret,
+    clientSecret: nextSecret,
     authUrl: (cfg.authUrl ?? current.authUrl).trim() || DEFAULT_CISCO_CONFIG.authUrl,
     gatewayBaseUrl:
       (cfg.gatewayBaseUrl ?? current.gatewayBaseUrl)?.trim() || 'https://apix.cisco.com',
@@ -61,13 +76,10 @@ export function saveCiscoConfig(cfg: Partial<CiscoApiConfig>): CiscoApiConfig {
 
   if (typeof localStorage !== 'undefined') {
     try {
-      // Avoid persisting default clientSecret in localStorage unless user customized it
       const toPersist: Partial<CiscoApiConfig> = { ...updated };
-      if (toPersist.clientSecret === DEFAULT_CISCO_CONFIG.clientSecret) {
-        delete toPersist.clientSecret;
-      }
+      delete toPersist.clientSecret;
       localStorage.setItem(CONFIG_CACHE_KEY, JSON.stringify(toPersist));
-      localStorage.removeItem(TOKEN_CACHE_KEY);
+      localStorage.removeItem(LEGACY_TOKEN_CACHE_KEY);
     } catch {
       // Ignorar errores de cuota
     }
@@ -90,7 +102,7 @@ export function clearCiscoTokenCache(): void {
   memoryToken = null;
   if (typeof localStorage !== 'undefined') {
     try {
-      localStorage.removeItem(TOKEN_CACHE_KEY);
+      localStorage.removeItem(LEGACY_TOKEN_CACHE_KEY);
     } catch {}
   }
 }
@@ -101,19 +113,6 @@ export async function getCiscoAccessTokenWithMeta(
   const now = Date.now();
   if (!forceRefresh && memoryToken && memoryToken.expiresAt > now + 60000) {
     return memoryToken;
-  }
-
-  if (!forceRefresh && typeof localStorage !== 'undefined') {
-    try {
-      const cached = localStorage.getItem(TOKEN_CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached) as CachedTokenRecord;
-        if (parsed && parsed.token && parsed.expiresAt > now + 60000) {
-          memoryToken = parsed;
-          return parsed;
-        }
-      }
-    } catch {}
   }
 
   const cfg = getCiscoConfig();
@@ -135,11 +134,6 @@ export async function getCiscoAccessTokenWithMeta(
           transportMode: 'desktop_bridge',
         };
         memoryToken = record;
-        if (typeof localStorage !== 'undefined') {
-          try {
-            localStorage.setItem(TOKEN_CACHE_KEY, JSON.stringify(record));
-          } catch {}
-        }
         return record;
       }
     } catch (e) {
@@ -151,7 +145,7 @@ export async function getCiscoAccessTokenWithMeta(
   if (typeof window !== 'undefined' && window.location?.protocol?.startsWith('http')) {
     try {
       const hasCustomId = Boolean(cfg.clientId && cfg.clientId !== DEFAULT_CISCO_CONFIG.clientId);
-      const hasCustomSecret = Boolean(cfg.clientSecret && cfg.clientSecret !== DEFAULT_CISCO_CONFIG.clientSecret);
+      const hasCustomSecret = Boolean(cfg.clientSecret);
       const proxyRes = await fetch('/api/cisco-proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getEdgeSessionHeaders() },
@@ -174,11 +168,6 @@ export async function getCiscoAccessTokenWithMeta(
             transportMode: 'cloudflare_edge_proxy',
           };
           memoryToken = record;
-          if (typeof localStorage !== 'undefined') {
-            try {
-              localStorage.setItem(TOKEN_CACHE_KEY, JSON.stringify(record));
-            } catch {}
-          }
           return record;
         }
       } else if (proxyRes.status === 401) {
@@ -227,12 +216,6 @@ export async function getCiscoAccessTokenWithMeta(
   };
 
   memoryToken = record;
-  if (typeof localStorage !== 'undefined') {
-    try {
-      localStorage.setItem(TOKEN_CACHE_KEY, JSON.stringify(record));
-    } catch {}
-  }
-
   return record;
 }
 

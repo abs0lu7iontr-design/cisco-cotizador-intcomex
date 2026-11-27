@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.27.0',
+    date: '2026-11-27',
+    commit: 'comprehensive-security-hardening-blocks-1-2-3',
+    title: 'Blindaje Integral de Ciberseguridad Web, Edge, Cloud y Desktop (Bloques 1, 2 y 3)',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Bloque 1: Cero claves IA embebidas + proxy autenticado /api/ai-proxy, corrección bypass cisco-proxy, Firebase Custom Auth + firestore.rules sin acceso anónimo, cookies HttpOnly con revocación jti, 2FA proof en servidor y PBKDF2 310,000 iteraciones.',
+      'Bloque 2: Autenticación obligatoria y contención commonpath en DesktopBridge/FileProcessor, sanitización estricta de enlaces <a href> y mailto:, CSP sin unsafe-inline/unsafe-eval en scripts, zod 4.6.7 y pipeline CI bloqueante.',
+      'Bloque 3: Secretos y tokens Cisco M2M solo en memoria, cifrado DPAPI + verificación SHA-256 al arranque Desktop, protección Edge en /api/mining-audit y /api/health, parser MIME lineal ReDoS-safe y límite de profundidad/prototipo en Firestore sin alterar cálculos financieros.'
+    ]
+  },
+  {
     version: '2.26.10',
     date: '2026-11-27',
     commit: 'upgrade-sheetjs-xlsx-0.20.3-security-patch',
     title: 'Parche de Seguridad SheetJS (xlsx 0.20.3) Manteniendo Soporte .xls Legacy',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Actualizado SheetJS (xlsx) de 0.18.5 a 0.20.3 oficial, mitigando Prototype Pollution y ReDoS sin afectar cálculos ni exceljs@4.4.0.',

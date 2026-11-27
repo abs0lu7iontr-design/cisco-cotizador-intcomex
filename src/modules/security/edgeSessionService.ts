@@ -4,6 +4,8 @@
 // (never persists raw passwords) to authenticate /api/cisco-proxy & /api/deal-reminder-cron.
 // ============================================================================
 
+import { signInFirebaseWithCustomToken, signOutFirebaseAuth } from '../cloud/firebaseConfig';
+
 const EDGE_SESSION_STORAGE_KEY = 'cisco_edge_session_v1';
 
 interface StoredEdgeSession {
@@ -61,30 +63,112 @@ export function clearEdgeSessionToken(): void {
   }
 }
 
+export async function logoutEdgeSession(): Promise<void> {
+  const headers = getEdgeSessionHeaders();
+  clearEdgeSessionToken();
+  await signOutFirebaseAuth();
+  if (typeof window === 'undefined' || !window.location?.protocol?.startsWith('http')) {
+    return;
+  }
+  try {
+    await fetch('/api/session-auth', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: JSON.stringify({ action: 'logout' }),
+    });
+  } catch {}
+}
+
+export interface EdgeSessionAuthResult {
+  success: boolean;
+  requires2FA?: boolean;
+  twoFactorChallenge?: string;
+  geo?: {
+    country: string;
+    city: string;
+    region: string;
+    ip: string;
+    isChile: boolean;
+    requires2FA: boolean;
+  };
+  user?: {
+    username: string;
+    role: string;
+    full_name: string;
+    email: string;
+  };
+  firebaseCustomToken?: string;
+  error?: string;
+  status?: number;
+  isEdgeUnavailable?: boolean;
+}
+
 export async function requestEdgeSessionToken(
   username: string,
-  password: string
-): Promise<{ success: boolean; firebaseCustomToken?: string }> {
+  password: string,
+  options?: { turnstileToken?: string; twoFactorProof?: string; requireTurnstile?: boolean }
+): Promise<EdgeSessionAuthResult> {
   if (typeof window === 'undefined' || !window.location?.protocol?.startsWith('http')) {
-    return { success: false };
+    return { success: false, isEdgeUnavailable: true };
   }
   try {
     const res = await fetch('/api/session-auth', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({
+        username,
+        password,
+        ...(options?.turnstileToken ? { turnstileToken: options.turnstileToken } : {}),
+        ...(options?.twoFactorProof ? { twoFactorProof: options.twoFactorProof } : {}),
+        ...(options?.requireTurnstile !== undefined ? { requireTurnstile: options.requireTurnstile } : {}),
+      }),
     });
-    if (!res.ok) return { success: false };
-    const data: any = await res.json();
-    if (data?.success && data?.sessionToken) {
-      setEdgeSessionToken(data.sessionToken, data.expiresAt, username);
+
+    if (res.status === 404 || res.status === 405) {
+      return { success: false, status: res.status, isEdgeUnavailable: true };
+    }
+
+    const data: any = await res.json().catch(() => null);
+    if (!data) {
+      return { success: false, status: res.status, isEdgeUnavailable: res.status >= 500 };
+    }
+
+    if (res.ok && data.requires2FA) {
       return {
-        success: true,
-        firebaseCustomToken: data.firebaseCustomToken,
+        success: false,
+        requires2FA: true,
+        twoFactorChallenge: data.twoFactorChallenge,
+        geo: data.geo,
+        user: data.user,
+        error: data.error,
+        status: res.status,
       };
     }
+
+    if (res.ok && data.success && data.sessionToken) {
+      setEdgeSessionToken(data.sessionToken, data.expiresAt, username);
+      if (data.firebaseCustomToken) {
+        await signInFirebaseWithCustomToken(data.firebaseCustomToken);
+      }
+      return {
+        success: true,
+        user: data.user,
+        firebaseCustomToken: data.firebaseCustomToken,
+        status: res.status,
+      };
+    }
+
+    return {
+      success: false,
+      error: data.error || 'Error de autenticación Edge.',
+      status: res.status,
+    };
   } catch {
-    // Offline / local vite dev without Wrangler Functions
+    return { success: false, isEdgeUnavailable: true };
   }
-  return { success: false };
 }

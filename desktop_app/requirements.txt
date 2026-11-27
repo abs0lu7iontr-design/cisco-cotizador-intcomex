@@ -1,11 +1,10 @@
-# Gravity Desktop v2.0 - Dependencies
-# Stack: PySide6 / CustomTkinter + Supabase (PostgreSQL Cloud) / SQLite + ExcelJS + Plotly Analytics
+# Gravity Desktop v2.x - Dependencies
+# Stack: PyWebView (EdgeChromium / WebView2) + SQLite + PBKDF2-SHA256 + SingleFile HTML Bundle
 
-supabase>=2.0.0
-bcrypt>=4.0.0
+pywebview>=5.0
+pyinstaller>=6.0
 openpyxl>=3.1.0
 pandas>=2.0.0
 plotly>=5.0.0
 reportlab>=4.0.0
-pyside6>=6.5.0
-customtkinter>=5.2.0
+supabase>=2.0.0

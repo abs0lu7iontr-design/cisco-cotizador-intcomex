@@ -1,4 +1,6 @@
 import hashlib
+import hmac
+import secrets
 import time
 import uuid
 from typing import Optional, Dict, Any, List, Tuple
@@ -6,8 +8,11 @@ from typing import Optional, Dict, Any, List, Tuple
 class AuthManager:
     """
     Role-Based Access Control (RBAC) & Authentication Manager.
-    Handles bcrypt/SHA-256 password hashing, brute-force protection, and account lockout.
+    Handles PBKDF2-SHA256 (with per-user CSPRNG salt) + legacy SHA-256 verification,
+    brute-force protection, and account lockout.
     """
+
+    PBKDF2_ITERATIONS = 310000
 
     def __init__(self, db_manager):
         self.db = db_manager
@@ -17,32 +22,58 @@ class AuthManager:
 
     @staticmethod
     def hash_password(password: str) -> str:
-        """Hashes password using salted SHA-256 for instant non-blocking verification."""
-        salt = "Cisco_Automated_Intcomex_Salt_2026!"
-        return hashlib.sha256((password + salt).encode('utf-8')).hexdigest()
+        """Hashes password using PBKDF2-HMAC-SHA256 (310k iterations) with random 16-byte CSPRNG salt."""
+        salt_bytes = secrets.token_bytes(16)
+        derived = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            salt_bytes,
+            AuthManager.PBKDF2_ITERATIONS,
+            dklen=32,
+        )
+        return f"pbkdf2${AuthManager.PBKDF2_ITERATIONS}${salt_bytes.hex()}${derived.hex()}"
 
     @staticmethod
     def verify_password(password: str, password_hash: str) -> bool:
-        """Verifies plain password against stored hash."""
+        """Verifies plain password against PBKDF2, bcrypt, or legacy salted SHA-256 hash in constant time."""
+        stored = (password_hash or "").strip()
+        if not stored:
+            return False
+
+        if stored.startswith("pbkdf2$"):
+            try:
+                _, iter_str, salt_hex, expected_hex = stored.split("$", 3)
+                iterations = int(iter_str)
+                if iterations < 10000:
+                    return False
+                derived = hashlib.pbkdf2_hmac(
+                    "sha256",
+                    password.encode("utf-8"),
+                    bytes.fromhex(salt_hex),
+                    iterations,
+                    dklen=32,
+                )
+                return hmac.compare_digest(derived.hex(), expected_hex.lower())
+            except Exception:
+                return False
+
         salt = "Cisco_Automated_Intcomex_Salt_2026!"
         old_salt = "Gravity_Intcomex_Salt_2026!"
-        
-        # Check salted SHA-256
-        computed = hashlib.sha256((password + salt).encode('utf-8')).hexdigest()
-        if computed == password_hash:
+        computed = hashlib.sha256((password + salt).encode("utf-8")).hexdigest()
+        if hmac.compare_digest(computed, stored):
             return True
-        old_computed = hashlib.sha256((password + old_salt).encode('utf-8')).hexdigest()
-        if old_computed == password_hash:
+        old_computed = hashlib.sha256((password + old_salt).encode("utf-8")).hexdigest()
+        if hmac.compare_digest(old_computed, stored):
             return True
-            
+
         # Check bcrypt if stored as bcrypt
-        if password_hash.startswith("$2b$") or password_hash.startswith("$2a$"):
+        if stored.startswith("$2b$") or stored.startswith("$2a$"):
             try:
                 import bcrypt
-                return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
+                return bcrypt.checkpw(password.encode("utf-8"), stored.encode("utf-8"))
             except Exception:
                 pass
-                
+
         # Prohibido fallback en texto plano
         return False
 

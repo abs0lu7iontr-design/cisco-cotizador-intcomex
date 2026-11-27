@@ -3,20 +3,18 @@
 // High-performance Edge Health Check & Heartbeat API
 // ============================================================================
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-};
+import { buildEdgeCorsHeaders } from '../../src/utils/edgeCors';
+import { APP_VERSION } from '../../src/core/appVersion';
 
-export const onRequestOptions: PagesFunction = async () => {
+export const onRequestOptions: PagesFunction = async (context) => {
   return new Response(null, {
     status: 204,
-    headers: corsHeaders,
+    headers: buildEdgeCorsHeaders(context.request, 'GET, OPTIONS', 'Content-Type'),
   });
 };
 
 export const onRequestGet: PagesFunction = async (context) => {
+  const corsHeaders = buildEdgeCorsHeaders(context.request, 'GET, OPTIONS', 'Content-Type');
   const cf = (context.request as any).cf || {};
   const colo = cf.colo || 'SCL';
   const country = cf.country || 'CL';
@@ -25,7 +23,7 @@ export const onRequestGet: PagesFunction = async (context) => {
     JSON.stringify({
       status: 'healthy',
       service: 'cisco-automated',
-      version: '2.12.0',
+      version: APP_VERSION,
       timestamp: new Date().toISOString(),
       edge: {
         colo,

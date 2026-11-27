@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { ProcessedEstimateResult, EstimateHeaderInfo } from './types';
+import { isValidSimpleEmail } from '../utils/exportSanitizers';
 import {
   EmailSignatureProfile,
   DEFAULT_EMAIL_SIGNATURE,
@@ -332,7 +333,7 @@ export function generateEstimateEmailHtml(
       </td>
       <td style="padding-left: 12px; vertical-align: top; font-size: 8.5pt; color: #475569;">
         ${signatureProfile.phone ? `<span>📞 ${safePhone}</span><br/>` : ''}
-        ${signatureProfile.email ? `<span>✉️ <a href="mailto:${safeEmail}" style="color: #4338ca; text-decoration: none;">${safeEmail}</a></span><br/>` : ''}
+        ${signatureProfile.email ? (isValidSimpleEmail(signatureProfile.email) ? `<span>✉️ <a href="mailto:${safeEmail}" style="color: #4338ca; text-decoration: none;">${safeEmail}</a></span><br/>` : `<span>✉️ ${safeEmail}</span><br/>`) : ''}
         <span style="color: #94a3b8; font-size: 8pt;">${safeDisclaimer}</span>
       </td>
     </tr>

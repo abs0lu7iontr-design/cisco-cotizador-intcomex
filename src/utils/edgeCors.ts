@@ -45,6 +45,7 @@ export function buildEdgeCorsHeaders(
 
   if (isAllowedEdgeOrigin(origin)) {
     baseHeaders['Access-Control-Allow-Origin'] = origin!;
+    baseHeaders['Access-Control-Allow-Credentials'] = 'true';
   }
 
   return baseHeaders;

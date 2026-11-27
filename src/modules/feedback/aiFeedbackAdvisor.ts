@@ -5,6 +5,7 @@
 
 import { FeedbackTicket } from './types';
 import { loadAiSettings } from '../configuriator/aiProviderManager';
+import { getEdgeSessionHeaders, getEdgeSessionToken } from '../security/edgeSessionService';
 import { APP_DISPLAY_NAME, getFormattedAppVersion } from '../../core/appVersion';
 
 export interface AiTicketDiagnosis {
@@ -118,10 +119,15 @@ export async function analyzeTicketWithAi(ticket: FeedbackTicket): Promise<AiTic
   const settings = loadAiSettings();
   const enabledKeys = settings.keys.filter((k) => k.enabled && k.apiKey.trim().length > 0);
 
-  // Search for Gemini or OpenRouter key
+  // Search for user-supplied Gemini or OpenRouter key, otherwise fall back to Edge AI Proxy when authenticated
   const activeKey = enabledKeys.find((k) => k.provider === 'gemini') || enabledKeys[0];
+  const canUseEdgeProxy =
+    !activeKey &&
+    typeof window !== 'undefined' &&
+    window.location?.protocol?.startsWith('http') &&
+    Boolean(getEdgeSessionToken());
 
-  if (!activeKey) {
+  if (!activeKey && !canUseEdgeProxy) {
     return generateDeterministicDiagnosis(ticket);
   }
 
@@ -140,30 +146,38 @@ Descripción del Usuario:
 ---------------------------------------------------------------
 Evalúa si es posible realizar lo solicitado, diagnostica la causa raíz y detalla qué solución darías (sin implementarla). Responde en JSON.`;
 
-    if (activeKey.provider === 'gemini') {
-      const model = activeKey.model || 'gemini-3.6-flash';
-      const cleanKey = activeKey.apiKey.trim();
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+    if (canUseEdgeProxy || activeKey?.provider === 'gemini') {
+      const model = activeKey?.model || 'gemini-3.6-flash';
+      const geminiPayload = {
+        systemInstruction: {
+          parts: [{ text: getSystemInstructionAiAdvisor() }],
+        },
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: prompt }],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.1,
+          maxOutputTokens: 2048,
+        },
+      };
+      const url = canUseEdgeProxy
+        ? '/api/ai-proxy'
+        : `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(activeKey!.apiKey.trim())}`;
 
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: getSystemInstructionAiAdvisor() }],
-          },
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: prompt }],
-            },
-          ],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            temperature: 0.1,
-            maxOutputTokens: 2048,
-          },
-        }),
+        ...(canUseEdgeProxy ? { credentials: 'same-origin' as RequestCredentials } : {}),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(canUseEdgeProxy ? getEdgeSessionHeaders() : {}),
+        },
+        body: JSON.stringify(
+          canUseEdgeProxy ? { provider: 'gemini', model, payload: geminiPayload } : geminiPayload
+        ),
       });
 
       if (res.ok) {

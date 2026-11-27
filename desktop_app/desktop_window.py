@@ -1,9 +1,11 @@
 import os
 import sys
+import re
 import json
+import urllib.parse
 import webview
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -56,6 +58,35 @@ class DesktopBridge:
 
     def _set_window(self, window):
         self._window = window
+
+    def _require_authenticated_user(self) -> Optional[str]:
+        """Returns authenticated username or None if no Desktop session is active."""
+        user_id = self._auth.get_current_user_id()
+        username = self._auth.get_current_username()
+        if not self._auth.current_user or not user_id or not username:
+            return None
+        return username
+
+    def _is_within_allowed_storage(self, target_path: str) -> bool:
+        """Verifies target_path lies inside an approved gravity_storage folder."""
+        try:
+            target_abs = os.path.abspath(target_path)
+            allowed_bases = [
+                self._file_processor.base_storage_dir,
+                os.path.join(os.getcwd(), "gravity_storage"),
+            ]
+            if getattr(sys, "frozen", False):
+                exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+                allowed_bases.append(os.path.join(exe_dir, "gravity_storage"))
+            for base_dir in allowed_bases:
+                if not base_dir:
+                    continue
+                base_abs = os.path.abspath(base_dir)
+                if os.path.commonpath([base_abs, target_abs]) == base_abs:
+                    return True
+            return False
+        except Exception:
+            return False
 
     # -------------------------------------------------------------------------
     # 1. RBAC AUTHENTICATION & SESSION
@@ -117,6 +148,10 @@ class DesktopBridge:
             }
 
         try:
+            current_user = self._require_authenticated_user()
+            if not current_user:
+                return {"success": False, "error": "Sesión de usuario requerida."}
+
             # Store in hierarchical folder structure: Partner / ClienteFinal / YYYY-MM / YYYY-MM-DD /
             stored_info = self._file_processor.organize_and_store_file(filepath)
 
@@ -128,7 +163,6 @@ class DesktopBridge:
                 file_bytes = list(raw_bytes)
 
             # Audit Trail Log
-            current_user = self._auth.get_current_username() or "mskill"
             self._db.log_audit_event(
                 current_user,
                 "UPLOAD_ESTIMATE",
@@ -156,6 +190,9 @@ class DesktopBridge:
     # -------------------------------------------------------------------------
     def download_excel_file(self, filename, file_bytes):
         """Opens native desktop save dialog to download the processed Excel file."""
+        current_user = self._require_authenticated_user()
+        if not current_user:
+            return {"success": False, "error": "Sesión de usuario requerida."}
         if not self._window:
             return {"success": False, "error": "No window reference"}
 
@@ -174,7 +211,6 @@ class DesktopBridge:
                 f.write(bytes(file_bytes))
 
             # Audit Log
-            current_user = self._auth.get_current_username() or "mskill"
             self._db.log_audit_event(
                 current_user,
                 "EXPORT_EXCEL",
@@ -195,6 +231,9 @@ class DesktopBridge:
         gravity_storage / [Partner] / [ClienteFinal] / [Mes] / [filename]
         """
         try:
+            current_user = self._require_authenticated_user()
+            if not current_user:
+                return {"success": False, "error": "Sesión de usuario requerida."}
             byte_data = bytes(file_bytes)
             res = self._file_processor.save_estimate_in_client_month_structure(
                 byte_data,
@@ -204,7 +243,6 @@ class DesktopBridge:
             )
 
             # Audit Log
-            current_user = self._auth.get_current_username() or "mskill"
             self._db.log_audit_event(
                 current_user,
                 "EXPORT_EXCEL",
@@ -218,20 +256,24 @@ class DesktopBridge:
             return {"success": False, "error": str(e)}
 
     def open_folder_in_explorer(self, folder_path):
-        """Opens directory or highlights file in Windows file explorer."""
+        """Opens directory or highlights file in Windows file explorer (contained inside allowed storage)."""
         try:
+            if not self._require_authenticated_user():
+                return {"success": False, "error": "Sesión de usuario requerida."}
             if not folder_path:
                 return {"success": False, "error": "Ruta no especificada"}
-            target = os.path.normpath(str(folder_path).strip())
+            target = os.path.abspath(os.path.normpath(str(folder_path).strip()))
+            if not self._is_within_allowed_storage(target):
+                return {"success": False, "error": "Ruta fuera del almacenamiento autorizado."}
             if os.path.isfile(target):
                 import subprocess
-                subprocess.Popen(f'explorer /select,"{target}"')
+                subprocess.Popen(["explorer.exe", "/select,", target])
                 return {"success": True}
             elif os.path.isdir(target):
                 os.startfile(target)
                 return {"success": True}
             parent = os.path.dirname(target)
-            if parent and os.path.isdir(parent):
+            if parent and self._is_within_allowed_storage(parent) and os.path.isdir(parent):
                 os.startfile(parent)
                 return {"success": True}
             return {"success": False, "error": f"Directorio no encontrado: {target}"}
@@ -241,18 +283,25 @@ class DesktopBridge:
     def open_email_client(self, recipient, cc="", subject="", body=""):
         """Opens native mail client (Outlook / Windows Mail) with pre-filled fields."""
         try:
-            import urllib.parse
+            if not self._require_authenticated_user():
+                return {"success": False, "error": "Sesión de usuario requerida."}
             import webbrowser
+            clean_recipient = str(recipient or "").strip()
+            if clean_recipient:
+                if any(c in clean_recipient for c in ("\r", "\n", "?", "&", "#")) or not re.match(
+                    r"^[^\s?&#<>@]+@[^\s?&#<>@]+\.[^\s?&#<>@]+$", clean_recipient
+                ):
+                    return {"success": False, "error": "Dirección de destinatario inválida."}
             normalized_body = (body or "").replace('\r\n', '\n').replace('\n', '\r\n')
             params = {}
             if cc:
-                params['cc'] = cc
+                params['cc'] = str(cc).replace('\r', '').replace('\n', '')
             if subject:
-                params['subject'] = subject
+                params['subject'] = str(subject).replace('\r', '').replace('\n', '')
             if normalized_body:
                 params['body'] = normalized_body
             query_string = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
-            mailto_url = f"mailto:{recipient}?{query_string}" if query_string else f"mailto:{recipient}"
+            mailto_url = f"mailto:{clean_recipient}?{query_string}" if query_string else f"mailto:{clean_recipient}"
             webbrowser.open(mailto_url)
             return {"success": True}
         except Exception as e:
@@ -261,6 +310,8 @@ class DesktopBridge:
     def search_storage(self, query_text=""):
         """Searches gravity_storage hierarchical folder and database for matching estimates."""
         try:
+            if not self._require_authenticated_user():
+                return []
             q = (query_text or "").strip().lower()
             results = []
 
@@ -378,7 +429,7 @@ class DesktopBridge:
                     pass
         return {
             "name": "cisco-automated",
-            "version": "2.26.10",
+            "version": "2.27.0",
             "git_commit": "12379f3",
             "git_branch": "develop",
             "build_timestamp": "2026-10-15T00:00:00.000Z",
@@ -394,7 +445,7 @@ class DesktopBridge:
         Compares git_commit, build_timestamp, and version.
         """
         local_meta = self._get_local_version_metadata()
-        current_version = local_meta.get("version", "2.26.10")
+        current_version = local_meta.get("version", "2.27.0")
         current_commit = str(local_meta.get("git_commit", "12379f3"))
         current_timestamp = str(local_meta.get("build_timestamp", ""))
 
@@ -495,6 +546,10 @@ class DesktopBridge:
         import urllib.request
         import shutil
         import hashlib
+
+        current_user = self._require_authenticated_user()
+        if not current_user:
+            return {"success": False, "error": "Sesión de usuario requerida para actualizar."}
 
         # 1. Determine destination path
         target_path = get_index_html_path()
@@ -625,9 +680,8 @@ class DesktopBridge:
 
         # 6. Audit event
         try:
-            curr_user = self._auth.get_current_username() or "system"
             self._db.log_audit_event(
-                curr_user,
+                current_user,
                 "AUTO_UPDATE_APPLIED",
                 f"Actualización desktop instalada exitosamente ({len(downloaded_bytes)} bytes) en {target_path}"
             )
@@ -752,6 +806,10 @@ class DesktopBridge:
     def save_sku_override(self, sku, override_type):
         """Saves custom SKU rule override persistently to JSON files and SQLite DB."""
         try:
+            current_user = self._require_authenticated_user()
+            if not current_user:
+                return {"success": False, "error": "Sesión de usuario requerida."}
+
             clean_sku = str(sku).strip().upper()
 
             # 1. Save to SQLite table
@@ -766,7 +824,6 @@ class DesktopBridge:
                 except Exception as e:
                     print(f"Warning writing to {path}: {e}")
 
-            current_user = self._auth.get_current_username() or "mskill"
             self._db.log_audit_event(
                 current_user,
                 "SAVE_OVERRIDE",
@@ -799,6 +856,9 @@ class DesktopBridge:
 
     def download_backup_zip(self, filename, file_bytes):
         """Opens native desktop save dialog to download monthly backup ZIP file."""
+        current_user = self._require_authenticated_user()
+        if not current_user:
+            return {"success": False, "error": "Sesión de usuario requerida."}
         if not self._window:
             return {"success": False, "error": "No window reference"}
 
@@ -814,7 +874,6 @@ class DesktopBridge:
             with open(target_file, 'wb') as f:
                 f.write(bytes(file_bytes))
 
-            current_user = self._auth.get_current_username() or "mskill"
             self._db.log_audit_event(
                 current_user,
                 "BACKUP_ZIP",
@@ -830,6 +889,9 @@ class DesktopBridge:
     # -------------------------------------------------------------------------
     def export_estimates_csv(self):
         """Exports estimates history to CSV."""
+        current_user = self._require_authenticated_user()
+        if not current_user:
+            return {"success": False, "message": "Sesión de usuario requerida."}
         if not self._window:
             return {"success": False, "error": "No window"}
         
@@ -848,7 +910,6 @@ class DesktopBridge:
             exported_path = self._analytics.export_summary_csv(target_file, user_id=user_id, is_admin=is_admin)
             
             # Audit log
-            current_user = self._auth.get_current_username() or "mskill"
             self._db.log_audit_event(
                 current_user,
                 "EXPORT_CSV",
@@ -876,6 +937,8 @@ class DesktopBridge:
     def save_bo_sku(self, part_number: str, intcomex_sku: str, base_part_number: str = ""):
         """Saves Cisco Part Number to Intcomex SKU mapping in SQLite."""
         try:
+            if not self._require_authenticated_user():
+                return {"success": False, "message": "Sesión de usuario requerida."}
             self._db.save_bo_sku_db(part_number, intcomex_sku, base_part_number)
             return {"success": True}
         except Exception as e:
@@ -914,6 +977,8 @@ class DesktopBridge:
     def save_partner_profiles(self, profiles_json: str):
         """Saves Partner and Global CCW parameter profiles persistently to disk."""
         try:
+            if not self._require_authenticated_user():
+                return {"success": False, "error": "Sesión de usuario requerida."}
             data = json.loads(profiles_json) if isinstance(profiles_json, str) else profiles_json
             if not isinstance(data, dict):
                 return {"success": False, "error": "Invalid profiles payload"}
@@ -947,7 +1012,7 @@ class DesktopBridge:
             return {"success": False, "error": str(e), "profiles": {}}
 
     # -------------------------------------------------------------------------
-    # 5.3 CONFIGURIATOR MULTI-AI KEYS & FAILOVER PERSISTENCE
+    # 5.3 CONFIGURIATOR MULTI-AI KEYS & FAILOVER PERSISTENCE (DPAPI + USER SCOPE)
     # -------------------------------------------------------------------------
     def _get_ai_config_filepaths(self):
         paths = []
@@ -959,25 +1024,87 @@ class DesktopBridge:
         except Exception:
             pass
 
-        try:
-            exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-            paths.append(os.path.join(exe_dir, "ai_config.json"))
-        except Exception:
-            pass
-
         return list(dict.fromkeys(paths))
 
-    def save_ai_config(self, config_json: str):
-        """Saves ConfigurIAtor Multi-API Key Pool configuration persistently to disk."""
+    @staticmethod
+    def _dpapi_protect_text(plaintext: str) -> Optional[str]:
+        if os.name != "nt":
+            return None
         try:
+            import ctypes
+            import ctypes.wintypes
+            import base64
+
+            class DATA_BLOB(ctypes.Structure):
+                _fields_ = [
+                    ("cbData", ctypes.wintypes.DWORD),
+                    ("pbData", ctypes.POINTER(ctypes.c_char)),
+                ]
+
+            raw = plaintext.encode("utf-8")
+            in_buf = ctypes.create_string_buffer(raw, len(raw))
+            in_blob = DATA_BLOB(len(raw), in_buf)
+            out_blob = DATA_BLOB()
+            if not ctypes.windll.crypt32.CryptProtectData(
+                ctypes.byref(in_blob), None, None, None, None, 0x1, ctypes.byref(out_blob)
+            ):
+                return None
+            try:
+                cipher = ctypes.string_at(out_blob.pbData, out_blob.cbData)
+                return base64.b64encode(cipher).decode("ascii")
+            finally:
+                ctypes.windll.kernel32.LocalFree(out_blob.pbData)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _dpapi_unprotect_text(b64_cipher: str) -> Optional[str]:
+        if os.name != "nt":
+            return None
+        try:
+            import ctypes
+            import ctypes.wintypes
+            import base64
+
+            class DATA_BLOB(ctypes.Structure):
+                _fields_ = [
+                    ("cbData", ctypes.wintypes.DWORD),
+                    ("pbData", ctypes.POINTER(ctypes.c_char)),
+                ]
+
+            cipher = base64.b64decode(b64_cipher.encode("ascii"))
+            in_buf = ctypes.create_string_buffer(cipher, len(cipher))
+            in_blob = DATA_BLOB(len(cipher), in_buf)
+            out_blob = DATA_BLOB()
+            if not ctypes.windll.crypt32.CryptUnprotectData(
+                ctypes.byref(in_blob), None, None, None, None, 0x1, ctypes.byref(out_blob)
+            ):
+                return None
+            try:
+                plain = ctypes.string_at(out_blob.pbData, out_blob.cbData)
+                return plain.decode("utf-8")
+            finally:
+                ctypes.windll.kernel32.LocalFree(out_blob.pbData)
+        except Exception:
+            return None
+
+    def save_ai_config(self, config_json: str):
+        """Saves ConfigurIAtor Multi-API Key Pool configuration persistently (DPAPI-protected on Windows)."""
+        try:
+            if not self._require_authenticated_user():
+                return {"success": False, "error": "Sesión de usuario requerida."}
             data = json.loads(config_json) if isinstance(config_json, str) else config_json
             if not isinstance(data, dict):
                 return {"success": False, "error": "Invalid AI config payload"}
 
+            serialized = json.dumps(data, ensure_ascii=False)
+            protected = self._dpapi_protect_text(serialized)
+            disk_payload = {"__dpapi__": protected, "v": 2} if protected else data
+
             for path in self._get_ai_config_filepaths():
                 try:
                     with open(path, "w", encoding="utf-8") as f:
-                        json.dump(data, f, indent=2, ensure_ascii=False)
+                        json.dump(disk_payload, f, indent=2, ensure_ascii=False)
                 except Exception as e:
                     print(f"Warning writing AI config to {path}: {e}")
 
@@ -986,14 +1113,31 @@ class DesktopBridge:
             return {"success": False, "error": str(e)}
 
     def get_ai_config(self):
-        """Loads ConfigurIAtor Multi-API Key Pool configuration from disk."""
+        """Loads ConfigurIAtor Multi-API Key Pool configuration from user-scoped disk storage."""
         try:
+            if not self._require_authenticated_user():
+                return {"success": False, "error": "Sesión de usuario requerida.", "config": None}
             for path in self._get_ai_config_filepaths():
                 if os.path.exists(path):
                     try:
                         with open(path, "r", encoding="utf-8") as f:
                             file_data = json.load(f)
-                            if isinstance(file_data, dict):
+                        if isinstance(file_data, dict):
+                            if "__dpapi__" in file_data and isinstance(file_data["__dpapi__"], str):
+                                plain = self._dpapi_unprotect_text(file_data["__dpapi__"])
+                                if plain:
+                                    unwrapped = json.loads(plain)
+                                    if isinstance(unwrapped, dict):
+                                        return {"success": True, "config": unwrapped}
+                            else:
+                                # Re-wrap plaintext config with DPAPI on Windows when possible
+                                protected = self._dpapi_protect_text(json.dumps(file_data, ensure_ascii=False))
+                                if protected:
+                                    try:
+                                        with open(path, "w", encoding="utf-8") as fw:
+                                            json.dump({"__dpapi__": protected, "v": 2}, fw, indent=2)
+                                    except Exception:
+                                        pass
                                 return {"success": True, "config": file_data}
                     except Exception:
                         pass
@@ -1025,6 +1169,8 @@ class DesktopBridge:
         import urllib.error
 
         try:
+            if not self._require_authenticated_user():
+                return {"error": "unauthorized", "error_description": "Sesión de usuario requerida."}
             target_url = (auth_url or "https://id.cisco.com/oauth2/default/v1/token").strip()
             allowed_auth = ("id.cisco.com", "cloudsso.cisco.com", "cloudsso1.cisco.com")
             if not self._is_allowed_cisco_url(target_url, allowed_auth):
@@ -1065,6 +1211,21 @@ class DesktopBridge:
 
         start_ts = time.time()
         try:
+            if not self._require_authenticated_user():
+                return {
+                    "success": False,
+                    "httpStatus": 401,
+                    "latencyMs": 0,
+                    "error": "Sesión de usuario requerida en DesktopBridge.",
+                }
+            clean_token = str(token or "").strip()
+            if not clean_token or any(c in clean_token for c in ("\r", "\n")):
+                return {
+                    "success": False,
+                    "httpStatus": 400,
+                    "latencyMs": 0,
+                    "error": "Token OAuth inválido o malformado.",
+                }
             target_url = (url or "").strip()
             allowed_api = (
                 "apix.cisco.com",
@@ -1092,7 +1253,7 @@ class DesktopBridge:
             req = urllib.request.Request(
                 target_url,
                 headers={
-                    "Authorization": f"Bearer {token.strip()}",
+                    "Authorization": f"Bearer {clean_token}",
                     "Accept": "application/json",
                     "User-Agent": "CiscoAutomated-Desktop/3.3",
                 },
@@ -1132,6 +1293,31 @@ class DesktopBridge:
                 "latencyMs": latency_ms,
                 "error": str(e),
             }
+
+
+def _verify_bundle_manifest_sha256(html_path: str) -> bool:
+    """
+    If a sibling version.json manifest exists with desktop_bundle_sha256 / sha256,
+    validates the local bundle's SHA-256 hash before loading it in PyWebView.
+    """
+    try:
+        manifest_path = os.path.join(os.path.dirname(html_path), "version.json")
+        if not os.path.isfile(manifest_path):
+            return True
+        with open(manifest_path, "r", encoding="utf-8") as mf:
+            meta = json.load(mf)
+        expected = meta.get("desktop_bundle_sha256") or meta.get("sha256")
+        if not isinstance(expected, str) or len(expected.strip()) != 64:
+            return True
+        import hashlib
+        h = hashlib.sha256()
+        with open(html_path, "rb") as hf:
+            for chunk in iter(lambda: hf.read(65536), b""):
+                h.update(chunk)
+        actual = h.hexdigest().lower()
+        return actual == expected.strip().lower()
+    except Exception:
+        return False
 
 
 def get_index_html_path() -> str:
@@ -1183,9 +1369,16 @@ def get_index_html_path() -> str:
             os.path.join(exe_dir, "dist", "index.html"),
             os.path.join(exe_dir, "index.html"),
         ] + bundled_candidates
-        existing_trusted = [os.path.abspath(p) for p in trusted_frozen_paths if os.path.exists(os.path.abspath(p))]
+        existing_trusted = [
+            os.path.abspath(p)
+            for p in trusted_frozen_paths
+            if os.path.exists(os.path.abspath(p)) and _verify_bundle_manifest_sha256(os.path.abspath(p))
+        ]
         if existing_trusted:
             return max(existing_trusted, key=lambda p: os.path.getmtime(p))
+        existing_bundled_only = [os.path.abspath(p) for p in bundled_candidates if os.path.exists(os.path.abspath(p))]
+        if existing_bundled_only:
+            return existing_bundled_only[0]
         fallback_frozen = bundled_candidates[0] if bundled_candidates else trusted_frozen_paths[0]
         return os.path.abspath(fallback_frozen)
 

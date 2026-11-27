@@ -35,6 +35,7 @@ import {
   BO_STAGES_METADATA,
 } from './boTrackingTypes';
 import { useToast } from '../../context/ToastContext';
+import { sanitizeSafeHttpUrl } from '../../utils/exportSanitizers';
 
 interface Props {
   isOpen: boolean;
@@ -325,10 +326,10 @@ export const CiscoOrderTrackingSyncModal: React.FC<Props> = ({
                 </div>
 
                 {/* Direct Courier Tracking Link */}
-                {result.trackingUrl && (
+                {sanitizeSafeHttpUrl(result.trackingUrl) && (
                   <div className="pt-2 flex justify-end">
                     <a
-                      href={result.trackingUrl}
+                      href={sanitizeSafeHttpUrl(result.trackingUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center space-x-1.5 text-xs text-purple-400 hover:text-purple-300 font-semibold transition-colors"

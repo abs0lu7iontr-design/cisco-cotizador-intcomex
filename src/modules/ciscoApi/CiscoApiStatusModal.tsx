@@ -30,6 +30,7 @@ import {
   PsirtAdvisory,
   PoeBudgetInfo,
 } from './types';
+import { sanitizeSafeHttpUrl } from '../../utils/exportSanitizers';
 
 interface Props {
   isOpen: boolean;
@@ -549,9 +550,9 @@ export const CiscoApiStatusModal: React.FC<Props> = ({ isOpen, onClose }) => {
                           {adv.cves.length > 0 && ` • CVEs: ${adv.cves.slice(0, 4).join(', ')}`}
                         </div>
                       </div>
-                      {adv.publicationUrl && (
+                      {sanitizeSafeHttpUrl(adv.publicationUrl, ['cisco.com']) && (
                         <a
-                          href={adv.publicationUrl}
+                          href={sanitizeSafeHttpUrl(adv.publicationUrl, ['cisco.com'])}
                           target="_blank"
                           rel="noreferrer"
                           className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-950 hover:bg-slate-800 text-cyan-300 border border-slate-700 text-[10px] font-semibold"

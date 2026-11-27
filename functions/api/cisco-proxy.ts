@@ -144,15 +144,31 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
       );
     }
 
+    if (sessionCheck.role === 'viewer') {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Rol viewer sin permisos para operar credenciales Cisco M2M.',
+        }),
+        {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        }
+      );
+    }
+
     const body: any = await context.request.json();
     const action = body?.action || 'token';
 
     const bodyClientId = typeof body?.clientId === 'string' ? body.clientId.trim() : '';
     const bodyClientSecret = typeof body?.clientSecret === 'string' ? body.clientSecret.trim() : '';
-    const usingServerCreds = Boolean(env.CISCO_CLIENT_ID && env.CISCO_CLIENT_SECRET && !bodyClientId && !bodyClientSecret);
+    const hasServerCreds = Boolean(env.CISCO_CLIENT_ID && env.CISCO_CLIENT_SECRET);
+    const hasCompleteClientCreds = Boolean(bodyClientId && bodyClientSecret);
+    const usingServerCreds = Boolean(hasServerCreds && !hasCompleteClientCreds);
 
-    const clientId = (env.CISCO_CLIENT_ID || bodyClientId).trim();
-    const clientSecret = (env.CISCO_CLIENT_SECRET || bodyClientSecret).trim();
+    // Aislamiento estricto: jamás mezclar clientId parcial del cliente con secretos del servidor
+    const clientId = usingServerCreds ? String(env.CISCO_CLIENT_ID).trim() : bodyClientId;
+    const clientSecret = usingServerCreds ? String(env.CISCO_CLIENT_SECRET).trim() : bodyClientSecret;
     const authUrl = (body?.authUrl || env.CISCO_AUTH_URL || DEFAULT_AUTH_URL).trim();
 
     if (!isAllowedCiscoUrl(authUrl, ALLOWED_AUTH_HOSTS)) {

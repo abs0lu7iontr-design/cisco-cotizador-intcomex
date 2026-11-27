@@ -32,7 +32,7 @@ import {
   getCloudUsers,
   saveCloudUser,
   deleteCloudUser,
-  sha256Salted,
+  hashPasswordSecure,
   CloudUserRecord,
 } from '../modules/cloud';
 import { useToast } from '../context/ToastContext';
@@ -170,7 +170,7 @@ export function UserManagementView() {
 
       // Cloud Firestore + Local Cache creation
       const cleanNewUser = newUsername.trim().toLowerCase();
-      const hash = await sha256Salted(newPassword, cleanNewUser);
+      const hash = await hashPasswordSecure(newPassword);
       const newUserRecord: CloudUserRecord = {
         username: cleanNewUser,
         full_name: newFullName.trim(),
@@ -242,7 +242,7 @@ export function UserManagementView() {
       const existingHash = (selectedUserForAction as any).password_hash as string | undefined;
       const cleanTargetUser = selectedUserForAction.username.toLowerCase();
       const passwordHash = editPassword.trim()
-        ? await sha256Salted(editPassword.trim(), cleanTargetUser)
+        ? await hashPasswordSecure(editPassword.trim())
         : existingHash;
 
       const updatedRecord: CloudUserRecord = {
@@ -332,9 +332,9 @@ export function UserManagementView() {
         }
       }
 
-      // Cloud password hash reset
+      // Cloud password hash reset (PBKDF2 310k)
       const cleanTargetUser = selectedUserForAction.username.toLowerCase();
-      const newHash = await sha256Salted(resetPasswordVal, cleanTargetUser);
+      const newHash = await hashPasswordSecure(resetPasswordVal);
       const updatedRecord: CloudUserRecord = {
         username: cleanTargetUser,
         full_name: selectedUserForAction.full_name,

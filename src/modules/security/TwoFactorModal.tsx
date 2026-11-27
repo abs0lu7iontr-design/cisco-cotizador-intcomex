@@ -33,7 +33,8 @@ interface TwoFactorModalProps {
   email: string;
   geoInfo: GeoLocationInfo;
   initialOtpSession?: OtpSessionState;
-  onVerified: () => void;
+  twoFactorChallenge?: string;
+  onVerified: (twoFactorProof?: string) => void;
   onCancel: () => void;
 }
 
@@ -43,6 +44,7 @@ export function TwoFactorModal({
   email,
   geoInfo,
   initialOtpSession,
+  twoFactorChallenge,
   onVerified,
   onCancel,
 }: TwoFactorModalProps) {
@@ -122,7 +124,7 @@ export function TwoFactorModal({
     try {
       const res = await verifyTwoFactorOtp(username, cleanCode, otpSession);
       if (res.success) {
-        onVerified();
+        onVerified(res.twoFactorProof);
       } else {
         setErrorMsg(res.error || 'Código incorrecto o expirado.');
       }
@@ -140,7 +142,7 @@ export function TwoFactorModal({
     setInfoMsg('');
 
     try {
-      const res = await sendTwoFactorOtp(username, email, geoInfo);
+      const res = await sendTwoFactorOtp(username, email, geoInfo, twoFactorChallenge);
       if (res.success && res.otpSession) {
         setOtpSession(res.otpSession);
         setRemainingSeconds(600);
@@ -163,7 +165,7 @@ export function TwoFactorModal({
     setInfoMsg('');
 
     try {
-      const res = await requestAdminUnlock(username, email, geoInfo);
+      const res = await requestAdminUnlock(username, email, geoInfo, twoFactorChallenge);
       if (res.success) {
         setInfoMsg(res.message);
       } else {

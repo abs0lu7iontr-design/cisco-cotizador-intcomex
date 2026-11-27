@@ -5,6 +5,7 @@
 
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { getFirestore, Firestore } from 'firebase/firestore';
+import { getAuth, signInWithCustomToken, signOut, Auth } from 'firebase/auth';
 import { FirebaseCustomConfig } from './types';
 
 export const STORAGE_KEY_CUSTOM_CONFIG = 'cisco_firebase_custom_config';
@@ -438,4 +439,38 @@ export function getFirestoreInstance(): {
       epoch: activeProjectEpoch,
     };
   }
+}
+
+export function getFirebaseAuthInstance(): Auth | null {
+  try {
+    if (!firebaseAppInstance) {
+      getFirestoreInstance();
+    }
+    if (!firebaseAppInstance) return null;
+    return getAuth(firebaseAppInstance);
+  } catch {
+    return null;
+  }
+}
+
+export async function signInFirebaseWithCustomToken(customToken: string): Promise<boolean> {
+  if (!customToken || !customToken.trim()) return false;
+  try {
+    const auth = getFirebaseAuthInstance();
+    if (!auth) return false;
+    await signInWithCustomToken(auth, customToken.trim());
+    return true;
+  } catch (err: any) {
+    console.warn('[Firebase Auth] Error aplicando Custom Token:', err?.message || err);
+    return false;
+  }
+}
+
+export async function signOutFirebaseAuth(): Promise<void> {
+  try {
+    const auth = getFirebaseAuthInstance();
+    if (auth?.currentUser) {
+      await signOut(auth);
+    }
+  } catch {}
 }

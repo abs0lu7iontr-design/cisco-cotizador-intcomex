@@ -13,6 +13,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { sanitizeSafeHttpUrl } from '../../utils/exportSanitizers';
 import {
   Bot,
   Sparkles,
@@ -2259,9 +2260,9 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                               )}
 
                             {/* Link Oficial Cisco.com */}
-                            {parentRow?.officialCiscoUrl && (
+                            {sanitizeSafeHttpUrl(parentRow?.officialCiscoUrl, ['cisco.com']) && (
                               <a
-                                href={parentRow.officialCiscoUrl}
+                                href={sanitizeSafeHttpUrl(parentRow?.officialCiscoUrl, ['cisco.com'])}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-400 hover:text-indigo-300 underline"
@@ -2815,9 +2816,9 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                                   </span>
                                 )}
                               </div>
-                              {adv.publicationUrl && (
+                              {sanitizeSafeHttpUrl(adv.publicationUrl, ['cisco.com']) && (
                                 <a
-                                  href={adv.publicationUrl}
+                                  href={sanitizeSafeHttpUrl(adv.publicationUrl, ['cisco.com'])}
                                   target="_blank"
                                   rel="noreferrer"
                                   className="text-[10px] text-cyan-300 hover:underline shrink-0 flex items-center gap-1"

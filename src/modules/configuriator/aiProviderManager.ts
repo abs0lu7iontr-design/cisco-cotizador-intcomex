@@ -30,23 +30,18 @@ const AI_CONFIG_STORAGE_KEY = 'cisco_configuriator_ai_settings_v2';
 const LEGACY_STORAGE_KEY_V1 = 'cisco_configuriator_ai_settings_v1';
 const LEGACY_GEMINI_KEY = 'cisco_gemini_api_key';
 
-// Semillas codificadas en tiempo de ejecución para que funcionen en Web y Desktop sin exponer texto plano en Git
-const SEED_G_B64 = ['QV', 'EuQWI4Uk42SWd3MTh0U2JRLThNOGtQSko5a0ZMSzljczZXSVpzaFFYTS0xUGdTdHRhc3c='].join('');
-const SEED_OR_INF_B64 = [
-  'c2stb3ItdjEt',
-  'YjIwYzNiN2U5MTZkM2VhYTI0MTA4NDYwNWMwZDM0ZmU4NjE0MDdhMTIzNTA5NGEzMjFlYjBiOTYwOThiMWNmMg==',
-].join('');
-const SEED_OR_PROV_PREFIX = 'sk-or-v1-f946b521696ae58a';
+export const EDGE_AI_SENTINEL = '__EDGE_MANAGED__';
 
-function decodeRuntimeSeed(b64: string): string {
-  try {
-    if (typeof atob === 'function') {
-      return atob(b64);
-    }
-    return Buffer.from(b64, 'base64').toString('utf-8');
-  } catch {
-    return '';
-  }
+// Prefijos heredados de versiones anteriores que deben purgarse del caché del navegador
+const LEGACY_EXPOSED_SEED_PREFIXES = [
+  'AQ.Ab8RN6',
+  'sk-or-v1-b20c3b7e',
+  'sk-or-v1-f946b521696ae58a',
+];
+
+function isLegacyExposedSeed(key: string): boolean {
+  const clean = (key || '').trim();
+  return LEGACY_EXPOSED_SEED_PREFIXES.some((prefix) => clean.startsWith(prefix));
 }
 
 export const PROVIDER_META: Record<
@@ -118,61 +113,29 @@ export const PROVIDER_META: Record<
 };
 
 export function getDefaultAiSettings(): AiConfigSettings {
-  const defaultGeminiKey = decodeRuntimeSeed(SEED_G_B64);
-  const defaultOrKey = decodeRuntimeSeed(SEED_OR_INF_B64);
-
-  const initialKeys: ApiKeyEntry[] = [];
-
-  if (defaultGeminiKey) {
-    initialKeys.push({
-      id: 'key-gemini-primary',
-      provider: 'gemini',
-      label: 'Google Gemini Principal (3.7 / 3.6 Flash)',
-      apiKey: defaultGeminiKey,
-      model: 'gemini-3.7-flash',
-      enabled: true,
-      lastStatus: 'ok',
-    });
-  }
-
-  if (defaultOrKey) {
-    initialKeys.push({
-      id: 'key-openrouter-backup',
-      provider: 'openrouter',
-      label: 'OpenRouter Backup (DeepSeek / Vision Auto)',
-      apiKey: defaultOrKey,
-      model: 'openrouter/auto',
-      enabled: true,
-      lastStatus: 'ok',
-    });
-  }
-
   return {
     preferredOrder: ['gemini', 'openrouter', 'groq', 'deepseek'],
     useCiscoOfficialGrounding: true,
-    autoFallbackToLocal: true, // Fallback automático al motor determinístico local si las APIs cloud están saturadas
-    keys: initialKeys,
+    autoFallbackToLocal: true, // Fallback automático al proxy Edge o motor determinístico local
+    keys: [],
   };
 }
 
 /**
- * Normaliza y repara automáticamente claves antiguas o modelos deprecados/con timeout
- * (ej. gemini-3.7-flash con 503 / gemini-2.5-flash -> gemini-3.6-flash)
+ * Normaliza configuraciones IA, migra modelos deprecados y purga cualquier semilla expuesta heredada.
  */
-function sanitizeAndMigrateSettings(rawSettings: AiConfigSettings): AiConfigSettings {
+export function sanitizeAndMigrateSettings(rawSettings: AiConfigSettings): AiConfigSettings {
   const defaults = getDefaultAiSettings();
-  const defaultOrKey = decodeRuntimeSeed(SEED_OR_INF_B64);
-  const defaultGeminiKey = decodeRuntimeSeed(SEED_G_B64);
-
   const migratedKeys: ApiKeyEntry[] = [];
 
   for (const k of rawSettings.keys || []) {
     if (!k || !k.apiKey) continue;
     const cleanKey = k.apiKey.trim();
-    let model = k.model;
-    let apiKeyToUse = cleanKey;
+    if (!cleanKey || isLegacyExposedSeed(cleanKey)) {
+      continue;
+    }
 
-    // 1. Si una key de Gemini tenía gemini-2.5-flash/pro (404) o gemini-3.7-flash (503 saturado), actualizar al modelo estable gemini-3.6-flash
+    let model = k.model;
     if (
       k.provider === 'gemini' &&
       (model === 'gemini-2.5-flash' ||
@@ -185,48 +148,15 @@ function sanitizeAndMigrateSettings(rawSettings: AiConfigSettings): AiConfigSett
       model = 'gemini-3.6-flash';
     }
 
-    // 2. Si el usuario había pegado la Provisioning Key de OpenRouter (que daba 401 User not found),
-    // reemplazarla automáticamente por su Inference Key aprovisionada y modelo openrouter/auto
-    if (k.provider === 'openrouter' && cleanKey.startsWith(SEED_OR_PROV_PREFIX) && defaultOrKey) {
-      apiKeyToUse = defaultOrKey;
-      model = 'openrouter/auto';
-    }
-
     migratedKeys.push({
       ...k,
-      apiKey: apiKeyToUse,
+      apiKey: cleanKey,
       model,
       lastStatus: k.lastStatus === 'invalid' ? 'untested' : k.lastStatus,
       lastError: undefined,
     });
   }
 
-  // Asegurar que la key principal de Gemini y el respaldo de OpenRouter estén presentes
-  if (defaultGeminiKey && !migratedKeys.some((k) => k.provider === 'gemini')) {
-    migratedKeys.unshift({
-      id: 'key-gemini-primary',
-      provider: 'gemini',
-      label: 'Google Gemini Principal (Multimodal)',
-      apiKey: defaultGeminiKey,
-      model: 'gemini-3.6-flash',
-      enabled: true,
-      lastStatus: 'ok',
-    });
-  }
-
-  if (defaultOrKey && !migratedKeys.some((k) => k.provider === 'openrouter')) {
-    migratedKeys.push({
-      id: 'key-openrouter-backup',
-      provider: 'openrouter',
-      label: 'OpenRouter Backup (DeepSeek / Vision Auto)',
-      apiKey: defaultOrKey,
-      model: 'openrouter/auto',
-      enabled: true,
-      lastStatus: 'ok',
-    });
-  }
-
-  // Ordenar para que Gemini siempre esté primero y OpenRouter segundo por defecto
   migratedKeys.sort((a, b) => {
     if (a.provider === 'gemini' && b.provider !== 'gemini') return -1;
     if (a.provider !== 'gemini' && b.provider === 'gemini') return 1;

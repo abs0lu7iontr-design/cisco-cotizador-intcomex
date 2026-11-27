@@ -47,7 +47,7 @@ import {
   MiningFastTrackAlertData,
 } from '../modules/mining';
 import { detectCiscoFileType } from './fileTypeDetector';
-import { clearEdgeSessionToken } from '../modules/security/edgeSessionService';
+import { clearEdgeSessionToken, logoutEdgeSession } from '../modules/security/edgeSessionService';
 import {
   getDesktopPyWebViewApi,
   readLocalSkuOverrides,
@@ -1404,6 +1404,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
 
   const logout = useCallback(async () => {
     clearEdgeSessionToken();
+    logoutEdgeSession().catch(() => {});
     clearEstimate();
     const desktopApi = getDesktopPyWebViewApi();
     if (desktopApi?.logout_user) {

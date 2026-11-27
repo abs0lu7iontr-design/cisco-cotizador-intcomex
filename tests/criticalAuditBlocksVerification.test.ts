@@ -14,7 +14,16 @@ import { solveGoalSeekParameters, recalculateEstimateResult } from '../src/core/
 import { resolveActiveParams, saveParamProfile, deleteParamProfile } from '../src/modules/cloud/partnerParamsService';
 import { saveLocalPlatformConfig, resetLocalPlatformConfig } from '../src/core/storage/localPlatformConfig';
 import { setManualOfflineMode } from '../src/core/storage/offlineModeManager';
-import { sanitizeCsvCell, sanitizeRichClipboardHtml } from '../src/utils/exportSanitizers';
+import {
+  sanitizeCsvCell,
+  sanitizeRichClipboardHtml,
+  sanitizeSafeHttpUrl,
+  sanitizeSafeMailtoUrl,
+} from '../src/utils/exportSanitizers';
+import { getDefaultAiSettings, sanitizeAndMigrateSettings } from '../src/modules/configuriator/aiProviderManager';
+import { saveCiscoConfig, getCiscoConfig } from '../src/modules/ciscoApi/ciscoAuthService';
+import { sanitizeForFirestore } from '../src/modules/cloud/firestoreService';
+import { parseCiscoEml } from '../src/modules/dsv/ingestion/emlParser';
 import { generateBoHtmlTable } from '../src/modules/bo/boEmailHelper';
 import { generateDealReminderEmail } from '../src/modules/bo/dealEmailHelper';
 import { generatePartnerEmailDraft, categorizeEstimateItems } from '../src/modules/estimate/estimateExportHelper';
@@ -45,12 +54,15 @@ async function runTests() {
   assert.ok(reminderCronCode.includes('escapeHtml'), 'deal-reminder-cron.ts debe escapar HTML');
 
   const rulesCode = fs.readFileSync(path.join(rootDir, 'firestore.rules'), 'utf8');
+  const rulesNoComments = rulesCode.replace(/\/\/.*$/gm, '');
   assert.ok(rulesCode.includes("userId in ['admin', 'mskill']"), 'firestore.rules debe proteger admin y mskill');
   assert.match(
-    rulesCode,
-    /allow\s+delete:\s+if\s+versionId\s*!=\s*'v0_RAW'\s*&&\s*versionId\s*!=\s*'v0'/,
+    rulesNoComments,
+    /allow\s+delete:\s+if\s+isAuthenticated\(\)\s*&&\s*versionId\s*!=\s*'v0_RAW'\s*&&\s*versionId\s*!=\s*'v0'/,
     'firestore.rules debe bloquear borrado de v0_RAW / v0'
   );
+  assert.ok(!rulesNoComments.includes('!isAuthenticated()'), 'firestore.rules no debe mantener respaldos !isAuthenticated()');
+  assert.ok(!rulesNoComments.includes('allow read: if true'), 'firestore.rules no debe mantener lecturas públicas');
 
   // Fail-closed geo check en entorno web remoto
   const origWindow = (globalThis as any).window;
@@ -328,8 +340,115 @@ async function runTests() {
   assert.ok(!dbPy.includes('shutil.copy2(canonical_path, root_db)'), 'db_manager.py no debe copiar BD con credenciales a CWD');
   assert.ok(dbPy.includes('("admin", "mskill")'), 'db_manager.py debe proteger tanto a admin como a mskill');
 
-  console.log('  ✅ Bloque C (Sanitación CSV/HTML, Goal Seek, Caché IDB y Seguridad Desktop) verificado.');
-  console.log('\n🎉 ¡TODAS LAS VERIFICACIONES DE BLOQUES A, B y C PASARON AL 100%!');
+  // ============================================================================
+  // BLOQUES 1, 2 & 3 (Ciberseguridad Integral Plataforma Web/Edge/Desktop)
+  // ============================================================================
+  // Bloque 1: Cero semillas AI embebidas + purge automático + Edge AI Proxy autenticado
+  const aiManagerCode = fs.readFileSync(path.join(rootDir, 'src/modules/configuriator/aiProviderManager.ts'), 'utf8');
+  assert.ok(!aiManagerCode.includes('SEED_G_B64'), 'aiProviderManager.ts no debe contener claves Base64 embebidas');
+  assert.ok(!aiManagerCode.includes('SEED_OR_INF_B64'), 'aiProviderManager.ts no debe contener semillas OpenRouter embebidas');
+  assert.strictEqual(getDefaultAiSettings().keys.length, 0, 'Configuración por defecto de IA debe iniciar sin secretos en frontend');
+  const purgedAi = sanitizeAndMigrateSettings({
+    ...getDefaultAiSettings(),
+    keys: [
+      {
+        id: 'old-seed',
+        provider: 'gemini',
+        apiKey: 'AQ.Ab8RN6TestLegacySeed',
+        model: 'gemini-3.6-flash',
+        label: 'old',
+        enabled: true,
+      },
+      {
+        id: 'user-byok',
+        provider: 'gemini',
+        apiKey: 'AIzaSyUserByokKeyPreserved',
+        model: 'gemini-3.6-flash',
+        label: 'byok',
+        enabled: true,
+      },
+    ],
+  });
+  assert.strictEqual(purgedAi.keys.length, 1, 'Semillas expuestas legadas deben ser purgadas manteniendo BYOK de usuario');
+  assert.strictEqual(purgedAi.keys[0].id, 'user-byok');
+
+  assert.ok(fs.existsSync(path.join(rootDir, 'functions/api/ai-proxy.ts')), 'Debe existir proxy Edge autenticado /api/ai-proxy');
+  assert.ok(ciscoProxyCode.includes("role === 'viewer'"), 'cisco-proxy.ts debe rechazar rol viewer');
+  assert.ok(ciscoProxyCode.includes('hasCompleteClientCreds'), 'cisco-proxy.ts debe exigir par completo clientId+clientSecret para usar credenciales cliente');
+  assert.ok(!ciscoProxyCode.includes('bodyClientSecret || bodyClientId'), 'cisco-proxy.ts no debe activar pass-through si solo se envía clientId');
+
+  const sessionAuthCode = fs.readFileSync(path.join(rootDir, 'functions/api/session-auth.ts'), 'utf8');
+  assert.ok(sessionAuthCode.includes("action === 'logout'"), 'session-auth.ts debe soportar revocación en logout');
+  assert.ok(sessionAuthCode.includes('verifyTwoFactorProofToken'), 'session-auth.ts debe exigir proof cryptográfico antes de emitir tokens');
+  assert.ok(sessionAuthCode.includes('Set-Cookie'), 'session-auth.ts debe emitir cookie HttpOnly');
+
+  const firestoreRulesUserBlock = fs.readFileSync(path.join(rootDir, 'src/modules/cloud/firestoreService.ts'), 'utf8');
+  assert.ok(!firestoreRulesUserBlock.includes('Intcomex2026!'), 'firestoreService.ts no debe contener contraseña semilla hardcodeada');
+  assert.ok(firestoreRulesUserBlock.includes('PBKDF2_CLIENT_ITERATIONS = 310000'), 'firestoreService.ts debe usar PBKDF2 310k iteraciones');
+  assert.ok(authPy.includes('pbkdf2_hmac') && authPy.includes('310000'), 'auth_manager.py debe usar PBKDF2-HMAC-SHA256 con 310,000 iteraciones');
+
+  // Bloque 2: URLs dinámicas seguras, CSP estricta sin unsafe-eval/unsafe-inline en scripts, Desktop Bridge auth
+  assert.strictEqual(sanitizeSafeHttpUrl('javascript:alert(1)'), '');
+  assert.strictEqual(sanitizeSafeHttpUrl('data:text/html,<script>1</script>'), '');
+  assert.strictEqual(sanitizeSafeHttpUrl('https://evil.com/phish', ['cisco.com']), '');
+  assert.ok(sanitizeSafeHttpUrl('https://www.cisco.com/c/en/us/products.html', ['cisco.com']).startsWith('https://www.cisco.com/'));
+  assert.strictEqual(sanitizeSafeMailtoUrl('javascript:alert(1)'), '#');
+
+  const headersContent = fs.readFileSync(path.join(rootDir, 'public/_headers'), 'utf8');
+  const scriptSrcMatch = headersContent.match(/script-src\s+([^;]+)/i);
+  assert.ok(
+    scriptSrcMatch &&
+      !scriptSrcMatch[1].includes("'unsafe-inline'") &&
+      !scriptSrcMatch[1].includes("'unsafe-eval'"),
+    'CSP script-src no debe permitir unsafe-inline ni unsafe-eval'
+  );
+  assert.ok(headersContent.includes("frame-ancestors 'none'"), 'CSP debe incluir frame-ancestors none');
+
+  const desktopWinPy = fs.readFileSync(path.join(rootDir, 'desktop_app/desktop_window.py'), 'utf8');
+  assert.ok(desktopWinPy.includes('import urllib.parse'), 'desktop_window.py debe importar urllib.parse para _is_allowed_cisco_url');
+  assert.ok(desktopWinPy.includes('_require_authenticated_user'), 'desktop_window.py debe exigir sesión autenticada en métodos sensibles');
+  assert.ok(!desktopWinPy.includes('or "mskill"'), 'desktop_window.py no debe usar fallback mskill en auditoría');
+  assert.ok(!desktopWinPy.includes("subprocess.Popen(f'explorer"), 'open_folder_in_explorer no debe interpolar comandos string');
+
+  const fileProcPy = fs.readFileSync(path.join(rootDir, 'desktop_app/file_processor.py'), 'utf8');
+  assert.ok(fileProcPy.includes('_ensure_within_base') && fileProcPy.includes('commonpath'), 'file_processor.py debe validar contención de rutas con commonpath');
+
+  // Bloque 3: Secretos solo en memoria para Cisco M2M, Edge health/mining-audit, MIME ReDoS-safe, Firestore depth/proto guard
+  localStorage.removeItem('cisco_api_config_v2');
+  saveCiscoConfig({ clientId: 'test-client-id', clientSecret: 'super-secret-value' });
+  const storedRawCfg = JSON.parse(localStorage.getItem('cisco_api_config_v2') || '{}');
+  assert.strictEqual(storedRawCfg.clientSecret, undefined, 'saveCiscoConfig nunca debe persistir clientSecret en localStorage');
+  assert.strictEqual(localStorage.getItem('cisco_oauth_token_v2'), null, 'saveCiscoConfig nunca debe persistir tokens OAuth en localStorage');
+  assert.strictEqual(getCiscoConfig().clientSecret, 'super-secret-value', 'clientSecret ingresado en sesión debe mantenerse en memoria');
+
+  const miningAuditFn = fs.readFileSync(path.join(rootDir, 'functions/api/mining-audit.ts'), 'utf8');
+  assert.ok(miningAuditFn.includes('verifyEdgeSessionToken') && miningAuditFn.includes('MAX_MINING_ITEMS'), 'mining-audit.ts debe exigir sesión y acotar items');
+
+  const healthFn = fs.readFileSync(path.join(rootDir, 'functions/api/health.ts'), 'utf8');
+  assert.ok(!healthFn.includes("'Access-Control-Allow-Origin': '*'"), 'health.ts debe usar allowlist CORS en vez de wildcard');
+
+  const emlParsed = parseCiscoEml(
+    'MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary="BOUND"\r\n\r\n--BOUND\r\nContent-Disposition: attachment; filename="12345678_Cisco-Deal-BOM-Pricing-Details.xls"\r\nContent-Transfer-Encoding: base64\r\n\r\naGVsbG8=\r\n--BOUND--\r\n'
+  );
+  assert.strictEqual(emlParsed.dealId, '12345678', 'Parser MIME lineal debe extraer Deal ID correctamente');
+  assert.strictEqual(emlParsed.bomAttachment?.fileName, '12345678_Cisco-Deal-BOM-Pricing-Details.xls');
+
+  const protoInput = JSON.parse('{"safe":"ok","__proto__":{"polluted":true},"nested":{"fn":null}}');
+  const sanitizedDoc = sanitizeForFirestore(protoInput);
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(sanitizedDoc, '__proto__'), false);
+  assert.strictEqual(sanitizedDoc.safe, 'ok');
+
+  let deepObj: any = { leaf: 1 };
+  for (let i = 0; i < 32; i++) deepObj = { next: deepObj };
+  const boundedDoc = sanitizeForFirestore(deepObj);
+  assert.ok(boundedDoc && boundedDoc.next, 'sanitizeForFirestore debe acotar recursión sin desbordar pila');
+
+  assert.ok(desktopWinPy.includes('_dpapi_protect_text') && desktopWinPy.includes('_verify_bundle_manifest_sha256'), 'desktop_window.py debe proteger ai_config con DPAPI y verificar SHA-256 de bundle al iniciar');
+  const dashPy = fs.readFileSync(path.join(rootDir, 'desktop_app/dashboard_analytics.py'), 'utf8');
+  assert.ok(dashPy.includes('_sanitize_csv_cell'), 'dashboard_analytics.py debe sanitizar celdas CSV contra inyección de fórmulas');
+
+  console.log('  ✅ Bloques C & Hardening 1/2/3 (Crypto, Desktop Bridge, CSP, URL, MIME, Firestore) verificados.');
+  console.log('\n🎉 ¡TODAS LAS VERIFICACIONES DE AUDITORÍA Y HARDENING PASARON AL 100%!');
 }
 
 runTests()

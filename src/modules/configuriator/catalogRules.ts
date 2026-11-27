@@ -7,6 +7,7 @@
 import { getFastTrackItem, getAllFastTrackItems } from '../fasttrack/fastTrackDb';
 import { FastTrackProduct } from '../fasttrack/types';
 import { findGoldenTemplate, goldenTemplateToChassisRule } from './goldenTemplates';
+import { sanitizeSafeHttpUrl } from '../../utils/exportSanitizers';
 
 import {
   CiscoProductFamily,
@@ -2219,8 +2220,10 @@ export function saveLearnedCiscoSku(record: LearnedCiscoSkuRecord): void {
     if (check.isNonExistentSku) return;
 
     const current = getLearnedCiscoSkus();
+    const safeOfficialUrl = sanitizeSafeHttpUrl(record.officialUrl, ['cisco.com']) || undefined;
     current[candidate] = {
       ...record,
+      officialUrl: safeOfficialUrl,
       sku: candidate,
       updatedAt: new Date().toISOString(),
     };

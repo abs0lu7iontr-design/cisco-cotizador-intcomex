@@ -45,10 +45,19 @@ import {
   checkGeoLocation,
   sendTwoFactorOtp,
   requestEdgeSessionToken,
+  clearEdgeSessionToken,
+  TurnstileWidget,
   GeoLocationInfo,
   OtpSessionState,
   TwoFactorModal,
 } from '../modules/security';
+
+function isLocalOrDesktopLogin(): boolean {
+  if (typeof window === 'undefined') return true;
+  if (Boolean((window as any).pywebview?.api)) return true;
+  const host = (window.location?.hostname || '').toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || window.location?.protocol === 'file:';
+}
 
 interface LoginScreenProps {
   onLoginSuccess: (user: UserSession) => void;
@@ -159,6 +168,11 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [showTwoFactorModal, setShowTwoFactorModal] = useState(false);
   const [pendingUserSession, setPendingUserSession] = useState<UserSession | null>(null);
   const [pendingOtpSession, setPendingOtpSession] = useState<OtpSessionState | undefined>(undefined);
+  const [pendingTwoFactorChallenge, setPendingTwoFactorChallenge] = useState<string | undefined>(undefined);
+  const pendingPasswordRef = useRef<string>('');
+  const [turnstileToken, setTurnstileToken] = useState<string>('');
+  const [turnstileUnavailable, setTurnstileUnavailable] = useState<boolean>(false);
+  const showTurnstileWidget = !isOffline && !isLocalOrDesktopLogin();
 
   // Sync Cloud Users and check security on mount
   useEffect(() => {
@@ -240,17 +254,30 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     };
   }, [isLocked, remainingLockSeconds]);
 
-  const handleTwoFactorVerified = () => {
+  const handleTwoFactorVerified = async (twoFactorProof?: string) => {
     setShowTwoFactorModal(false);
-    if (pendingUserSession) {
-      onLoginSuccess(pendingUserSession);
+    const sessionToComplete = pendingUserSession;
+    const challengePass = pendingPasswordRef.current;
+    pendingPasswordRef.current = '';
+    setPendingTwoFactorChallenge(undefined);
+
+    if (sessionToComplete) {
+      if (!isOffline && challengePass && twoFactorProof) {
+        await requestEdgeSessionToken(sessionToComplete.username, challengePass, {
+          twoFactorProof,
+        }).catch(() => ({ success: false }));
+      }
+      onLoginSuccess(sessionToComplete);
       setPendingUserSession(null);
     }
   };
 
   const handleTwoFactorCancel = () => {
+    pendingPasswordRef.current = '';
     setShowTwoFactorModal(false);
     setPendingUserSession(null);
+    setPendingTwoFactorChallenge(undefined);
+    clearEdgeSessionToken();
     setErrorMsg('Verificación 2FA cancelada. Se requiere autenticación de doble factor para conexiones internacionales.');
   };
 
@@ -286,6 +313,17 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     );
     recentRequests.push(now);
 
+    if (recentRequests.length > MAX_FLOOD_REQUESTS) {
+      saveSecurityState({ ...secState, recentRequestTimestamps: recentRequests });
+      setErrorMsg('⏳ Demasiados intentos en pocos segundos. Espera un momento antes de reintentar.');
+      return;
+    }
+
+    if (showTurnstileWidget && !turnstileToken && !turnstileUnavailable) {
+      setErrorMsg('Por favor completa la verificación de seguridad Cloudflare Turnstile antes de ingresar.');
+      return;
+    }
+
     setIsLoading(true);
     setErrorMsg(null);
 
@@ -294,14 +332,12 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       if ((window as any).pywebview?.api?.login_user) {
         const res = await (window as any).pywebview.api.login_user(cleanUser, cleanPass);
         if (res && res.success && res.user) {
-          // Reset security counters
           saveSecurityState({
             failedAttempts: 0,
             lockedUntil: 0,
             lastAttemptTime: now,
             recentRequestTimestamps: [],
           });
-          // Guardar preferencia de recordar usuario y contraseña en este equipo
           if (rememberUser && cleanUser) {
             saveLocalPlatformConfig({
               rememberLastUser: true,
@@ -323,13 +359,25 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               }
             } catch {}
           }
-          if (!isOffline) {
-            await requestEdgeSessionToken(cleanUser, cleanPass).catch(() => ({ success: false }));
-          }
-          const currentGeo = geoInfo || (await checkGeoLocation());
+
+          let twoFactorChallenge: string | undefined;
+          let currentGeo = geoInfo || (await checkGeoLocation());
           if (!geoInfo) setGeoInfo(currentGeo);
+
+          if (!isOffline) {
+            const edgeRes = await requestEdgeSessionToken(cleanUser, cleanPass, {
+              ...(turnstileToken ? { turnstileToken } : {}),
+            });
+            if (edgeRes.requires2FA) {
+              twoFactorChallenge = edgeRes.twoFactorChallenge;
+              if (edgeRes.geo) currentGeo = edgeRes.geo;
+            }
+          }
+
           if (currentGeo.requires2FA && !isOffline) {
-            const otpRes = await sendTwoFactorOtp(cleanUser, res.user.email || '', currentGeo);
+            const otpRes = await sendTwoFactorOtp(cleanUser, res.user.email || '', currentGeo, twoFactorChallenge);
+            pendingPasswordRef.current = cleanPass;
+            setPendingTwoFactorChallenge(twoFactorChallenge);
             setPendingUserSession(res.user);
             setPendingOtpSession(otpRes.otpSession);
             setShowTwoFactorModal(true);
@@ -339,7 +387,6 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           onLoginSuccess(res.user);
           return;
         } else {
-          // Failure on backend
           const newFailed = secState.failedAttempts + 1;
           const willLock = newFailed >= MAX_FAILED_ATTEMPTS;
           const lockedUntil = willLock ? now + LOCKOUT_DURATION_MS : 0;
@@ -364,41 +411,124 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         }
       }
 
-      // 3. Autenticación Segura en la Nube (Las contraseñas NUNCA se guardan en el PC)
+      // 2. Autenticación Segura Server-First (Cloudflare Edge + Firestore Auth)
       let foundUser: CloudUserRecord | null = null;
+      let serverAuthHandled = false;
 
-      const authRes = await authenticateCloudUser(cleanUser, cleanPass);
-      if (!authRes.success || !authRes.user) {
-        if (authRes.isOfflineBlocked) {
-          setErrorMsg(authRes.error || 'Se requiere conexión a Internet para iniciar sesión.');
+      if (!isOffline) {
+        const edgeRes = await requestEdgeSessionToken(cleanUser, cleanPass, {
+          ...(turnstileToken ? { turnstileToken } : {}),
+        });
+
+        if (edgeRes.requires2FA && edgeRes.user) {
+          saveSecurityState({
+            failedAttempts: 0,
+            lockedUntil: 0,
+            lastAttemptTime: now,
+            recentRequestTimestamps: [],
+          });
+          setFailedCount(0);
+          const resolvedGeo = edgeRes.geo || {
+            country: 'EXT',
+            city: 'Desconocida',
+            region: 'N/A',
+            ip: '0.0.0.0',
+            isChile: false,
+            requires2FA: true,
+          };
+          setGeoInfo(resolvedGeo);
+          const otpRes = await sendTwoFactorOtp(
+            cleanUser,
+            edgeRes.user.email || '',
+            resolvedGeo,
+            edgeRes.twoFactorChallenge
+          );
+          pendingPasswordRef.current = cleanPass;
+          setPendingTwoFactorChallenge(edgeRes.twoFactorChallenge);
+          setPendingUserSession({
+            username: cleanUser,
+            full_name: edgeRes.user.full_name,
+            role: edgeRes.user.role as any,
+            email: edgeRes.user.email,
+          });
+          setPendingOtpSession(otpRes.otpSession);
+          setShowTwoFactorModal(true);
+          setIsLoading(false);
           return;
         }
 
-        // Register failed attempt (user not found or invalid password)
-        const newFailed = secState.failedAttempts + 1;
-        const willLock = newFailed >= MAX_FAILED_ATTEMPTS;
-        const lockedUntil = willLock ? now + LOCKOUT_DURATION_MS : 0;
+        if (edgeRes.success && edgeRes.user) {
+          serverAuthHandled = true;
+          foundUser = {
+            username: cleanUser,
+            full_name: edgeRes.user.full_name,
+            role: edgeRes.user.role as any,
+            email: edgeRes.user.email,
+            is_active: 1,
+            created_at: new Date().toISOString(),
+          };
+        } else if (!edgeRes.isEdgeUnavailable) {
+          const newFailed = secState.failedAttempts + 1;
+          const willLock = newFailed >= MAX_FAILED_ATTEMPTS;
+          const lockedUntil = willLock ? now + LOCKOUT_DURATION_MS : 0;
 
-        saveSecurityState({
-          failedAttempts: willLock ? MAX_FAILED_ATTEMPTS : newFailed,
-          lockedUntil,
-          lastAttemptTime: now,
-          recentRequestTimestamps: recentRequests,
-        });
+          saveSecurityState({
+            failedAttempts: willLock ? MAX_FAILED_ATTEMPTS : newFailed,
+            lockedUntil,
+            lastAttemptTime: now,
+            recentRequestTimestamps: recentRequests,
+          });
 
-        setFailedCount(newFailed);
-
-        if (willLock) {
-          setIsLocked(true);
-          setRemainingLockSeconds(LOCKOUT_DURATION_MS / 1000);
-          setErrorMsg('⛔ Acceso restringido temporalmente por motivos de seguridad.');
-        } else {
-          setErrorMsg(authRes.error || 'Usuario o contraseña incorrectos.');
+          setFailedCount(newFailed);
+          if (willLock) {
+            setIsLocked(true);
+            setRemainingLockSeconds(LOCKOUT_DURATION_MS / 1000);
+            setErrorMsg('⛔ Acceso restringido temporalmente por motivos de seguridad.');
+          } else {
+            setErrorMsg(edgeRes.error || 'Usuario o contraseña incorrectos.');
+          }
+          return;
         }
-        return;
       }
 
-      foundUser = authRes.user;
+      if (!serverAuthHandled) {
+        const authRes = await authenticateCloudUser(cleanUser, cleanPass);
+        if (!authRes.success || !authRes.user) {
+          if (authRes.isOfflineBlocked) {
+            setErrorMsg(authRes.error || 'Se requiere conexión a Internet para iniciar sesión.');
+            return;
+          }
+
+          const newFailed = secState.failedAttempts + 1;
+          const willLock = newFailed >= MAX_FAILED_ATTEMPTS;
+          const lockedUntil = willLock ? now + LOCKOUT_DURATION_MS : 0;
+
+          saveSecurityState({
+            failedAttempts: willLock ? MAX_FAILED_ATTEMPTS : newFailed,
+            lockedUntil,
+            lastAttemptTime: now,
+            recentRequestTimestamps: recentRequests,
+          });
+
+          setFailedCount(newFailed);
+
+          if (willLock) {
+            setIsLocked(true);
+            setRemainingLockSeconds(LOCKOUT_DURATION_MS / 1000);
+            setErrorMsg('⛔ Acceso restringido temporalmente por motivos de seguridad.');
+          } else {
+            setErrorMsg(authRes.error || 'Usuario o contraseña incorrectos.');
+          }
+          return;
+        }
+
+        foundUser = authRes.user;
+      }
+
+      if (!foundUser) {
+        setErrorMsg('Usuario o contraseña incorrectos.');
+        return;
+      }
 
       // Reset security state on success
       saveSecurityState({
@@ -409,7 +539,6 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       });
       setFailedCount(0);
 
-      // Guardar preferencia de recordar usuario y contraseña en este equipo
       if (rememberUser && cleanUser) {
         saveLocalPlatformConfig({
           rememberLastUser: true,
@@ -432,47 +561,22 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         } catch {}
       }
 
-      // Update last_login asynchronously & emit Edge session token si está Online
       if (!isOffline) {
         saveCloudUser({
           ...foundUser,
           last_login: new Date().toISOString(),
         }).catch(() => {});
-        await requestEdgeSessionToken(cleanUser, cleanPass).catch(() => ({ success: false }));
       }
 
-        const userSession: UserSession = {
-          username: cleanUser,
-          full_name: foundUser.full_name,
-          role: foundUser.role as any,
-          email: foundUser.email,
-        };
+      const userSession: UserSession = {
+        username: cleanUser,
+        full_name: foundUser.full_name,
+        role: foundUser.role as any,
+        email: foundUser.email,
+      };
 
-        const currentGeo =
-          geoInfo ||
-          (isOffline
-            ? {
-                country: 'CL',
-                city: 'Santiago',
-                region: 'RM',
-                ip: '127.0.0.1',
-                isChile: true,
-                requires2FA: false,
-              }
-            : await checkGeoLocation());
-        if (!geoInfo) setGeoInfo(currentGeo);
-
-        if (currentGeo.requires2FA && !isOffline) {
-          const otpRes = await sendTwoFactorOtp(cleanUser, foundUser.email || '', currentGeo);
-          setPendingUserSession(userSession);
-          setPendingOtpSession(otpRes.otpSession);
-          setShowTwoFactorModal(true);
-          setIsLoading(false);
-          return;
-        }
-
-        onLoginSuccess(userSession);
-        return;
+      onLoginSuccess(userSession);
+      return;
     } catch (err: any) {
       setErrorMsg('Error de autenticación: ' + (err?.message || 'Fallo de conexión'));
     } finally {
@@ -678,6 +782,23 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             </label>
           </div>
 
+          {showTurnstileWidget && (
+            <TurnstileWidget
+              theme="dark"
+              onSuccess={(tok) => {
+                setTurnstileToken(tok);
+                setTurnstileUnavailable(false);
+              }}
+              onExpire={() => setTurnstileToken('')}
+              onError={(errCode) => {
+                setTurnstileToken('');
+                if (errCode === '110600' || errCode === '300030') {
+                  setTurnstileUnavailable(true);
+                }
+              }}
+            />
+          )}
+
           <button
             type="submit"
             disabled={isLocked || isLoading || !username.trim() || !password}
@@ -718,6 +839,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           email={pendingUserSession.email || ''}
           geoInfo={geoInfo || { country: 'EXT', city: '', region: '', ip: '', isChile: false, requires2FA: true }}
           initialOtpSession={pendingOtpSession}
+          twoFactorChallenge={pendingTwoFactorChallenge}
           onVerified={handleTwoFactorVerified}
           onCancel={handleTwoFactorCancel}
         />

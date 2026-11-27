@@ -4,7 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { sanitizeCsvCell } from '../../utils/exportSanitizers';
+import { sanitizeCsvCell, sanitizeSafeHttpUrl } from '../../utils/exportSanitizers';
 import {
   Truck,
   Package,
@@ -810,10 +810,10 @@ export function BoTrackingView() {
                             </div>
 
                             {/* Courier / FedEx Tracking Direct Button */}
-                            {order.courierTrackingNumber ? (
+                            {order.courierTrackingNumber && sanitizeSafeHttpUrl(order.courierTrackingUrl) ? (
                               <div className="mb-2.5">
                                 <a
-                                  href={order.courierTrackingUrl}
+                                  href={sanitizeSafeHttpUrl(order.courierTrackingUrl)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="w-full inline-flex items-center justify-center space-x-1.5 px-2.5 py-1.5 bg-purple-950/50 hover:bg-purple-900/70 text-purple-300 border border-purple-700/50 rounded-lg text-[10px] font-bold transition-colors"
@@ -999,9 +999,9 @@ export function BoTrackingView() {
                           </span>
                         </td>
                         <td className={cellPaddingClass}>
-                          {order.courierTrackingNumber ? (
+                          {order.courierTrackingNumber && sanitizeSafeHttpUrl(order.courierTrackingUrl) ? (
                             <a
-                              href={order.courierTrackingUrl}
+                              href={sanitizeSafeHttpUrl(order.courierTrackingUrl)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center space-x-1 text-purple-300 hover:text-purple-200 font-mono font-bold"

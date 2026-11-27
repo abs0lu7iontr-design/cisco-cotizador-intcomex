@@ -4,18 +4,12 @@ rules_version = '2';
 // Assumed Data Model (Cisco Automated v2.26+ - Intcomex)
 // ===============================================================
 //
-// Architectural & Auth-Gating Note:
-// `src/modules/cloud/firebaseConfig.ts` currently initializes `firebase/app` and
-// `firebase/firestore` WITHOUT signing into Firebase Authentication (`request.auth`
-// is `null` in standard Web and Desktop client builds).
-//
-// Because of this, reads and operational writes currently permit `!isAuthenticated()`
-// where required by the live client app (including LoginScreen `last_login` sync,
-// UserManagementView Web admin CRUD, and operational modules).
-// Removing `!isAuthenticated()` (and replacing `allow read: if true;` with
-// authenticated / owner-scoped read checks) completes the full lock once
-// `FIREBASE_SERVICE_ACCOUNT_JSON` Custom Token auth is enabled in Cloudflare and
-// integrated into `firebaseConfig.ts`.
+// Authentication & Authorization Model:
+// All client reads and writes require Firebase Authentication (`isAuthenticated()`),
+// using Firebase Custom Tokens minted by `/api/session-auth` with claims:
+// `{ role, admin, username, email, email_verified }`.
+// Unauthenticated (`!isAuthenticated()`) and public (`allow read: if true`) access
+// are completely disabled across every collection and subcollection.
 //
 // Collection 1: estimates/{estimateId}
 //   - id, dealId, estimateId, partnerName, clientFinalName, modelName, originalFileName: string
@@ -56,11 +50,11 @@ rules_version = '2';
 //   - updated_at: string (optional, <= 100 chars)
 //   - last_login: string (optional, <= 100 chars)
 //   Hardening:
+//     - Read restricted strictly to owner (`isOwner(userId)`) or `isAdmin()`
 //     - Physical delete forbidden (`allow delete: if false;`)
-//     - Root `'admin'` and `'mskill'` cannot be deactivated or demoted (`role == 'admin' && is_active == 1`),
-//       and `!isAuthenticated()` callers cannot mutate their `role` or `is_active`
-//     - When `isAuthenticated()` is true, only `isAdmin()` can create users, and updates allow
-//       only `isAdmin()` or `isOwner(userId)` with immutable `['role', 'is_active', 'password_hash']`
+//     - Root `'admin'` and `'mskill'` cannot be deactivated or demoted (`role == 'admin' && is_active == 1`)
+//     - Only `isAdmin()` can create users; updates allow `isAdmin()` or `isOwner(userId)` with
+//       immutable `['role', 'is_active', 'password_hash']`
 //
 // Collection 4: shared_sku_rules/{skuId}
 //   - id, sku, rule, previousType, note, updatedAt, createdAt: string
@@ -115,7 +109,7 @@ rules_version = '2';
 //
 // Collection 13: cisco_forecast_records/{recordId}
 //   - id (matches recordId), and optional 36-column forecast fields
-//   - Delete restricted to `isAdmin() || !isAuthenticated()` (aligned with pipeline/BO/reminders)
+//   - Delete restricted strictly to `isAdmin()`
 //
 // ===============================================================
 
@@ -145,16 +139,52 @@ service cloud.firestore {
     }
 
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return isAuthenticated() && (
+        request.auth.uid == userId ||
+        ('username' in request.auth.token &&
+          request.auth.token.username is string &&
+          request.auth.token.username.lower() == userId)
+      );
     }
 
     function isDocOwner(docData) {
       return isAuthenticated() && docData is map && (
         ('creator' in docData && docData.creator is map && (
-          ('username' in docData.creator && 'username' in request.auth.token && docData.creator.username == request.auth.token.username) ||
-          ('email' in docData.creator && 'email' in request.auth.token && 'email_verified' in request.auth.token && request.auth.token.email_verified == true && docData.creator.email == request.auth.token.email)
+          ('username' in docData.creator && docData.creator.username is string && (
+            docData.creator.username.lower() == request.auth.uid.lower() ||
+            ('username' in request.auth.token && request.auth.token.username is string && docData.creator.username.lower() == request.auth.token.username.lower())
+          )) ||
+          ('uid' in docData.creator && docData.creator.uid is string && docData.creator.uid == request.auth.uid) ||
+          ('userId' in docData.creator && docData.creator.userId is string && docData.creator.userId == request.auth.uid) ||
+          ('email' in docData.creator && docData.creator.email is string && 'email' in request.auth.token && 'email_verified' in request.auth.token && request.auth.token.email_verified == true && docData.creator.email == request.auth.token.email)
         )) ||
-        ('userId' in docData && docData.userId == request.auth.uid)
+        ('createdBy' in docData && docData.createdBy is string && (
+          docData.createdBy.lower() == request.auth.uid.lower() ||
+          ('username' in request.auth.token && request.auth.token.username is string && docData.createdBy.lower() == request.auth.token.username.lower())
+        )) ||
+        ('ownerUsername' in docData && docData.ownerUsername is string && (
+          docData.ownerUsername.lower() == request.auth.uid.lower() ||
+          ('username' in request.auth.token && request.auth.token.username is string && docData.ownerUsername.lower() == request.auth.token.username.lower())
+        )) ||
+        ('creatorUsername' in docData && docData.creatorUsername is string && (
+          docData.creatorUsername.lower() == request.auth.uid.lower() ||
+          ('username' in request.auth.token && request.auth.token.username is string && docData.creatorUsername.lower() == request.auth.token.username.lower())
+        )) ||
+        ('userId' in docData && docData.userId is string && docData.userId == request.auth.uid) ||
+        ('uid' in docData && docData.uid is string && docData.uid == request.auth.uid)
+      );
+    }
+
+    function canReadEstimate(estData) {
+      return estData is map && (
+        !('isRestricted' in estData) ||
+        estData.isRestricted != true ||
+        isAdmin() ||
+        isDocOwner(estData) ||
+        ('allowedUsers' in estData &&
+          estData.allowedUsers is list &&
+          (('username' in request.auth.token && request.auth.token.username is string && request.auth.token.username in estData.allowedUsers) ||
+           request.auth.uid in estData.allowedUsers))
       );
     }
 
@@ -726,32 +756,44 @@ service cloud.firestore {
     // 1. COLECCIÓN ESTIMATES (Cotizaciones CCW)
     // ------------------------------------------------------------------------
     match /estimates/{estimateId} {
-      allow read: if true;
-      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+      allow read: if isAuthenticated() && (
+        resource == null ||
+        canReadEstimate(resource.data)
+      );
+      allow create: if isAuthenticated() &&
         hasOnlyAllowedFields(allowedEstimateFields()) &&
         isValidEstimate(request.resource.data);
-      allow update: if affectedKeysOnlyAllowed(allowedEstimateFields()) &&
+      allow update: if isAuthenticated() &&
+        affectedKeysOnlyAllowed(allowedEstimateFields()) &&
         isValidEstimate(request.resource.data) &&
-        (isAdmin() || isDocOwner(resource.data) || !isAuthenticated());
-      allow delete: if isAdmin() || isDocOwner(resource.data) || !isAuthenticated();
+        (isAdmin() || isDocOwner(resource.data));
+      allow delete: if isAuthenticated() &&
+        (isAdmin() || isDocOwner(resource.data)) &&
+        !exists(/databases/$(database)/documents/estimates/$(estimateId)/versions/v0_RAW) &&
+        !exists(/databases/$(database)/documents/estimates/$(estimateId)/versions/v0);
 
       // Subcolección: versions (Historial y versiones de la cotización)
       match /versions/{versionId} {
-        allow read: if true;
-        allow create: if hasOnlyAllowedFields(allowedEstimateVersionFields()) &&
+        allow read: if isAuthenticated() && (
+          !exists(/databases/$(database)/documents/estimates/$(estimateId)) ||
+          canReadEstimate(get(/databases/$(database)/documents/estimates/$(estimateId)).data)
+        );
+        allow create: if isAuthenticated() &&
+          hasOnlyAllowedFields(allowedEstimateVersionFields()) &&
           isValidEstimateVersion(request.resource.data) &&
           existsAfter(/databases/$(database)/documents/estimates/$(estimateId)) &&
-          (isAdmin() || isDocOwner(getAfter(/databases/$(database)/documents/estimates/$(estimateId)).data) || !isAuthenticated());
-        allow update: if versionId != 'v0_RAW' &&
+          (isAdmin() || isDocOwner(getAfter(/databases/$(database)/documents/estimates/$(estimateId)).data));
+        allow update: if isAuthenticated() &&
+          versionId != 'v0_RAW' &&
           versionId != 'v0' &&
           affectedKeysOnlyAllowed(allowedEstimateVersionFields()) &&
           isValidEstimateVersion(request.resource.data) &&
           exists(/databases/$(database)/documents/estimates/$(estimateId)) &&
-          (isAdmin() || !isAuthenticated() || isDocOwner(get(/databases/$(database)/documents/estimates/$(estimateId)).data));
-        allow delete: if versionId != 'v0_RAW' &&
+          (isAdmin() || isDocOwner(get(/databases/$(database)/documents/estimates/$(estimateId)).data));
+        allow delete: if isAuthenticated() &&
+          versionId != 'v0_RAW' &&
           versionId != 'v0' &&
           (isAdmin() ||
-            !isAuthenticated() ||
             (exists(/databases/$(database)/documents/estimates/$(estimateId)) &&
               isDocOwner(get(/databases/$(database)/documents/estimates/$(estimateId)).data)));
       }
@@ -761,30 +803,33 @@ service cloud.firestore {
     // 2. COLECCIÓN DSV_RECORDS (Órdenes DSV 48 Horas)
     // ------------------------------------------------------------------------
     match /dsv_records/{dsvId} {
-      allow read: if true;
-      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
         hasOnlyAllowedFields(allowedDsvFields()) &&
         isValidDsvRecord(request.resource.data);
-      allow update: if affectedKeysOnlyAllowed(allowedDsvFields()) &&
+      allow update: if isAuthenticated() &&
+        affectedKeysOnlyAllowed(allowedDsvFields()) &&
         isValidDsvRecord(request.resource.data) &&
-        (isAdmin() || isDocOwner(resource.data) || !isAuthenticated());
-      allow delete: if isAdmin() || isDocOwner(resource.data) || !isAuthenticated();
+        (isAdmin() || isDocOwner(resource.data));
+      allow delete: if isAuthenticated() &&
+        (isAdmin() || isDocOwner(resource.data));
     }
 
     // ------------------------------------------------------------------------
     // 3. COLECCIÓN USERS (Gestión de Identidades y RBAC)
     // ------------------------------------------------------------------------
     match /users/{userId} {
-      allow read: if true;
-      allow create: if isValidUser(request.resource.data, userId) &&
-        (!('email' in request.resource.data) || request.resource.data.email == '' || isValidEmail(request.resource.data.email)) &&
-        (isAdmin() || !isAuthenticated());
-      allow update: if isValidUser(request.resource.data, userId) &&
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow create: if isAuthenticated() &&
+        isAdmin() &&
+        isValidUser(request.resource.data, userId) &&
+        (!('email' in request.resource.data) || request.resource.data.email == '' || isValidEmail(request.resource.data.email));
+      allow update: if isAuthenticated() &&
+        isValidUser(request.resource.data, userId) &&
         isUserImmutableFieldsUnchanged() &&
         (
           isAdmin() ||
-          (isOwner(userId) && areImmutableFieldsUnchanged(['role', 'is_active', 'password_hash'])) ||
-          (!isAuthenticated() && (!(userId in ['admin', 'mskill']) || areImmutableFieldsUnchanged(['role', 'is_active'])))
+          (isOwner(userId) && areImmutableFieldsUnchanged(['role', 'is_active', 'password_hash']))
         );
       allow delete: if false;
     }
@@ -793,140 +838,140 @@ service cloud.firestore {
     // 4. COLECCIÓN SHARED_SKU_RULES (Reglas de Reclasificación de SKUs)
     // ------------------------------------------------------------------------
     match /shared_sku_rules/{skuId} {
-      allow read: if true;
-      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
         hasOnlyAllowedFields(allowedSharedSkuFields()) &&
         isValidSharedSkuRule(request.resource.data);
-      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+      allow update: if isAuthenticated() &&
         affectedKeysOnlyAllowed(allowedSharedSkuFields()) &&
         isValidSharedSkuRule(request.resource.data);
-      allow delete: if isAdmin() || !isAuthenticated();
+      allow delete: if isAdmin();
     }
 
     // ------------------------------------------------------------------------
     // 5. COLECCIÓN PARTNER_CUSTOM_PARAMS (Perfiles de Parámetros Comerciales)
     // ------------------------------------------------------------------------
     match /partner_custom_params/{paramId} {
-      allow read: if true;
-      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
         hasOnlyAllowedFields(allowedPartnerParamFields()) &&
         isValidPartnerCustomParam(request.resource.data);
-      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+      allow update: if isAuthenticated() &&
         affectedKeysOnlyAllowed(allowedPartnerParamFields()) &&
         isValidPartnerCustomParam(request.resource.data);
-      allow delete: if isAdmin() || !isAuthenticated();
+      allow delete: if isAdmin();
     }
 
     // ------------------------------------------------------------------------
     // 6. COLECCIÓN PARTNERS_XCL (Base Global de Códigos XCL de Partners)
     // ------------------------------------------------------------------------
     match /partners_xcl/{partnerId} {
-      allow read: if true;
-      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
         hasOnlyAllowedFields(allowedPartnerXclFields()) &&
         isValidPartnerXcl(request.resource.data);
-      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+      allow update: if isAuthenticated() &&
         affectedKeysOnlyAllowed(allowedPartnerXclFields()) &&
         isValidPartnerXcl(request.resource.data);
-      allow delete: if isAdmin() || !isAuthenticated();
+      allow delete: if isAdmin();
     }
 
     // ------------------------------------------------------------------------
     // 7. COLECCIÓN CISCO_BO_SKU_CATALOG (Catálogo Part Number <-> SKU Intcomex)
     // ------------------------------------------------------------------------
     match /cisco_bo_sku_catalog/{skuKey} {
-      allow read: if true;
-      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
         hasOnlyAllowedFields(allowedBoSkuCatalogFields()) &&
         isValidBoSkuCatalog(request.resource.data);
-      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+      allow update: if isAuthenticated() &&
         affectedKeysOnlyAllowed(allowedBoSkuCatalogFields()) &&
         isValidBoSkuCatalog(request.resource.data);
-      allow delete: if isAdmin() || !isAuthenticated();
+      allow delete: if isAdmin();
     }
 
     // ------------------------------------------------------------------------
     // 8. COLECCIÓN BO_ORDER_TRACKING (Seguimiento Logístico de Back Orders)
     // ------------------------------------------------------------------------
     match /bo_order_tracking/{trackingId} {
-      allow read: if true;
-      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
         hasOnlyAllowedFields(allowedBoTrackingFields()) &&
         isValidBoOrderTracking(request.resource.data);
-      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+      allow update: if isAuthenticated() &&
         affectedKeysOnlyAllowed(allowedBoTrackingFields()) &&
         isValidBoOrderTracking(request.resource.data);
-      allow delete: if isAdmin() || !isAuthenticated();
+      allow delete: if isAdmin();
     }
 
     // ------------------------------------------------------------------------
     // 9. COLECCIÓN CISCO_FAST_TRACK_CATALOG (Catálogo Fast Track y Metadatos)
     // ------------------------------------------------------------------------
     match /cisco_fast_track_catalog/{docId} {
-      allow read: if true;
-      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
         hasOnlyAllowedFields(allowedFastTrackFields()) &&
         isValidFastTrackCatalog(request.resource.data);
-      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+      allow update: if isAuthenticated() &&
         affectedKeysOnlyAllowed(allowedFastTrackFields()) &&
         isValidFastTrackCatalog(request.resource.data);
-      allow delete: if isAdmin() || !isAuthenticated();
+      allow delete: if isAdmin();
     }
 
     // ------------------------------------------------------------------------
     // 10. COLECCIÓN DEAL_REMINDERS (Seguimiento y Recordatorios de Deals Cisco)
     // ------------------------------------------------------------------------
     match /deal_reminders/{reminderId} {
-      allow read: if true;
-      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
         hasOnlyAllowedFields(allowedDealReminderFields()) &&
         isValidDealReminder(request.resource.data);
-      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+      allow update: if isAuthenticated() &&
         affectedKeysOnlyAllowed(allowedDealReminderFields()) &&
         isValidDealReminder(request.resource.data);
-      allow delete: if isAdmin() || !isAuthenticated();
+      allow delete: if isAdmin();
     }
 
     // ------------------------------------------------------------------------
     // 11. COLECCIÓN APP_FEEDBACK_TICKETS (Feedback, Bugs & Mejoras)
     // ------------------------------------------------------------------------
     match /app_feedback_tickets/{ticketId} {
-      allow read: if true;
-      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
         hasOnlyAllowedFields(allowedFeedbackTicketFields()) &&
         isValidFeedbackTicket(request.resource.data);
-      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+      allow update: if isAuthenticated() &&
         affectedKeysOnlyAllowed(allowedFeedbackTicketFields()) &&
         isValidFeedbackTicket(request.resource.data);
-      allow delete: if isAdmin() || !isAuthenticated();
+      allow delete: if isAdmin();
     }
 
     // ------------------------------------------------------------------------
     // 12. COLECCIÓN CISCO_PIPELINE_DEALS (Pipeline Comercial & Oportunidades)
     // ------------------------------------------------------------------------
     match /cisco_pipeline_deals/{dealId} {
-      allow read: if true;
-      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
         hasOnlyAllowedFields(allowedPipelineDealFields()) &&
         isValidPipelineDeal(request.resource.data, dealId);
-      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+      allow update: if isAuthenticated() &&
         affectedKeysOnlyAllowed(allowedPipelineDealFields()) &&
         isValidPipelineDeal(request.resource.data, dealId);
-      allow delete: if isAdmin() || !isAuthenticated();
+      allow delete: if isAdmin();
     }
 
     // ------------------------------------------------------------------------
     // 13. COLECCIÓN CISCO_FORECAST_RECORDS (Matriz Comercial Forecast Intcomex)
     // ------------------------------------------------------------------------
     match /cisco_forecast_records/{recordId} {
-      allow read: if true;
-      allow create: if (isAuthenticated() || !isAuthenticated()) &&
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
         hasOnlyAllowedFields(allowedForecastRecordFields()) &&
         isValidForecastRecord(request.resource.data, recordId);
-      allow update: if (isAuthenticated() || !isAuthenticated()) &&
+      allow update: if isAuthenticated() &&
         affectedKeysOnlyAllowed(allowedForecastRecordFields()) &&
         isValidForecastRecord(request.resource.data, recordId);
-      allow delete: if isAdmin() || !isAuthenticated();
+      allow delete: if isAdmin();
     }
 
     // ------------------------------------------------------------------------

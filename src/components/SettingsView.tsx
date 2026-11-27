@@ -43,6 +43,7 @@ import {
   setManualOfflineMode,
 } from '../core/storage/offlineModeManager';
 import { getLocalUsersCache } from '../modules/cloud';
+import { sanitizeSafeHttpUrl } from '../utils/exportSanitizers';
 import { useCiscoAutomatedStore } from '../core/store';
 import { DsvPartnerUploader } from '../modules/dsv/components/DsvPartnerUploader';
 import {
@@ -1158,15 +1159,17 @@ export function SettingsView({
                   </button>
                 )}
 
-                <a
-                  href={updateInfo.release_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <span>Ver Despliegue en la Nube</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                {sanitizeSafeHttpUrl(updateInfo.release_url, ['pages.dev', 'github.com']) && (
+                  <a
+                    href={sanitizeSafeHttpUrl(updateInfo.release_url, ['pages.dev', 'github.com'])}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <span>Ver Despliegue en la Nube</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
               </div>
             )}
           </div>

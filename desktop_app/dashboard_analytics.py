@@ -1,4 +1,5 @@
 import os
+import re
 import json
 from typing import List, Dict, Any
 
@@ -54,10 +55,23 @@ class AnalyticsEngine:
             "recent_estimates": estimates[:15]
         }
 
+    @staticmethod
+    def _sanitize_csv_cell(value: Any) -> Any:
+        """Neutralizes spreadsheet formula injection (=, +, -, @, TAB, CR) in exported CSV cells."""
+        if isinstance(value, (int, float)):
+            return value
+        text = "" if value is None else str(value)
+        stripped = text.lstrip()
+        if stripped and stripped[0] in ("=", "+", "-", "@", "\t", "\r"):
+            if not (stripped[0] == "-" and re.match(r"^-\d+(?:\.\d+)?$", stripped)):
+                return f"'{text}"
+        return text
+
     def export_summary_csv(self, filepath: str, user_id: str = None, is_admin: bool = False) -> str:
         """Exports estimate summary table to CSV."""
         import csv
         estimates = self.db.get_estimates_list(user_id=user_id, is_admin=is_admin)
+        clean = self._sanitize_csv_cell
 
         with open(filepath, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
@@ -68,10 +82,10 @@ class AnalyticsEngine:
             ])
             for e in estimates:
                 writer.writerow([
-                    e["estimate_id_cisco"], e.get("username", "N/A"),
-                    e["partner_name"], e["client_final_name"],
-                    e["original_filename"], e["net_cisco_total"],
-                    e["total_cotizado_intcomex"], e["ganancia_intcomex_usd"],
-                    e["items_count"], e["created_at"]
+                    clean(e["estimate_id_cisco"]), clean(e.get("username", "N/A")),
+                    clean(e["partner_name"]), clean(e["client_final_name"]),
+                    clean(e["original_filename"]), clean(e["net_cisco_total"]),
+                    clean(e["total_cotizado_intcomex"]), clean(e["ganancia_intcomex_usd"]),
+                    clean(e["items_count"]), clean(e["created_at"])
                 ])
         return filepath

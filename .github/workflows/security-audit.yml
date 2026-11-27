@@ -33,8 +33,13 @@ jobs:
         run: npm run typecheck
 
       - name: Security & Domain Unit Tests
-        run: npx tsx tests/twoFactorAdaptive.test.ts
+        run: npm test
 
-      - name: Dependency Vulnerability Audit (Non-blocking)
-        run: npm audit --audit-level=high || true
-        continue-on-error: true
+      - name: Python Desktop Syntax Check
+        run: python3 -m py_compile desktop_app/*.py
+
+      - name: Dependency Vulnerability Audit (Critical Fail-Closed)
+        run: npm audit --audit-level=critical
+
+      - name: Dependency Production Report (High/Moderate Advisory Log)
+        run: npm audit --omit=dev --audit-level=high || true

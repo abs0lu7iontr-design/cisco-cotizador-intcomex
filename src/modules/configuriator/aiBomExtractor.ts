@@ -14,7 +14,9 @@ import {
   saveAiSettings,
   markApiKeyStatus,
   ApiKeyEntry,
+  EDGE_AI_SENTINEL,
 } from './aiProviderManager';
+import { getEdgeSessionHeaders, getEdgeSessionToken } from '../security/edgeSessionService';
 import {
   EOL_CATALOG_2026,
   saveLearnedCiscoSku,
@@ -518,28 +520,38 @@ async function callGeminiProvider(
     const defaultAttemptMs = modelName.includes('pro') ? 13000 : 8500;
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+      const usingEdgeProxy = cleanKey === EDGE_AI_SENTINEL;
+      const url = usingEdgeProxy
+        ? '/api/ai-proxy'
+        : `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+      const geminiPayload = {
+        systemInstruction: {
+          parts: [{ text: SYSTEM_INSTRUCTION }],
+        },
+        contents: [
+          {
+            role: 'user',
+            parts,
+          },
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.05,
+          maxOutputTokens: 8192,
+        },
+      };
       const res = await executeFetchWithAbortAndBodyTimeout(
         url,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: {
-              parts: [{ text: SYSTEM_INSTRUCTION }],
-            },
-            contents: [
-              {
-                role: 'user',
-                parts,
-              },
-            ],
-            generationConfig: {
-              responseMimeType: 'application/json',
-              temperature: 0.05,
-              maxOutputTokens: 8192,
-            },
-          }),
+          ...(usingEdgeProxy ? { credentials: 'same-origin' as RequestCredentials } : {}),
+          headers: {
+            'Content-Type': 'application/json',
+            ...(usingEdgeProxy ? getEdgeSessionHeaders() : {}),
+          },
+          body: JSON.stringify(
+            usingEdgeProxy ? { provider: 'gemini', model: modelName, payload: geminiPayload } : geminiPayload
+          ),
         },
         ctx,
         defaultAttemptMs
@@ -1898,6 +1910,23 @@ export async function extractBOMRequirementsFromInput(
     if (k.enabled && k.apiKey && k.apiKey.trim()) {
       candidateKeys.push(k);
     }
+  }
+
+  // Si no hay BYOK configurada y hay sesión Edge activa, enrutar por el proxy autenticado del servidor
+  if (
+    candidateKeys.length === 0 &&
+    typeof window !== 'undefined' &&
+    window.location?.protocol?.startsWith('http') &&
+    getEdgeSessionToken()
+  ) {
+    candidateKeys.push({
+      id: 'edge-managed-gemini',
+      provider: 'gemini',
+      label: 'Cloudflare Edge AI Proxy (Gemini)',
+      apiKey: EDGE_AI_SENTINEL,
+      model: 'gemini-3.6-flash',
+      enabled: true,
+    });
   }
 
   let globalTimedOut = false;

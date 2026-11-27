@@ -6,17 +6,35 @@
 import { runMiningAudit } from '../../src/modules/mining/miningAuditor';
 import { CustomerMatchInput } from '../../src/modules/mining/customerMatcher';
 import { buildEdgeCorsHeaders } from '../../src/utils/edgeCors';
+import { EdgeEnv, verifyEdgeSessionToken } from '../lib/edgeAuth';
 
-export const onRequestOptions: PagesFunction = async (context) => {
+const MAX_MINING_ITEMS = 2500;
+
+export const onRequestOptions: PagesFunction<EdgeEnv> = async (context) => {
   return new Response(null, {
     status: 204,
-    headers: buildEdgeCorsHeaders(context.request, 'POST, OPTIONS', 'Content-Type'),
+    headers: buildEdgeCorsHeaders(context.request, 'POST, OPTIONS', 'Content-Type, Authorization, X-Edge-Session'),
   });
 };
 
-export const onRequestPost: PagesFunction = async (context) => {
-  const corsHeaders = buildEdgeCorsHeaders(context.request, 'POST, OPTIONS', 'Content-Type');
+export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
+  const corsHeaders = buildEdgeCorsHeaders(
+    context.request,
+    'POST, OPTIONS',
+    'Content-Type, Authorization, X-Edge-Session'
+  );
   try {
+    const session = await verifyEdgeSessionToken(context.request, context.env);
+    if (!session.valid) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Sesión autenticada requerida.' }),
+        {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        }
+      );
+    }
+
     const body: any = await context.request.json();
 
     if (!body || !Array.isArray(body.items)) {
@@ -31,6 +49,19 @@ export const onRequestPost: PagesFunction = async (context) => {
             'Content-Type': 'application/json',
             ...corsHeaders,
           },
+        }
+      );
+    }
+
+    if (body.items.length > MAX_MINING_ITEMS) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Lote excede el límite máximo permitido (${MAX_MINING_ITEMS} ítems).`,
+        }),
+        {
+          status: 413,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
         }
       );
     }

@@ -29,7 +29,7 @@ async function isAuthorizedCronOrSession(request: Request, env: EdgeEnv, allowSe
   }
   if (!allowSession) return false;
   const session = await verifyEdgeSessionToken(request, env);
-  return session.valid;
+  return session.valid && (session.role === 'admin' || session.role === 'pm');
 }
 
 export const onRequestOptions: PagesFunction<EdgeEnv> = async (context) => {

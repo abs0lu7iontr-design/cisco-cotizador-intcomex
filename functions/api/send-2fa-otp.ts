@@ -7,14 +7,17 @@
 
 import { buildEdgeCorsHeaders } from '../../src/utils/edgeCors';
 import {
+  checkEdgeRateLimit,
   createHmacSignature,
   deriveScopedEdgeSecret,
   EdgeEnv,
   escapeHtml,
   fetchFirestoreUserRecord,
+  mintTwoFactorProofToken,
   resolveFirebaseProjectId,
   timingSafeEqualStr,
   verifyFirestoreUserCredentials,
+  verifyTwoFactorChallengeToken,
 } from '../lib/edgeAuth';
 
 const MAX_OTP_ATTEMPTS = 5;
@@ -217,7 +220,7 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
   try {
     const body: any = await context.request.json().catch(() => ({}));
     const action = body?.action || 'send';
-    const secretKey = await deriveScopedEdgeSecret(context.env, '2fa-otp-v1');
+    const secretKey = await deriveScopedEdgeSecret(context.env, '2fa-otp-v1', 'ADMIN_OVERRIDE_SECRET');
     if (!secretKey) {
       return new Response(
         JSON.stringify({ success: false, error: 'Servicio criptográfico 2FA no configurado en el servidor.' }),
@@ -226,18 +229,36 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
     }
 
     const projectId = resolveFirebaseProjectId(context.env);
+    const reqIp = context.request.headers.get('CF-Connecting-IP') || '0.0.0.0';
+    const twoFactorChallenge = String(body?.twoFactorChallenge || '').trim();
 
     // ACCIÓN 1: GENERAR Y ENVIAR CÓDIGO OTP AL CORREO REGISTRADO EN FIRESTORE
     if (action === 'send') {
       const username = String(body?.username || '').trim().toLowerCase();
       const country = String(body?.country || 'EXTERIOR').toUpperCase();
       const city = String(body?.city || 'Desconocida');
-      const ip = context.request.headers.get('CF-Connecting-IP') || '0.0.0.0';
+      const ip = reqIp;
 
       if (!username) {
         return new Response(
           JSON.stringify({ success: false, error: 'El nombre de usuario es obligatorio para despachar 2FA.' }),
           { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+
+      const challengeOk = await verifyTwoFactorChallengeToken(twoFactorChallenge, username, ip, context.env);
+      if (!challengeOk) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Desafío pre-auth 2FA requerido o expirado. Inicia sesión nuevamente.' }),
+          { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+
+      const sendLimit = await checkEdgeRateLimit(`2fa-send:${username}:${ip}`, 5, 600);
+      if (!sendLimit.allowed) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Límite de envíos 2FA excedido. Espera unos minutos.' }),
+          { status: 429, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
         );
       }
 
@@ -289,7 +310,23 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
       const username = String(body?.username || '').trim().toLowerCase();
       const country = String(body?.country || 'EXTERIOR').toUpperCase();
       const city = String(body?.city || 'Desconocida');
-      const ip = context.request.headers.get('CF-Connecting-IP') || '0.0.0.0';
+      const ip = reqIp;
+
+      const challengeOk = await verifyTwoFactorChallengeToken(twoFactorChallenge, username, ip, context.env);
+      if (!challengeOk) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Desafío pre-auth 2FA requerido o expirado.' }),
+          { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+
+      const unlockLimit = await checkEdgeRateLimit(`2fa-unlock:${username}:${ip}`, 3, 900);
+      if (!unlockLimit.allowed) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Solicitud de desbloqueo ya enviada recientemente.' }),
+          { status: 429, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
 
       const userRecord = await fetchFirestoreUserRecord(projectId, username);
       if (!userRecord || userRecord.is_active !== 1) {
@@ -346,6 +383,14 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
         );
       }
 
+      const verifyRate = await checkEdgeRateLimit(`2fa-verify:${username}:${reqIp}`, MAX_OTP_ATTEMPTS, 600);
+      if (!verifyRate.allowed) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Demasiados intentos fallidos de verificación 2FA.' }),
+          { status: 429, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+
       const dayStamp = new Date().toISOString().slice(0, 10);
       const adminCodePayload = `ADMIN_OVERRIDE:${username}:${dayStamp}`;
       const expectedAdminSig = (await createHmacSignature(adminCodePayload, secretKey)).slice(0, 8).toUpperCase();
@@ -356,10 +401,21 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
         timingSafeEqualStr(inputCode.toUpperCase(), expectedAdminSig) ||
         timingSafeEqualStr(inputCode.toUpperCase(), expectedRootMaster)
       ) {
+        const overrideUseKey = `override-used:${username}:${dayStamp}:${inputCode.toUpperCase()}`;
+        const overrideState = await readOtpGuardState(overrideUseKey);
+        if (overrideState.used) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Este código maestro ya fue utilizado.' }),
+            { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+          );
+        }
+        await writeOtpGuardState(overrideUseKey, { fails: 0, used: true }, Date.now() + 24 * 3600 * 1000);
+        const twoFactorProof = await mintTwoFactorProofToken(username, reqIp, context.env);
         return new Response(
           JSON.stringify({
             success: true,
             isOverride: true,
+            ...(twoFactorProof ? { twoFactorProof } : {}),
             message: 'Acceso internacional autorizado por Código Maestro de Administrador.',
           }),
           { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
@@ -415,9 +471,11 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
       }
 
       await writeOtpGuardState(otpSignature, { fails: guard.fails, used: true }, expiresAt);
+      const twoFactorProof = await mintTwoFactorProofToken(username, reqIp, context.env);
       return new Response(
         JSON.stringify({
           success: true,
+          ...(twoFactorProof ? { twoFactorProof } : {}),
           message: 'Autenticación 2FA completada exitosamente.',
         }),
         { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }

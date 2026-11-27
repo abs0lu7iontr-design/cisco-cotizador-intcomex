@@ -19,12 +19,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const corsHeaders = buildEdgeCorsHeaders(context.request, 'POST, OPTIONS');
   try {
     const body: any = await context.request.json();
-    const token = String(body?.token || '').trim();
+    const rawToken = body?.token || body?.response || '';
+    const token = String(rawToken).trim().replace(/^["']|["']$/g, '').trim();
     const ip = context.request.headers.get('CF-Connecting-IP') || '';
 
     if (!token) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Token Turnstile no proporcionado.' }),
+        JSON.stringify({
+          success: false,
+          error: 'Token Turnstile no proporcionado.',
+          'error-codes': ['missing-input-response'],
+        }),
         {
           status: 400,
           headers: { 'Content-Type': 'application/json', ...corsHeaders },

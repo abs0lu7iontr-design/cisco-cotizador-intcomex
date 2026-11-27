@@ -43,6 +43,7 @@ import {
   SPANISH_MONTH_NAMES,
 } from '../../utils/dateUtils';
 import { TableDensityMode } from '../../hooks/useTableDensityAndZoom';
+import { sanitizeSafeHttpUrl } from '../../utils/exportSanitizers';
 import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
 import { downloadContentSafe } from '../../utils/downloadHelper';
 import { formatShortUserFirstName } from '../../utils/userNameUtils';
@@ -663,9 +664,9 @@ export const BoIndividualHistoryView: React.FC<Props> = ({
                         {order.courierTrackingNumber ? (
                           <div className="flex flex-col text-[10px]">
                             <span className="text-slate-400 font-semibold">{order.courier || 'Courier'}</span>
-                            {order.courierTrackingUrl ? (
+                            {sanitizeSafeHttpUrl(order.courierTrackingUrl) ? (
                               <a
-                                href={order.courierTrackingUrl}
+                                href={sanitizeSafeHttpUrl(order.courierTrackingUrl)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center space-x-1 text-cyan-400 hover:underline font-mono"
@@ -865,9 +866,9 @@ export const BoIndividualHistoryView: React.FC<Props> = ({
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 block font-semibold">Courier / Guía</span>
-                  {viewingDetailOrder.courierTrackingUrl ? (
+                  {sanitizeSafeHttpUrl(viewingDetailOrder.courierTrackingUrl) ? (
                     <a
-                      href={viewingDetailOrder.courierTrackingUrl}
+                      href={sanitizeSafeHttpUrl(viewingDetailOrder.courierTrackingUrl)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-xs font-mono text-cyan-400 hover:underline inline-flex items-center gap-1"

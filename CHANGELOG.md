@@ -6,6 +6,25 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.27.0] - 2026-11-27
+
+### Seguridad Integral (Bloques 1, 2 y 3) — Sin Cambios en Fórmulas ni Cálculos
+- **Bloque 1 (Secretos IA, Proxy Cisco, Auth Edge/Firebase, 2FA y PBKDF2):**
+  - Eliminadas todas las semillas API expuestas del frontend en [aiProviderManager.ts](src/modules/configuriator/aiProviderManager.ts), con purga automática de prefijos legados y enrutamiento de extracción/asesoría IA ([aiBomExtractor.ts](src/modules/configuriator/aiBomExtractor.ts), [aiFeedbackAdvisor.ts](src/modules/feedback/aiFeedbackAdvisor.ts)) hacia el nuevo proxy Edge autenticado [functions/api/ai-proxy.ts](functions/api/ai-proxy.ts) (`/api/ai-proxy`).
+  - Corregido bypass parcial de credenciales en [functions/api/cisco-proxy.ts](functions/api/cisco-proxy.ts) (`hasCompleteClientCreds`) y bloqueo del rol `viewer`.
+  - Endurecida autenticación Web/Edge/Cloud con Firebase Custom Auth (`signInWithCustomToken` / `signOutFirebaseAuth` en [firebaseConfig.ts](src/modules/cloud/firebaseConfig.ts)), eliminación completa de accesos anónimos/públicos en [firestore.rules](firestore.rules), cookies `HttpOnly; SameSite=Strict`, revocación por `jti` en logout, rate limiting IP/usuario, challenge/proof criptográfico de 2FA en [edgeAuth.ts](functions/lib/edgeAuth.ts), [session-auth.ts](functions/api/session-auth.ts) y [send-2fa-otp.ts](functions/api/send-2fa-otp.ts).
+  - Migrado hashing de contraseñas a PBKDF2-HMAC-SHA256 con `310,000` iteraciones y salt CSPRNG de 16 bytes en [firestoreService.ts](src/modules/cloud/firestoreService.ts) y [desktop_app/auth_manager.py](desktop_app/auth_manager.py), retirando la contraseña semilla hardcodeada.
+- **Bloque 2 (Desktop Bridge, Contención de Rutas, URLs Dinámicas, CSP y CI):**
+  - Exigida sesión autenticada (`_require_authenticated_user`) en operaciones de lectura sensible, escritura, exportadores, explorer y actualización en [desktop_window.py](desktop_app/desktop_window.py), removiendo fallbacks `"mskill"`, usando argumentos de lista en `subprocess.Popen(["explorer.exe", ...])` y validando direcciones `mailto:`.
+  - Blindado [file_processor.py](desktop_app/file_processor.py) con sanitización anti-traversal (`..`) y verificación `os.path.commonpath` (`_ensure_within_base`).
+  - Incorporado `sanitizeSafeHttpUrl` / `sanitizeSafeMailtoUrl` en [exportSanitizers.ts](src/utils/exportSanitizers.ts) sobre enlaces `<a href>` dinámicos de [ConfiguriatorView.tsx](src/modules/configuriator/ConfiguriatorView.tsx), [CiscoApiStatusModal.tsx](src/modules/ciscoApi/CiscoApiStatusModal.tsx), [BoTrackingView.tsx](src/modules/bo/BoTrackingView.tsx), [BoIndividualHistoryView.tsx](src/modules/bo/BoIndividualHistoryView.tsx), [CiscoOrderTrackingSyncModal.tsx](src/modules/bo/CiscoOrderTrackingSyncModal.tsx), [SettingsView.tsx](src/components/SettingsView.tsx), [TicketDetailModal.tsx](src/modules/feedback/TicketDetailModal.tsx), [catalogRules.ts](src/modules/configuriator/catalogRules.ts) y [emailClipboardHelper.ts](src/core/emailClipboardHelper.ts).
+  - Eliminados `'unsafe-inline'` y `'unsafe-eval'` de `script-src` en [public/_headers](public/_headers) (usando `'wasm-unsafe-eval'`), agregado `frame-ancestors 'none'`, actualizado `zod` a `4.6.7`, sincronizado [desktop_app/requirements.txt](desktop_app/requirements.txt) y vuelto bloqueante [security-audit.yml](.github/workflows/security-audit.yml).
+- **Bloque 3 (Secretos en Memoria, DPAPI/SHA-256 Desktop, Edge, ReDoS y Firestore):**
+  - Mantenidos `clientSecret` y tokens OAuth2 Cisco exclusivamente en memoria en [ciscoAuthService.ts](src/modules/ciscoApi/ciscoAuthService.ts), y actualizadas variables CLI en [checkCiscoEntitlements.mjs](scripts/checkCiscoEntitlements.mjs).
+  - Cifrado de `ai_config.json` por usuario con Windows DPAPI y validación SHA-256 contra `version.json` al arranque de bundles locales en [desktop_window.py](desktop_app/desktop_window.py), además de sanitización CSV en [dashboard_analytics.py](desktop_app/dashboard_analytics.py).
+  - Autenticación y cota `MAX_MINING_ITEMS = 2500` en [mining-audit.ts](functions/api/mining-audit.ts), validación de rol `admin`/`pm` en [deal-reminder-cron.ts](functions/api/deal-reminder-cron.ts), CORS estricto y versión sincronizada en [health.ts](functions/api/health.ts), consolidación Turnstile en [verify-turnstile.ts](functions/api/verify-turnstile.ts) / [verify.ts](functions/api/verify.ts).
+  - Parser MIME lineal libre de ReDoS en [emlParser.ts](src/modules/dsv/ingestion/emlParser.ts), sanitización DOMParser + iterativa en `sanitizeRichClipboardHtml`, y protección anti-Prototype-Pollution / límite de profundidad + `limit(500)` en [firestoreService.ts](src/modules/cloud/firestoreService.ts).
+
 ## [v2.26.10] - 2026-11-27
 
 ### Seguridad y Dependencias

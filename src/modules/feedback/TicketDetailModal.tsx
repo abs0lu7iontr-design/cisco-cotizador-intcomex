@@ -30,6 +30,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { UserSession } from '../../core/types';
+import { sanitizeSafeMailtoUrl } from '../../utils/exportSanitizers';
 import {
   FeedbackTicket,
   TicketStatus,
@@ -712,7 +713,7 @@ export function TicketDetailModal({
                   </button>
 
                   <a
-                    href={generateOutlookMailtoLink(ticket, replyMessage)}
+                    href={sanitizeSafeMailtoUrl(generateOutlookMailtoLink(ticket, replyMessage))}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors flex items-center space-x-1.5 cursor-pointer"

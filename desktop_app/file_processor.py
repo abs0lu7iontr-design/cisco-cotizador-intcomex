@@ -50,8 +50,17 @@ class FileProcessor:
 
     @staticmethod
     def sanitize_name(name: str, fallback: str = "General") -> str:
-        clean = re.sub(r'[\\/*?:"<>|]', "", (name or "").strip())
-        return clean or fallback
+        clean = re.sub(r'[\\/*?:"<>|]', "", (name or "").strip()).strip(". ")
+        if not clean or clean in (".", "..") or ".." in clean:
+            return fallback
+        return clean
+
+    def _ensure_within_base(self, target_path: str) -> str:
+        base_abs = os.path.abspath(self.base_storage_dir)
+        target_abs = os.path.abspath(target_path)
+        if os.path.commonpath([base_abs, target_abs]) != base_abs:
+            raise ValueError(f"Ruta fuera del almacenamiento permitido: {target_path}")
+        return target_abs
 
     @staticmethod
     def build_versioned_filename(filename: str, version_num: int) -> str:
@@ -195,7 +204,7 @@ class FileProcessor:
         clean_client = self.sanitize_name(client, "Cliente")
 
         relative_dir = os.path.join(clean_partner, clean_client, month_dir, day_dir)
-        target_dir = os.path.join(self.base_storage_dir, relative_dir)
+        target_dir = self._ensure_within_base(os.path.join(self.base_storage_dir, relative_dir))
         os.makedirs(target_dir, exist_ok=True)
 
         with open(source_filepath, "rb") as src_f:
@@ -249,7 +258,7 @@ class FileProcessor:
             clean_filename += ".xlsx"
 
         relative_dir = os.path.join(clean_partner, clean_client, year_str, clean_month)
-        target_dir = os.path.join(self.base_storage_dir, relative_dir)
+        target_dir = self._ensure_within_base(os.path.join(self.base_storage_dir, relative_dir))
 
         final_filename, target_filepath, version_num = self.write_bytes_exclusively(
             target_dir=target_dir,
@@ -291,36 +300,45 @@ class FileProcessor:
         if not clean_filename:
             return None
 
+        if month_name:
+            clean_month = self.sanitize_name(month_name, "")
+        else:
+            clean_month = ""
+
         candidates: List[str] = []
-        if year is not None and month_name:
+        if year is not None and clean_month:
             candidates.append(
-                os.path.join(
-                    self.base_storage_dir,
-                    clean_partner,
-                    clean_client,
-                    f"{int(year):04d}",
-                    month_name,
-                    clean_filename,
+                self._ensure_within_base(
+                    os.path.join(
+                        self.base_storage_dir,
+                        clean_partner,
+                        clean_client,
+                        f"{int(year):04d}",
+                        clean_month,
+                        clean_filename,
+                    )
                 )
             )
-        if month_name:
+        if clean_month:
             # Legacy path without year folder
             candidates.append(
-                os.path.join(
-                    self.base_storage_dir,
-                    clean_partner,
-                    clean_client,
-                    month_name,
-                    clean_filename,
+                self._ensure_within_base(
+                    os.path.join(
+                        self.base_storage_dir,
+                        clean_partner,
+                        clean_client,
+                        clean_month,
+                        clean_filename,
+                    )
                 )
             )
 
         for cand in candidates:
             if os.path.isfile(cand):
-                return os.path.abspath(cand)
+                return self._ensure_within_base(cand)
 
         # Fallback: scan client directory across all years and legacy month folders
-        client_root = os.path.join(self.base_storage_dir, clean_partner, clean_client)
+        client_root = self._ensure_within_base(os.path.join(self.base_storage_dir, clean_partner, clean_client))
         if os.path.isdir(client_root):
             for root, _dirs, files in os.walk(client_root):
                 for f in files:
@@ -344,13 +362,13 @@ class FileProcessor:
         if not os.path.isdir(self.base_storage_dir):
             return results
 
-        search_root = self.base_storage_dir
+        search_root = os.path.abspath(self.base_storage_dir)
         if partner_name:
             clean_partner = self.sanitize_name(partner_name, "Intcomex")
-            search_root = os.path.join(search_root, clean_partner)
+            search_root = self._ensure_within_base(os.path.join(search_root, clean_partner))
             if client_final_name:
                 clean_client = self.sanitize_name(client_final_name, "Cliente")
-                search_root = os.path.join(search_root, clean_client)
+                search_root = self._ensure_within_base(os.path.join(search_root, clean_client))
 
         if not os.path.isdir(search_root):
             return results

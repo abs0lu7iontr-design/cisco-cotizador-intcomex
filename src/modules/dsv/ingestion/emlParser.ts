@@ -148,34 +148,54 @@ export interface ParsedCiscoEml {
   dateHeaderTimestamp?: number;
 }
 
+/**
+ * Extrae adjunto Excel base64 desde MIME sin backtracking polinomial (ReDoS-safe).
+ */
+function extractExcelAttachmentLinear(rawEml: string): { attachmentName: string; base64Data: string } | null {
+  const sections = rawEml.split(/\r?\n--/);
+  let fallbackMatch: { attachmentName: string; base64Data: string } | null = null;
+
+  for (const section of sections) {
+    const sepMatch = section.match(/\r?\n\r?\n/);
+    if (!sepMatch || sepMatch.index === undefined) continue;
+    const headers = section.slice(0, sepMatch.index);
+    const bodyStart = sepMatch.index + sepMatch[0].length;
+    if (!/Content-Transfer-Encoding:\s*base64/i.test(headers)) continue;
+
+    const nameMatch = headers.match(/(?:name|filename)=["']?([^"';\r\n]+)["']?/i);
+    if (!nameMatch) continue;
+    const attachmentName = nameMatch[1].trim();
+
+    let bodySlice = section.slice(bodyStart);
+    const nextHdrIdx = bodySlice.search(/\r?\n\r?\n[A-Z][a-zA-Z-]+:/);
+    if (nextHdrIdx >= 0) {
+      bodySlice = bodySlice.slice(0, nextHdrIdx);
+    }
+    const base64Data = bodySlice.replace(/[\r\n\s]/g, '');
+    if (!base64Data) continue;
+
+    if (/_Cisco-Deal-BOM-Pricing-Details\.xlsx?$/i.test(attachmentName)) {
+      return { attachmentName, base64Data };
+    }
+    if (!fallbackMatch && /\.(?:xls|xlsx|xlsm)$/i.test(attachmentName)) {
+      fallbackMatch = { attachmentName, base64Data };
+    }
+  }
+  return fallbackMatch;
+}
+
 export function parseCiscoEml(rawEml: string, fileName?: string): ParsedCiscoEml {
   let dealId: string | null = null;
   let bomAttachment: { fileName: string; buffer: ArrayBuffer } | undefined;
 
-  // 1. Extraer adjunto x_Cisco-Deal-BOM-Pricing-Details.xls
-  const bomMimeRegex = /Content-(?:Type|Disposition):[\s\S]*?(?:name|filename)=["']?([^"';\r\n]*_Cisco-Deal-BOM-Pricing-Details\.xlsx?)["']?[\s\S]*?Content-Transfer-Encoding:\s*base64[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=--|\r?\n\r?\n[A-Z][a-zA-Z-]+:|$)/i;
-  let bomMatch = rawEml.match(bomMimeRegex);
+  // 1. Extraer adjunto x_Cisco-Deal-BOM-Pricing-Details.xls de forma lineal (libre de ReDoS)
+  const extractedAttachment = extractExcelAttachmentLinear(rawEml);
 
-  // Fallback si Content-Transfer-Encoding va antes de name/filename
-  if (!bomMatch) {
-    bomMatch = rawEml.match(
-      /Content-Transfer-Encoding:\s*base64[\s\S]*?(?:name|filename)=["']?([^"';\r\n]*_Cisco-Deal-BOM-Pricing-Details\.xlsx?)["']?[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=--|\r?\n\r?\n[A-Z][a-zA-Z-]+:|$)/i
-    );
-  }
-
-  // Fallback para cualquier archivo Excel adjunto
-  if (!bomMatch) {
-    bomMatch = rawEml.match(
-      /(?:name|filename)=["']?([^"';\r\n]*\.(?:xls|xlsx|xlsm))["']?[\s\S]*?Content-Transfer-Encoding:\s*base64[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=--|$)/i
-    );
-  }
-
-  if (bomMatch) {
-    const attachmentName = bomMatch[1].trim();
-    const base64Data = bomMatch[2].replace(/[\r\n\s]/g, '');
+  if (extractedAttachment) {
+    const { attachmentName, base64Data } = extractedAttachment;
 
     // Extraer Deal ID directo del nombre del BOM
-    const dealMatch = attachmentName.match(/\b(\d{8})\b/);
+    const dealMatch = attachmentName.match(/(?:^|\D)(\d{8})(?!\d)/);
     if (dealMatch && !dealMatch[1].startsWith('202')) {
       dealId = dealMatch[1];
     }

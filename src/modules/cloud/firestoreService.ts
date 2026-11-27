@@ -224,20 +224,27 @@ function saveLocalDsvCache(list: CloudDsvRecord[]) {
  * Recursively removes all `undefined` fields from objects and arrays,
  * preventing Firebase Firestore's "Unsupported field value: undefined" error.
  */
-export function sanitizeForFirestore<T>(data: T): T {
-  if (data === undefined) {
+const MAX_FIRESTORE_SANITIZE_DEPTH = 25;
+const FORBIDDEN_FIRESTORE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+export function sanitizeForFirestore<T>(data: T, depth: number = 0): T {
+  if (depth > MAX_FIRESTORE_SANITIZE_DEPTH) {
+    return null as any;
+  }
+  if (data === undefined || typeof data === 'function' || typeof data === 'symbol') {
     return null as any;
   }
   if (data === null || typeof data !== 'object') {
     return data;
   }
   if (Array.isArray(data)) {
-    return data.map((item) => sanitizeForFirestore(item)) as any;
+    return data.map((item) => sanitizeForFirestore(item, depth + 1)) as any;
   }
   const result: Record<string, any> = {};
   for (const [key, val] of Object.entries(data as Record<string, any>)) {
-    if (val !== undefined) {
-      result[key] = sanitizeForFirestore(val);
+    if (FORBIDDEN_FIRESTORE_KEYS.has(key)) continue;
+    if (val !== undefined && typeof val !== 'function' && typeof val !== 'symbol') {
+      result[key] = sanitizeForFirestore(val, depth + 1);
     }
   }
   return result as T;
@@ -2817,6 +2824,67 @@ export async function deleteCloudDsv(
 const USERS_COLLECTION = 'users';
 const LOCAL_USERS_BACKUP_KEY = 'cisco_users_cloud_cache_v2';
 const GLOBAL_AUTH_SALT = 'Cisco_Automated_Intcomex_Salt_2026!';
+const PBKDF2_CLIENT_ITERATIONS = 310000;
+
+export async function hashPasswordSecure(password: string): Promise<string> {
+  const saltBytes = new Uint8Array(16);
+  crypto.getRandomValues(saltBytes);
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+  const derived = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: saltBytes, iterations: PBKDF2_CLIENT_ITERATIONS },
+    keyMaterial,
+    256
+  );
+  const saltHex = Array.from(saltBytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  const hashHex = Array.from(new Uint8Array(derived)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `pbkdf2$${PBKDF2_CLIENT_ITERATIONS}$${saltHex}$${hashHex}`;
+}
+
+export async function verifyPasswordHash(
+  password: string,
+  storedHash: string,
+  usernameSalt?: string
+): Promise<boolean> {
+  const cleanStored = String(storedHash || '').trim();
+  if (!cleanStored) return false;
+  if (cleanStored.startsWith('pbkdf2$')) {
+    const parts = cleanStored.split('$');
+    if (parts.length !== 4) return false;
+    const iterations = parseInt(parts[1], 10);
+    const saltHex = parts[2];
+    const expectedHex = parts[3].toLowerCase();
+    if (!Number.isFinite(iterations) || iterations < 10000 || !/^[0-9a-f]{16,64}$/i.test(saltHex) || !/^[0-9a-f]{64}$/.test(expectedHex)) {
+      return false;
+    }
+    const saltBytes = new Uint8Array(saltHex.match(/.{2}/g)!.map((h) => parseInt(h, 16)));
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(password),
+      'PBKDF2',
+      false,
+      ['deriveBits']
+    );
+    const derived = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', hash: 'SHA-256', salt: saltBytes, iterations },
+      keyMaterial,
+      256
+    );
+    const actualHex = Array.from(new Uint8Array(derived)).map((b) => b.toString(16).padStart(2, '0')).join('');
+    return timingSafeHexEquals(actualHex, expectedHex);
+  }
+  if (cleanStored.length === 64) {
+    const perUserHash = await sha256Salted(password, usernameSalt);
+    const legacyHash = await sha256Salted(password);
+    return timingSafeHexEquals(cleanStored, perUserHash) || timingSafeHexEquals(cleanStored, legacyHash);
+  }
+  return false;
+}
 
 export async function sha256Salted(password: string, usernameSalt?: string): Promise<string> {
   const normalizedUser = (usernameSalt || '').trim().toLowerCase();
@@ -2908,13 +2976,12 @@ export async function authenticateCloudUser(
     return { success: false, error: 'Por favor complete el usuario y la contraseña.' };
   }
 
-  // Por política de seguridad, las contraseñas se autentican de forma discreta en la nube.
-  // Solo se bloquea si el equipo carece físicamente de conexión a Internet.
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  // Por política de seguridad, respetar Modo Offline explícito y falta de conexión física.
+  if (isAppOffline() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
     return {
       success: false,
       isOfflineBlocked: true,
-      error: 'Se requiere conexión a Internet para iniciar sesión.',
+      error: 'Se requiere conexión a Internet (y salir de Modo Offline) para autenticarse en la nube.',
     };
   }
 
@@ -2944,27 +3011,6 @@ export async function authenticateCloudUser(
       }
     }
 
-    // Auto-seed inicial de Firestore únicamente si la colección de usuarios está completamente vacía
-    if (!userData && (cleanUser === 'admin' || cleanUser === 'pm_cisco')) {
-      const anyUserSnap = await withTimeout(getDocs(query(collection(db, USERS_COLLECTION), limit(1))), 3000).catch(
-        () => null
-      );
-      if (anyUserSnap && anyUserSnap.empty) {
-        const defaultUser = DEFAULT_BASE_USERS.find((u) => u.username.toLowerCase() === cleanUser);
-        if (defaultUser) {
-          const defaultHash = await sha256Salted('Intcomex2026!');
-          const seededUser: CloudUserRecord = {
-            ...defaultUser,
-            password_hash: defaultHash,
-          };
-          try {
-            await withTimeout(setDoc(userDocRef, sanitizeForFirestore(seededUser)), 2500);
-            userData = seededUser;
-          } catch (_) {}
-        }
-      }
-    }
-
     if (!userData) {
       return { success: false, error: 'Usuario o contraseña incorrectos.' };
     }
@@ -2976,16 +3022,21 @@ export async function authenticateCloudUser(
       };
     }
 
-    // Validar estrictamente hash criptográfico con salt (sin fallback de texto plano)
-    const perUserHash = await sha256Salted(cleanPass, cleanUser);
-    const legacyHash = await sha256Salted(cleanPass);
+    // Validar estrictamente hash criptográfico (PBKDF2 310k iteraciones o legacy 64-hex con auto-upgrade)
     const storedHash = String(userData.password_hash || '').trim();
-    const isValid =
-      storedHash.length === 64 &&
-      (timingSafeHexEquals(storedHash, perUserHash) || timingSafeHexEquals(storedHash, legacyHash));
+    const isValid = await verifyPasswordHash(cleanPass, storedHash, cleanUser);
 
     if (!isValid) {
       return { success: false, error: 'Usuario o contraseña incorrectos.' };
+    }
+
+    // Auto-upgrade transparente a PBKDF2 cuando el usuario entra con hash SHA-256 legacy
+    if (!storedHash.startsWith('pbkdf2$')) {
+      hashPasswordSecure(cleanPass)
+        .then((upgradedHash) =>
+          withTimeout(setDoc(doc(db, USERS_COLLECTION, cleanUser), { password_hash: upgradedHash }, { merge: true }), 2500)
+        )
+        .catch(() => {});
     }
 
     // Retornar perfil seguro SIN password_hash
@@ -3023,32 +3074,15 @@ export async function getCloudUsers(): Promise<{ success: boolean; data: CloudUs
     }
 
     const colRef = collection(db, USERS_COLLECTION);
-    const snapshot = await withTimeout(getDocs(colRef), 2000);
+    const snapshot = await withTimeout(getDocs(query(colRef, limit(500))), 2000);
 
     if (snapshot.empty) {
-      // Auto-seed default users in Firestore on first cloud load
-      const defaultHash = await sha256Salted('Intcomex2026!');
-      const seededList: CloudUserRecord[] = DEFAULT_BASE_USERS.map((u) => ({
-        ...u,
-        password_hash: defaultHash,
-      }));
-
-      for (const u of seededList) {
-        try {
-          const userDocRef = doc(db, USERS_COLLECTION, u.username.toLowerCase());
-          await withTimeout(setDoc(userDocRef, sanitizeForFirestore(u)), 1500);
-        } catch (seedErr) {
-          console.warn('Error auto-seeding user:', u.username, seedErr);
-        }
-      }
-
-      saveLocalUsersCache(seededList);
-      return { success: true, data: seededList };
+      return { success: true, data: localUsers };
     }
 
     const remoteUsers: CloudUserRecord[] = [];
     snapshot.forEach((docSnap) => {
-      const data = docSnap.data() as CloudUserRecord;
+      const { password_hash: _omitHash, ...data } = docSnap.data() as CloudUserRecord;
       remoteUsers.push({
         ...data,
         id: docSnap.id,
@@ -3275,7 +3309,7 @@ export async function getSharedSkuRules(): Promise<{
     }
 
     const colRef = collection(db, SHARED_SKU_COLLECTION);
-    const snapshot = await withTimeout(getDocs(colRef), 4000);
+    const snapshot = await withTimeout(getDocs(query(colRef, limit(500))), 4000);
 
     const remoteList: SharedSkuOverrideRecord[] = [];
     snapshot.forEach((docSnap) => {
