@@ -6,6 +6,13 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.26.10] - 2026-11-27
+
+### Seguridad y Dependencias
+- **Actualización de SheetJS (`xlsx`) `0.18.5` → `0.20.3` (tarball oficial):**
+  - Actualizada la dependencia `xlsx` en [package.json](package.json) a `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`, eliminando las vulnerabilidades altas `GHSA-4r6h-8v6p-xvw6` (Prototype Pollution) y `GHSA-5pgg-2g8v-p4x9` (ReDoS) reportadas por `npm audit` (`xlsx` ahora limpio).
+  - Conservado soporte completo de lectura `.xls` legacy (`BIFF8` / HTML / XML), `.xlsx` y `.csv` en DSV (`dsvBomParser`), Fast Track (`fastTrackParser`), CCW-R (`ccwrParser`), Forecast, Pipeline y `fileTypeDetector` sin cambios en fórmulas ni cálculos (`exceljs@4.4.0` intacto).
+
 ## [v2.26.9] - 2026-11-26
 
 ### Corregido y Reforzado

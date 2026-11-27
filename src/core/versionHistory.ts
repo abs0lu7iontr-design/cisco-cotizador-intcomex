@@ -15,11 +15,23 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.26.10',
+    date: '2026-11-27',
+    commit: 'upgrade-sheetjs-xlsx-0.20.3-security-patch',
+    title: 'Parche de Seguridad SheetJS (xlsx 0.20.3) Manteniendo Soporte .xls Legacy',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Actualizado SheetJS (xlsx) de 0.18.5 a 0.20.3 oficial, mitigando Prototype Pollution y ReDoS sin afectar cálculos ni exceljs@4.4.0.',
+      'Validado soporte completo de archivos .xls (BIFF8 y HTML) en Generador DSV, Fast Track, CCW-R y Detector automático junto a las 57 suites de pruebas.'
+    ]
+  },
+  {
     version: '2.26.9',
     date: '2026-11-26',
     commit: 'enforce-7-6-5-baseline-and-partner-override-hierarchy',
     title: 'Blindaje de Regla Base 7/6/5 por Estimate y Precedencia Cliente/Archivo Editado',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Aislamiento de sliders temporales respecto a localPlatformConfig: mover tasas a 0%/0%/0% ya no contamina nuevos Estimates.',
