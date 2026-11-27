@@ -295,16 +295,18 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
       }
 
       if (q) {
+        const { hasAccess } = evaluateAccess(e);
         const partnerFmt = formatPartnerName(e.partnerName);
         const hit =
           (e.estimateId || '').toLowerCase().includes(q) ||
-          (e.dealId || '').toLowerCase().includes(q) ||
           (e.partnerName || '').toLowerCase().includes(q) ||
           partnerFmt.toLowerCase().includes(q) ||
-          (e.clientFinalName || '').toLowerCase().includes(q) ||
           (e.creator?.fullName || '').toLowerCase().includes(q) ||
           (e.creator?.username || '').toLowerCase().includes(q) ||
-          (e.originalFileName || '').toLowerCase().includes(q);
+          (hasAccess &&
+            ((e.dealId || '').toLowerCase().includes(q) ||
+              (e.clientFinalName || '').toLowerCase().includes(q) ||
+              (e.originalFileName || '').toLowerCase().includes(q)));
         if (!hit) return false;
       }
 
@@ -322,6 +324,7 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
 
   // 4. Dynamic Aggregated Metrics & Breakdowns from Filtered Mirror Data
   const computedAnalytics = useMemo(() => {
+    let accessibleCount = 0;
     let totalRevenue = 0;
     let totalNetCisco = 0;
     let totalProfit = 0;
@@ -340,6 +343,7 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
       const { hasAccess } = evaluateAccess(est);
       // Privacy protection: exclude restricted records from unauthorized users' aggregated financial totals
       if (!hasAccess) continue;
+      accessibleCount += 1;
 
       const rev =
         Number(est.currentAmount ?? est.financialSummary?.totalCotizadoIntcomex) || 0;
@@ -397,7 +401,7 @@ export function DashboardView({ onOpenQuoter, onOpenUpload }: DashboardViewProps
     const creatorEntries = Object.entries(creatorMap).sort((a, b) => b[1].revenue - a[1].revenue);
 
     return {
-      totalEstimates: filteredEstimates.length,
+      totalEstimates: accessibleCount,
       totalRevenue,
       totalNetCisco,
       totalProfit,

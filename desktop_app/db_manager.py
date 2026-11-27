@@ -205,11 +205,14 @@ class DatabaseManager:
 
             candidate_paths = [
                 canonical_path,
-                os.path.join(os.getcwd(), "gravity_database.db"),
-                os.path.join(os.getcwd(), "dist", "gravity_database.db"),
                 os.path.join(os.path.dirname(os.path.abspath(__file__)), "gravity_database.db"),
             ]
             import sys
+            if not getattr(sys, 'frozen', False):
+                candidate_paths.extend([
+                    os.path.join(os.getcwd(), "gravity_database.db"),
+                    os.path.join(os.getcwd(), "dist", "gravity_database.db"),
+                ])
             if getattr(sys, 'frozen', False):
                 exe_dir = os.path.dirname(os.path.abspath(sys.executable))
                 candidate_paths.append(os.path.join(exe_dir, "gravity_database.db"))
@@ -350,7 +353,7 @@ class DatabaseManager:
                 full_name TEXT NOT NULL,
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
-                role TEXT NOT NULL CHECK (role IN ('admin', 'pm', 'preventa', 'standard')),
+                role TEXT NOT NULL CHECK (role IN ('admin', 'pm', 'preventa', 'standard', 'viewer', 'user')),
                 is_active INTEGER DEFAULT 1,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 last_login TEXT
@@ -456,7 +459,7 @@ class DatabaseManager:
                         full_name TEXT NOT NULL,
                         email TEXT UNIQUE NOT NULL,
                         password_hash TEXT NOT NULL,
-                        role TEXT NOT NULL CHECK (role IN ('admin', 'pm', 'preventa', 'standard')),
+                        role TEXT NOT NULL CHECK (role IN ('admin', 'pm', 'preventa', 'standard', 'viewer', 'user')),
                         is_active INTEGER DEFAULT 1,
                         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                         last_login TEXT
@@ -1074,45 +1077,46 @@ class DatabaseManager:
 
     def _seed_default_users(self):
         """Seeds initial required administrator if no users exist in database."""
-        try:
-            from auth_manager import AuthManager
-        except ImportError:
-            from desktop_app.auth_manager import AuthManager
-        initial_pwd = os.getenv("INITIAL_ADMIN_PASSWORD", "AdminInitial2026#")
-        default_pwd_hash = AuthManager.hash_password(initial_pwd)
-
-        users_seed = [
-            ("usr-001-admin", "admin", "Administrador del Sistema", "admin@cotizador.local", default_pwd_hash, "admin"),
-            ("usr-002-pm", "pm_cisco", "Product Manager Cisco", "pm@cotizador.local", default_pwd_hash, "pm"),
-        ]
-
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            for uid, uname, fname, email, phash, role in users_seed:
-                cursor.execute("""
-                    INSERT OR IGNORE INTO users (id, username, full_name, email, password_hash, role)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (uid, uname, fname, email, phash, role))
+            cursor.execute("SELECT COUNT(*) as cnt FROM users")
+            row = cursor.fetchone()
+            existing_count = int(row["cnt"] if row else 0)
+            if existing_count > 0:
+                return
+            try:
+                from auth_manager import AuthManager
+            except ImportError:
+                from desktop_app.auth_manager import AuthManager
+            import secrets as _secrets
+            initial_pwd = os.getenv("INITIAL_ADMIN_PASSWORD") or _secrets.token_urlsafe(24)
+            default_pwd_hash = AuthManager.hash_password(initial_pwd)
+            cursor.execute("""
+                INSERT OR IGNORE INTO users (id, username, full_name, email, password_hash, role)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, ("usr-001-admin", "admin", "Administrador del Sistema", "admin@cotizador.local", default_pwd_hash, "admin"))
 
     def update_user_role(self, username: str, new_role: str) -> Tuple[bool, str]:
-        """Updates user role (admin, pm, preventa)."""
-        if username in ("admin", "mskill") and new_role != "admin":
+        """Updates user role (admin, pm, preventa, viewer, standard, user)."""
+        clean_username = (username or "").strip().lower()
+        if clean_username in ("admin", "mskill") and new_role != "admin":
             return (False, "No es posible degradar al administrador principal.")
-        if new_role not in ["admin", "pm", "preventa", "standard"]:
+        if new_role not in ["admin", "pm", "preventa", "standard", "viewer", "user"]:
             return (False, f"Rol '{new_role}' no válido.")
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("UPDATE users SET role = ? WHERE username = ?", (new_role, username))
-            return (True, f"Rol de '{username}' actualizado a '{new_role.upper()}'.")
+                cursor.execute("UPDATE users SET role = ? WHERE LOWER(username) = ?", (new_role, clean_username))
+            return (True, f"Rol de '{clean_username}' actualizado a '{new_role.upper()}'.")
         except Exception as e:
             return (False, f"Error actualizando rol: {e}")
 
     def get_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
-        """Retrieves user by username."""
+        """Retrieves user by normalized lowercase username."""
+        clean_username = (username or "").strip().lower()
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+            cursor.execute("SELECT * FROM users WHERE LOWER(username) = ?", (clean_username,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
@@ -1132,31 +1136,34 @@ class DatabaseManager:
             """, (log_id, username or "SYSTEM", action, details, datetime.now().isoformat()))
 
     def insert_user(self, user_id: str, username: str, full_name: str, email: str, pwd_hash: str, role: str) -> Tuple[bool, str]:
+        clean_username = (username or "").strip().lower()
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO users (id, username, full_name, email, password_hash, role)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, (user_id, username, full_name, email, pwd_hash, role))
-            return (True, f"Usuario '{username}' registrado correctamente.")
+                """, (user_id, clean_username, full_name, email, pwd_hash, role))
+            return (True, f"Usuario '{clean_username}' registrado correctamente.")
         except Exception as e:
             return (False, f"Error creando usuario: {e}")
 
     def update_user_password(self, username: str, pwd_hash: str) -> Tuple[bool, str]:
+        clean_username = (username or "").strip().lower()
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("UPDATE users SET password_hash = ? WHERE username = ?", (pwd_hash, username))
-            return (True, f"Contraseña del usuario '{username}' modificada con éxito.")
+                cursor.execute("UPDATE users SET password_hash = ? WHERE LOWER(username) = ?", (pwd_hash, clean_username))
+            return (True, f"Contraseña del usuario '{clean_username}' modificada con éxito.")
         except Exception as e:
             return (False, f"Error actualizando contraseña: {e}")
 
     def update_user_full(self, original_username: str, full_name: str, email: str, role: str, pwd_hash: Optional[str] = None, is_active: Optional[int] = None) -> Tuple[bool, str]:
         """Updates full user record including name, email, role, password, and active state."""
-        if (original_username or "").strip().lower() in ("admin", "mskill") and role != "admin":
+        clean_username = (original_username or "").strip().lower()
+        if clean_username in ("admin", "mskill") and role != "admin":
             return (False, "No es posible degradar al administrador principal (admin / mskill).")
-        if (original_username or "").strip().lower() in ("admin", "mskill") and is_active == 0:
+        if clean_username in ("admin", "mskill") and is_active == 0:
             return (False, "No es posible desactivar al administrador principal (admin / mskill).")
         try:
             with self.get_connection() as conn:
@@ -1165,25 +1172,25 @@ class DatabaseManager:
                     if is_active is not None:
                         cursor.execute("""
                             UPDATE users SET full_name = ?, email = ?, role = ?, password_hash = ?, is_active = ?
-                            WHERE username = ?
-                        """, (full_name.strip(), email.strip(), role, pwd_hash, is_active, original_username))
+                            WHERE LOWER(username) = ?
+                        """, (full_name.strip(), email.strip(), role, pwd_hash, is_active, clean_username))
                     else:
                         cursor.execute("""
                             UPDATE users SET full_name = ?, email = ?, role = ?, password_hash = ?
-                            WHERE username = ?
-                        """, (full_name.strip(), email.strip(), role, pwd_hash, original_username))
+                            WHERE LOWER(username) = ?
+                        """, (full_name.strip(), email.strip(), role, pwd_hash, clean_username))
                 else:
                     if is_active is not None:
                         cursor.execute("""
                             UPDATE users SET full_name = ?, email = ?, role = ?, is_active = ?
-                            WHERE username = ?
-                        """, (full_name.strip(), email.strip(), role, is_active, original_username))
+                            WHERE LOWER(username) = ?
+                        """, (full_name.strip(), email.strip(), role, is_active, clean_username))
                     else:
                         cursor.execute("""
                             UPDATE users SET full_name = ?, email = ?, role = ?
-                            WHERE username = ?
-                        """, (full_name.strip(), email.strip(), role, original_username))
-            return (True, f"Datos del usuario '{original_username}' actualizados exitosamente.")
+                            WHERE LOWER(username) = ?
+                        """, (full_name.strip(), email.strip(), role, clean_username))
+            return (True, f"Datos del usuario '{clean_username}' actualizados exitosamente.")
         except Exception as e:
             return (False, f"Error actualizando usuario: {e}")
 
@@ -1463,14 +1470,15 @@ class DatabaseManager:
 
     def toggle_user_active(self, username: str, is_active: bool) -> Tuple[bool, str]:
         """Activates or deactivates a user."""
-        if (username or "").strip().lower() in ("admin", "mskill"):
+        clean_username = (username or "").strip().lower()
+        if clean_username in ("admin", "mskill"):
             return (False, "No es posible desactivar al usuario administrador principal (admin / mskill).")
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("UPDATE users SET is_active = ? WHERE username = ?", (1 if is_active else 0, username))
+                cursor.execute("UPDATE users SET is_active = ? WHERE LOWER(username) = ?", (1 if is_active else 0, clean_username))
             status_str = "activado" if is_active else "desactivado"
-            return (True, f"Usuario '{username}' {status_str} exitosamente.")
+            return (True, f"Usuario '{clean_username}' {status_str} exitosamente.")
         except Exception as e:
             return (False, f"Error cambiando estado de usuario: {e}")
 
@@ -1480,27 +1488,28 @@ class DatabaseManager:
         If the user has associated estimates, blocks deletion (`ON DELETE RESTRICT` policy)
         to prevent loss of financial history and recommends deactivation (`is_active = 0`).
         """
-        if (username or "").strip().lower() in ("admin", "mskill"):
+        clean_username = (username or "").strip().lower()
+        if clean_username in ("admin", "mskill"):
             return (False, "No es posible eliminar al usuario administrador principal (admin / mskill).")
         try:
             with self.get_connection(enforce_foreign_keys=True) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+                cursor.execute("SELECT id FROM users WHERE LOWER(username) = ?", (clean_username,))
                 user_row = cursor.fetchone()
                 if not user_row:
-                    return (False, f"Usuario '{username}' no existe.")
+                    return (False, f"Usuario '{clean_username}' no existe.")
 
                 cursor.execute("SELECT COUNT(*) as cnt FROM estimates WHERE user_id = ?", (user_row["id"],))
                 est_count = int(cursor.fetchone()["cnt"] or 0)
                 if est_count > 0:
                     return (
                         False,
-                        f"No es posible eliminar físicamente al usuario '{username}' porque posee {est_count} "
+                        f"No es posible eliminar físicamente al usuario '{clean_username}' porque posee {est_count} "
                         f"cotización(es) histórica(s). Desactívelo (is_active=0) para preservar el historial financiero.",
                     )
 
-                cursor.execute("DELETE FROM users WHERE username = ?", (username,))
-            return (True, f"Usuario '{username}' eliminado correctamente.")
+                cursor.execute("DELETE FROM users WHERE LOWER(username) = ?", (clean_username,))
+            return (True, f"Usuario '{clean_username}' eliminado correctamente.")
         except Exception as e:
             return (False, f"Error eliminando usuario: {e}")
 

@@ -388,7 +388,7 @@ export function transformRawBomToDsv(
       startDate: '',                                      // F (6) [ANCHO 5]
       endDate: '',                                        // G (7) [ANCHO 5]
       duration: '',                                       // H (8) [ANCHO 5]
-      productQuantity: Math.max(1, Math.round(Number(item.qty))), // I (9)
+      productQuantity: Math.max(0, Math.round(Number(item.qty) || 0)), // I (9)
       reportedProductUnitPrice,                           // J (10) - Reported Product Unit Price - Reported Currency
       reportedNetPrice,                                   // K (11) - Reported Net Price
       dealId: authNumberVal,                              // L (12) - Deal ID (8 dígitos numéricos)

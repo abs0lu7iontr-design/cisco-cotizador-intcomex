@@ -3,6 +3,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { sanitizeCsvCell } from '../../utils/exportSanitizers';
 import {
   BoLineItem,
   partitionBoLinesByCost,
@@ -683,10 +684,10 @@ export const BoRequestModal: React.FC<Props> = ({
     }
   };
 
-  // Descargar CSV con los P/N descartados de costo 0 (campos entrecomillados por decimales con coma en es-CL)
+  // Descargar CSV con los P/N descartados de costo 0 (protegido contra Formula Injection)
   const handleDownloadDiscardedCsv = () => {
     if (discardedLines.length === 0) return;
-    const csvCell = (val: unknown) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const csvCell = (val: unknown) => sanitizeCsvCell(val);
     const headers = 'SKU,Part Number,Bodega,Qty,Unit Net Price,Extended Net Price\n';
     const rows = discardedLines
       .map(

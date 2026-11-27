@@ -451,7 +451,7 @@ export async function generateDemandIntelligenceReport(): Promise<DemandIntellig
     const isConfirmedSo = Boolean(bo.ciscoSoNumber && bo.ciscoSoNumber !== 'PENDIENTE' && !bo.ciscoSoNumber.includes('PEND'));
 
     // Check if BO notes contain specific part numbers
-    const boText = `${bo.estimateId} ${bo.partnerName} ${bo.endCustomerName} ${(bo.notes || []).map((n) => n.text).join(' ')}`.toUpperCase();
+    const boText = `${bo.estimateId} ${bo.partnerName} ${bo.endCustomerName} ${(bo.notes || []).map((n) => n.comment).join(' ')}`.toUpperCase();
 
     // Look for common Cisco switches or APs mentioned in BO (Solo equipos principales, sin accesorios)
     const knownPns = [

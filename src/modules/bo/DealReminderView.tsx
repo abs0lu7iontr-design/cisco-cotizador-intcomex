@@ -4,6 +4,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { sanitizeCsvCell } from '../../utils/exportSanitizers';
 import {
   Bell,
   UserCheck,
@@ -371,19 +372,19 @@ export function DealReminderView({ onConvertToBo }: DealReminderViewProps) {
     const rows = deals.map((d) => {
       const aging = calculateDealAging(d);
       return [
-        `"${d.dealId}"`,
-        `"${d.partnerName}"`,
-        `"${d.endCustomerName}"`,
-        `"${d.escalationChannel === 'VELOCITY_HUB' ? 'Velocity Hub (VF)' : 'AM Cisco'}"`,
-        `"${DEAL_STATUS_METADATA[d.status]?.label || d.status}"`,
-        `"${d.amContactName || d.vfTicketNumber || ''}"`,
-        `"${d.targetDiscountPct ? d.targetDiscountPct + '%' : ''}"`,
-        `"${d.estimatedTotalUsd || ''}"`,
-        `"${d.escalatedAt?.slice(0, 10) || ''}"`,
-        `"${aging.elapsedHours}"`,
-        `"${d.reminderCount || 0}"`,
-        `"${d.lastReminderSentAt?.slice(0, 16) || ''}"`,
-        `"${(d.notes || '').replace(/"/g, '""')}"`,
+        sanitizeCsvCell(d.dealId),
+        sanitizeCsvCell(d.partnerName),
+        sanitizeCsvCell(d.endCustomerName),
+        sanitizeCsvCell(d.escalationChannel === 'VELOCITY_HUB' ? 'Velocity Hub (VF)' : 'AM Cisco'),
+        sanitizeCsvCell(DEAL_STATUS_METADATA[d.status]?.label || d.status),
+        sanitizeCsvCell(d.amContactName || d.vfTicketNumber || ''),
+        sanitizeCsvCell(d.targetDiscountPct ? d.targetDiscountPct + '%' : ''),
+        sanitizeCsvCell(d.estimatedTotalUsd || ''),
+        sanitizeCsvCell(d.escalatedAt?.slice(0, 10) || ''),
+        sanitizeCsvCell(aging.elapsedHours),
+        sanitizeCsvCell(d.reminderCount || 0),
+        sanitizeCsvCell(d.lastReminderSentAt?.slice(0, 16) || ''),
+        sanitizeCsvCell(d.notes || ''),
       ];
     });
 

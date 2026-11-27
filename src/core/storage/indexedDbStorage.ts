@@ -96,8 +96,8 @@ export async function idbSet<T>(storeName: StoreName, key: string, value: T): Pr
   try {
     const sqliteOk = await sqliteSet(storeName, key, value);
     if (sqliteOk) {
-      // Opcionalmente reflejar en IDB como copia secundaria pasiva si está disponible
-      saveToSecondaryIdb(storeName, key, value).catch(() => {});
+      // Await secondary IDB write so it cannot race behind a subsequent delete
+      await saveToSecondaryIdb(storeName, key, value).catch(() => {});
       return true;
     }
   } catch (err) {
@@ -132,11 +132,19 @@ export async function idbSet<T>(storeName: StoreName, key: string, value: T): Pr
 async function saveToSecondaryIdb<T>(storeName: StoreName, key: string, value: T): Promise<void> {
   const db = await getIndexedDb();
   if (!db) return;
-  try {
-    const tx = db.transaction(storeName, 'readwrite');
-    const store = tx.objectStore(storeName);
-    store.put(value, store.keyPath ? undefined : key);
-  } catch {}
+  await new Promise<void>((resolve) => {
+    try {
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      const req = store.put(value, store.keyPath ? undefined : key);
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
 }
 
 /**

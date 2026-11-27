@@ -166,7 +166,7 @@ export function categorizeEstimateItems(
       const unitPrice = Number(it.precioVentaUnitario) || 0;
       const hasVal = extNet > 0 || unitPrice > 0;
       if (!hasVal) return acc;
-      const q = typeof it.qty === 'number' && !isNaN(it.qty) && it.qty > 0 ? it.qty : 1;
+      const q = typeof it.qty === 'number' && !isNaN(it.qty) && it.qty >= 0 ? it.qty : 1;
       return acc + q;
     }, 0);
 

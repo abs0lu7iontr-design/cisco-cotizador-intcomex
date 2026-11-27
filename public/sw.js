@@ -87,8 +87,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Excluir peticiones no GET o de extensiones de navegador
-  if (request.method !== 'GET' || !url.protocol.startsWith('http')) {
+  // Excluir peticiones no GET, no HTTP o cross-origin (el SW solo cachea assets same-origin)
+  if (
+    request.method !== 'GET' ||
+    !url.protocol.startsWith('http') ||
+    url.origin !== self.location.origin
+  ) {
     return;
   }
 

@@ -344,19 +344,11 @@ export const DsvModal: React.FC<DsvModalProps> = ({
 
       if (isDesktop) {
         try {
-          const uint8 = new Uint8Array(buffer);
-          let binary = '';
-          const len = uint8.byteLength;
-          for (let i = 0; i < len; i++) {
-            binary += String.fromCharCode(uint8[i]);
-          }
-          const base64Data = btoa(binary);
-
           const res = await (window as any).pywebview.api.save_estimate_structured(
-            base64Data,
-            outputFilename,
             'Cisco DSV',
-            'Plantillas DSV'
+            'Plantillas DSV',
+            outputFilename,
+            Array.from(new Uint8Array(buffer))
           );
 
           if (res && res.success) {

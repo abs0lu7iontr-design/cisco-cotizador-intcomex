@@ -6,6 +6,22 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.29.0] - 2026-11-27
+
+### Seguridad, Resiliencia y Calidad Integral (Bloques X, Y, Z — Sin Cambios en Fórmulas)
+- **Bloque X (Seguridad Crítica, Reglas Firestore, Desktop y Prevención de Crashes):**
+  - Endurecido [session-auth.ts](functions/api/session-auth.ts): validación criptográfica previa de `twoFactorProof` antes de eximir Turnstile, soporte de subdominios `*.cisco-automated.pages.dev` y remoción de `email_verified` sintético desde documento mutable.
+  - Reforzadas reglas [firestore.rules](firestore.rules): `isAdmin()` basado estrictamente en custom claims, inmutabilidad de `email` en `users/{userId}`, verificación `isDocOwner` en `create` de `estimates`, aislamiento de solicitudes en subcolección `estimates/{id}/access_requests/{requesterId}` y bloqueo de escrituras para el rol `viewer` en las 10 colecciones compartidas.
+  - Corregido orden de argumentos `save_estimate_structured` en [DsvModal.tsx](src/modules/dsv/DsvModal.tsx), removida carga fallback sin SHA-256 en modo empaquetado de [desktop_window.py](desktop_app/desktop_window.py), integrado puente `edge_session_auth` para Desktop en [edgeSessionService.ts](src/modules/security/edgeSessionService.ts), restringido [FirebaseConfigModal](src/components/EstimatesHistoryView.tsx) a administradores, saneado HTML en [ccwrExcelExporter.ts](src/modules/ccwrQuote/ccwrExcelExporter.ts) y protegido [HealthDashboardView.tsx](src/modules/health/HealthDashboardView.tsx) + KPI/búsqueda/ordenamiento de cotizaciones restringidas en [DashboardView.tsx](src/components/DashboardView.tsx) y [EstimatesHistoryView.tsx](src/components/EstimatesHistoryView.tsx).
+- **Bloque Y (Sincronización Cloud, Core Store y Storage Multi-Capa):**
+  - Alineados [firestoreService.ts](src/modules/cloud/firestoreService.ts) (`getCloudEstimates`, `requestEstimateAccess`, `resolveEstimateAccessRequest`, `archiveCloudEstimate`, `deleteCloudEstimate` respetando `v0_RAW`/`v0`) y [databaseBackupManager.ts](src/modules/cloud/databaseBackupManager.ts) (restauración/sync de hashes `pbkdf2$` y estado de red en `fastTrackMetadata`).
+  - Corregida re-suscripción por cambio de proyecto o reconexión y guarda offline en [usePartnerDatabase.ts](src/hooks/usePartnerDatabase.ts); preservación de `params` en modo `custom_lines`, secuencia monotónica en `recompute`, orden de parseo en `processFileBuffer` y limpieza en `clearEstimate` dentro de [store.tsx](src/core/store.tsx); preservación de `qty=0` en [exportUtils.ts](src/core/exportUtils.ts).
+  - Eliminadas condiciones de carrera en [indexedDbStorage.ts](src/core/storage/indexedDbStorage.ts), agregado mutex + `MAX_OFFLINE_RETRIES = 5` en [offlineSyncQueue.ts](src/core/storage/offlineSyncQueue.ts) y serializado acceso OPFS en [sqliteStorageEngine.ts](src/core/storage/sqliteStorageEngine.ts).
+- **Bloque Z (Módulos Comerciales, Desktop SQLite, SW/CSP y `strictNullChecks`):**
+  - Habilitado `"strictNullChecks": true` en [tsconfig.json](tsconfig.json) con 0 errores (incluyendo corrección real `n.comment` en [demandIntelligenceService.ts](src/modules/demandIntelligence/demandIntelligenceService.ts) y `await` faltante en [improvements.test.ts](tests/improvements.test.ts)).
+  - Saneadas exportaciones CSV (`sanitizeCsvCell`) en [BoIndividualHistoryView.tsx](src/modules/bo/BoIndividualHistoryView.tsx), [DealReminderView.tsx](src/modules/bo/DealReminderView.tsx) y [BoRequestModal.tsx](src/modules/bo/BoRequestModal.tsx); corregido cálculo de precio neto `$0` en [ciscoCommerceService.ts](src/modules/ciscoApi/ciscoCommerceService.ts), fechas `YYYY-MM-DD`/`MM/DD/YYYY` en [ccwrParser.ts](src/modules/ccwrQuote/ccwrParser.ts) y [fastTrackParser.ts](src/modules/fasttrack/fastTrackParser.ts), fallbacks Partner/Cliente en [emailClipboardHelper.ts](src/core/emailClipboardHelper.ts), `marginPct` en [boTrackingService.ts](src/modules/bo/boTrackingService.ts), filtro same-origin en [public/sw.js](public/sw.js) y `worker-src 'self' blob:` sin wildcard `*.googleapis.com` en [public/_headers](public/_headers).
+  - Hardening Desktop SQLite en [db_manager.py](desktop_app/db_manager.py), [auth_manager.py](desktop_app/auth_manager.py) y [desktop_window.py](desktop_app/desktop_window.py): soporte del rol `viewer`, normalización `LOWER(username)`, retiro de credencial semilla fija y bloqueo de escritura IA en texto plano sin DPAPI.
+
 ## [v2.28.0] - 2026-11-27
 
 ### Mejorado y Corregido (QA Integral Web P0 / P1 / P2 — Sin Cambios en Fórmulas)

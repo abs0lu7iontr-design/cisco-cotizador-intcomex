@@ -79,7 +79,7 @@ function parseDateSegment(dateText: string, fallbackYear?: number): number | nul
   let month = 0;
   let year = fallbackYear || new Date().getFullYear();
 
-  // Si el formato es DD/MM/YYYY o DD-MM-YYYY puramente numérico
+  // Si el formato es DD/MM/YYYY o MM/DD/YYYY puramente numérico
   if (parts.length === 3 && parts.every((p) => /^\d+$/.test(p))) {
     const p0 = parseInt(parts[0], 10);
     const p1 = parseInt(parts[1], 10);
@@ -87,6 +87,10 @@ function parseDateSegment(dateText: string, fallbackYear?: number): number | nul
     const y = p2 < 100 ? 2000 + p2 : p2;
     if (p1 <= 12 && p0 <= 31) {
       const d = new Date(y, p1 - 1, p0, 23, 59, 59);
+      return isNaN(d.getTime()) ? null : d.getTime();
+    }
+    if (p0 <= 12 && p1 <= 31) {
+      const d = new Date(y, p0 - 1, p1, 23, 59, 59);
       return isNaN(d.getTime()) ? null : d.getTime();
     }
   }

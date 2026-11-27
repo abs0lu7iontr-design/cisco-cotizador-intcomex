@@ -108,9 +108,16 @@ function copyDirRecursive(src, dst) {
 
 copyDirRecursive(path.join(rootDir, 'dist'), distPagesDir);
 
-// Añadir el bundle portable compilado a dist-pages como desktop_build.html
+// Añadir el bundle portable compilado a dist-pages y dist como desktop_build.html, preservando version.json con SHA-256
 const cdnDesktopBundlePath = path.join(distPagesDir, 'desktop_build.html');
 fs.writeFileSync(cdnDesktopBundlePath, portableBundleBuffer);
+fs.writeFileSync(path.join(rootDir, 'dist', 'desktop_build.html'), portableBundleBuffer);
+const pubVerPath = path.join(rootDir, 'public', 'version.json');
+if (fs.existsSync(pubVerPath)) {
+  const verRaw = fs.readFileSync(pubVerPath, 'utf8');
+  fs.writeFileSync(path.join(rootDir, 'dist', 'version.json'), verRaw, 'utf8');
+  fs.writeFileSync(path.join(distPagesDir, 'version.json'), verRaw, 'utf8');
+}
 console.log(`🚀 [deploy-prep] Inyectado en CDN Cloudflare: desktop_build.html (${(portableBundleBuffer.length / (1024 * 1024)).toFixed(2)} MB)`);
 
 // Asegurar headers, version.json y PWA assets

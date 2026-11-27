@@ -155,8 +155,8 @@ class AuthManager:
         if not self.is_admin():
             return (False, "Permiso denegado: Solo el Administrador (mskill) puede crear usuarios.")
 
-        if role not in ["admin", "pm", "preventa", "standard"]:
-            return (False, "Rol inválido. Debe ser 'admin', 'pm' o 'preventa'.")
+        if role not in ["admin", "pm", "preventa", "standard", "viewer", "user"]:
+            return (False, "Rol inválido. Debe ser 'admin', 'pm', 'preventa', 'standard' o 'viewer'.")
 
         new_id = f"usr-{uuid.uuid4().hex[:8]}"
         pwd_hash = self.hash_password(password)

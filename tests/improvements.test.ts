@@ -61,7 +61,7 @@ console.log('✅ Algoritmo de comparación diferencial y deltas validado.');
 // ----------------------------------------------------------------------------
 console.log('\n--- 3. Verificación Oportunidades Fast Track ---');
 import { checkSkuInFastTrackDb } from '../src/modules/configuriator/catalogRules';
-const ftCheck = checkSkuInFastTrackDb('C9200L-24P-4G-E');
+const ftCheck = await checkSkuInFastTrackDb('C9200L-24P-4G-E');
 console.log(`Estado Fast Track SKU: ${ftCheck ? 'Promoción detectada' : 'Evaluado determinísticamente'}`);
 console.log('✅ Motor de cruce Fast Track verificado.');
 

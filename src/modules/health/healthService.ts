@@ -239,7 +239,7 @@ export async function checkStorageHealth(): Promise<{
   const idbSupported = typeof window !== 'undefined' && 'indexedDB' in window;
   const idbReady = !!db;
 
-  let queueSummary = { items: [], byModule: {}, total: 0 };
+  let queueSummary: Awaited<ReturnType<typeof getOfflineQueueSummary>> = { items: [], byModule: {}, total: 0 };
   try {
     queueSummary = await getOfflineQueueSummary();
   } catch {}

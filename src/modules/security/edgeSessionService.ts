@@ -112,7 +112,51 @@ export async function requestEdgeSessionToken(
   password: string,
   options?: { turnstileToken?: string; twoFactorProof?: string; requireTurnstile?: boolean }
 ): Promise<EdgeSessionAuthResult> {
-  if (typeof window === 'undefined' || !window.location?.protocol?.startsWith('http')) {
+  if (typeof window === 'undefined') {
+    return { success: false, isEdgeUnavailable: true };
+  }
+  if (!window.location?.protocol?.startsWith('http')) {
+    const pyApi = (window as any).pywebview?.api;
+    if (pyApi && typeof pyApi.edge_session_auth === 'function' && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+      try {
+        const data: any = await pyApi.edge_session_auth(
+          username,
+          password,
+          options?.turnstileToken || '',
+          options?.twoFactorProof || ''
+        );
+        if (data?.requires2FA) {
+          return {
+            success: false,
+            requires2FA: true,
+            twoFactorChallenge: data.twoFactorChallenge,
+            geo: data.geo,
+            user: data.user,
+            error: data.error,
+            status: data.status || 200,
+          };
+        }
+        if (data?.success && data?.sessionToken) {
+          setEdgeSessionToken(data.sessionToken, data.expiresAt, username);
+          if (data.firebaseCustomToken) {
+            await signInFirebaseWithCustomToken(data.firebaseCustomToken);
+          }
+          return {
+            success: true,
+            user: data.user,
+            firebaseCustomToken: data.firebaseCustomToken,
+            status: data.status || 200,
+          };
+        }
+        if (data && !data.isEdgeUnavailable && data.status === 401) {
+          return {
+            success: false,
+            error: data.error || 'Error de autenticación Edge.',
+            status: data.status,
+          };
+        }
+      } catch {}
+    }
     return { success: false, isEdgeUnavailable: true };
   }
   try {

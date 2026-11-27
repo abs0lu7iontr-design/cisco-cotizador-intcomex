@@ -493,6 +493,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
 
   // Recálculo centralizado con cola protegida ante ejecuciones concurrentes
   const isComputingRef = useRef(false);
+  const computeSeqRef = useRef(0);
   const pendingRecomputeRef = useRef<{
     buffer: ArrayBuffer;
     params: QuoteParameters;
@@ -519,6 +520,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         };
         return;
       }
+      const seqId = ++computeSeqRef.current;
       isComputingRef.current = true;
       try {
         const safeBuffer = buffer.slice(0);
@@ -532,9 +534,13 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           activePromoMap,
           { forceParams: true }
         );
+        if (seqId !== computeSeqRef.current) {
+          return;
+        }
         setProcessedResult(result);
         persistProcessedEstimateHistory(result, fileName, currentUser);
       } catch (err: unknown) {
+        if (seqId !== computeSeqRef.current) return;
         console.error('Error recalculating estimate:', err);
         const msg = err instanceof Error ? err.message : String(err ?? '');
         setErrorMessage(
@@ -544,7 +550,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         );
       } finally {
         isComputingRef.current = false;
-        if (pendingRecomputeRef.current) {
+        if (pendingRecomputeRef.current && seqId === computeSeqRef.current) {
           const next = pendingRecomputeRef.current;
           pendingRecomputeRef.current = null;
           recompute(next.buffer, next.params, next.fileName, next.overrides, next.promoPrices);
@@ -560,9 +566,15 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
   useEffect(() => {
     if (isLoadingBufferRef.current) return;
     if (processedResult && processedResult.items && processedResult.items.length > 0) {
-      setProcessedResult((prev) =>
-        prev ? recalculateEstimateResult(prev, params, customOverrideMap, fastTrackPromoMap) : prev
-      );
+      setProcessedResult((prev) => {
+        if (!prev) return prev;
+        try {
+          return recalculateEstimateResult(prev, params, customOverrideMap, fastTrackPromoMap);
+        } catch (err) {
+          console.warn('[Store] Error recalculando cotización en memoria:', err);
+          return prev;
+        }
+      });
     } else if (rawWorkbookBuffer && currentFileName) {
       recompute(rawWorkbookBuffer.slice(0), params, currentFileName, customOverrideMap, fastTrackPromoMap);
     }
@@ -593,6 +605,14 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           return;
         }
 
+        const [{ parseEstimateWorkbook }] = await Promise.all([import('./excelEngine')]);
+        const { result: rawResult } = await parseEstimateWorkbook(
+          safeBuffer.slice(0),
+          DEFAULT_PARAMS,
+          fileName,
+          {}
+        );
+
         setFastTrackPromoMap({});
         setRawWorkbookBuffer(safeBuffer);
         setCurrentFileName(fileName);
@@ -601,14 +621,6 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           ...readLocalSkuOverrides(),
           ...skuOverridesMap,
         };
-
-        const [{ parseEstimateWorkbook }] = await Promise.all([import('./excelEngine')]);
-        const { result: rawResult } = await parseEstimateWorkbook(
-          safeBuffer.slice(0),
-          DEFAULT_PARAMS,
-          fileName,
-          {}
-        );
 
         const partner = extractPartnerFromFilenameOrHeader(
           fileName,
@@ -1180,9 +1192,18 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           currency: 'USD',
           params: {
             ...params,
-            internacionPct: effectiveRates.internacionPct,
-            margenPct: effectiveRates.marginPct,
-            arancelPct: effectiveRates.arancelPct,
+            internacionPct:
+              params.parameterMode === 'custom_lines'
+                ? params.internacionPct
+                : effectiveRates.internacionPct,
+            margenPct:
+              params.parameterMode === 'custom_lines'
+                ? params.margenPct
+                : effectiveRates.marginPct,
+            arancelPct:
+              params.parameterMode === 'custom_lines'
+                ? params.arancelPct
+                : effectiveRates.arancelPct,
           },
         },
         headerInfo: {
@@ -1245,7 +1266,25 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           res.error?.includes('offline') ||
           res.error?.includes('unavailable'))
       ) {
-        await enqueueOfflineAction('save_estimate', cloudPayload);
+        await enqueueOfflineAction(
+          'save_estimate',
+          {
+            record: cloudPayload,
+            options: {
+              isLocalOnly,
+              storageScope: isLocalOnly ? 'local_only' : 'cloud',
+              autoIncrementIfExisting: options?.autoIncrementIfExisting,
+              note: options?.note,
+            },
+          },
+          {
+            entityKey:
+              cloudPayload.estimateId && cloudPayload.estimateId !== 'NA'
+                ? `EST:${cloudPayload.estimateId.trim().toUpperCase()}`
+                : undefined,
+            summary: `Estimate ${cloudPayload.estimateId || cloudPayload.originalFileName}`,
+          }
+        );
         return {
           success: true,
           error:
@@ -1374,6 +1413,9 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
   }, []);
 
   const clearEstimate = useCallback(() => {
+    computeSeqRef.current += 1;
+    pendingRecomputeRef.current = null;
+    isLoadingBufferRef.current = false;
     setRawWorkbookBuffer(null);
     setCurrentFileName('');
     setProcessedResult(null);

@@ -532,18 +532,20 @@ export function EstimatesHistoryView() {
     const myUsername = (currentUser?.username || '').trim().toLowerCase();
 
     const filtered = estimates.filter((e) => {
+      const { hasAccess } = evaluateAccess(e);
       const partnerFmt = formatPartnerName(e.partnerName);
       const matchesSearch =
         !q ||
         (e.estimateId || '').toLowerCase().includes(q) ||
-        (e.dealId || '').toLowerCase().includes(q) ||
         (e.partnerName || '').toLowerCase().includes(q) ||
         partnerFmt.toLowerCase().includes(q) ||
-        (e.clientFinalName || '').toLowerCase().includes(q) ||
-        (e.modelName || '').toLowerCase().includes(q) ||
         (e.creator?.fullName || '').toLowerCase().includes(q) ||
         (e.creator?.username || '').toLowerCase().includes(q) ||
-        (e.originalFileName || '').toLowerCase().includes(q);
+        (hasAccess &&
+          ((e.dealId || '').toLowerCase().includes(q) ||
+            (e.clientFinalName || '').toLowerCase().includes(q) ||
+            (e.modelName || '').toLowerCase().includes(q) ||
+            (e.originalFileName || '').toLowerCase().includes(q)));
 
       const matchesMonth =
         selectedMonth === 'all' ||
@@ -589,16 +591,16 @@ export function EstimatesHistoryView() {
         return String(a.id || a.estimateId || '').localeCompare(String(b.id || b.estimateId || ''));
       }
       if (sortBy === 'amount_desc') {
-        const diff =
-          (b.financialSummary?.totalCotizadoIntcomex || 0) -
-          (a.financialSummary?.totalCotizadoIntcomex || 0);
+        const bAmt = evaluateAccess(b).hasAccess ? b.financialSummary?.totalCotizadoIntcomex || 0 : -1;
+        const aAmt = evaluateAccess(a).hasAccess ? a.financialSummary?.totalCotizadoIntcomex || 0 : -1;
+        const diff = bAmt - aAmt;
         if (diff !== 0) return diff;
         return compareEstimateRecordsDeterministic(a, b);
       }
       if (sortBy === 'amount_asc') {
-        const diff =
-          (a.financialSummary?.totalCotizadoIntcomex || 0) -
-          (b.financialSummary?.totalCotizadoIntcomex || 0);
+        const aAmt = evaluateAccess(a).hasAccess ? a.financialSummary?.totalCotizadoIntcomex || 0 : Number.MAX_SAFE_INTEGER;
+        const bAmt = evaluateAccess(b).hasAccess ? b.financialSummary?.totalCotizadoIntcomex || 0 : Number.MAX_SAFE_INTEGER;
+        const diff = aAmt - bAmt;
         if (diff !== 0) return diff;
         return compareEstimateRecordsDeterministic(a, b);
       }
@@ -949,14 +951,16 @@ export function EstimatesHistoryView() {
 
         {/* Action Buttons */}
         <div className="flex items-center flex-wrap gap-2.5">
-          <button
-            onClick={() => setIsFirebaseModalOpen(true)}
-            className="inline-flex items-center space-x-2 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 hover:border-cyan-500/40 px-3.5 py-2.5 rounded-xl transition-all cursor-pointer"
-            title="Vincular con tu cuenta de Google Console (abs0lu7iontr@gmail.com)"
-          >
-            <Database className="w-4 h-4 text-cyan-400" />
-            <span>Configurar Conexión Firebase</span>
-          </button>
+          {currentUser?.role === 'admin' && (
+            <button
+              onClick={() => setIsFirebaseModalOpen(true)}
+              className="inline-flex items-center space-x-2 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 hover:border-cyan-500/40 px-3.5 py-2.5 rounded-xl transition-all cursor-pointer"
+              title="Vincular con tu cuenta de Google Console (abs0lu7iontr@gmail.com)"
+            >
+              <Database className="w-4 h-4 text-cyan-400" />
+              <span>Configurar Conexión Firebase</span>
+            </button>
+          )}
 
           <button
             onClick={() => fetchAllHistory(true)}
@@ -2799,12 +2803,14 @@ export function EstimatesHistoryView() {
         </div>
       )}
 
-      {/* Firebase Cloud Configuration Modal */}
-      <FirebaseConfigModal
-        isOpen={isFirebaseModalOpen}
-        onClose={() => setIsFirebaseModalOpen(false)}
-        onConfigSaved={() => fetchAllHistory(true)}
-      />
+      {/* Firebase Cloud Configuration Modal (Admin only) */}
+      {currentUser?.role === 'admin' && (
+        <FirebaseConfigModal
+          isOpen={isFirebaseModalOpen}
+          onClose={() => setIsFirebaseModalOpen(false)}
+          onConfigSaved={() => fetchAllHistory(true)}
+        />
+      )}
     </div>
   );
 }

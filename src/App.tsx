@@ -984,24 +984,26 @@ function AuthenticatedApp() {
       )}
 
       {/* Collapsible Navigation Sidebar (Hidden on mobile < md, full on desktop >= md) */}
-      <div className="hidden md:flex shrink-0">
-      <Sidebar
-        currentView={currentView}
-        onSelectView={(v) => setCurrentView(v)}
-        currentUser={currentUser}
-        onLogout={logout}
-        isOpen={isNavSidebarOpen}
-        onToggleOpen={() => setIsNavSidebarOpen((prev) => !prev)}
-        activeBoCount={activeBoCount}
-        unreadFeedbackCount={unreadFeedbackCount}
-        pendingAccessCount={pendingAccessCount}
-        onOpenRules={() => setIsRulesModalOpen(true)}
-        onOpenSharedSku={() => setIsSharedSkuManagerOpen(true)}
-        onOpenFastTrack={() => setIsFastTrackAdminModalOpen(true)}
-        onAttemptCloudFeature={handleAttemptCloudFeature}
-      />
+      {currentUser && (
+        <div className="hidden md:flex shrink-0">
+        <Sidebar
+          currentView={currentView}
+          onSelectView={(v) => setCurrentView(v)}
+          currentUser={currentUser}
+          onLogout={logout}
+          isOpen={isNavSidebarOpen}
+          onToggleOpen={() => setIsNavSidebarOpen((prev) => !prev)}
+          activeBoCount={activeBoCount}
+          unreadFeedbackCount={unreadFeedbackCount}
+          pendingAccessCount={pendingAccessCount}
+          onOpenRules={() => setIsRulesModalOpen(true)}
+          onOpenSharedSku={() => setIsSharedSkuManagerOpen(true)}
+          onOpenFastTrack={() => setIsFastTrackAdminModalOpen(true)}
+          onAttemptCloudFeature={handleAttemptCloudFeature}
+        />
 
-      </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -1252,7 +1254,7 @@ function AuthenticatedApp() {
             </ErrorBoundary>
           )}
 
-          {currentView === 'users' && currentUser.role === 'admin' && (
+          {currentView === 'users' && currentUser?.role === 'admin' && (
             <ErrorBoundary
               fallbackTitle="Error en Gestión de Usuarios RBAC"
               resetKeys={[currentView]}
@@ -1264,7 +1266,7 @@ function AuthenticatedApp() {
             </ErrorBoundary>
           )}
 
-          {currentView === 'audit' && currentUser.role === 'admin' && (
+          {currentView === 'audit' && currentUser?.role === 'admin' && (
             <ErrorBoundary
               fallbackTitle="Error en Registro de Auditoría"
               resetKeys={[currentView]}

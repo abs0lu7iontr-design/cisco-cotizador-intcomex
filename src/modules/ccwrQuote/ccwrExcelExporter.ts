@@ -13,6 +13,7 @@ import {
   CcwrFinancialSummary,
 } from './ccwrTypes';
 import { INTCOMEX_LOGO_RAW_BASE64 } from '../../lib/intcomexLogoBase64';
+import { escapeHtml } from '../../utils/exportSanitizers';
 
 export const CCWR_EXPORT_COLUMNS = [
   { header: 'Número de Producto', key: 'productNumber', minWidth: 15, maxWidth: 22 },
@@ -546,19 +547,19 @@ export function generateCcwrEmailHtml(
   summary: CcwrFinancialSummary,
   params: CcwrQuoteParameters
 ): string {
-  const customer = headerInfo.endCustomerName || 'Cliente';
-  const quoteNum = headerInfo.quoteNumber || 'S/N';
-  const dateStr = headerInfo.quoteDate || new Date().toLocaleDateString('es-CL');
-  const pmName = params.sellerName || 'Mauricio Skill';
+  const customer = escapeHtml(headerInfo.endCustomerName || 'Cliente');
+  const quoteNum = escapeHtml(headerInfo.quoteNumber || 'S/N');
+  const dateStr = escapeHtml(headerInfo.quoteDate || new Date().toLocaleDateString('es-CL'));
+  const pmName = escapeHtml(params.sellerName || 'Mauricio Skill');
 
   let rowsHtml = '';
   for (const group of summary.byProduct) {
     rowsHtml += `
       <tr>
-        <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-family: Arial, sans-serif; font-size: 12px; color: #111827;">${group.productNumber}</td>
-        <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-family: Arial, sans-serif; font-size: 12px; color: #374151;">${group.description}</td>
-        <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-family: Arial, sans-serif; font-size: 12px; color: #111827;">${group.serviceSku}</td>
-        <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-family: Arial, sans-serif; font-size: 12px; text-align: center; color: #111827;">${group.serviceLevel}</td>
+        <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-family: Arial, sans-serif; font-size: 12px; color: #111827;">${escapeHtml(group.productNumber)}</td>
+        <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-family: Arial, sans-serif; font-size: 12px; color: #374151;">${escapeHtml(group.description)}</td>
+        <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-family: Arial, sans-serif; font-size: 12px; color: #111827;">${escapeHtml(group.serviceSku)}</td>
+        <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-family: Arial, sans-serif; font-size: 12px; text-align: center; color: #111827;">${escapeHtml(group.serviceLevel)}</td>
         <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-family: Arial, sans-serif; font-size: 12px; text-align: center; font-weight: bold; color: #111827;">${group.totalQty}</td>
         <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-family: Arial, sans-serif; font-size: 12px; text-align: right; color: #111827;">$ ${group.unitSalePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
         <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-family: Arial, sans-serif; font-size: 12px; text-align: right; font-weight: bold; color: #111827;">$ ${group.totalSalePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>

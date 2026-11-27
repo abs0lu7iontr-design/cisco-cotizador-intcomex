@@ -33,7 +33,7 @@ function isLocalOrigin(request: Request): boolean {
 function isStrictTurnstileHost(request: Request): boolean {
   try {
     const host = (new URL(request.url).hostname || '').toLowerCase();
-    return host === 'cisco-automated.pages.dev' || host === 'develop.cisco-automated.pages.dev';
+    return host === 'cisco-automated.pages.dev' || host.endsWith('.cisco-automated.pages.dev');
   } catch {
     return false;
   }
@@ -99,11 +99,14 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
     const secretKey = context.env.TURNSTILE_SECRET_KEY
       ? String(context.env.TURNSTILE_SECRET_KEY).trim().replace(/^["']|["']$/g, '').trim()
       : '';
-    const hasTwoFactorProof = Boolean(twoFactorProof);
+    const hasVerifiedTwoFactorProof = twoFactorProof
+      ? await verifyTwoFactorProofToken(twoFactorProof, username, ip, context.env)
+      : false;
 
     // Verificar Turnstile cuando el cliente aporta token o en dominios productivos oficiales
+    // (solo exime Turnstile si el proof 2FA ya fue verificado criptográficamente en servidor)
     const mustVerifyTurnstile = Boolean(
-      secretKey && !hasTwoFactorProof && (turnstileToken || isStrictTurnstileHost(context.request))
+      secretKey && !hasVerifiedTwoFactorProof && (turnstileToken || isStrictTurnstileHost(context.request))
     );
     if (mustVerifyTurnstile) {
       if (!turnstileToken) {
@@ -207,7 +210,6 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
         admin: verifiedUser.role === 'admin',
         username: verifiedUser.username,
         email: verifiedUser.email || undefined,
-        email_verified: Boolean(verifiedUser.email),
       },
       context.env.FIREBASE_SERVICE_ACCOUNT_JSON
     );

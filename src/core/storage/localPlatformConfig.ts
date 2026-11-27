@@ -93,14 +93,15 @@ export function getLocalPlatformConfig(): LocalPlatformConfig {
             ...(parsed.defaultParams || {}),
           },
         };
+        const resolvedConfig: LocalPlatformConfig = memoryConfigCache!;
 
         // Si se saneó 'pm_cisco', actualizar de inmediato la persistencia en disco
         if (parsed.lastUsername === 'pm_cisco') {
           try {
-            localStorage.setItem(LOCAL_PLATFORM_CONFIG_STORAGE_KEY, JSON.stringify(memoryConfigCache));
+            localStorage.setItem(LOCAL_PLATFORM_CONFIG_STORAGE_KEY, JSON.stringify(resolvedConfig));
           } catch {}
         }
-        return memoryConfigCache;
+        return resolvedConfig;
       }
 
       // Migración inicial desde claves individuales históricas del PC

@@ -5,6 +5,7 @@
 // ============================================================================
 
 import React, { useState, useMemo } from 'react';
+import { sanitizeCsvCell } from '../../utils/exportSanitizers';
 import {
   History,
   Search,
@@ -252,26 +253,26 @@ export const BoIndividualHistoryView: React.FC<Props> = ({
     const rows = filteredOrders.map((o) => {
       const stageMeta = BO_STAGES_METADATA[o.currentStage];
       return [
-        `"${o.id}"`,
-        `"${o.dealId || ''}"`,
-        `"${o.estimateId || ''}"`,
-        `"${o.estimateVersionTag || ''}"`,
-        `"${(o.partnerName || '').replace(/"/g, '""')}"`,
-        `"${(o.endCustomerName || '').replace(/"/g, '""')}"`,
-        `"${o.clientPoNumber || ''}"`,
-        `"${o.ciscoSoNumber || ''}"`,
-        `"${o.bodegaDestino || 'E1'}"`,
-        `"${o.courier || ''}"`,
-        `"${o.courierTrackingNumber || ''}"`,
-        `"${stageMeta ? stageMeta.title : o.currentStage}"`,
+        sanitizeCsvCell(o.id),
+        sanitizeCsvCell(o.dealId || ''),
+        sanitizeCsvCell(o.estimateId || ''),
+        sanitizeCsvCell(o.estimateVersionTag || ''),
+        sanitizeCsvCell(o.partnerName || ''),
+        sanitizeCsvCell(o.endCustomerName || ''),
+        sanitizeCsvCell(o.clientPoNumber || ''),
+        sanitizeCsvCell(o.ciscoSoNumber || ''),
+        sanitizeCsvCell(o.bodegaDestino || 'E1'),
+        sanitizeCsvCell(o.courier || ''),
+        sanitizeCsvCell(o.courierTrackingNumber || ''),
+        sanitizeCsvCell(stageMeta ? stageMeta.title : o.currentStage),
         o.totalSaleUsd || 0,
         o.grossProfitUsd || 0,
         o.marginPct || 0,
         o.internacionUsd || 0,
         o.arancelUsd || 0,
         o.itemsCount || 0,
-        `"${formatChileDateOnly(o.createdAt)} ${formatChileTimeOnly(o.createdAt)}"`,
-        `"${formatChileDateOnly(o.updatedAt)} ${formatChileTimeOnly(o.updatedAt)}"`,
+        sanitizeCsvCell(`${formatChileDateOnly(o.createdAt)} ${formatChileTimeOnly(o.createdAt)}`),
+        sanitizeCsvCell(`${formatChileDateOnly(o.updatedAt)} ${formatChileTimeOnly(o.updatedAt)}`),
         o.notes ? o.notes.length : 0,
       ];
     });

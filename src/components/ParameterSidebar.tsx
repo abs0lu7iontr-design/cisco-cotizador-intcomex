@@ -751,15 +751,15 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
                 <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
                   <span className="text-slate-400 font-medium">Nuevo Total Estimado:</span>
                   <span className="font-mono font-bold text-amber-300 text-sm">
-                    {formatUsd(goalSeekResult.achievedTotal)}
+                    {formatUsd(goalSeekResult.achievedTotal ?? 0)}
                   </span>
                 </div>
 
-                {goalSeekResult.discountAmount > 0 && (
+                {(goalSeekResult.discountAmount ?? 0) > 0 && (
                   <div className="flex items-center justify-between text-[11px] text-slate-400">
                     <span>Descuento aplicado:</span>
                     <span className="font-mono font-bold text-rose-400">
-                      -{formatUsd(goalSeekResult.discountAmount)}
+                      -{formatUsd(goalSeekResult.discountAmount ?? 0)}
                     </span>
                   </div>
                 )}
@@ -768,7 +768,7 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
                   <div className="p-1.5 bg-slate-900 rounded-lg border border-slate-800">
                     <span className="text-slate-500 block">Internación</span>
                     <strong className="text-indigo-300 font-mono text-xs">
-                      {goalSeekResult.newInternacionPct.toFixed(1)}%
+                      {(goalSeekResult.newInternacionPct ?? 0).toFixed(1)}%
                     </strong>
                   </div>
                   <div className="p-1.5 bg-slate-900 rounded-lg border border-purple-900/30">
@@ -776,13 +776,13 @@ export const ParameterSidebar: React.FC<ParameterSidebarProps> = ({
                       <Lock className="w-2 h-2 text-purple-400" /> Arancel
                     </span>
                     <strong className="text-purple-300 font-mono text-xs">
-                      {goalSeekResult.newArancelPct.toFixed(1)}%
+                      {(goalSeekResult.newArancelPct ?? 0).toFixed(1)}%
                     </strong>
                   </div>
                   <div className="p-1.5 bg-slate-900 rounded-lg border border-slate-800">
                     <span className="text-slate-500 block">Margen</span>
                     <strong className="text-emerald-300 font-mono text-xs">
-                      {goalSeekResult.newMargenPct.toFixed(1)}%
+                      {(goalSeekResult.newMargenPct ?? 0).toFixed(1)}%
                     </strong>
                   </div>
                 </div>

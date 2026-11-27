@@ -119,7 +119,7 @@ async function runTests() {
     { internacionPct: 7, arancelPct: 6, margenPct: 0.5 }
   );
   assert.strictEqual(gsRes.success, true, 'Goal Seek con margen 0.5% debe converger correctamente');
-  assert.ok(Math.abs(gsRes.achievedTotal - 1020) < 0.1);
+  assert.ok(Math.abs((gsRes.achievedTotal ?? 0) - 1020) < 0.1);
 
   // Fechas: mes UTC real (no día del mes) y años en CURRENT_MONTH / Qx-YYYY
   const extractedNov = extractMonthAndYearFromCommercialValue('20 nov 2026');

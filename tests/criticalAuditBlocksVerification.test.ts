@@ -28,6 +28,10 @@ import { generateBoHtmlTable } from '../src/modules/bo/boEmailHelper';
 import { generateDealReminderEmail } from '../src/modules/bo/dealEmailHelper';
 import { generatePartnerEmailDraft, categorizeEstimateItems } from '../src/modules/estimate/estimateExportHelper';
 import { checkGeoLocation } from '../src/modules/security/twoFactorService';
+import { formatCcwrDate } from '../src/modules/ccwrQuote/ccwrParser';
+import { parseFastTrackDateRange } from '../src/modules/fasttrack/fastTrackParser';
+import { generateCcwrEmailHtml } from '../src/modules/ccwrQuote/ccwrExcelExporter';
+import { generateEstimateEmailHtml } from '../src/core/emailClipboardHelper';
 
 async function runTests() {
   console.log('🧪 Iniciando Suite de Auditoría Completa (Bloques A, B y C)...\n');
@@ -461,6 +465,33 @@ async function runTests() {
   assert.strictEqual(sanitizeSafeMailtoUrl('mailto:invalid_email?subject=x'), '#', 'sanitizeSafeMailtoUrl debe rechazar direcciones malformadas');
   const twoFactorModalCode = fs.readFileSync(path.join(rootDir, 'src/modules/security/TwoFactorModal.tsx'), 'utf8');
   assert.ok(twoFactorModalCode.includes('useAccessibleModal'), 'TwoFactorModal debe usar useAccessibleModal');
+
+  // Re-Auditoría Bloques X / Y / Z (v2.29.0):
+  const sessionAuthCodeReaudit = fs.readFileSync(path.join(rootDir, 'functions/api/session-auth.ts'), 'utf8');
+  assert.ok(sessionAuthCodeReaudit.includes('hasVerifiedTwoFactorProof'), 'session-auth debe validar twoFactorProof antes de eximir Turnstile');
+  assert.ok(!sessionAuthCodeReaudit.includes('email_verified: Boolean(verifiedUser.email)'), 'session-auth no debe emitir email_verified desde documento mutable');
+  assert.ok(rulesCode.includes('function isNotViewer()'), 'firestore.rules debe bloquear escrituras para rol viewer');
+  assert.ok(rulesCode.includes('match /access_requests/{requesterId}'), 'firestore.rules debe aislar solicitudes de acceso en subcolección');
+  assert.ok(swCode.includes('url.origin !== self.location.origin'), 'sw.js solo debe cachear recursos same-origin');
+  assert.ok(headersContent.includes("worker-src 'self' blob:"), '_headers debe incluir worker-src self blob:');
+  assert.ok(scriptSrcMatch && !scriptSrcMatch[1].includes('*.googleapis.com'), 'CSP script-src no debe incluir wildcard *.googleapis.com');
+  assert.ok(!desktopWinPy.includes('existing_bundled_only'), 'desktop_window.py no debe cargar bundles frozen sin verificar SHA-256');
+  const dbMgrPy = fs.readFileSync(path.join(rootDir, 'desktop_app/db_manager.py'), 'utf8');
+  assert.ok(dbMgrPy.includes("'viewer'"), 'db_manager.py CHECK constraint debe aceptar rol viewer');
+  assert.strictEqual(sanitizeForFirestore({ badNum: NaN } as any).badNum, null, 'sanitizeForFirestore debe sanear NaN a null');
+  assert.strictEqual(formatCcwrDate('2026-11-27'), '27-nov-2026', 'formatCcwrDate debe preservar fechas ISO YYYY-MM-DD sin shift UTC local');
+  const usRange = parseFastTrackDateRange('Eligible from 10/25/2026 - 11/30/2026');
+  assert.ok(usRange?.validFrom && new Date(usRange.validFrom).getMonth() === 9 && new Date(usRange.validFrom).getDate() === 25, 'parseFastTrackDateRange debe parsear MM/DD/YYYY correctamente');
+  const escapedCcwrHtml = generateCcwrEmailHtml(
+    { endCustomerName: '<img src=x onerror=alert(1)>', quoteNumber: 'Q1', quoteDate: '27-nov-2026' } as any,
+    { byProduct: [], totalPrecioVenta: 100 } as any,
+    { sellerName: 'Test <PM>' } as any
+  );
+  assert.ok(!escapedCcwrHtml.includes('<img src=x'), 'generateCcwrEmailHtml debe escapar HTML de campos de cliente');
+  const mailDraft = generateEstimateEmailHtml(
+    { fileName: 'Estimate_123.xlsx', headerInfo: { companyName: 'PartnerX', customerName: 'ClienteY' }, items: [], calculatedProductTotal: 0 } as any
+  );
+  assert.ok(mailDraft.includes('PartnerX') && mailDraft.includes('ClienteY'), 'generateEstimateEmailHtml debe conservar companyName->Partner y customerName->Cliente');
 
   console.log('  ✅ Bloques C, Hardening 1/2/3 & QA Web P0/P1/P2 verificados.');
   console.log('\n🎉 ¡TODAS LAS VERIFICACIONES DE AUDITORÍA Y HARDENING PASARON AL 100%!');

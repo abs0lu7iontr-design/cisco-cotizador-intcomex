@@ -3,6 +3,7 @@
 // Pure Fetch-on-Demand (NO onSnapshot realtime listeners) with Local Failsafe
 // ============================================================================
 
+import { getAuth } from 'firebase/auth';
 import {
   collection,
   addDoc,
@@ -165,9 +166,10 @@ export function getLocalDsvCache(): CloudDsvRecord[] {
       const listLegacy: CloudDsvRecord[] = rawLegacy ? JSON.parse(rawLegacy) : [];
 
       for (const r of [...listLegacy, ...listVault, ...listV2]) {
-        if (!r || !r.id || deletedIds.has(r.id)) continue;
-        if (!map.has(r.id)) {
-          map.set(r.id, r);
+        const rid = r?.id ? String(r.id) : '';
+        if (!rid || deletedIds.has(rid)) continue;
+        if (!map.has(rid)) {
+          map.set(rid, r);
         }
       }
     }
@@ -175,7 +177,7 @@ export function getLocalDsvCache(): CloudDsvRecord[] {
     // 3. Semillas maestras iniciales (si no hay registros y el usuario no los eliminó explícitamente)
     if (map.size === 0 && deletedIds.size === 0) {
       for (const seed of SEED_DSV_RECORDS) {
-        map.set(seed.id, seed);
+        if (seed.id) map.set(seed.id, seed);
       }
     }
 
@@ -232,6 +234,9 @@ export function sanitizeForFirestore<T>(data: T, depth: number = 0): T {
     return null as any;
   }
   if (data === undefined || typeof data === 'function' || typeof data === 'symbol') {
+    return null as any;
+  }
+  if (typeof data === 'number' && !Number.isFinite(data)) {
     return null as any;
   }
   if (data === null || typeof data !== 'object') {
@@ -1799,10 +1804,12 @@ export async function getCloudEstimates(
         }
       }
     } catch {
-      // Fallback query if ordering by createdAt encounters any unindexed or missing legacy field
-      const qFallback = query(colRef, limit(targetMax));
-      const snapshot = await withTimeout(getDocs(qFallback), 8000);
-      snapshot.forEach((docSnap) => {
+      // Fallback queries compliant with Firestore Security Rules (avoids 1 restricted doc blocking non-admin list)
+      const signedUid = (getAuth(db.app)?.currentUser?.uid || '').trim().toLowerCase();
+      const seenIds = new Set<string>();
+      const pushDoc = (docSnap: any) => {
+        if (!docSnap || seenIds.has(docSnap.id)) return;
+        seenIds.add(docSnap.id);
         const data = docSnap.data() as Omit<CloudEstimateRecord, 'id'>;
         const normalizedCreatedAt = normalizeIsoTimestamp(data.createdAt);
         const normalizedUpdatedAt = normalizeIsoTimestamp(
@@ -1845,7 +1852,30 @@ export async function getCloudEstimates(
           accessRequests: deduplicateAccessRequests(data.accessRequests),
           syncedToCloud: true,
         });
-      });
+      };
+
+      const scopedQueries = [
+        query(colRef, where('isRestricted', '==', false), limit(targetMax)),
+        ...(signedUid
+          ? [
+              query(colRef, where('creator.username', '==', signedUid), limit(targetMax)),
+              query(colRef, where('allowedUsers', 'array-contains', signedUid), limit(targetMax)),
+            ]
+          : []),
+      ];
+      const settled = await Promise.allSettled(scopedQueries.map((sq) => withTimeout(getDocs(sq), 8000)));
+      let anySucceeded = false;
+      for (const s of settled) {
+        if (s.status === 'fulfilled') {
+          anySucceeded = true;
+          s.value.forEach(pushDoc);
+        }
+      }
+      if (!anySucceeded) {
+        const qFallback = query(colRef, limit(targetMax));
+        const snapshot = await withTimeout(getDocs(qFallback), 8000);
+        snapshot.forEach(pushDoc);
+      }
     }
 
     // Deduplicate remote list by estimateId (keep newest / deterministic docId first)
@@ -2153,37 +2183,26 @@ export async function requestEstimateAccess(
     }
     saveLocalEstimatesCache(updatedLocal);
 
-    // Update Firestore
+    // Update Firestore via isolated access_requests subcollection (per Firestore rules)
     const { db, isReady } = getFirestoreInstance();
-    if (isReady && db) {
+    if (isReady && db && !docId.startsWith('local_')) {
       const targetDocId = docId.startsWith('cloud-est-')
         ? buildEstimateDocId(estimateId)
         : docId;
-      const docRef = doc(db, ESTIMATES_COLLECTION, targetDocId);
-
-      // Clean remote requests before merging to avoid duplicate accumulation in remote doc
-      let remoteMergedRequests = finalRequests;
-      try {
-        const snap = await withTimeout(getDoc(docRef), 2000);
-        if (snap.exists()) {
-          const remoteData = snap.data();
-          if (Array.isArray(remoteData?.accessRequests)) {
-            const remoteCleaned = deduplicateAccessRequests(remoteData.accessRequests).filter(
-              (r) => (r.username || '').trim().toLowerCase() !== normUsername
-            );
-            remoteCleaned.push(newReq);
-            remoteMergedRequests = deduplicateAccessRequests(remoteCleaned);
-          }
-        }
-      } catch (_) {}
-
+      const authUid = getAuth(db.app)?.currentUser?.uid;
+      const requesterId = (authUid || normUsername).trim();
+      const accessReqRef = doc(db, ESTIMATES_COLLECTION, targetDocId, 'access_requests', requesterId);
       await withTimeout(
         setDoc(
-          docRef,
+          accessReqRef,
           sanitizeForFirestore({
-            estimateId: estimateId || 'NA',
-            accessRequests: remoteMergedRequests,
-            updatedAt: nowIso,
+            requester_uid: authUid || normUsername,
+            requester_username: normUsername,
+            username: normUsername,
+            requester_name: requester.fullName || requester.username,
+            role: requester.role || 'pm',
+            requested_at: nowIso,
+            status: 'pending',
           }),
           { merge: true }
         ),
@@ -2318,6 +2337,30 @@ export async function resolveEstimateAccessRequest(
         ),
         6000
       );
+
+      // Mirror resolution to subcollection document if present
+      try {
+        const accessReqCol = collection(db, ESTIMATES_COLLECTION, targetDocId, 'access_requests');
+        const reqSnap = await withTimeout(getDocs(accessReqCol), 3000);
+        for (const rDoc of reqSnap.docs) {
+          const rd: any = rDoc.data();
+          const u = String(rd?.requester_username || rd?.username || rDoc.id || '').trim().toLowerCase();
+          if (u === normTarget) {
+            await withTimeout(
+              setDoc(
+                doc(db, ESTIMATES_COLLECTION, targetDocId, 'access_requests', rDoc.id),
+                sanitizeForFirestore({
+                  status: approve ? 'approved' : 'rejected',
+                  resolved_at: nowIso,
+                  resolved_by: resolverUsername,
+                }),
+                { merge: true }
+              ),
+              3000
+            );
+          }
+        }
+      } catch {}
     }
 
     return {
@@ -2393,19 +2436,33 @@ export async function archiveCloudEstimate(
     const { db, isReady } = getFirestoreInstance();
     if (isReady && db && !docId.startsWith('cloud-est-')) {
       const docRef = doc(db, ESTIMATES_COLLECTION, docId);
-      await withTimeout(
-        setDoc(
-          docRef,
-          sanitizeForFirestore({
-            lifecycleState: 'ARCHIVED',
-            archivedAt: nowIso,
-            archivedBy,
-            updatedAt: nowIso,
-          }),
-          { merge: true }
-        ),
-        4000
-      );
+      const snap = await withTimeout(getDoc(docRef), 3000).catch(() => null);
+      if (snap && snap.exists()) {
+        await withTimeout(
+          setDoc(
+            docRef,
+            sanitizeForFirestore({
+              lifecycleState: 'ARCHIVED',
+              archivedAt: nowIso,
+              archivedBy,
+              updatedAt: nowIso,
+            }),
+            { merge: true }
+          ),
+          4000
+        );
+      } else {
+        const localRecord = localList.find(
+          (item) => item.id === docId || (estimateId && estimateId !== 'NA' && item.estimateId === estimateId)
+        );
+        if (localRecord && localRecord.creator?.username && localRecord.createdAt) {
+          const { id: _omitId, ...fullPayload } = localRecord;
+          await withTimeout(
+            setDoc(docRef, sanitizeForFirestore({ ...fullPayload, lifecycleState: 'ARCHIVED' }), { merge: true }),
+            4000
+          );
+        }
+      }
     }
 
     return { success: true, lifecycleState: 'ARCHIVED' };
@@ -2527,24 +2584,34 @@ export async function deleteCloudEstimate(
           }
 
           const allVerIds = Array.from(remoteVerIds);
-          // Delete versions + root doc in atomic writeBatch chunks (<= 450 ops per batch)
+          const hasImmutableV0 =
+            allVerIds.includes(CANONICAL_V0_TAG) || allVerIds.includes(LEGACY_V0_TAG);
+          const mutableVerIds = allVerIds.filter(
+            (vId) => vId !== CANONICAL_V0_TAG && vId !== LEGACY_V0_TAG
+          );
+
+          // Delete only mutable versions in writeBatch; v0_RAW/v0 are immutable in firestore.rules
           const batchSize = 400;
-          for (let i = 0; i < allVerIds.length; i += batchSize) {
-            const slice = allVerIds.slice(i, i + batchSize);
+          for (let i = 0; i < mutableVerIds.length; i += batchSize) {
+            const slice = mutableVerIds.slice(i, i + batchSize);
             const batch = writeBatch(db);
             for (const vId of slice) {
               batch.delete(doc(db, ESTIMATES_COLLECTION, tDocId, 'versions', vId));
             }
-            if (i + batchSize >= allVerIds.length) {
+            if (!hasImmutableV0 && i + batchSize >= mutableVerIds.length) {
               batch.delete(doc(db, ESTIMATES_COLLECTION, tDocId));
             }
             await withTimeout(batch.commit(), 5000);
           }
 
-          if (allVerIds.length === 0) {
-            await withTimeout(deleteDoc(doc(db, ESTIMATES_COLLECTION, tDocId)), 4000);
+          if (mutableVerIds.length === 0) {
+            if (!hasImmutableV0) {
+              await withTimeout(deleteDoc(doc(db, ESTIMATES_COLLECTION, tDocId)), 4000);
+            } else {
+              await archiveCloudEstimate(tDocId, estimateId, 'hard_delete_protected_v0');
+            }
           }
-          deletedVersionsCount += allVerIds.length;
+          deletedVersionsCount += mutableVerIds.length;
         }
       }
     }
@@ -2756,12 +2823,14 @@ export async function getCloudDsvs(
     });
 
     const remoteKeys = new Set(remoteList.map((r) => r.id));
-    const nonDuplicatedLocal = localCache.filter((l) => !remoteKeys.has(l.id) && !deletedIds.has(l.id));
+    const nonDuplicatedLocal = localCache.filter(
+      (l) => Boolean(l.id) && !remoteKeys.has(l.id!) && !deletedIds.has(l.id!)
+    );
 
     // Auto-sincronizar registros locales pendientes a Firestore
     if (nonDuplicatedLocal.length > 0) {
       for (const pending of nonDuplicatedLocal) {
-        if (pending.id.startsWith('cloud-dsv-')) {
+        if (pending.id && pending.id.startsWith('cloud-dsv-')) {
           const { id: _omit, ...payload } = pending;
           addDoc(colRef, sanitizeForFirestore(payload)).then((newDoc) => {
             if (newDoc?.id) {

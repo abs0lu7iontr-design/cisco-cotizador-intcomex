@@ -516,14 +516,14 @@ export const HealthDashboardView: React.FC<HealthDashboardViewProps> = ({ onOpen
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-400">Dólar Actual (BCCh):</span>
                 <span className="font-bold text-emerald-400">
-                  1 USD = ${report?.rates.usdObs.toFixed(2)} CLP
+                  1 USD = ${(report?.rates?.usdObs ?? 0).toFixed(2)} CLP
                 </span>
               </div>
 
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-400">Unidad de Fomento (UF):</span>
                 <span className="font-bold text-sky-400">
-                  ${report?.rates.uf.toLocaleString('es-CL')} CLP
+                  ${(report?.rates?.uf ?? 0).toLocaleString('es-CL')} CLP
                 </span>
               </div>
 

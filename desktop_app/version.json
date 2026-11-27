@@ -1,12 +1,12 @@
 {
   "name": "cisco-automated",
-  "version": "2.28.0",
-  "git_commit": "d6b0a84",
+  "version": "2.29.0",
+  "git_commit": "81f982a",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-27T16:17:01.360Z",
-  "release_notes": "fix(auth,v2.27.1): resolve unconfigured Edge session secrets in preview and harden login lockout",
+  "build_timestamp": "2026-11-27T17:31:00.129Z",
+  "release_notes": "feat(qa,security,v2.28.0): implement P0/P1/P2 web QA, PBKDF2 rules, Turnstile, SW & a11y",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop",
-  "desktop_bundle_sha256": "5acfabd663171138cf5d60a38213474e784f7ef478a4abe2c066d68f47b0fce5"
+  "desktop_bundle_sha256": "643f5ff429b2b4f2608e44d565884310ad07dac02dff1ae19916caca2761340e"
 }

@@ -271,11 +271,19 @@ export function convertCiscoEstimateToProcessedResult(
       ? 'Entrega Digital (ED)'
       : formatLeadTime(leadTimeDays);
 
-    // Precios
-    const qty = Number(lineData.quantity?.measurement) || 1;
+    // Precios (preservar $0 exacto en descuentos 100% y qty = 0 cuando venga explícito)
+    const rawQty = lineData.quantity?.measurement;
+    const qty =
+      rawQty !== undefined && rawQty !== null && !Number.isNaN(Number(rawQty))
+        ? Number(rawQty)
+        : 1;
     const unitListPrice = Number(lineData.financialDetails?.unitListPrice?.amount) || 0;
     const discPct = Number(lineData.financialDetails?.discounts?.[0]?.rate?.measurement) || 0;
-    const netCiscoUnit = Number(lineData.financialDetails?.unitNetPrice?.amount) || unitListPrice * (1 - discPct / 100);
+    const rawNetPrice = lineData.financialDetails?.unitNetPrice?.amount;
+    const netCiscoUnit =
+      rawNetPrice !== undefined && rawNetPrice !== null && !Number.isNaN(Number(rawNetPrice))
+        ? Number(rawNetPrice)
+        : unitListPrice * (1 - discPct / 100);
 
     const calc = calculateLineItemCosts(
       netCiscoUnit,

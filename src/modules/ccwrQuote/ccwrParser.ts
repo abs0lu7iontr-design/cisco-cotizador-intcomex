@@ -34,13 +34,24 @@ export function formatCcwrDate(val: any): string {
     return str.toLowerCase();
   }
 
-  // Parsear fecha ISO o tradicional "YYYY-MM-DD" o "DD/MM/YYYY"
+  // Evitar desplazamiento de zona horaria en fechas ISO "YYYY-MM-DD" o timestamp ISO UTC
+  const isoMatch = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/);
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const mIdx = Number(isoMatch[2]) - 1;
+    const dayNum = Number(isoMatch[3]);
+    if (mIdx >= 0 && mIdx <= 11 && dayNum >= 1 && dayNum <= 31) {
+      return `${String(dayNum).padStart(2, '0')}-${SPANISH_MONTHS[mIdx]}-${year}`;
+    }
+  }
+
+  // Parsear fecha tradicional o textual usando UTC para fechas sin hora local explícita
   const parsed = Date.parse(str);
   if (!isNaN(parsed)) {
     const d = new Date(parsed);
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = SPANISH_MONTHS[d.getMonth()];
-    const year = d.getFullYear();
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    const month = SPANISH_MONTHS[d.getUTCMonth()];
+    const year = d.getUTCFullYear();
     return `${day}-${month}-${year}`;
   }
 

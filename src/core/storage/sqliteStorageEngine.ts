@@ -79,6 +79,8 @@ async function readOpfsBinary(): Promise<Uint8Array | null> {
   }
 }
 
+let opfsWriteChain: Promise<boolean> = Promise.resolve(true);
+
 async function writeOpfsBinary(bytes: Uint8Array): Promise<boolean> {
   if (
     typeof navigator === 'undefined' ||
@@ -87,19 +89,24 @@ async function writeOpfsBinary(bytes: Uint8Array): Promise<boolean> {
   ) {
     return false;
   }
-  try {
-    const root = await navigator.storage.getDirectory();
-    const fileHandle = await root.getFileHandle(SQLITE_DB_FILENAME, { create: true });
-    // @ts-ignore
-    const writable = await fileHandle.createWritable();
-    await writable.write(bytes);
-    await writable.close();
-    isOpfsActive = true;
-    return true;
-  } catch (err) {
-    console.warn('[SQLite-OPFS] Error escribiendo binario SQLite en OPFS:', err);
-    return false;
-  }
+  const runWrite = async (): Promise<boolean> => {
+    try {
+      const root = await navigator.storage.getDirectory();
+      const fileHandle = await root.getFileHandle(SQLITE_DB_FILENAME, { create: true });
+      // @ts-ignore
+      const writable = await fileHandle.createWritable();
+      await writable.write(bytes);
+      await writable.close();
+      isOpfsActive = true;
+      return true;
+    } catch (err) {
+      console.warn('[SQLite-OPFS] Error escribiendo binario SQLite en OPFS:', err);
+      return false;
+    }
+  };
+  const nextWrite = opfsWriteChain.then(runWrite, runWrite);
+  opfsWriteChain = nextWrite;
+  return nextWrite;
 }
 
 // ============================================================================
@@ -286,15 +293,13 @@ export async function getSqliteDb(): Promise<Database | null> {
       }
 
       const isFreshDatabase = !db;
-      if (!db) {
-        db = new SQL.Database();
-      }
+      const initializedDb = db ?? new SQL.Database();
 
-      ensureSqliteSchemas(db);
-      dbInstance = db;
+      ensureSqliteSchemas(initializedDb);
+      dbInstance = initializedDb;
 
       // Calcular tamaño actual
-      const initialBytes = db.export();
+      const initialBytes = initializedDb.export();
       lastKnownBytes = initialBytes.length;
 
       // Reparar OPFS si fue recuperado desde fallback, o persistir si es una base nueva
@@ -425,11 +430,11 @@ export async function sqliteSet<T>(storeName: string, key: string, value: T): Pr
          VALUES (?, ?, ?, ?, ?, ?)`,
         [
           key,
-          q.actionType || 'unknown',
+          q.action || q.actionType || 'unknown',
           q.entityKey || null,
           jsonStr,
-          q.status || 'PENDING',
-          q.createdAt || now,
+          q.status || (Number(q.retryCount) >= 5 ? 'FAILED' : 'PENDING'),
+          typeof q.createdAt === 'number' ? new Date(q.createdAt).toISOString() : q.createdAt || now,
         ]
       );
     }
@@ -708,7 +713,7 @@ export async function getSqliteMetrics(): Promise<SqliteMetrics> {
     engine: isReady
       ? isOpfsActive
         ? 'SQLite v3 (WASM / OPFS)'
-        : 'SQLite v3 (WASM / OPFS)'
+        : 'SQLite v3 (WASM / In-Memory)'
       : 'Inicializando...',
     databaseBytes: lastKnownBytes,
     databaseFormatted: formatSqliteBytes(lastKnownBytes),

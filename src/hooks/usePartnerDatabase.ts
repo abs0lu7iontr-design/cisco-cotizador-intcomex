@@ -380,7 +380,21 @@ export function usePartnerDatabase(originalBomName: string) {
     }
   }, [partners]);
 
-  // 1. Suscripción a Firestore + sincronización de escrituras pendientes al recuperar red
+  // 1. Suscripción a Firestore + re-suscripción al cambiar de proyecto Firebase o volver Online
+  const [subscriptionEpoch, setSubscriptionEpoch] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setSubscriptionEpoch((e) => e + 1);
+    window.addEventListener('cisco-firebase-project-switched', bump);
+    window.addEventListener('online', bump);
+    window.addEventListener('cisco_offline_mode_changed', bump);
+    return () => {
+      window.removeEventListener('cisco-firebase-project-switched', bump);
+      window.removeEventListener('online', bump);
+      window.removeEventListener('cisco_offline_mode_changed', bump);
+    };
+  }, []);
+
   useEffect(() => {
     if (isAppOffline()) {
       // Modo Offline: mantener base de partners 100% en local sin consultar ni subir a Firestore
@@ -450,7 +464,7 @@ export function usePartnerDatabase(originalBomName: string) {
       console.warn('[usePartnerDatabase Note]: Firestore listener failed to attach:', err);
       return () => {};
     }
-  }, []);
+  }, [subscriptionEpoch]);
 
   // Escuchar actualizaciones locales inmediatas, hidratación IDB al montar o cambio de proyecto Firebase
   useEffect(() => {
@@ -555,7 +569,8 @@ export function usePartnerDatabase(originalBomName: string) {
     });
     persistPartnersToStorage(mergedStored);
 
-    // 4. Sincronizar con Firestore y limpiar estado pendiente al confirmar
+    // 4. Sincronizar con Firestore (solo si Online) y limpiar estado pendiente al confirmar
+    if (isAppOffline()) return;
     const docId = getPartnerDocId(cleanName);
     if (!docId) return;
 

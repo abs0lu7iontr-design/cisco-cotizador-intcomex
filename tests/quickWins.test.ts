@@ -78,7 +78,7 @@ const goalSeekResult = solveGoalSeekParameters(
 );
 
 assert.strictEqual(goalSeekResult.newInternacionPct, 0, 'La internación debe permanecer estrictamente en 0% si el usuario la configuró en 0');
-assert(goalSeekResult.newMargenPct < 5.0, 'El margen debe reducirse para alcanzar el descuento sin inyectar internación');
+assert((goalSeekResult.newMargenPct ?? 5) < 5.0, 'El margen debe reducirse para alcanzar el descuento sin inyectar internación');
 console.log(`✅ Goal Seek con Internación 0%: Internación = ${goalSeekResult.newInternacionPct}%, Margen ajustado = ${goalSeekResult.newMargenPct}%, Total logrado = $${goalSeekResult.achievedTotal}`);
 
 console.log('\n🎉 ¡TODAS LAS PRUEBAS DE QUICK WINS COMPLETADAS AL 100%!');

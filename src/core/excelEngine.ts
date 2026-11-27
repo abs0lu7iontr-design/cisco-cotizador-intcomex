@@ -45,13 +45,13 @@ function getCellString(cell: ExcelJS.Cell | null | undefined): string {
   if (!cell || cell.value === null || cell.value === undefined) return '';
   if (typeof cell.value === 'object') {
     if ('richText' in cell.value && Array.isArray((cell.value as any).richText)) {
-      return (cell.value as any).richText.map((t: any) => t.text).join('');
+      return (cell.value as any).richText.map((t: any) => t.text || '').join('').trim();
     }
     if ('text' in cell.value) {
-      return String((cell.value as any).text);
+      return String((cell.value as any).text ?? '').trim();
     }
     if ('result' in cell.value) {
-      return String((cell.value as any).result);
+      return String((cell.value as any).result ?? '').trim();
     }
   }
   return String(cell.value).trim();
@@ -1239,7 +1239,6 @@ export async function parseEstimateWorkbook(
         isPeriodicSubscription: true,
         unitNetPriceCcw: rawNetCiscoUnit,
         extendedNetPriceCcw: rawExtCost,
-        months: merakiResult.months,
         isFastTrackPromo: hasPromo,
         originalNetCiscoUnit: hasPromo ? (rawNetCiscoUnit * merakiResult.months) : undefined,
         fastTrackDiscountPct: hasPromo ? discPct : undefined,
@@ -1826,8 +1825,8 @@ function renderEstimateTableAndFooters(
     ],
   };
   validityCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
-  validityCell.border = undefined;
-  validityCell.fill = undefined;
+  validityCell.border = undefined as any;
+  validityCell.fill = undefined as any;
   worksheet.mergeCells(`A${validityRow}:G${validityRow}`);
   currentRow++;
 
@@ -1848,8 +1847,8 @@ function renderEstimateTableAndFooters(
     ],
   };
   leadTimeCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: false };
-  leadTimeCell.border = undefined;
-  leadTimeCell.fill = undefined;
+  leadTimeCell.border = undefined as any;
+  leadTimeCell.fill = undefined as any;
   worksheet.mergeCells(`A${leadTimeNoticeRow}:G${leadTimeNoticeRow}`);
   currentRow++;
 
@@ -1870,8 +1869,8 @@ function renderEstimateTableAndFooters(
     ],
   };
   technicalCell.alignment = { vertical: 'top', horizontal: 'left', wrapText: true };
-  technicalCell.border = undefined;
-  technicalCell.fill = undefined;
+  technicalCell.border = undefined as any;
+  technicalCell.fill = undefined as any;
   worksheet.mergeCells(`A${technicalValidationRow}:G${technicalValidationRow}`);
 
   return {
@@ -1945,7 +1944,7 @@ export async function generateOptimizedWorkbook(
       const cell = row.getCell(c);
       cell.value = null;
       cell.style = {};
-      cell.border = undefined;
+      cell.border = undefined as any;
       cell.fill = { type: 'pattern', pattern: 'none' };
       if (cell.model) {
         delete (cell.model as any).formula;
@@ -1965,7 +1964,7 @@ export async function generateOptimizedWorkbook(
       const cell = row.getCell(c);
       cell.value = null;
       cell.style = {};
-      cell.border = undefined;
+      cell.border = undefined as any;
       cell.fill = { type: 'pattern', pattern: 'none' };
       if (cell.model) {
         delete (cell.model as any).formula;
@@ -2027,7 +2026,7 @@ export async function generateOptimizedWorkbook(
     titleCell.value = 'Price Estimate';
     titleCell.font = { name: 'Arial', size: 15, bold: true, color: { argb: 'FF0F172A' } };
     titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    titleCell.border = undefined;
+    titleCell.border = undefined as any;
     worksheet.mergeCells('A2:G2');
 
     // Fila 3: Creador y Empresa (Dinámico y Fusión Horizontal)
@@ -2037,7 +2036,7 @@ export async function generateOptimizedWorkbook(
     worksheet.getCell('A3').value = [creatorName, companyName].filter(Boolean).join(' | ');
     worksheet.getCell('A3').font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FF0F172A' } };
     worksheet.getCell('A3').alignment = { horizontal: 'left', vertical: 'middle' };
-    worksheet.getCell('A3').border = undefined;
+    worksheet.getCell('A3').border = undefined as any;
     worksheet.mergeCells('A3:D3');
 
     // Fila 4: Dirección Completa Concatenada (Limpieza de "0-0")
@@ -2050,7 +2049,7 @@ export async function generateOptimizedWorkbook(
     worksheet.getCell('A4').value = fullAddress;
     worksheet.getCell('A4').font = { name: 'Arial', size: 9, color: { argb: 'FF334155' } };
     worksheet.getCell('A4').alignment = { horizontal: 'left', vertical: 'middle' };
-    worksheet.getCell('A4').border = undefined;
+    worksheet.getCell('A4').border = undefined as any;
     worksheet.mergeCells('A4:D4');
 
     // Fila 5: Teléfono de Contacto
@@ -2058,7 +2057,7 @@ export async function generateOptimizedWorkbook(
     worksheet.getCell('A5').value = headerInfo.phone || '';
     worksheet.getCell('A5').font = { name: 'Arial', size: 9, color: { argb: 'FF475569' } };
     worksheet.getCell('A5').alignment = { horizontal: 'left', vertical: 'middle' };
-    worksheet.getCell('A5').border = undefined;
+    worksheet.getCell('A5').border = undefined as any;
     worksheet.mergeCells('A5:D5');
 
     // Single Horizontal Red Disclaimer Banner on Row 7 (Merged A7:G7)
@@ -2069,46 +2068,46 @@ export async function generateOptimizedWorkbook(
       'Price Estimate for planning and information purposes only and is not a binding offer from Cisco.';
     noticeCell.font = { name: 'Arial', size: 9, bold: true, color: { argb: 'FFBE123C' } };
     noticeCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-    noticeCell.border = undefined;
+    noticeCell.border = undefined as any;
     worksheet.mergeCells('A7:G7');
 
     // Rows 8-10: Clean Date & Metadata (Columns A and E-G)
     const cleanDate = (headerInfo.date || '').replace(/^date:\s*/i, '').trim();
     worksheet.getCell('A8').value = 'Date: ' + (cleanDate || '18-Aug-2026');
     worksheet.getCell('A8').font = { name: 'Arial', size: 9, bold: true, color: { argb: 'FF334155' } };
-    worksheet.getCell('A8').border = undefined;
+    worksheet.getCell('A8').border = undefined as any;
 
     worksheet.getCell('E8').value = 'Estimate ID:';
     worksheet.getCell('E8').font = { name: 'Arial', size: 9, bold: true, color: { argb: 'FF334155' } };
     worksheet.getCell('E8').alignment = { horizontal: 'right', vertical: 'middle' };
-    worksheet.getCell('E8').border = undefined;
+    worksheet.getCell('E8').border = undefined as any;
     safeUnmerge(worksheet, 'F8:G8');
     worksheet.getCell('F8').value = headerInfo.estimateId;
     worksheet.getCell('F8').font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FF0F172A' } };
     worksheet.getCell('F8').alignment = { horizontal: 'left', vertical: 'middle' };
-    worksheet.getCell('F8').border = undefined;
+    worksheet.getCell('F8').border = undefined as any;
     worksheet.mergeCells('F8:G8');
 
     worksheet.getCell('E9').value = 'Deal ID:';
     worksheet.getCell('E9').font = { name: 'Arial', size: 9, bold: true, color: { argb: 'FF334155' } };
     worksheet.getCell('E9').alignment = { horizontal: 'right', vertical: 'middle' };
-    worksheet.getCell('E9').border = undefined;
+    worksheet.getCell('E9').border = undefined as any;
     safeUnmerge(worksheet, 'F9:G9');
     worksheet.getCell('F9').value = headerInfo.dealId;
     worksheet.getCell('F9').font = { name: 'Arial', size: 9.5, bold: true, color: { argb: 'FF0F172A' } };
     worksheet.getCell('F9').alignment = { horizontal: 'left', vertical: 'middle' };
-    worksheet.getCell('F9').border = undefined;
+    worksheet.getCell('F9').border = undefined as any;
     worksheet.mergeCells('F9:G9');
 
     worksheet.getCell('E10').value = 'Price List:';
     worksheet.getCell('E10').font = { name: 'Arial', size: 9, bold: true, color: { argb: 'FF334155' } };
     worksheet.getCell('E10').alignment = { horizontal: 'right', vertical: 'middle' };
-    worksheet.getCell('E10').border = undefined;
+    worksheet.getCell('E10').border = undefined as any;
     safeUnmerge(worksheet, 'F10:G10');
     worksheet.getCell('F10').value = headerInfo.priceList;
     worksheet.getCell('F10').font = { name: 'Arial', size: 8.5, color: { argb: 'FF334155' } };
     worksheet.getCell('F10').alignment = { horizontal: 'left', vertical: 'middle' };
-    worksheet.getCell('F10').border = undefined;
+    worksheet.getCell('F10').border = undefined as any;
     worksheet.mergeCells('F10:G10');
 
     // Ensure G11 is clean
@@ -2120,7 +2119,7 @@ export async function generateOptimizedWorkbook(
     worksheet.getCell('G12').value = 'All prices are shown in USD';
     worksheet.getCell('G12').font = { name: 'Arial', size: 8.5, italic: true, color: { argb: 'FF475569' } };
     worksheet.getCell('G12').alignment = { horizontal: 'right', vertical: 'middle' };
-    worksheet.getCell('G12').border = undefined;
+    worksheet.getCell('G12').border = undefined as any;
 
   } catch (err) {
     console.warn('Metadata restoration note:', err);

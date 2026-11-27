@@ -83,7 +83,7 @@ export const DsvPartnerUploader: React.FC<DsvPartnerUploaderProps> = ({
 
       // 3. Sincronización asíncrona por bloques con Cloud Firestore
       let syncedCount = 0;
-      let dbInstance = null;
+      let dbInstance: ReturnType<typeof getFirestore> | null = null;
       try {
         const { db, isReady } = getFirestoreInstance();
         dbInstance = isReady && db ? db : getFirestore();

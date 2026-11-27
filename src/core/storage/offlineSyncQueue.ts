@@ -374,6 +374,14 @@ async function executeQueuedItem(item: OfflineQueueItem): Promise<{ ok: boolean;
   }
 }
 
+const MAX_OFFLINE_RETRIES = 5;
+let activeFlushPromise: Promise<{
+  successCount: number;
+  failedCount: number;
+  remainingCount: number;
+  errors: string[];
+}> | null = null;
+
 /**
  * Procesa y envía a Firestore todos los registros encolados en IndexedDB.
  * Requiere consentimiento explícito del usuario (`hasUserConsent: true`).
@@ -389,89 +397,109 @@ export async function flushOfflineQueue(options?: {
   remainingCount: number;
   errors: string[];
 }> {
-  // Blindaje Estricto de Consentimiento del Usuario
-  if (!options?.hasUserConsent) {
-    const pending = await getPendingOfflineActions();
-    console.warn(
-      '[OfflineQueue] Subida bloqueada: Se requiere consentimiento explícito del usuario para enviar datos a la nube.'
-    );
-    return {
-      successCount: 0,
-      failedCount: 0,
-      remainingCount: pending.length,
-      errors: ['Se requiere confirmación o consentimiento explícito del usuario para sincronizar con la nube.'],
-    };
+  if (activeFlushPromise) {
+    return activeFlushPromise;
   }
 
-  if (isNavigatorOffline()) {
-    const pending = await getPendingOfflineActions();
-    return {
-      successCount: 0,
-      failedCount: 0,
-      remainingCount: pending.length,
-      errors: ['Sin conexión a internet en el equipo.'],
-    };
-  }
+  activeFlushPromise = (async () => {
+    // Blindaje Estricto de Consentimiento del Usuario
+    if (!options?.hasUserConsent) {
+      const pending = await getPendingOfflineActions();
+      console.warn(
+        '[OfflineQueue] Subida bloqueada: Se requiere consentimiento explícito del usuario para enviar datos a la nube.'
+      );
+      return {
+        successCount: 0,
+        failedCount: 0,
+        remainingCount: pending.length,
+        errors: ['Se requiere confirmación o consentimiento explícito del usuario para sincronizar con la nube.'],
+      };
+    }
 
-  if (!options?.forceEvenIfManualOffline && isManualOfflineMode()) {
-    const pending = await getPendingOfflineActions();
-    return {
-      successCount: 0,
-      failedCount: 0,
-      remainingCount: pending.length,
-      errors: ['Modo Offline manual activo. Cambia a Online para autorizar la subida.'],
-    };
-  }
+    if (isNavigatorOffline()) {
+      const pending = await getPendingOfflineActions();
+      return {
+        successCount: 0,
+        failedCount: 0,
+        remainingCount: pending.length,
+        errors: ['Sin conexión a internet en el equipo.'],
+      };
+    }
 
-  const items = await getPendingOfflineActions();
-  if (items.length === 0) {
-    return { successCount: 0, failedCount: 0, remainingCount: 0, errors: [] };
-  }
+    if (!options?.forceEvenIfManualOffline && isManualOfflineMode()) {
+      const pending = await getPendingOfflineActions();
+      return {
+        successCount: 0,
+        failedCount: 0,
+        remainingCount: pending.length,
+        errors: ['Modo Offline manual activo. Cambia a Online para autorizar la subida.'],
+      };
+    }
 
-  console.log(`[OfflineQueue] Procesando ${items.length} acciones pendientes hacia la nube...`);
-  let successCount = 0;
-  let failedCount = 0;
-  const errors: string[] = [];
+    const items = await getPendingOfflineActions();
+    if (items.length === 0) {
+      return { successCount: 0, failedCount: 0, remainingCount: 0, errors: [] };
+    }
 
-  setFlushingOfflineQueueNow(true);
-  try {
-    for (let idx = 0; idx < items.length; idx++) {
-      const item = items[idx];
-      options?.onProgress?.(idx, items.length, item);
-      try {
-        const res = await executeQueuedItem(item);
-        if (res.ok) {
-          await idbDelete(STORES.OFFLINE_QUEUE, item.id);
-          successCount++;
-        } else {
+    console.log(`[OfflineQueue] Procesando ${items.length} acciones pendientes hacia la nube...`);
+    let successCount = 0;
+    let failedCount = 0;
+    const errors: string[] = [];
+
+    setFlushingOfflineQueueNow(true);
+    try {
+      for (let idx = 0; idx < items.length; idx++) {
+        const item = items[idx];
+        options?.onProgress?.(idx, items.length, item);
+        if ((item.retryCount || 0) >= MAX_OFFLINE_RETRIES) {
+          failedCount++;
+          errors.push(
+            `${item.summary || item.action}: Máximo de reintentos (${MAX_OFFLINE_RETRIES}) alcanzado (${item.lastError || 'error persistente'}).`
+          );
+          options?.onProgress?.(idx + 1, items.length, item);
+          continue;
+        }
+        try {
+          const res = await executeQueuedItem(item);
+          if (res.ok) {
+            await idbDelete(STORES.OFFLINE_QUEUE, item.id);
+            successCount++;
+          } else {
+            item.retryCount++;
+            item.lastError = res.error || 'Fallo desconocido al subir cambio offline';
+            item.updatedAt = Date.now();
+            await idbSet(STORES.OFFLINE_QUEUE, item.id, item);
+            failedCount++;
+            if (item.lastError) errors.push(`${item.summary || item.action}: ${item.lastError}`);
+          }
+        } catch (err: any) {
           item.retryCount++;
-          item.lastError = res.error || 'Fallo desconocido al subir cambio offline';
+          item.lastError = err?.message || String(err);
           item.updatedAt = Date.now();
           await idbSet(STORES.OFFLINE_QUEUE, item.id, item);
           failedCount++;
           if (item.lastError) errors.push(`${item.summary || item.action}: ${item.lastError}`);
         }
-      } catch (err: any) {
-        item.retryCount++;
-        item.lastError = err?.message || String(err);
-        item.updatedAt = Date.now();
-        await idbSet(STORES.OFFLINE_QUEUE, item.id, item);
-        failedCount++;
-        if (item.lastError) errors.push(`${item.summary || item.action}: ${item.lastError}`);
+        options?.onProgress?.(idx + 1, items.length, item);
       }
-      options?.onProgress?.(idx + 1, items.length, item);
+    } finally {
+      setFlushingOfflineQueueNow(false);
+      notifyOfflineQueueChanged();
     }
-  } finally {
-    setFlushingOfflineQueueNow(false);
-    notifyOfflineQueueChanged();
-  }
 
-  const remaining = (await getPendingOfflineActions()).length;
-  notifyOfflineSyncCompleted({ uploadedCount: successCount, failedCount });
-  console.log(
-    `[OfflineQueue] Flush completado: ${successCount} exitosas, ${failedCount} fallidas, ${remaining} restantes.`
-  );
-  return { successCount, failedCount, remainingCount: remaining, errors };
+    const remaining = (await getPendingOfflineActions()).length;
+    notifyOfflineSyncCompleted({ uploadedCount: successCount, failedCount });
+    console.log(
+      `[OfflineQueue] Flush completado: ${successCount} exitosas, ${failedCount} fallidas, ${remaining} restantes.`
+    );
+    return { successCount, failedCount, remainingCount: remaining, errors };
+  })();
+
+  try {
+    return await activeFlushPromise;
+  } finally {
+    activeFlushPromise = null;
+  }
 }
 
 /**

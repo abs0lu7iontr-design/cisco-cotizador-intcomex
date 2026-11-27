@@ -296,7 +296,7 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
         if (match) {
           nextFtMap[sku] = {
             discountPct: match.distributorDiscount || 48,
-            listPrice: match.listPrice > 0 ? match.listPrice : undefined,
+            listPrice: match.listPrice && match.listPrice > 0 ? match.listPrice : undefined,
           };
         }
       }

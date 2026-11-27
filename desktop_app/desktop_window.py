@@ -3,6 +3,8 @@ import sys
 import re
 import json
 import urllib.parse
+import urllib.request
+import urllib.error
 import webview
 from datetime import datetime
 from typing import Dict, Any, Optional
@@ -102,7 +104,8 @@ class DesktopBridge:
                 "user": {
                     "username": user["username"],
                     "full_name": user["full_name"],
-                    "role": user["role"]
+                    "role": user["role"],
+                    "email": user.get("email", "")
                 }
             }
         else:
@@ -114,9 +117,47 @@ class DesktopBridge:
             return {
                 "username": u["username"],
                 "full_name": u["full_name"],
-                "role": u["role"]
+                "role": u["role"],
+                "email": u.get("email", "")
             }
         return None
+
+    def edge_session_auth(self, username, password, turnstile_token="", two_factor_proof=""):
+        """Performs server-side Edge session authentication from Desktop app when online."""
+        try:
+            payload = {
+                "username": str(username or "").strip(),
+                "password": str(password or ""),
+            }
+            if turnstile_token:
+                payload["turnstileToken"] = str(turnstile_token)
+            if two_factor_proof:
+                payload["twoFactorProof"] = str(two_factor_proof)
+            req = urllib.request.Request(
+                "https://develop.cisco-automated.pages.dev/api/session-auth",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "Origin": "https://develop.cisco-automated.pages.dev",
+                    "User-Agent": "CiscoAutomatedDesktop/2.29",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+                return json.loads(raw)
+        except urllib.error.HTTPError as he:
+            try:
+                body = he.read().decode("utf-8", errors="replace")
+                parsed = json.loads(body)
+                if isinstance(parsed, dict):
+                    parsed.setdefault("status", he.code)
+                    return parsed
+            except Exception:
+                pass
+            return {"success": False, "status": he.code, "isEdgeUnavailable": he.code >= 500 or he.code in (404, 405)}
+        except Exception as e:
+            return {"success": False, "isEdgeUnavailable": True, "error": str(e)}
 
     def logout_user(self):
         self._auth.logout()
@@ -234,7 +275,11 @@ class DesktopBridge:
             current_user = self._require_authenticated_user()
             if not current_user:
                 return {"success": False, "error": "Sesión de usuario requerida."}
-            byte_data = bytes(file_bytes)
+            if isinstance(file_bytes, str):
+                import base64
+                byte_data = base64.b64decode(file_bytes)
+            else:
+                byte_data = bytes(file_bytes)
             res = self._file_processor.save_estimate_in_client_month_structure(
                 byte_data,
                 partner_name,
@@ -429,7 +474,7 @@ class DesktopBridge:
                     pass
         return {
             "name": "cisco-automated",
-            "version": "2.28.0",
+            "version": "2.29.0",
             "git_commit": "12379f3",
             "git_branch": "develop",
             "build_timestamp": "2026-10-15T00:00:00.000Z",
@@ -445,7 +490,7 @@ class DesktopBridge:
         Compares git_commit, build_timestamp, and version.
         """
         local_meta = self._get_local_version_metadata()
-        current_version = local_meta.get("version", "2.28.0")
+        current_version = local_meta.get("version", "2.29.0")
         current_commit = str(local_meta.get("git_commit", "12379f3"))
         current_timestamp = str(local_meta.get("build_timestamp", ""))
 
@@ -1099,7 +1144,12 @@ class DesktopBridge:
 
             serialized = json.dumps(data, ensure_ascii=False)
             protected = self._dpapi_protect_text(serialized)
-            disk_payload = {"__dpapi__": protected, "v": 2} if protected else data
+            if not protected:
+                return {
+                    "success": False,
+                    "error": "No se pudo cifrar la configuración IA con Windows DPAPI. Guardado en texto plano bloqueado por seguridad.",
+                }
+            disk_payload = {"__dpapi__": protected, "v": 2}
 
             for path in self._get_ai_config_filepaths():
                 try:
@@ -1376,11 +1426,9 @@ def get_index_html_path() -> str:
         ]
         if existing_trusted:
             return max(existing_trusted, key=lambda p: os.path.getmtime(p))
-        existing_bundled_only = [os.path.abspath(p) for p in bundled_candidates if os.path.exists(os.path.abspath(p))]
-        if existing_bundled_only:
-            return existing_bundled_only[0]
-        fallback_frozen = bundled_candidates[0] if bundled_candidates else trusted_frozen_paths[0]
-        return os.path.abspath(fallback_frozen)
+        raise RuntimeError(
+            "Integridad SHA-256 del bundle desktop fallida o archivo principal ausente. Bloqueado por seguridad."
+        )
 
     existing_external = [os.path.abspath(p) for p in external_candidates if os.path.exists(os.path.abspath(p))]
     existing_bundled = [os.path.abspath(p) for p in bundled_candidates if os.path.exists(os.path.abspath(p))]

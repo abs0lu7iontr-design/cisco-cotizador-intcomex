@@ -87,7 +87,10 @@ export function resolveEffectiveQuoteRates(
       let sumItemMargins = 0;
 
       for (const it of billable) {
-        const qty = Number(it.qty) || 1;
+        const qty =
+          it.qty !== undefined && it.qty !== null && !Number.isNaN(Number(it.qty))
+            ? Math.max(0, Number(it.qty))
+            : 1;
         const ventaUnit = Number(it.precioVentaUnitario) || 0;
         const ventaExt = Number(it.precioVentaExtendido) || (ventaUnit * qty);
         const costoUnit = Number(it.costoTotalUnitario) || 0;
@@ -125,7 +128,10 @@ export function resolveEffectiveQuoteRates(
 
       for (const it of billable) {
         if (!it.isIntangible) {
-          const qty = Number(it.qty) || 1;
+          const qty =
+            it.qty !== undefined && it.qty !== null && !Number.isNaN(Number(it.qty))
+              ? Math.max(0, Number(it.qty))
+              : 1;
           const netUnit = Number(it.netCiscoUnit) || 0;
           const netExt = netUnit * qty;
           const intCostUnit = Number(it.costoInternacion) || 0;

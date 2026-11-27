@@ -275,7 +275,7 @@ const defaultFirestoreSyncAdapter: CloudSyncCollectionAdapter = {
       switch (collectionName) {
         case 'estimates': {
           const docRef = doc(db, 'estimates', itemKey);
-          await setDoc(docRef, sanitizeForFirestore(payload), { merge: true });
+          await setDoc(docRef, sanitizeForFirestore(payload as Record<string, any>), { merge: true });
           return { status: 'synced' };
         }
         case 'boOrders': {
@@ -288,13 +288,13 @@ const defaultFirestoreSyncAdapter: CloudSyncCollectionAdapter = {
         }
         case 'dsvRecords': {
           const docRef = doc(db, 'dsv_records', itemKey);
-          await setDoc(docRef, sanitizeForFirestore(payload), { merge: true });
+          await setDoc(docRef, sanitizeForFirestore(payload as Record<string, any>), { merge: true });
           return { status: 'synced' };
         }
         case 'sharedSkuRules': {
           const safeId = encodeURIComponent(itemKey.toUpperCase());
           const docRef = doc(db, 'shared_sku_rules', safeId);
-          await setDoc(docRef, sanitizeForFirestore(payload), { merge: true });
+          await setDoc(docRef, sanitizeForFirestore(payload as Record<string, any>), { merge: true });
           return { status: 'synced' };
         }
         case 'partnerProfiles': {
@@ -306,7 +306,7 @@ const defaultFirestoreSyncAdapter: CloudSyncCollectionAdapter = {
         case 'partnersXcl': {
           const safeId = itemKey.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 100);
           const docRef = doc(db, 'partners_xcl', safeId);
-          await setDoc(docRef, sanitizeForFirestore(payload), { merge: true });
+          await setDoc(docRef, sanitizeForFirestore(payload as Record<string, any>), { merge: true });
           return { status: 'synced' };
         }
         case 'boSkuCatalog': {
@@ -873,7 +873,11 @@ export async function restoreAllDatabasesFromSnapshot(
     collectionResults.users.restoredLocally = mergedUsers.length;
 
     const toSync = backup.data.users
-      .filter((u) => u && u.username && /^[0-9a-f]{64}$/i.test(String(u.password_hash || '')))
+      .filter((u) => {
+        if (!u || !u.username) return false;
+        const hash = String(u.password_hash || '').trim();
+        return /^([0-9a-f]{64}|pbkdf2\$[0-9a-f]+\$[0-9a-f]+)$/i.test(hash);
+      })
       .map((u) => ({ key: String(u.username).toLowerCase(), payload: u }));
     if (toSync.length > 0) {
       await syncCollectionItems('users', toSync);
@@ -905,12 +909,17 @@ export async function restoreAllDatabasesFromSnapshot(
       }
     } catch (_) {}
   }
+  const { isReady: fsReady } = getFirestoreInstance();
+  const isBrowserOfflineForMeta =
+    typeof navigator !== 'undefined' && 'onLine' in navigator && navigator.onLine === false;
+  const canSyncFtMeta = Boolean(syncToCloud && fsReady && !isBrowserOfflineForMeta);
+
   restoredStats.fastTrackMetadata = restoredFtKeys;
   collectionResults.fastTrackMetadata = {
     collection: 'fastTrackMetadata',
     restoredLocally: restoredFtKeys,
-    synced: restoredFtKeys > 0 && syncToCloud ? restoredFtKeys : 0,
-    pending: 0,
+    synced: restoredFtKeys > 0 && canSyncFtMeta ? restoredFtKeys : 0,
+    pending: restoredFtKeys > 0 && !canSyncFtMeta ? restoredFtKeys : 0,
     failed: 0,
     scopeNote:
       'Solo se restauraron metadatos Fast Track (vigencia, nombre de archivo, código promocional). El catálogo completo de productos Fast Track no está incluido en este respaldo JSON.',

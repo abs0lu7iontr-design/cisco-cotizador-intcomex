@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.29.0',
+    date: '2026-11-27',
+    commit: 'full-reaudit-blocks-xyz-strict-null-checks',
+    title: 'Re-Auditoría Completa (Bloques X, Y, Z), Hardening Firestore/Edge/Desktop y strictNullChecks',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Bloque X (Seguridad Crítica y Crashes): Verificación criptográfica de twoFactorProof previo a eximir Turnstile, isAdmin() solo por custom claims, subcolección access_requests y bloqueo de rol viewer en firestore.rules, validación SHA-256 estricta en desktop_window.py y escape HTML en CCW-R.',
+      'Bloque Y (Cloud Sync, Store y Storage): Queries acotadas en getCloudEstimates, protección de v0_RAW en deleteCloudEstimate, preservación de custom_lines al guardar, mutex OPFS/offlineSyncQueue con MAX_OFFLINE_RETRIES=5 y soporte pbkdf2$ en Backup Manager.',
+      'Bloque Z (Módulos, Desktop DB y strictNullChecks): Activado strictNullChecks=true en tsconfig.json con 0 errores, CSV formula-safe en BO, fechas ISO/US en CCW-R/FastTrack, precio neto $0 en Commerce API, CSP/SW endurecidos y SQLite Desktop con soporte viewer y cifrado DPAPI obligatorio.'
+    ]
+  },
+  {
     version: '2.28.0',
     date: '2026-11-27',
     commit: 'qa-web-security-performance-a11y-p0-p1-p2',
     title: 'Mejoras Integrales QA Web: PBKDF2 Firestore, Estabilidad Turnstile, Service Worker, Rendimiento y Accesibilidad',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'P0 Auth & Firestore: Compatibilidad PBKDF2 en firestore.rules, diferenciación 503 vs 401 y auto-upgrade en /api/session-auth, sin getCloudUsers() pre-login ni re-montaje de Turnstile al teclear.',

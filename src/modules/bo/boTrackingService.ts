@@ -1056,7 +1056,7 @@ export function createBoTrackingRecordFromEstimate(
     lastDailyReviewAt: nowIso,
     totalSaleUsd: totalSale,
     grossProfitUsd: grossProfit,
-    marginPct: netCisco > 0 ? Number(((grossProfit / totalSale) * 100).toFixed(1)) : 0,
+    marginPct: totalSale > 0 ? Number(((grossProfit / totalSale) * 100).toFixed(1)) : 0,
     itemsCount: validItems.length,
     bodegaDestino,
     notes: [

@@ -272,8 +272,8 @@ export function generateEstimateEmailHtml(
   const header = (data.headerInfo || {}) as Partial<EstimateHeaderInfo>;
   const { partnerName, clientName } = extractPartnerAndClientFromFilename(
     data.fileName,
-    detectedPartner || header.customerName || header.companyName,
-    header.companyName || header.endUser
+    detectedPartner || header.companyName,
+    header.customerName || header.endUser
   );
   const dealId = header.dealId || 'N/A';
   const estimateId = header.quoteName || header.estimateId || 'N/A';
@@ -451,8 +451,8 @@ export function generateEstimatePlainText(
   const header = (data.headerInfo || {}) as Partial<EstimateHeaderInfo>;
   const { partnerName, clientName } = extractPartnerAndClientFromFilename(
     data.fileName,
-    detectedPartner || header.customerName || header.companyName,
-    header.companyName || header.endUser
+    detectedPartner || header.companyName,
+    header.customerName || header.endUser
   );
   const dealId = header.dealId || 'N/A';
   const estimateId = header.quoteName || header.estimateId || 'N/A';

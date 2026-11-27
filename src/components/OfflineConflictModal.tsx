@@ -4,7 +4,7 @@
 // Gives the user 3 clear resolution paths: Keep Cloud, Overwrite, or Fork Version.
 // ============================================================================
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   AlertTriangle,
   Cloud,
@@ -42,13 +42,15 @@ export const OfflineConflictModal: React.FC<OfflineConflictModalProps> = ({
   const [isResolving, setIsResolving] = useState(false);
   const [resolutionFeedback, setResolutionFeedback] = useState<string | null>(null);
 
-  if (!isOpen || conflicts.length === 0) return null;
-
   const currentConflict = conflicts[currentIndex];
-  if (!currentConflict) {
-    onAllResolved();
-    return null;
-  }
+
+  useEffect(() => {
+    if (isOpen && conflicts.length > 0 && !currentConflict) {
+      onAllResolved();
+    }
+  }, [isOpen, conflicts.length, currentConflict, onAllResolved]);
+
+  if (!isOpen || conflicts.length === 0 || !currentConflict) return null;
 
   const handleResolve = async (mode: ConflictResolutionMode) => {
     setIsResolving(true);
