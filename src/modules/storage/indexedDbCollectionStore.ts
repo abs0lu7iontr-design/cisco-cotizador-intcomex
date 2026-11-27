@@ -11,7 +11,15 @@ import {
   writeProjectScopedStorage,
 } from '../cloud/firebaseConfig';
 
-export type ManagedCollectionName = 'estimates' | 'bo_trackings' | 'deal_reminders';
+export type ManagedCollectionName =
+  | 'estimates'
+  | 'bo_trackings'
+  | 'deal_reminders'
+  | 'pipeline_deals'
+  | 'forecast_records'
+  | 'dsv_records'
+  | 'bo_sku_catalog'
+  | 'feedback_tickets';
 
 export interface StorageWriteResult {
   success: boolean;
@@ -41,10 +49,15 @@ export interface EventQueryOptions {
 }
 
 const COLLECTIONS_DB_NAME = 'CiscoAppCollectionsDB';
-const COLLECTIONS_DB_VERSION = 1;
+const COLLECTIONS_DB_VERSION = 2;
 const STORE_ESTIMATES = 'estimates';
 const STORE_BO_TRACKINGS = 'bo_trackings';
 const STORE_DEAL_REMINDERS = 'deal_reminders';
+const STORE_PIPELINE_DEALS = 'pipeline_deals';
+const STORE_FORECAST_RECORDS = 'forecast_records';
+const STORE_DSV_RECORDS = 'dsv_records';
+const STORE_BO_SKU_CATALOG = 'bo_sku_catalog';
+const STORE_FEEDBACK_TICKETS = 'feedback_tickets';
 const STORE_ENTITY_EVENTS = 'entity_events';
 const STORE_MIGRATION_META = 'migration_meta';
 
@@ -52,6 +65,11 @@ const ALL_STORES = [
   STORE_ESTIMATES,
   STORE_BO_TRACKINGS,
   STORE_DEAL_REMINDERS,
+  STORE_PIPELINE_DEALS,
+  STORE_FORECAST_RECORDS,
+  STORE_DSV_RECORDS,
+  STORE_BO_SKU_CATALOG,
+  STORE_FEEDBACK_TICKETS,
   STORE_ENTITY_EVENTS,
   STORE_MIGRATION_META,
 ] as const;
@@ -252,6 +270,80 @@ export function getCollectionRecordsSync<T>(
 }
 
 /**
+ * Queries records with deterministic pagination (`offset` / `limit`), reading from IndexedDB via cursor
+ * when available so massive multi-GB collections can be iterated without materializing everything at once.
+ */
+export async function queryCollectionRecordsPaginated<T>(
+  collectionName: ManagedCollectionName,
+  options?: {
+    offset?: number;
+    limit?: number;
+    projectScope?: string;
+  }
+): Promise<{ records: T[]; total: number; hasMore: boolean }> {
+  const scope = options?.projectScope || getActiveProjectScopeKey();
+  const offset = Math.max(0, Number(options?.offset || 0));
+  const limit = Math.max(1, Number(options?.limit || 100));
+
+  if (isIndexedDbSupported()) {
+    try {
+      const db = await openCollectionsDb();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction([collectionName], 'readonly');
+        const store = tx.objectStore(collectionName);
+        const index = store.index('by_project');
+        const range = IDBKeyRange.only(scope);
+        const countReq = index.count(range);
+        let total = 0;
+
+        countReq.onsuccess = () => {
+          total = Number(countReq.result) || 0;
+          if (total === 0 || offset >= total) {
+            resolve({ records: [], total, hasMore: false });
+            return;
+          }
+          const records: T[] = [];
+          let advanced = offset === 0;
+          const cursorReq = index.openCursor(range);
+          cursorReq.onsuccess = () => {
+            const cursor = cursorReq.result;
+            if (!cursor) {
+              resolve({ records, total, hasMore: offset + records.length < total });
+              return;
+            }
+            if (!advanced) {
+              advanced = true;
+              cursor.advance(offset);
+              return;
+            }
+            if (cursor.value && cursor.value.payload !== undefined) {
+              records.push(cursor.value.payload as T);
+            }
+            if (records.length >= limit) {
+              resolve({ records, total, hasMore: offset + records.length < total });
+              return;
+            }
+            cursor.continue();
+          };
+          cursorReq.onerror = () => reject(cursorReq.error);
+        };
+        countReq.onerror = () => reject(countReq.error);
+      });
+    } catch {
+      // Fallback to in-memory mirror
+    }
+  }
+
+  const all = getCollectionRecordsSync<T>(collectionName, scope);
+  const sliced = all.slice(offset, offset + limit);
+  return {
+    records: sliced,
+    total: all.length,
+    hasMore: offset + sliced.length < all.length,
+  };
+}
+
+/**
  * Synchronously upserts a single record into the in-memory collection mirror and schedules
  * per-record persistence to IndexedDB.
  */
@@ -384,8 +476,8 @@ export async function putCollectionRecordsBatch<T extends Record<string, any>>(
     try {
       const allRecords = Array.from(memMap.values());
       const serialized = JSON.stringify(allRecords);
-      // Avoid QuotaExceededError on huge collections (> 2MB); store compact summary pointer if oversized
-      if (serialized.length <= 2_000_000) {
+      // Avoid QuotaExceededError on huge collections (> 1.5MB); store compact summary pointer if oversized
+      if (serialized.length <= 1_500_000) {
         writeProjectScopedStorage(options.compactLocalStorageKey, serialized, scope);
       } else {
         // Store lightweight headers (without heavy line items array) in localStorage while full items live in IndexedDB
@@ -400,11 +492,14 @@ export async function putCollectionRecordsBatch<T extends Record<string, any>>(
           }
           return rec;
         });
-        writeProjectScopedStorage(
-          options.compactLocalStorageKey,
-          JSON.stringify(compactList),
-          scope
-        );
+        const compactSerialized = JSON.stringify(compactList);
+        if (compactSerialized.length <= 1_500_000) {
+          writeProjectScopedStorage(
+            options.compactLocalStorageKey,
+            compactSerialized,
+            scope
+          );
+        }
       }
     } catch (storageErr: any) {
       const msg = String(storageErr?.message || storageErr?.name || '');

@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.30.0',
+    date: '2026-11-27',
+    commit: 'storage-scalability-pagination-offline-project-isolation',
+    title: 'Escalabilidad Multi-Capa, Paginación IndexedDB/Desktop y Aislamiento de Cola Offline',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Aislamiento por Proyecto en Cola Offline (offlineSyncQueue.ts): Cada cambio offline guarda projectScopeKey/projectId y verifica el contexto activo antes de sincronizar, evitando cruces o pérdidas al cambiar de proyecto Firebase.',
+      'Stores Normalizados en IndexedDB (CiscoAppCollectionsDB v2): Pipeline, Forecast, DSV (sin recorte .slice(0, 500)), BO SKU Catalog y Feedback Tickets migran de forma automática y sin pérdida desde localStorage/KEYVAL a registros individuales con paginación (queryCollectionRecordsPaginated).',
+      'SQLite WASM & Desktop: Eliminada duplicación binaria >32 MB en IndexedDB Fallback cuando OPFS está activo + debounce adaptativo; en Desktop (db_manager.py) agregada paginación (limit/offset), índice compuesto y backups conscientes del tamaño.'
+    ]
+  },
+  {
     version: '2.29.1',
     date: '2026-11-27',
     commit: 'db-audit-v006-viewer-and-firestore-write-guards',
     title: 'Auditoría Integral de Bases de Datos: Migración SQLite V006, Sonda Firestore y Sanitización Numérica',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'SQLite Desktop (db_manager.py): Actualización auto-curativa de restricción CHECK en users sobre bases existentes para habilitar roles viewer/user manteniendo integridad referencial y esquema V005.',

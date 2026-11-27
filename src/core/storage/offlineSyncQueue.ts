@@ -4,7 +4,7 @@
 // (por botón manual OFFLINE o caída de red) y permite subirlas bajo confirmación.
 // ============================================================================
 
-import { idbSet, idbGetAll, idbDelete, idbClear, STORES } from './indexedDbStorage';
+import { idbSet, idbGetAll, idbDelete, STORES } from './indexedDbStorage';
 import {
   isAppOffline,
   isManualOfflineMode,
@@ -13,6 +13,13 @@ import {
   notifyOfflineQueueChanged,
   notifyOfflineSyncCompleted,
 } from './offlineModeManager';
+import {
+  getActiveFirebaseConfig,
+  getActiveProjectScopeKey,
+  isDefaultFirebaseProject,
+  captureProjectContext,
+  isProjectContextCurrent,
+} from '../../modules/cloud/firebaseConfig';
 
 export type OfflineActionType =
   | 'save_estimate'
@@ -34,6 +41,8 @@ export type OfflineActionType =
 export interface OfflineQueueItem {
   id: string;
   action: OfflineActionType;
+  projectScopeKey?: string;
+  projectId?: string;
   entityKey?: string;
   moduleLabel?: string;
   summary?: string;
@@ -131,19 +140,35 @@ function buildDefaultSummary(action: OfflineActionType, payload: any): string {
 }
 
 /**
- * Encola una acción de sincronización con la nube en el almacenamiento local del PC (IndexedDB).
- * Consolida automáticamente múltiples ediciones del mismo `entityKey` para evitar redundancia.
+ * Determina si un ítem de la cola offline pertenece al proyecto Firebase activo.
+ * Ítems heredados sin `projectScopeKey` se asocian únicamente al proyecto por defecto
+ * para evitar contaminación cruzada al cambiar a otro proyecto.
+ */
+function itemBelongsToProjectScope(item: OfflineQueueItem, targetScopeKey: string): boolean {
+  if (!item) return false;
+  if (item.projectScopeKey && item.projectScopeKey.trim() !== '') {
+    return item.projectScopeKey === targetScopeKey;
+  }
+  return isDefaultFirebaseProject(targetScopeKey);
+}
+
+/**
+ * Encola una acción de sincronización con la nube en el almacenamiento local del PC (IndexedDB),
+ * aislada estrictamente por proyecto Firebase activo.
+ * Consolida automáticamente múltiples ediciones del mismo `entityKey` dentro del mismo proyecto.
  */
 export async function enqueueOfflineAction(
   action: OfflineActionType,
   payload: any,
   meta?: OfflineActionMetadata
 ): Promise<string> {
+  const activeScopeKey = getActiveProjectScopeKey();
+  const activeProjectId = getActiveFirebaseConfig().projectId || 'default_local';
   const existingItems = await getPendingOfflineActions();
   const entityKey = meta?.entityKey;
 
   if (entityKey) {
-    // Si ya existen elementos previos para la misma entidad, consolidar en el más reciente
+    // Si ya existen elementos previos para la misma entidad en el mismo proyecto, consolidar en el más reciente
     const matching = existingItems.filter((item) => item.entityKey === entityKey);
     for (const prev of matching) {
       await idbDelete(STORES.OFFLINE_QUEUE, prev.id);
@@ -154,6 +179,8 @@ export async function enqueueOfflineAction(
   const item: OfflineQueueItem = {
     id,
     action,
+    projectScopeKey: activeScopeKey,
+    projectId: activeProjectId,
     entityKey,
     moduleLabel: meta?.moduleLabel || getOfflineModuleLabel(action),
     summary: meta?.summary || buildDefaultSummary(action, payload),
@@ -165,16 +192,22 @@ export async function enqueueOfflineAction(
 
   await idbSet(STORES.OFFLINE_QUEUE, id, item);
   notifyOfflineQueueChanged();
-  console.log(`[OfflineQueue] Acción guardada en PC (${action}):`, id);
+  console.log(`[OfflineQueue] Acción guardada en PC (${action} @ ${activeScopeKey}):`, id);
   return id;
 }
 
 /**
- * Obtiene todas las acciones pendientes en la cola offline ordenadas cronológicamente.
+ * Obtiene las acciones pendientes en la cola offline ordenadas cronológicamente,
+ * filtradas por defecto al proyecto Firebase activo para evitar pérdida o mezcla entre BDs.
  */
-export async function getPendingOfflineActions(): Promise<OfflineQueueItem[]> {
+export async function getPendingOfflineActions(options?: {
+  allProjects?: boolean;
+}): Promise<OfflineQueueItem[]> {
   const items = await idbGetAll<OfflineQueueItem>(STORES.OFFLINE_QUEUE);
-  return items.sort((a, b) => a.createdAt - b.createdAt);
+  const filtered = options?.allProjects
+    ? items
+    : items.filter((item) => itemBelongsToProjectScope(item, getActiveProjectScopeKey()));
+  return filtered.sort((a, b) => a.createdAt - b.createdAt);
 }
 
 /**
@@ -199,14 +232,14 @@ export async function getOfflineQueueSummary(): Promise<{
 }
 
 /**
- * Limpia manualmente toda la cola offline.
+ * Limpia manualmente solo la cola offline perteneciente al proyecto Firebase activo
+ * (preserva colas pendientes de otros proyectos aislados).
  */
 export async function clearOfflineQueue(): Promise<void> {
   const pending = await getPendingOfflineActions();
   for (const item of pending) {
     await idbDelete(STORES.OFFLINE_QUEUE, item.id);
   }
-  await idbClear(STORES.OFFLINE_QUEUE);
   notifyOfflineQueueChanged();
 }
 
@@ -436,12 +469,13 @@ export async function flushOfflineQueue(options?: {
       };
     }
 
+    const flushProjectCtx = captureProjectContext();
     const items = await getPendingOfflineActions();
     if (items.length === 0) {
       return { successCount: 0, failedCount: 0, remainingCount: 0, errors: [] };
     }
 
-    console.log(`[OfflineQueue] Procesando ${items.length} acciones pendientes hacia la nube...`);
+    console.log(`[OfflineQueue] Procesando ${items.length} acciones pendientes hacia la nube (${flushProjectCtx.projectScopeKey})...`);
     let successCount = 0;
     let failedCount = 0;
     const errors: string[] = [];
@@ -449,6 +483,10 @@ export async function flushOfflineQueue(options?: {
     setFlushingOfflineQueueNow(true);
     try {
       for (let idx = 0; idx < items.length; idx++) {
+        if (!isProjectContextCurrent(flushProjectCtx)) {
+          errors.push('Cambio de proyecto Firebase detectado durante la sincronización: envío detenido para evitar cruce de datos.');
+          break;
+        }
         const item = items[idx];
         options?.onProgress?.(idx, items.length, item);
         if ((item.retryCount || 0) >= MAX_OFFLINE_RETRIES) {

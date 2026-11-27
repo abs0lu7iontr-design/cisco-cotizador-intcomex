@@ -6,6 +6,16 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.30.0] - 2026-11-27
+
+### Escalabilidad Multi-Capa, Paginación y Aislamiento de Cola Offline (Cero Pérdida Online/Offline)
+- **Aislamiento de Cola Offline por Proyecto Firebase ([offlineSyncQueue.ts](src/core/storage/offlineSyncQueue.ts)):** Cada elemento encolado (`OfflineQueueItem`) ahora registra `projectScopeKey` y `projectId`, filtrando `getPendingOfflineActions()`, `clearOfflineQueue()` y `flushOfflineQueue()` por el proyecto activo (con protección anti-cruce en tiempo de envío) para evitar perder o mezclar cambios pendientes al alternar proyectos Firebase en [FirebaseConfigModal.tsx](src/modules/cloud/FirebaseConfigModal.tsx).
+- **Normalización por Registro y Migración Lossless en IndexedDB ([indexedDbCollectionStore.ts](src/modules/storage/indexedDbCollectionStore.ts)):**
+  - Actualizado el esquema `CiscoAppCollectionsDB` (v2) con stores dedicados por registro para `pipeline_deals`, `forecast_records`, `dsv_records`, `bo_sku_catalog` y `feedback_tickets`, más paginación nativa `queryCollectionRecordsPaginated`.
+  - [pipelineStorage.ts](src/modules/pipeline/pipelineStorage.ts), [forecastStorage.ts](src/modules/forecast/forecastStorage.ts), [firestoreService.ts](src/modules/cloud/firestoreService.ts) (DSV), [boSkuCatalogService.ts](src/modules/bo/boSkuCatalogService.ts) y [feedbackService.ts](src/modules/feedback/feedbackService.ts) migran e hidratan datos heredados de `STORES.KEYVAL` y `localStorage` sin pérdida, eliminan el recorte silencioso `.slice(0, 500)` de DSV y mantienen `localStorage` bajo presupuesto seguro (`<= 512 KB` / `1.5 MB`).
+- **Optimización SQLite WASM + OPFS ([sqliteStorageEngine.ts](src/core/storage/sqliteStorageEngine.ts)):** Evita duplicar snapshots binarios gigantes (`> 32 MB`) dentro de `CiscoSqliteFallbackDB` cuando OPFS ya confirmó escritura, incorpora debounce adaptativo según tamaño de BD y emite diagnóstico preventivo si el heap WASM supera `512 MB`.
+- **SQLite Desktop Escalable ([db_manager.py](desktop_app/db_manager.py)):** Política de backups al arranque consciente del tamaño (`<= 100 MB`: 10 backups; `100–500 MB`: máx. 3 cada 24h; `> 500 MB`: máx. 1 cada 7 días), índice compuesto `idx_estimates_user_created_at`, `get_estimates_count()` y paginación opcional (`limit`/`offset`) en `get_estimates_list()`.
+
 ## [v2.29.1] - 2026-11-27
 
 ### Corregido (Auditoría Integral de Escritura y Esquemas de Bases de Datos)

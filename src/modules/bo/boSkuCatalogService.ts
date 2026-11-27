@@ -20,6 +20,10 @@ import {
   isProjectContextCurrent,
 } from '../cloud/firebaseConfig';
 import { sanitizeForFirestore, withTimeout } from '../cloud/firestoreService';
+import {
+  hydrateAndMigrateCollection,
+  putCollectionRecordsBatch,
+} from '../storage/indexedDbCollectionStore';
 import { formatBoPartNumber, normalizeBasePartNumber } from './boTypes';
 
 export type BoSkuMappingProvenance =
@@ -123,14 +127,51 @@ export function getStructuredBoSkuCatalog(): StructuredBoSkuCatalog {
   };
 }
 
+const LOCAL_BO_SKU_MAX_BYTES = 512_000;
+
 export function saveStructuredBoSkuCatalog(structured: StructuredBoSkuCatalog): void {
   memoryStructuredCatalog = {
     exactByPartNumber: { ...structured.exactByPartNumber },
     variantsByBase: { ...structured.variantsByBase },
   };
+  const entries = Object.entries(memoryStructuredCatalog.exactByPartNumber).map(([id, record]) => ({
+    id,
+    record,
+  }));
+  putCollectionRecordsBatch('bo_sku_catalog', entries, { replaceAllInScope: true }).catch(() => {});
+
   try {
-    writeProjectScopedStorage(LOCAL_BO_SKU_STRUCTURED_KEY, JSON.stringify(memoryStructuredCatalog));
+    const serialized = JSON.stringify(memoryStructuredCatalog);
+    if (serialized.length <= LOCAL_BO_SKU_MAX_BYTES) {
+      writeProjectScopedStorage(LOCAL_BO_SKU_STRUCTURED_KEY, serialized);
+    }
   } catch (_) {}
+}
+
+/**
+ * Hidrata el catálogo BO SKU desde IndexedDB (`bo_sku_catalog`) al caché estructurado y plano en memoria.
+ */
+export async function hydrateBoSkuCatalogFromIndexedDb(): Promise<StructuredBoSkuCatalog> {
+  try {
+    const hydrated = await hydrateAndMigrateCollection<BoSkuCatalogRecord>(
+      'bo_sku_catalog',
+      [],
+      (r) => normalizePartNumberKey(r.partNumber)
+    );
+    if (hydrated.records.length > 0) {
+      const merged: StructuredBoSkuCatalog = {
+        exactByPartNumber: { ...memoryStructuredCatalog.exactByPartNumber },
+        variantsByBase: { ...memoryStructuredCatalog.variantsByBase },
+      };
+      for (const rec of hydrated.records) {
+        if (rec && rec.partNumber && rec.sku) {
+          registerStructuredSkuRecord(merged, rec);
+        }
+      }
+      memoryStructuredCatalog = merged;
+    }
+  } catch (_) {}
+  return getStructuredBoSkuCatalog();
 }
 
 /**
@@ -246,14 +287,17 @@ export function getLocalBoSkuCache(): Record<string, string> {
 }
 
 /**
- * Guarda el mapa en LocalStorage redundante (y en memoria fallback)
+ * Guarda el mapa en LocalStorage redundante si entra en presupuesto seguro (< 512 KB) y en memoria fallback.
+ * Los registros completos viven en IndexedDB (`bo_sku_catalog`) vía `saveStructuredBoSkuCatalog`.
  */
 export function saveLocalBoSkuCache(map: Record<string, string>) {
   memoryBoSkuCache = { ...map };
   try {
     const serialized = JSON.stringify(map);
-    writeProjectScopedStorage(LOCAL_BO_SKU_CACHE_KEY, serialized);
-    writeProjectScopedStorage(LOCAL_BO_SKU_VAULT_KEY, serialized);
+    if (serialized.length <= LOCAL_BO_SKU_MAX_BYTES) {
+      writeProjectScopedStorage(LOCAL_BO_SKU_CACHE_KEY, serialized);
+      writeProjectScopedStorage(LOCAL_BO_SKU_VAULT_KEY, serialized);
+    }
   } catch (_) {}
 }
 
@@ -445,6 +489,7 @@ export async function fetchBoSkuCatalog(): Promise<{
   error?: string;
 }> {
   const projectCtx = captureProjectContext();
+  await hydrateBoSkuCatalogFromIndexedDb();
   const localCache = getLocalBoSkuCache();
   const structured = getStructuredBoSkuCatalog();
   let isCloudConnected = false;

@@ -290,6 +290,15 @@ def test_item7_version_uniqueness_and_idempotency():
         kpis = db.get_user_kpis(is_admin=True)
         assert kpis["total_files"] == 3, "KPIs must count 3 distinct commercial scopes (EST-IDEMP-700, NA-A, NA-B)"
 
+        # Verify pagination & count on get_estimates_list
+        total_cnt = db.get_estimates_count(is_admin=True)
+        assert total_cnt >= 3, f"Expected >= 3 estimate rows, got {total_cnt}"
+        page_1 = db.get_estimates_list(is_admin=True, limit=2, offset=0)
+        page_2 = db.get_estimates_list(is_admin=True, limit=2, offset=2)
+        assert len(page_1) == 2
+        assert len(page_2) == total_cnt - 2
+        assert {r["id"] for r in page_1}.isdisjoint({r["id"] for r in page_2})
+
     print("✓ SQLite Item 7 (Version Uniqueness, Single Active Version & 'N/A' Isolation) passed")
 
 

@@ -20,6 +20,10 @@ import {
   writeProjectScopedStorage,
 } from '../cloud/firebaseConfig';
 import { sanitizeForFirestore } from '../cloud/firestoreService';
+import {
+  hydrateAndMigrateCollection,
+  putCollectionRecordsBatch,
+} from '../storage/indexedDbCollectionStore';
 import { UserSession } from '../../core/types';
 import { APP_VERSION } from '../../core/appVersion';
 import {
@@ -179,13 +183,24 @@ export function getLocalCachedTickets(): FeedbackTicket[] {
   return [];
 }
 
+const LOCAL_FEEDBACK_MAX_BYTES = 512_000;
+
 /**
- * Writes tickets to local storage cache.
+ * Writes tickets to durable IndexedDB per-record store and safe localStorage cache.
  */
 function setLocalCachedTickets(tickets: FeedbackTicket[]) {
   inMemoryTickets = tickets;
+  putCollectionRecordsBatch(
+    'feedback_tickets',
+    tickets.filter((t) => t && t.id).map((t) => ({ id: t.id, record: t })),
+    { replaceAllInScope: true }
+  ).catch(() => {});
+
   try {
-    writeProjectScopedStorage(LOCAL_FEEDBACK_CACHE_KEY, JSON.stringify(tickets));
+    const serialized = JSON.stringify(tickets);
+    if (serialized.length <= LOCAL_FEEDBACK_MAX_BYTES) {
+      writeProjectScopedStorage(LOCAL_FEEDBACK_CACHE_KEY, serialized);
+    }
   } catch (err) {
     console.warn('[feedbackService] No se pudo guardar caché local de tickets:', err);
   }
@@ -203,11 +218,24 @@ function generateTicketId(): string {
 }
 
 /**
- * Retrieves all feedback tickets from Firestore with automatic local fallback.
+ * Retrieves all feedback tickets from Firestore with automatic IndexedDB + localStorage fallback.
  */
 export async function getFeedbackTickets(forceRefresh = false): Promise<FeedbackTicket[]> {
   if (!forceRefresh && inMemoryTickets.length > 0) {
     return inMemoryTickets;
+  }
+
+  if (inMemoryTickets.length === 0) {
+    try {
+      const hydrated = await hydrateAndMigrateCollection<FeedbackTicket>(
+        'feedback_tickets',
+        [LOCAL_FEEDBACK_CACHE_KEY],
+        (t) => t.id
+      );
+      if (hydrated.records.length > 0) {
+        inMemoryTickets = hydrated.records;
+      }
+    } catch {}
   }
 
   try {

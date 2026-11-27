@@ -23,7 +23,11 @@ import {
 import { sanitizeForFirestore, withTimeout } from '../cloud/firestoreService';
 import { ForecastRecord } from './forecastTypes';
 import { INITIAL_FORECAST_SEEDS } from './forecastSeeds';
-import { idbGet, idbSet, STORES } from '../../core/storage/indexedDbStorage';
+import { idbGet, idbSet, idbDelete, STORES } from '../../core/storage/indexedDbStorage';
+import {
+  hydrateAndMigrateCollection,
+  putCollectionRecordsBatch,
+} from '../storage/indexedDbCollectionStore';
 import { isAppOffline } from '../../core/storage/offlineModeManager';
 import { enqueueOfflineAction } from '../../core/storage/offlineSyncQueue';
 
@@ -120,8 +124,26 @@ function readLocalStorageRecords(projectScope: string, stones: Set<string>): For
 async function readDurableRecords(projectScope: string): Promise<ForecastRecord[]> {
   const stones = getTombstones(projectScope);
   const map = new Map<string, ForecastRecord>();
+  let migratedFromLegacy = false;
 
-  // 1. Leer desde IndexedDB (almacenamiento de alta capacidad sin límite de 5MB)
+  // 0. Leer desde store por registro en IndexedDB (`CiscoAppCollectionsDB.forecast_records`)
+  try {
+    const idbNormalized = await hydrateAndMigrateCollection<ForecastRecord>(
+      'forecast_records',
+      [],
+      (r) => r.id,
+      projectScope
+    );
+    for (const item of idbNormalized.records) {
+      if (item && item.id && !stones.has(item.id)) {
+        map.set(item.id, item);
+      }
+    }
+  } catch (err) {
+    console.warn('[ForecastStorage] Error leyendo colección forecast_records:', err);
+  }
+
+  // 1. Reconciliar con IndexedDB heredado (STORES.KEYVAL) y migrar sin pérdida
   try {
     const idbList = await idbGet<ForecastRecord[]>(
       STORES.KEYVAL,
@@ -130,7 +152,13 @@ async function readDurableRecords(projectScope: string): Promise<ForecastRecord[
     if (Array.isArray(idbList) && idbList.length > 0) {
       for (const item of idbList) {
         if (item && item.id && !stones.has(item.id)) {
-          map.set(item.id, item);
+          const existing = map.get(item.id);
+          const existingTs = existing ? new Date(existing.updatedAt || existing.createdAt || 0).getTime() : -1;
+          const itemTs = new Date(item.updatedAt || item.createdAt || 0).getTime();
+          if (!existing || itemTs > existingTs) {
+            map.set(item.id, item);
+            migratedFromLegacy = true;
+          }
         }
       }
     }
@@ -154,8 +182,7 @@ async function readDurableRecords(projectScope: string): Promise<ForecastRecord[
               }
             }
             if (map.size > 0) {
-              // Re-persistir en la clave canónica actual para acceso directo
-              idbSet(STORES.KEYVAL, `${IDB_FORECAST_KEY_PREFIX}${projectScope}`, Array.from(map.values())).catch(() => {});
+              migratedFromLegacy = true;
               break;
             }
           }
@@ -172,17 +199,31 @@ async function readDurableRecords(projectScope: string): Promise<ForecastRecord[
     const existing = map.get(item.id);
     if (!existing) {
       map.set(item.id, item);
+      migratedFromLegacy = true;
     } else {
       const existingTs = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
       const lsTs = new Date(item.updatedAt || item.createdAt || 0).getTime();
       if (lsTs > existingTs) {
         map.set(item.id, item);
+        migratedFromLegacy = true;
       }
     }
   }
 
-  return Array.from(map.values());
+  const result = Array.from(map.values());
+  if (migratedFromLegacy && result.length > 0) {
+    putCollectionRecordsBatch(
+      'forecast_records',
+      result.map((r) => ({ id: r.id, record: r })),
+      { projectScope }
+    ).catch(() => {});
+  }
+
+  return result;
 }
+
+const LOCAL_FORECAST_MAX_BYTES = 512_000;
+const KEYVAL_FORECAST_ARRAY_MAX_ITEMS = 500;
 
 async function persistDurableRecords(
   records: ForecastRecord[],
@@ -191,15 +232,27 @@ async function persistDurableRecords(
   inMemoryForecastCache = [...records];
   inMemoryScopeKey = projectScope;
 
+  const perRecordRes = await putCollectionRecordsBatch(
+    'forecast_records',
+    records.map((r) => ({ id: r.id, record: r })),
+    { projectScope, replaceAllInScope: true }
+  ).catch(() => ({ success: false }));
+
   try {
-    await idbSet(STORES.KEYVAL, `${IDB_FORECAST_KEY_PREFIX}${projectScope}`, records);
+    if (records.length <= KEYVAL_FORECAST_ARRAY_MAX_ITEMS) {
+      await idbSet(STORES.KEYVAL, `${IDB_FORECAST_KEY_PREFIX}${projectScope}`, records);
+    } else if (perRecordRes?.success) {
+      await idbDelete(STORES.KEYVAL, `${IDB_FORECAST_KEY_PREFIX}${projectScope}`).catch(() => {});
+    }
   } catch (err) {
     console.warn('[ForecastStorage] Error persistiendo en IndexedDB:', err);
   }
 
   try {
     const serialized = JSON.stringify(records);
-    writeProjectScopedStorage(LOCAL_FORECAST_PRIMARY_KEY, serialized, projectScope);
+    if (serialized.length <= LOCAL_FORECAST_MAX_BYTES) {
+      writeProjectScopedStorage(LOCAL_FORECAST_PRIMARY_KEY, serialized, projectScope);
+    }
   } catch {
     // QuotaExceededError en localStorage no afecta la durabilidad en IndexedDB
   }

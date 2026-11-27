@@ -17,6 +17,10 @@ export const SQLITE_DB_FILENAME = 'cisco_automated.sqlite';
 const FALLBACK_IDB_DB_NAME = 'CiscoSqliteFallbackDB';
 const FALLBACK_IDB_STORE = 'sqlite_snapshot';
 const FALLBACK_IDB_KEY = 'master_database_binary';
+/** Evita duplicar snapshots binarios gigantes (>32 MB) en IndexedDB cuando OPFS ya está activo */
+export const SQLITE_FALLBACK_SNAPSHOT_MAX_BYTES = 32 * 1024 * 1024;
+/** Umbral recomendado en RAM para exportaciones sql.js antes de preferir stores por registro en IndexedDB */
+export const SQLITE_WASM_RECOMMENDED_MAX_BYTES = 512 * 1024 * 1024;
 
 export interface SqliteMetrics {
   isSupported: boolean;
@@ -25,6 +29,8 @@ export interface SqliteMetrics {
   databaseBytes: number;
   databaseFormatted: string;
   isOpfsActive: boolean;
+  snapshotRedundancySkipped?: boolean;
+  lastPersistWarning?: string | null;
   tables: {
     kv_store: number;
     estimates: number;
@@ -40,6 +46,8 @@ let isOpfsActive = false;
 let pendingSaveTimeout: any = null;
 let hasPendingSqliteWrite = false;
 let lastKnownBytes = 0;
+let snapshotRedundancySkipped = false;
+let lastPersistWarning: string | null = null;
 
 /**
  * Helper para formatear bytes en unidades humanas (KB, MB, GB).
@@ -170,6 +178,22 @@ async function writeSnapshotFallback(bytes: Uint8Array): Promise<boolean> {
       req.onerror = () => resolve(false);
     } catch {
       resolve(false);
+    }
+  });
+}
+
+async function deleteSnapshotFallback(): Promise<void> {
+  const db = await openFallbackIdb();
+  if (!db) return;
+  await new Promise<void>((resolve) => {
+    try {
+      const tx = db.transaction(FALLBACK_IDB_STORE, 'readwrite');
+      const store = tx.objectStore(FALLBACK_IDB_STORE);
+      const req = store.delete(FALLBACK_IDB_KEY);
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+    } catch {
+      resolve();
     }
   });
 }
@@ -322,21 +346,24 @@ export async function getSqliteDb(): Promise<Database | null> {
 }
 
 /**
- * Programa un guardado automático no-bloqueante a disco en OPFS / snapshot (debounced a 300 ms).
+ * Programa un guardado automático no-bloqueante a disco en OPFS / snapshot
+ * con debounce adaptativo según el tamaño para evitar re-exportaciones continuas en DBs grandes.
  */
 export function scheduleSqlitePersist(): void {
   hasPendingSqliteWrite = true;
   if (pendingSaveTimeout) {
     clearTimeout(pendingSaveTimeout);
   }
+  const mb = Math.floor(lastKnownBytes / (1024 * 1024));
+  const debounceMs = mb > 10 ? Math.min(2500, 300 + mb * 25) : 300;
   pendingSaveTimeout = setTimeout(() => {
     pendingSaveTimeout = null;
     persistSqliteToDisk().catch(() => {});
-  }, 300);
+  }, debounceMs);
 }
 
 /**
- * Fuerza la escritura inmediata de cambios SQLite pendientes a OPFS + IndexedDB.
+ * Fuerza la escritura inmediata de cambios SQLite pendientes a OPFS / respaldo.
  */
 export async function flushSqlitePersist(): Promise<boolean> {
   if (!dbInstance) return false;
@@ -349,7 +376,8 @@ export async function flushSqlitePersist(): Promise<boolean> {
 }
 
 /**
- * Persiste de forma atómica la base de datos SQLite en disco físico (OPFS) y snapshot.
+ * Persiste la base de datos SQLite en disco físico (OPFS) evitando duplicar binarios pesados
+ * (> 32 MB) dentro de IndexedDB cuando OPFS ya confirmó la escritura.
  */
 export async function persistSqliteToDisk(): Promise<boolean> {
   if (!dbInstance) return false;
@@ -357,10 +385,22 @@ export async function persistSqliteToDisk(): Promise<boolean> {
     hasPendingSqliteWrite = false;
     const bytes = dbInstance.export();
     lastKnownBytes = bytes.length;
+    lastPersistWarning =
+      bytes.length > SQLITE_WASM_RECOMMENDED_MAX_BYTES
+        ? `Base SQLite WASM (${formatSqliteBytes(bytes.length)}) supera umbral recomendado en RAM; datos críticos permanecen seguros por registro en IndexedDB.`
+        : null;
+
     const opfsDone = await writeOpfsBinary(bytes);
-    await writeSnapshotFallback(bytes);
+    if (opfsDone && bytes.length > SQLITE_FALLBACK_SNAPSHOT_MAX_BYTES) {
+      snapshotRedundancySkipped = true;
+      await deleteSnapshotFallback().catch(() => {});
+    } else {
+      snapshotRedundancySkipped = false;
+      await writeSnapshotFallback(bytes);
+    }
     return opfsDone;
-  } catch (err) {
+  } catch (err: any) {
+    lastPersistWarning = err?.message || 'Error exportando snapshot SQLite WASM';
     console.warn('[SQLite] Error persistiendo SQLite a disco:', err);
     return false;
   }
@@ -718,6 +758,8 @@ export async function getSqliteMetrics(): Promise<SqliteMetrics> {
     databaseBytes: lastKnownBytes,
     databaseFormatted: formatSqliteBytes(lastKnownBytes),
     isOpfsActive,
+    snapshotRedundancySkipped,
+    lastPersistWarning,
     tables: counts,
   };
 }

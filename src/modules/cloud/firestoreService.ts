@@ -58,7 +58,11 @@ import {
   isFlushingOfflineQueueNow,
 } from '../../core/storage/offlineModeManager';
 import { enqueueOfflineAction } from '../../core/storage/offlineSyncQueue';
-import { idbSet, idbGet, STORES } from '../../core/storage/indexedDbStorage';
+import { idbSet, idbGet, idbDelete, STORES } from '../../core/storage/indexedDbStorage';
+import {
+  hydrateAndMigrateCollection,
+  putCollectionRecordsBatch,
+} from '../storage/indexedDbCollectionStore';
 import { SEED_DSV_RECORDS } from '../dsv/dsvSeeds';
 
 const ESTIMATES_COLLECTION = 'estimates';
@@ -121,23 +125,57 @@ function getScopedDsvIdbKey(): string {
 }
 
 /**
- * Hidratación asíncrona de caché DSV desde IndexedDB (STORES.KEYVAL) para máxima resiliencia.
+ * Hidratación asíncrona de caché DSV desde IndexedDB (`CiscoAppCollectionsDB.dsv_records` + fallback `STORES.KEYVAL`)
+ * sin truncamiento artificial de 500 registros.
  */
 export async function hydrateDsvCacheFromIndexedDb(): Promise<CloudDsvRecord[]> {
   try {
+    const scopeKey = getActiveProjectScopeKey();
+    const deletedIds = getDeletedDsvIds();
+    const mergedMap = new Map<string, CloudDsvRecord>();
+    let migratedLegacy = false;
+
+    const normalized = await hydrateAndMigrateCollection<CloudDsvRecord>(
+      'dsv_records',
+      [],
+      (r) => String(r.id || ''),
+      scopeKey
+    );
+    for (const r of normalized.records) {
+      if (r && r.id && !deletedIds.has(r.id)) {
+        mergedMap.set(r.id, r);
+      }
+    }
+
     const scopedIdbRecords = await idbGet<CloudDsvRecord[]>(STORES.KEYVAL, getScopedDsvIdbKey());
-    const idbRecords =
+    const legacyRecords =
       Array.isArray(scopedIdbRecords) && scopedIdbRecords.length > 0
         ? scopedIdbRecords
         : await idbGet<CloudDsvRecord[]>(STORES.KEYVAL, LOCAL_DSV_BACKUP_KEY);
-    if (Array.isArray(idbRecords) && idbRecords.length > 0) {
-      const deletedIds = getDeletedDsvIds();
-      const clean = idbRecords.filter((r) => r && r.id && !deletedIds.has(r.id));
-      if (clean.length > 0) {
-        inMemoryDsvCache = clean;
-        isDsvHydratedFromIdb = true;
-        return clean;
+
+    if (Array.isArray(legacyRecords) && legacyRecords.length > 0) {
+      for (const r of legacyRecords) {
+        if (r && r.id && !deletedIds.has(r.id) && !mergedMap.has(r.id)) {
+          mergedMap.set(r.id, r);
+          migratedLegacy = true;
+        }
       }
+    }
+
+    const clean = Array.from(mergedMap.values()).sort((a, b) =>
+      (b.createdAt || '').localeCompare(a.createdAt || '')
+    );
+    if (clean.length > 0) {
+      if (migratedLegacy) {
+        putCollectionRecordsBatch(
+          'dsv_records',
+          clean.map((r) => ({ id: String(r.id), record: r })),
+          { projectScope: scopeKey }
+        ).catch(() => {});
+      }
+      inMemoryDsvCache = clean;
+      isDsvHydratedFromIdb = true;
+      return clean;
     }
   } catch (_) {}
   return inMemoryDsvCache;
@@ -191,34 +229,56 @@ export function getLocalDsvCache(): CloudDsvRecord[] {
   }
 }
 
+const LOCAL_DSV_MAX_BYTES = 512_000;
+const DSV_KEYVAL_MAX_ITEMS = 500;
+
 function saveLocalDsvCache(list: CloudDsvRecord[]) {
   try {
+    const scopeKey = getActiveProjectScopeKey();
     const deletedIds = getDeletedDsvIds();
-    const cleanList = list.filter((r) => r && r.id && !deletedIds.has(r.id)).slice(0, 500);
+    // Preservar el historial completo sin truncamiento en IndexedDB por registro
+    const cleanList = list.filter((r) => r && r.id && !deletedIds.has(r.id));
     inMemoryDsvCache = cleanList;
 
-    // Guardar siempre en motor de alta capacidad IndexedDB (STORES.KEYVAL) aislado por proyecto
-    idbSet(STORES.KEYVAL, getScopedDsvIdbKey(), cleanList).catch(() => {});
-    
+    // 1. Guardar por registro en CiscoAppCollectionsDB (`dsv_records`) sin límite de 500 ítems
+    const batchResPromise = putCollectionRecordsBatch(
+      'dsv_records',
+      cleanList.map((r) => ({ id: String(r.id), record: r })),
+      { projectScope: scopeKey, replaceAllInScope: true }
+    );
+
+    if (cleanList.length <= DSV_KEYVAL_MAX_ITEMS) {
+      idbSet(STORES.KEYVAL, getScopedDsvIdbKey(), cleanList).catch(() => {});
+    } else {
+      batchResPromise
+        .then((res) => {
+          if (res?.success) {
+            idbDelete(STORES.KEYVAL, getScopedDsvIdbKey()).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
+
     if (typeof localStorage === 'undefined') return;
 
-    // Guardar en LocalStorage con bóveda redundante sin purgar destructivamente nunca
+    // 2. Guardar en LocalStorage manteniendo presupuesto seguro (< 512 KB)
     try {
       const serialized = JSON.stringify(cleanList);
-      writeProjectScopedStorage(LOCAL_DSV_BACKUP_KEY, serialized);
-      writeProjectScopedStorage(LOCAL_DSV_VAULT_KEY, serialized);
-    } catch (_) {
-      // Si el JSON completo supera la cuota de localStorage (5 MB), preservar metadata y líneas principales
-      try {
-        const lightweight = cleanList.map((rec) => ({
+      if (serialized.length <= LOCAL_DSV_MAX_BYTES) {
+        writeProjectScopedStorage(LOCAL_DSV_BACKUP_KEY, serialized);
+        writeProjectScopedStorage(LOCAL_DSV_VAULT_KEY, serialized);
+      } else {
+        const lightweight = cleanList.slice(0, 50).map((rec) => ({
           ...rec,
           items: Array.isArray(rec.items) ? rec.items.slice(0, 5) : [],
         }));
         const lightSerialized = JSON.stringify(lightweight);
-        writeProjectScopedStorage(LOCAL_DSV_BACKUP_KEY, lightSerialized);
-        writeProjectScopedStorage(LOCAL_DSV_VAULT_KEY, lightSerialized);
-      } catch (__) {}
-    }
+        if (lightSerialized.length <= LOCAL_DSV_MAX_BYTES) {
+          writeProjectScopedStorage(LOCAL_DSV_BACKUP_KEY, lightSerialized);
+          writeProjectScopedStorage(LOCAL_DSV_VAULT_KEY, lightSerialized);
+        }
+      }
+    } catch (_) {}
   } catch (_) {}
 }
 

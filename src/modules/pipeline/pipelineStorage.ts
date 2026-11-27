@@ -24,7 +24,11 @@ import {
 import { sanitizeForFirestore, withTimeout } from '../cloud/firestoreService';
 import { PipelineDealRecord } from './pipelineTypes';
 import { PIPELINE_INITIAL_SEEDS } from './pipelineSeeds';
-import { idbGet, idbSet, STORES } from '../../core/storage/indexedDbStorage';
+import { idbGet, idbSet, idbDelete, STORES } from '../../core/storage/indexedDbStorage';
+import {
+  hydrateAndMigrateCollection,
+  putCollectionRecordsBatch,
+} from '../storage/indexedDbCollectionStore';
 import { isAppOffline } from '../../core/storage/offlineModeManager';
 import { enqueueOfflineAction } from '../../core/storage/offlineSyncQueue';
 
@@ -127,8 +131,26 @@ function readLocalStorageDeals(projectScope: string, stones: Set<string>): Pipel
 async function readDurableDeals(projectScope: string): Promise<PipelineDealRecord[]> {
   const stones = getTombstones(projectScope);
   const map = new Map<string, PipelineDealRecord>();
+  let migratedFromLegacy = false;
 
-  // 1. Leer desde IndexedDB (sin límite de 5MB de localStorage)
+  // 0. Leer desde store por registro en IndexedDB (`CiscoAppCollectionsDB.pipeline_deals`)
+  try {
+    const idbNormalized = await hydrateAndMigrateCollection<PipelineDealRecord>(
+      'pipeline_deals',
+      [],
+      (d) => d.id,
+      projectScope
+    );
+    for (const item of idbNormalized.records) {
+      if (item && item.id && !stones.has(item.id)) {
+        map.set(item.id, item);
+      }
+    }
+  } catch (err) {
+    console.warn('[PipelineStorage] Error leyendo colección pipeline_deals:', err);
+  }
+
+  // 1. Reconciliar con IndexedDB heredado (STORES.KEYVAL) y migrar sin pérdida si hay registros faltantes o más nuevos
   try {
     const idbList = await idbGet<PipelineDealRecord[]>(
       STORES.KEYVAL,
@@ -137,7 +159,13 @@ async function readDurableDeals(projectScope: string): Promise<PipelineDealRecor
     if (Array.isArray(idbList) && idbList.length > 0) {
       for (const item of idbList) {
         if (item && item.id && !stones.has(item.id)) {
-          map.set(item.id, item);
+          const existing = map.get(item.id);
+          const existingTs = existing ? new Date(existing.updatedAt || existing.createdAt || 0).getTime() : -1;
+          const itemTs = new Date(item.updatedAt || item.createdAt || 0).getTime();
+          if (!existing || itemTs > existingTs) {
+            map.set(item.id, item);
+            migratedFromLegacy = true;
+          }
         }
       }
     }
@@ -161,8 +189,7 @@ async function readDurableDeals(projectScope: string): Promise<PipelineDealRecor
               }
             }
             if (map.size > 0) {
-              // Re-persistir en la clave canónica actual para que en la próxima lectura esté directa
-              idbSet(STORES.KEYVAL, `${IDB_PIPELINE_KEY_PREFIX}${projectScope}`, Array.from(map.values())).catch(() => {});
+              migratedFromLegacy = true;
               break;
             }
           }
@@ -179,17 +206,31 @@ async function readDurableDeals(projectScope: string): Promise<PipelineDealRecor
     const existing = map.get(item.id);
     if (!existing) {
       map.set(item.id, item);
+      migratedFromLegacy = true;
     } else {
       const existingTs = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
       const lsTs = new Date(item.updatedAt || item.createdAt || 0).getTime();
       if (lsTs > existingTs) {
         map.set(item.id, item);
+        migratedFromLegacy = true;
       }
     }
   }
 
-  return Array.from(map.values());
+  const result = Array.from(map.values());
+  if (migratedFromLegacy && result.length > 0) {
+    putCollectionRecordsBatch(
+      'pipeline_deals',
+      result.map((d) => ({ id: d.id, record: d })),
+      { projectScope }
+    ).catch(() => {});
+  }
+
+  return result;
 }
+
+const LOCAL_PIPELINE_MAX_BYTES = 512_000;
+const KEYVAL_ARRAY_MAX_ITEMS = 500;
 
 async function persistDurableDeals(
   deals: PipelineDealRecord[],
@@ -198,15 +239,28 @@ async function persistDurableDeals(
   inMemoryPipelineCache = [...deals];
   inMemoryScopeKey = projectScope;
 
+  const perRecordRes = await putCollectionRecordsBatch(
+    'pipeline_deals',
+    deals.map((d) => ({ id: d.id, record: d })),
+    { projectScope, replaceAllInScope: true }
+  ).catch(() => ({ success: false }));
+
   try {
-    await idbSet(STORES.KEYVAL, `${IDB_PIPELINE_KEY_PREFIX}${projectScope}`, deals);
+    if (deals.length <= KEYVAL_ARRAY_MAX_ITEMS) {
+      await idbSet(STORES.KEYVAL, `${IDB_PIPELINE_KEY_PREFIX}${projectScope}`, deals);
+    } else if (perRecordRes?.success) {
+      // Una vez confirmada la migración por registro en IndexedDB, evitar inflar un array único en KEYVAL/SQLite
+      await idbDelete(STORES.KEYVAL, `${IDB_PIPELINE_KEY_PREFIX}${projectScope}`).catch(() => {});
+    }
   } catch (err) {
     console.warn('[PipelineStorage] Error persistiendo en IndexedDB:', err);
   }
 
   try {
     const serialized = JSON.stringify(deals);
-    writeProjectScopedStorage(LOCAL_PIPELINE_PRIMARY_KEY, serialized, projectScope);
+    if (serialized.length <= LOCAL_PIPELINE_MAX_BYTES) {
+      writeProjectScopedStorage(LOCAL_PIPELINE_PRIMARY_KEY, serialized, projectScope);
+    }
   } catch {
     // QuotaExceededError en localStorage no afecta la durabilidad en IndexedDB
   }

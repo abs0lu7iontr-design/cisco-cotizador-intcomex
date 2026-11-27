@@ -232,17 +232,39 @@ class DatabaseManager:
 
             try:
                 if os.path.exists(canonical_path) and os.path.getsize(canonical_path) > 0:
-                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    backup_file = os.path.join(backup_dir, f"gravity_database_backup_{ts}.db")
-                    shutil.copy2(canonical_path, backup_file)
-
-                    backups = sorted([
+                    db_size_bytes = os.path.getsize(canonical_path)
+                    existing_backups = sorted([
                         os.path.join(backup_dir, f)
                         for f in os.listdir(backup_dir)
                         if f.startswith("gravity_database_backup_") and f.endswith(".db")
                     ])
-                    while len(backups) > 10:
-                        oldest = backups.pop(0)
+
+                    # Política consciente del tamaño: evitar 10x copias bloqueantes en DBs multi-GB
+                    if db_size_bytes <= 100 * 1024 * 1024:
+                        max_backups = 10
+                        min_interval_sec = 0
+                    elif db_size_bytes <= 500 * 1024 * 1024:
+                        max_backups = 3
+                        min_interval_sec = 24 * 3600
+                    else:
+                        max_backups = 1
+                        min_interval_sec = 7 * 24 * 3600
+
+                    should_create_backup = True
+                    if existing_backups and min_interval_sec > 0:
+                        latest_mtime = os.path.getmtime(existing_backups[-1])
+                        if (time.time() - latest_mtime) < min_interval_sec:
+                            should_create_backup = False
+
+                    if should_create_backup:
+                        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        backup_file = os.path.join(backup_dir, f"gravity_database_backup_{ts}.db")
+                        shutil.copy2(canonical_path, backup_file)
+                        existing_backups.append(backup_file)
+                        existing_backups.sort()
+
+                    while len(existing_backups) > max_backups:
+                        oldest = existing_backups.pop(0)
                         try:
                             os.remove(oldest)
                         except Exception:
@@ -751,7 +773,18 @@ class DatabaseManager:
 
         if not stop_before_version:
             self._ensure_users_role_viewer_support()
+            self._ensure_scalability_indexes()
         return newly_applied
+
+    def _ensure_scalability_indexes(self):
+        """Creates idempotent composite indexes for fast paginated lookups on multi-GB databases."""
+        try:
+            with self.get_connection(enforce_foreign_keys=False) as conn:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_estimates_user_created_at ON estimates(user_id, created_at DESC)"
+                )
+        except Exception:
+            pass
 
     def _ensure_updated_user_schema(self):
         """Legacy compatibility wrapper for V002."""
@@ -1464,10 +1497,37 @@ class DatabaseManager:
                     d["total_baseline"] = sub["base"]
             return d
 
-    def get_estimates_list(self, user_id: str = None, is_admin: bool = False) -> List[Dict[str, Any]]:
-        """Retrieves estimate history list filtered by user role isolation using fail-safe LEFT JOIN."""
+    def get_estimates_count(self, user_id: str = None, is_admin: bool = False) -> int:
+        """Returns total estimates count matching the caller visibility without loading rows."""
+        if not is_admin and not user_id:
+            return 0
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            if is_admin:
+                cursor.execute("SELECT COUNT(*) FROM estimates")
+            else:
+                cursor.execute("""
+                    SELECT COUNT(*)
+                    FROM estimates e
+                    LEFT JOIN users u ON e.user_id = u.id
+                    WHERE (e.user_id = ? OR u.username = ?)
+                """, (user_id, user_id))
+            row = cursor.fetchone()
+            return int(row[0] or 0) if row else 0
+
+    def get_estimates_list(
+        self,
+        user_id: str = None,
+        is_admin: bool = False,
+        limit: Optional[int] = None,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """Retrieves estimate history list filtered by user role isolation with optional pagination."""
         if not is_admin and not user_id:
             return []
+        use_pagination = limit is not None and int(limit) > 0
+        safe_limit = int(limit) if use_pagination else None
+        safe_offset = max(0, int(offset or 0))
         with self.get_connection() as conn:
             cursor = conn.cursor()
             if is_admin:
@@ -1479,7 +1539,11 @@ class DatabaseManager:
                     LEFT JOIN users u ON e.user_id = u.id 
                     ORDER BY e.created_at DESC
                 """
-                cursor.execute(query)
+                if use_pagination:
+                    query += "\n                    LIMIT ? OFFSET ?"
+                    cursor.execute(query, (safe_limit, safe_offset))
+                else:
+                    cursor.execute(query)
             else:
                 query = """
                     SELECT e.*, 
@@ -1490,7 +1554,11 @@ class DatabaseManager:
                     WHERE (e.user_id = ? OR u.username = ?) 
                     ORDER BY e.created_at DESC
                 """
-                cursor.execute(query, (user_id, user_id))
+                if use_pagination:
+                    query += "\n                    LIMIT ? OFFSET ?"
+                    cursor.execute(query, (user_id, user_id, safe_limit, safe_offset))
+                else:
+                    cursor.execute(query, (user_id, user_id))
             return [dict(row) for row in cursor.fetchall()]
 
     def get_all_users(self) -> List[Dict[str, Any]]:
