@@ -478,7 +478,7 @@ async function runTests() {
   assert.ok(!desktopWinPy.includes('existing_bundled_only'), 'desktop_window.py no debe cargar bundles frozen sin verificar SHA-256');
   const dbMgrPy = fs.readFileSync(path.join(rootDir, 'desktop_app/db_manager.py'), 'utf8');
   assert.ok(dbMgrPy.includes("'viewer'"), 'db_manager.py CHECK constraint debe aceptar rol viewer');
-  assert.strictEqual(sanitizeForFirestore({ badNum: NaN } as any).badNum, null, 'sanitizeForFirestore debe sanear NaN a null');
+  assert.strictEqual(sanitizeForFirestore({ badNum: NaN } as any).badNum, undefined, 'sanitizeForFirestore debe omitir campos NaN para cumplir reglas numéricas de Firestore');
   assert.strictEqual(formatCcwrDate('2026-11-27'), '27-nov-2026', 'formatCcwrDate debe preservar fechas ISO YYYY-MM-DD sin shift UTC local');
   const usRange = parseFastTrackDateRange('Eligible from 10/25/2026 - 11/30/2026');
   assert.ok(usRange?.validFrom && new Date(usRange.validFrom).getMonth() === 9 && new Date(usRange.validFrom).getDate() === 25, 'parseFastTrackDateRange debe parsear MM/DD/YYYY correctamente');

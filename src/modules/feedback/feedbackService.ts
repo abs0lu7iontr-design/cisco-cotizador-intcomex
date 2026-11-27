@@ -427,7 +427,7 @@ export async function updateFeedbackTicketStatus(
     if (newStatus === 'RESOLVED' && !currentTicket.resolvedAt) {
       resolvedAt = nowIso;
       const createdMs = new Date(currentTicket.createdAt).getTime();
-      timeToResolutionMinutes = Math.round((Date.now() - createdMs) / (1000 * 60));
+      timeToResolutionMinutes = Math.max(0, Math.round((Date.now() - createdMs) / (1000 * 60)));
     } else if (newStatus !== 'RESOLVED' && newStatus !== 'CLOSED') {
       resolvedAt = undefined;
       timeToResolutionMinutes = undefined;

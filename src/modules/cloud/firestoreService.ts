@@ -248,6 +248,7 @@ export function sanitizeForFirestore<T>(data: T, depth: number = 0): T {
   const result: Record<string, any> = {};
   for (const [key, val] of Object.entries(data as Record<string, any>)) {
     if (FORBIDDEN_FIRESTORE_KEYS.has(key)) continue;
+    if (typeof val === 'number' && !Number.isFinite(val)) continue;
     if (val !== undefined && typeof val !== 'function' && typeof val !== 'symbol') {
       result[key] = sanitizeForFirestore(val, depth + 1);
     }
@@ -1968,6 +1969,52 @@ export async function getCloudEstimates(
     const merged = Array.from(dedupMap.values()).sort(
       compareEstimateRecordsDeterministic
     );
+
+    // Hydrate isolated access_requests subcollections for restricted estimates owned/admin-managed
+    const currentAuthUid = (getAuth(db.app)?.currentUser?.uid || '').trim().toLowerCase();
+    if (currentAuthUid) {
+      const restrictedOwned = merged.filter(
+        (est) =>
+          est.isRestricted &&
+          est.id &&
+          !est.id.startsWith('local_') &&
+          !est.id.startsWith('cloud-est-')
+      );
+      if (restrictedOwned.length > 0 && restrictedOwned.length <= 25) {
+        await Promise.allSettled(
+          restrictedOwned.map(async (est) => {
+            try {
+              const reqSnap = await withTimeout(
+                getDocs(collection(db, ESTIMATES_COLLECTION, est.id!, 'access_requests')),
+                2500
+              );
+              if (!reqSnap.empty) {
+                const subReqs: EstimateAccessRequest[] = [];
+                reqSnap.forEach((d) => {
+                  const rd: any = d.data();
+                  const uname = String(rd?.requester_username || rd?.username || d.id || '').trim();
+                  if (uname) {
+                    subReqs.push({
+                      username: uname,
+                      fullName: String(rd?.requester_name || rd?.fullName || uname),
+                      role: rd?.role || 'pm',
+                      requestedAt: String(rd?.requested_at || rd?.requestedAt || est.updatedAt || est.createdAt),
+                      status: (rd?.status || 'pending') as any,
+                      resolvedAt: rd?.resolved_at || rd?.resolvedAt,
+                      resolvedBy: rd?.resolved_by || rd?.resolvedBy,
+                    });
+                  }
+                });
+                est.accessRequests = deduplicateAccessRequests([
+                  ...(est.accessRequests || []),
+                  ...subReqs,
+                ]);
+              }
+            } catch {}
+          })
+        );
+      }
+    }
 
     // Update multi-tier local mirror snapshot cache and timestamp without 300-record truncation
     saveLocalEstimatesCache(merged, true);

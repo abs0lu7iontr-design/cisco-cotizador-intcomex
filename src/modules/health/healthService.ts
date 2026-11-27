@@ -27,7 +27,7 @@ import {
   formatStorageBytes,
 } from '../../core/storage/modernStorageEngine';
 import { getSqliteMetrics } from '../../core/storage/sqliteStorageEngine';
-import { collection, getDocs, limit, query } from 'firebase/firestore';
+import { collection, getDocs, limit, query, where } from 'firebase/firestore';
 import { getPerformanceSnapshot, PerformanceSnapshot } from '../../core/telemetry/performanceTelemetry';
 import { getMasterCatalogStatus, warmMasterCatalogCache, MasterCatalogMetrics } from '../../core/cache/masterCatalogCache';
 
@@ -113,7 +113,10 @@ export async function checkFirestoreHealth(): Promise<HealthCheckResult> {
     for (const colName of collectionsToTest) {
       try {
         const colRef = collection(instance.db, colName);
-        const q = query(colRef, limit(1));
+        const q =
+          colName === 'estimates'
+            ? query(colRef, where('isRestricted', '==', false), limit(1))
+            : query(colRef, limit(1));
         await getDocs(q);
         collectionResults[colName] = 'ok';
       } catch (colErr: any) {

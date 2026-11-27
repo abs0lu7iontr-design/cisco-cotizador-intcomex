@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.29.1',
+    date: '2026-11-27',
+    commit: 'db-audit-v006-viewer-and-firestore-write-guards',
+    title: 'Auditoría Integral de Bases de Datos: Migración SQLite V006, Sonda Firestore y Sanitización Numérica',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'SQLite Desktop (db_manager.py): Actualización auto-curativa de restricción CHECK en users sobre bases existentes para habilitar roles viewer/user manteniendo integridad referencial y esquema V005.',
+      'Firestore Rules & Sync: Filtro isRestricted == false en healthService.ts, omisión de NaN/Infinity en propiedades de objeto y lectura de subcolección access_requests en getCloudEstimates().',
+      'Feedback Tickets: Clamping >= 0 de timeToResolutionMinutes para evitar rechazos por desfase de reloj.'
+    ]
+  },
+  {
     version: '2.29.0',
     date: '2026-11-27',
     commit: 'full-reaudit-blocks-xyz-strict-null-checks',
     title: 'Re-Auditoría Completa (Bloques X, Y, Z), Hardening Firestore/Edge/Desktop y strictNullChecks',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Bloque X (Seguridad Crítica y Crashes): Verificación criptográfica de twoFactorProof previo a eximir Turnstile, isAdmin() solo por custom claims, subcolección access_requests y bloqueo de rol viewer en firestore.rules, validación SHA-256 estricta en desktop_window.py y escape HTML en CCW-R.',

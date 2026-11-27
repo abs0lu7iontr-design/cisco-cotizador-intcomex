@@ -1,12 +1,12 @@
 {
   "name": "cisco-automated",
-  "version": "2.29.0",
-  "git_commit": "81f982a",
+  "version": "2.29.1",
+  "git_commit": "c92ba35",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-27T17:31:00.129Z",
-  "release_notes": "feat(qa,security,v2.28.0): implement P0/P1/P2 web QA, PBKDF2 rules, Turnstile, SW & a11y",
+  "build_timestamp": "2026-11-27T21:31:56.236Z",
+  "release_notes": "feat(v2.29.0): re-audit hardening blocks X/Y/Z, Firestore subcollection/viewer rules, Desktop SHA-256 & strictNullChecks",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop",
-  "desktop_bundle_sha256": "643f5ff429b2b4f2608e44d565884310ad07dac02dff1ae19916caca2761340e"
+  "desktop_bundle_sha256": "f7e90c80d4782033520ae15a5ab528db1aa9d3f0a76a774b6ac37ea8564e1a3c"
 }

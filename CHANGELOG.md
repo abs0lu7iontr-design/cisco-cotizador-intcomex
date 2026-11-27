@@ -6,6 +6,16 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.29.1] - 2026-11-27
+
+### Corregido (Auditoría Integral de Escritura y Esquemas de Bases de Datos)
+- **SQLite Desktop ([db_manager.py](desktop_app/db_manager.py)):** Agregada validación auto-curativa idempotente (`_ensure_users_role_viewer_support`) al finalizar migraciones `V001..V005` para actualizar el `CHECK` de roles en la tabla `users` en bases existentes (`~/.cotizador_intcomex/gravity_database.db`), permitiendo `'viewer'` y `'user'` sin pérdida de datos ni ruptura de claves foráneas.
+- **Firestore Cloud & Health Probe:**
+  - Corregida sonda de `estimates` en [healthService.ts](src/modules/health/healthService.ts) agregando filtro `where('isRestricted', '==', false)` para evitar falsos reportes `permission-denied` en cuentas no administradoras.
+  - Reforzado `sanitizeForFirestore` en [firestoreService.ts](src/modules/cloud/firestoreService.ts) omitiendo propiedades objeto cuyo valor numérico sea `NaN`/`Infinity` para cumplir validaciones `is number` de `firestore.rules`.
+  - Hidratada la subcolección `estimates/{id}/access_requests` dentro de `getCloudEstimates()` en [firestoreService.ts](src/modules/cloud/firestoreService.ts) para que las solicitudes enviadas por usuarios no propietarios se visualicen al propietario/admin.
+  - Protegido cálculo de `timeToResolutionMinutes >= 0` ante desfase horario en [feedbackService.ts](src/modules/feedback/feedbackService.ts).
+
 ## [v2.29.0] - 2026-11-27
 
 ### Seguridad, Resiliencia y Calidad Integral (Bloques X, Y, Z — Sin Cambios en Fórmulas)

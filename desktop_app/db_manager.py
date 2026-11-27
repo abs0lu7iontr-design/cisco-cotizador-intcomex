@@ -655,6 +655,36 @@ class DatabaseManager:
         for stmt in index_statements:
             cur.execute(stmt)
 
+    def _ensure_users_role_viewer_support(self):
+        """Ensures existing DBs created before viewer/user roles support accept all roles safely."""
+        with self.get_connection(enforce_foreign_keys=False) as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'")
+            row = cur.fetchone()
+            if row and row[0] and "'viewer'" in row[0] and "'user'" in row[0]:
+                return
+            cur.execute("DROP TABLE IF EXISTS users_role_migrated")
+            cur.execute("""
+                CREATE TABLE users_role_migrated (
+                    id TEXT PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    full_name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL CHECK (role IN ('admin', 'pm', 'preventa', 'standard', 'viewer', 'user')),
+                    is_active INTEGER DEFAULT 1,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    last_login TEXT
+                )
+            """)
+            cur.execute("""
+                INSERT INTO users_role_migrated (id, username, full_name, email, password_hash, role, is_active, created_at, last_login)
+                SELECT id, username, full_name, email, password_hash, role, is_active, created_at, last_login
+                FROM users
+            """)
+            cur.execute("DROP TABLE users")
+            cur.execute("ALTER TABLE users_role_migrated RENAME TO users")
+
     def run_migrations(self, stop_before_version: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Item 6: Runs all pending versioned migrations in strict order.
@@ -719,6 +749,8 @@ class DatabaseManager:
                     conn.rollback()
                     raise
 
+        if not stop_before_version:
+            self._ensure_users_role_viewer_support()
         return newly_applied
 
     def _ensure_updated_user_schema(self):
