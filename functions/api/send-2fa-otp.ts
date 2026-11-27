@@ -262,7 +262,11 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
         );
       }
 
-      const userRecord = await fetchFirestoreUserRecord(projectId, username);
+      const userRecord = await fetchFirestoreUserRecord(
+        projectId,
+        username,
+        context.env.FIREBASE_SERVICE_ACCOUNT_JSON
+      );
       if (!userRecord || userRecord.is_active !== 1 || !userRecord.email) {
         return new Response(
           JSON.stringify({
@@ -328,7 +332,11 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
         );
       }
 
-      const userRecord = await fetchFirestoreUserRecord(projectId, username);
+      const userRecord = await fetchFirestoreUserRecord(
+        projectId,
+        username,
+        context.env.FIREBASE_SERVICE_ACCOUNT_JSON
+      );
       if (!userRecord || userRecord.is_active !== 1) {
         return new Response(
           JSON.stringify({ success: false, error: 'Usuario no válido o inactivo.' }),
@@ -450,7 +458,11 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
         );
       }
 
-      const userRecord = await fetchFirestoreUserRecord(projectId, username);
+      const userRecord = await fetchFirestoreUserRecord(
+        projectId,
+        username,
+        context.env.FIREBASE_SERVICE_ACCOUNT_JSON
+      );
       if (!userRecord || userRecord.is_active !== 1 || !userRecord.email) {
         return new Response(
           JSON.stringify({ success: false, error: 'Usuario no válido o sin correo corporativo.' }),
@@ -497,7 +509,13 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
         const adminUsername = String(body?.adminUsername || '').trim().toLowerCase();
         const adminPassword = String(body?.adminPassword || '');
         if (adminUsername && adminPassword) {
-          const adminUser = await verifyFirestoreUserCredentials(projectId, adminUsername, adminPassword, 'admin');
+          const adminUser = await verifyFirestoreUserCredentials(
+            projectId,
+            adminUsername,
+            adminPassword,
+            'admin',
+            context.env.FIREBASE_SERVICE_ACCOUNT_JSON
+          );
           isVerifiedAdmin = Boolean(adminUser);
         }
       }

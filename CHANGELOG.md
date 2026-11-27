@@ -6,6 +6,14 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.27.1] - 2026-11-27
+
+### Corregido
+- **Login Edge & Resiliencia de Autenticación en Entorno Preview / Production:**
+  - Provisionados los secretos criptográficos `EDGE_SESSION_SECRET`, `ADMIN_OVERRIDE_SECRET` y `NOTIFY_SECRET` en Cloudflare Pages tanto en **production** como en **preview** (`develop.cisco-automated.pages.dev`), resolviendo el error `500 Servicio de sesión Edge no configurado.` al presionar **Iniciar Sesión**.
+  - En [edgeAuth.ts](functions/lib/edgeAuth.ts), [session-auth.ts](functions/api/session-auth.ts) y [send-2fa-otp.ts](functions/api/send-2fa-otp.ts), añadido `getFirebaseAdminAccessToken` para autenticar consultas REST de Firestore con `FIREBASE_SERVICE_ACCOUNT_JSON` una vez desplegadas las nuevas `firestore.rules`.
+  - En [LoginScreen.tsx](src/components/LoginScreen.tsx), limitado el incremento del contador de bloqueo local por contraseña incorrecta (`failedAttempts`) únicamente a rechazos `401`, evitando bloqueos accidentales ante errores de servidor (`5xx`), rate-limit (`429`) o desafíos Turnstile (`403`).
+
 ## [v2.27.0] - 2026-11-27
 
 ### Seguridad Integral (Bloques 1, 2 y 3) — Sin Cambios en Fórmulas ni Cálculos

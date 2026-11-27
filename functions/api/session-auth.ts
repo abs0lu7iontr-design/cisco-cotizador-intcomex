@@ -128,7 +128,13 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
     }
 
     const projectId = resolveFirebaseProjectId(context.env);
-    const verifiedUser = await verifyFirestoreUserCredentials(projectId, username, password);
+    const verifiedUser = await verifyFirestoreUserCredentials(
+      projectId,
+      username,
+      password,
+      undefined,
+      context.env.FIREBASE_SERVICE_ACCOUNT_JSON
+    );
     if (!verifiedUser) {
       return new Response(
         JSON.stringify({ success: false, error: 'Credenciales inválidas o usuario inactivo.' }),

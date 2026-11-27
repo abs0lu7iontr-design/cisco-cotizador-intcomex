@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.27.1',
+    date: '2026-11-27',
+    commit: 'fix-edge-session-secrets-preview-and-auth-resilience',
+    title: 'Fix Login Edge en Preview/Production y Autenticación Admin REST en Firestore',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Aprovisionados los secretos EDGE_SESSION_SECRET, ADMIN_OVERRIDE_SECRET y NOTIFY_SECRET en Cloudflare Pages (preview y production) eliminando el error "Servicio de sesión Edge no configurado.".',
+      'Agregado getFirebaseAdminAccessToken en functions/lib/edgeAuth.ts para consultar Firestore con Service Account cuando firestore.rules cierre lecturas no autenticadas.',
+      'Evitado incremento del contador de bloqueo local failedAttempts ante errores 5xx/429/403 en LoginScreen.tsx.'
+    ]
+  },
+  {
     version: '2.27.0',
     date: '2026-11-27',
     commit: 'comprehensive-security-hardening-blocks-1-2-3',
     title: 'Blindaje Integral de Ciberseguridad Web, Edge, Cloud y Desktop (Bloques 1, 2 y 3)',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Bloque 1: Cero claves IA embebidas + proxy autenticado /api/ai-proxy, corrección bypass cisco-proxy, Firebase Custom Auth + firestore.rules sin acceso anónimo, cookies HttpOnly con revocación jti, 2FA proof en servidor y PBKDF2 310,000 iteraciones.',

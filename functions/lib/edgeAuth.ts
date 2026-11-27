@@ -171,9 +171,73 @@ export function resolveFirebaseProjectId(env: EdgeEnv): string {
   return (env.FIREBASE_PROJECT_ID || env.VITE_FIREBASE_PROJECT_ID || 'cisco-automated').trim();
 }
 
+let cachedAdminToken: { token: string; expiresAt: number } | null = null;
+
+export async function getFirebaseAdminAccessToken(serviceAccountJson?: string): Promise<string | null> {
+  if (!serviceAccountJson || !serviceAccountJson.trim()) return null;
+  if (cachedAdminToken && Date.now() < cachedAdminToken.expiresAt - 60_000) {
+    return cachedAdminToken.token;
+  }
+  try {
+    const sa = JSON.parse(serviceAccountJson);
+    const clientEmail = String(sa.client_email || '').trim();
+    const privateKeyPem = String(sa.private_key || '').trim();
+    const tokenUri = String(sa.token_uri || 'https://oauth2.googleapis.com/token').trim();
+    if (!clientEmail || !privateKeyPem) return null;
+
+    const pemBody = privateKeyPem
+      .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+      .replace(/-----END PRIVATE KEY-----/g, '')
+      .replace(/\s+/g, '');
+    const binaryDer = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0));
+    const cryptoKey = await crypto.subtle.importKey(
+      'pkcs8',
+      binaryDer.buffer,
+      { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+
+    const now = Math.floor(Date.now() / 1000);
+    const header = toBase64Url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+    const payload = toBase64Url(
+      JSON.stringify({
+        iss: clientEmail,
+        scope: 'https://www.googleapis.com/auth/datastore',
+        aud: tokenUri,
+        iat: now,
+        exp: now + 3600,
+      })
+    );
+    const signingInput = `${header}.${payload}`;
+    const sigBuf = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, new TextEncoder().encode(signingInput));
+    const assertion = `${signingInput}.${toBase64Url(new Uint8Array(sigBuf))}`;
+
+    const res = await fetch(tokenUri, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion,
+      }).toString(),
+    });
+    if (!res.ok) return null;
+    const data: any = await res.json().catch(() => null);
+    if (!data?.access_token) return null;
+    cachedAdminToken = {
+      token: String(data.access_token),
+      expiresAt: Date.now() + (Number(data.expires_in) || 3600) * 1000,
+    };
+    return cachedAdminToken.token;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchFirestoreUserRecord(
   projectId: string,
-  username: string
+  username: string,
+  serviceAccountJson?: string
 ): Promise<FirestoreUserInfo | null> {
   const cleanUser = username.trim().toLowerCase();
   if (!cleanUser || !/^[a-z0-9._-]{1,64}$/.test(cleanUser)) {
@@ -182,9 +246,13 @@ export async function fetchFirestoreUserRecord(
   const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(
     projectId
   )}/databases/(default)/documents/users/${encodeURIComponent(cleanUser)}`;
+  const adminToken = await getFirebaseAdminAccessToken(serviceAccountJson);
   const res = await fetch(firestoreUrl, {
     method: 'GET',
-    headers: { Accept: 'application/json' },
+    headers: {
+      Accept: 'application/json',
+      ...(adminToken ? { Authorization: `Bearer ${adminToken}` } : {}),
+    },
   });
   if (!res.ok) {
     return null;
@@ -208,12 +276,13 @@ export async function verifyFirestoreUserCredentials(
   projectId: string,
   username: string,
   password: string,
-  requiredRole?: string
+  requiredRole?: string,
+  serviceAccountJson?: string
 ): Promise<FirestoreUserInfo | null> {
   const cleanPass = password.trim();
   if (!cleanPass) return null;
 
-  const record = await fetchFirestoreUserRecord(projectId, username);
+  const record = await fetchFirestoreUserRecord(projectId, username, serviceAccountJson);
   if (!record || record.is_active !== 1 || !record.password_hash) {
     return null;
   }

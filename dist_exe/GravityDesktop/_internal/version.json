@@ -1,12 +1,12 @@
 {
   "name": "cisco-automated",
-  "version": "2.27.0",
-  "git_commit": "f48001b",
+  "version": "2.27.1",
+  "git_commit": "71468c4",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-27T12:06:54.742Z",
-  "release_notes": "chore(deps,v2.26.10): upgrade SheetJS xlsx to 0.20.3 fixing high CVEs while preserving .xls support",
+  "build_timestamp": "2026-11-27T12:18:49.059Z",
+  "release_notes": "feat(security,v2.27.0): comprehensive web, edge, cloud and desktop hardening (blocks 1-3)",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop",
-  "desktop_bundle_sha256": "84bdc793807fd3bb92ea9afecb083cc57cb107caa4bca5b3736057ac7ff16abd"
+  "desktop_bundle_sha256": "c9b2e4e02284667600d6979e7154482108b92883c220853f21b9d494e1176b0e"
 }

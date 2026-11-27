@@ -468,25 +468,28 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             created_at: new Date().toISOString(),
           };
         } else if (!edgeRes.isEdgeUnavailable) {
-          const newFailed = secState.failedAttempts + 1;
-          const willLock = newFailed >= MAX_FAILED_ATTEMPTS;
-          const lockedUntil = willLock ? now + LOCKOUT_DURATION_MS : 0;
+          const isCredentialRejection = edgeRes.status === 401;
+          if (isCredentialRejection) {
+            const newFailed = secState.failedAttempts + 1;
+            const willLock = newFailed >= MAX_FAILED_ATTEMPTS;
+            const lockedUntil = willLock ? now + LOCKOUT_DURATION_MS : 0;
 
-          saveSecurityState({
-            failedAttempts: willLock ? MAX_FAILED_ATTEMPTS : newFailed,
-            lockedUntil,
-            lastAttemptTime: now,
-            recentRequestTimestamps: recentRequests,
-          });
+            saveSecurityState({
+              failedAttempts: willLock ? MAX_FAILED_ATTEMPTS : newFailed,
+              lockedUntil,
+              lastAttemptTime: now,
+              recentRequestTimestamps: recentRequests,
+            });
 
-          setFailedCount(newFailed);
-          if (willLock) {
-            setIsLocked(true);
-            setRemainingLockSeconds(LOCKOUT_DURATION_MS / 1000);
-            setErrorMsg('⛔ Acceso restringido temporalmente por motivos de seguridad.');
-          } else {
-            setErrorMsg(edgeRes.error || 'Usuario o contraseña incorrectos.');
+            setFailedCount(newFailed);
+            if (willLock) {
+              setIsLocked(true);
+              setRemainingLockSeconds(LOCKOUT_DURATION_MS / 1000);
+              setErrorMsg('⛔ Acceso restringido temporalmente por motivos de seguridad.');
+              return;
+            }
           }
+          setErrorMsg(edgeRes.error || 'Usuario o contraseña incorrectos.');
           return;
         }
       }
