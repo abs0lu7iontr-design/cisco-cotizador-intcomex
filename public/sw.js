@@ -80,15 +80,23 @@ self.addEventListener('activate', (event) => {
 // 3. Intercepción y Gestión de Peticiones Fetch
 self.addEventListener('fetch', (event) => {
   const request = event.request;
-  const url = new URL(request.url);
+  let url;
+  try {
+    url = new URL(request.url);
+  } catch {
+    return;
+  }
 
   // Excluir peticiones no GET o de extensiones de navegador
   if (request.method !== 'GET' || !url.protocol.startsWith('http')) {
     return;
   }
 
-  // A. Peticiones de API en la Nube (Firestore, Google APIs, OpenRouter) -> Network Only
+  // A. Endpoints internos /api/*, version.json, desktop_build.html y APIs Cloud -> Network Only
   if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname === '/version.json' ||
+    url.pathname === '/desktop_build.html' ||
     url.hostname.includes('firestore.googleapis.com') ||
     url.hostname.includes('firebaseio.com') ||
     url.hostname.includes('generativelanguage.googleapis.com') ||
@@ -142,19 +150,22 @@ self.addEventListener('fetch', (event) => {
     url.pathname.endsWith('.woff2');
 
   if (isStaticAsset) {
+    const isHashedAsset = url.pathname.startsWith('/assets/');
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
         if (cachedResponse) {
-          fetch(request)
-            .then((networkResponse) => {
-              if (networkResponse && networkResponse.status === 200) {
-                const responseClone = networkResponse.clone();
-                caches.open(CACHE_NAME).then((cache) => {
-                  cache.put(request, responseClone);
-                });
-              }
-            })
-            .catch(() => {});
+          if (!isHashedAsset) {
+            fetch(request)
+              .then((networkResponse) => {
+                if (networkResponse && networkResponse.status === 200) {
+                  const responseClone = networkResponse.clone();
+                  caches.open(CACHE_NAME).then((cache) => {
+                    cache.put(request, responseClone);
+                  });
+                }
+              })
+              .catch(() => {});
+          }
           return cachedResponse;
         }
 

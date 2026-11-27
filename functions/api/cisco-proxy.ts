@@ -6,7 +6,7 @@
 // ============================================================================
 
 import { buildEdgeCorsHeaders } from '../../src/utils/edgeCors';
-import { EdgeEnv, sha256Hex, verifyEdgeSessionToken } from '../lib/edgeAuth';
+import { checkEdgeRateLimit, EdgeEnv, sha256Hex, verifyEdgeSessionToken } from '../lib/edgeAuth';
 
 const DEFAULT_AUTH_URL = 'https://id.cisco.com/oauth2/default/v1/token';
 const SERVER_MANAGED_TOKEN_SENTINEL = '__EDGE_MANAGED__';
@@ -157,7 +157,33 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
       );
     }
 
-    const body: any = await context.request.json();
+    const proxyRate = await checkEdgeRateLimit(`cisco-proxy:${sessionCheck.username || 'anon'}`, 60, 300);
+    if (!proxyRate.allowed) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Límite de solicitudes al proxy Cisco alcanzado. Reintente en unos minutos.',
+        }),
+        {
+          status: 429,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        }
+      );
+    }
+
+    const body: any = await context.request.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Payload JSON inválido en proxy Cisco M2M.',
+        }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders },
+        }
+      );
+    }
     const action = body?.action || 'token';
 
     const bodyClientId = typeof body?.clientId === 'string' ? body.clientId.trim() : '';

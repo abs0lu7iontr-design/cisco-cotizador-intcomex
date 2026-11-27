@@ -6,6 +6,20 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.28.0] - 2026-11-27
+
+### Mejorado y Corregido (QA Integral Web P0 / P1 / P2 — Sin Cambios en Fórmulas)
+- **Compatibilidad PBKDF2 y Auth Edge/Firestore (`P0`):**
+  - Actualizada regla `isValidUser` en [firestore.rules](firestore.rules) para validar hashes PBKDF2-HMAC-SHA256 (`pbkdf2$310000$...`) además de legacy SHA-256 de 64 caracteres hex.
+  - Diferenciación de errores backend (`503`) frente a credenciales inválidas (`401`) y auto-upgrade server-side a PBKDF2 + registro de `last_login` en [edgeAuth.ts](functions/lib/edgeAuth.ts) y [session-auth.ts](functions/api/session-auth.ts).
+  - Eliminada lectura pre-login `getCloudUsers()` en [LoginScreen.tsx](src/components/LoginScreen.tsx), estabilizado [TurnstileWidget.tsx](src/modules/security/TurnstileWidget.tsx) con `useRef` para evitar reinicios al teclear, y retirada escritura de clave vacía en `localStorage`.
+- **Seguridad Edge, Service Worker y Resiliencia React (`P1`):**
+  - Agregado `X-Session-Token` a CORS de [mining-audit.ts](functions/api/mining-audit.ts), rate limiting en [ai-proxy.ts](functions/api/ai-proxy.ts), [cisco-proxy.ts](functions/api/cisco-proxy.ts) y `generate_admin_override` de [send-2fa-otp.ts](functions/api/send-2fa-otp.ts), `Cache-Control: no-store` en [geo-auth.ts](functions/api/geo-auth.ts), validación de destinatario en `sanitizeSafeMailtoUrl` ([exportSanitizers.ts](src/utils/exportSanitizers.ts)) y retiro del fallback no autenticado MailChannels.
+  - Endurecido [public/sw.js](public/sw.js) excluyendo `/api/*`, `/version.json` y `/desktop_build.html` y usando `Cache-First` para chunks Vite con hash; agregados `LazyModalBoundary` en [App.tsx](src/App.tsx), tipado nativo en [ErrorBoundary.tsx](src/components/ErrorBoundary.tsx), guarda de montaje en [main.tsx](src/main.tsx) y reglas `forceConsistentCasingInFileNames` / `noFallthroughCasesInSwitch` en [tsconfig.json](tsconfig.json).
+- **Rendimiento de Login, Accesibilidad WCAG y UX (`P2`):**
+  - Diferida la carga de `excelEngine` (`exceljs`) y `fileTypeDetector` (`xlsx`) en [store.tsx](src/core/store.tsx) junto a filtrado `modulePreload` en [vite.config.ts](vite.config.ts) para evitar descargar >1.5 MB de librerías Excel en el Login.
+  - Desbloqueado zoom móvil en [index.html](index.html), corregido contraste/foco/compactación `<800px` en [LoginScreen.tsx](src/components/LoginScreen.tsx) con badge de versión y sello corporativo vigente en [brandingLogos.ts](src/core/brandingLogos.ts), integrados `useAccessibleModal` (`role="dialog"`, `Escape`) en [TwoFactorModal.tsx](src/modules/security/TwoFactorModal.tsx) y [SessionInactivityModal.tsx](src/modules/security/SessionInactivityModal.tsx), y almacenamiento `sessionStorage` para claves BYOK Web en [aiProviderManager.ts](src/modules/configuriator/aiProviderManager.ts).
+
 ## [v2.27.1] - 2026-11-27
 
 ### Corregido

@@ -387,7 +387,12 @@ service cloud.firestore {
         data.is_active in [0, 1] &&
         'password_hash' in data &&
         data.password_hash is string &&
-        data.password_hash.matches('^[0-9a-f]{64}$') &&
+        data.password_hash.size() >= 64 &&
+        data.password_hash.size() <= 160 &&
+        (
+          data.password_hash.matches('^[0-9a-f]{64}$') ||
+          data.password_hash.matches('^pbkdf2\\$[0-9]{5,7}\\$[0-9a-f]{16,64}\\$[0-9a-f]{64}$')
+        ) &&
         isValidOptionalString(data, 'id', 0, 100) &&
         isValidOptionalString(data, 'full_name', 0, 200) &&
         isValidOptionalString(data, 'email', 0, 200) &&

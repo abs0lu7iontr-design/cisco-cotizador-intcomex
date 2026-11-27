@@ -122,6 +122,15 @@ export function sanitizeSafeMailtoUrl(rawUrl?: string | null): string {
   const trimmed = String(rawUrl ?? '').trim();
   if (!trimmed || !trimmed.toLowerCase().startsWith('mailto:')) return '#';
   if (/[\r\n]/.test(trimmed)) return '#';
+  const afterScheme = trimmed.slice(7);
+  const qIdx = afterScheme.indexOf('?');
+  const recipient = (qIdx >= 0 ? afterScheme.slice(0, qIdx) : afterScheme).trim();
+  if (recipient) {
+    const recipients = recipient.split(',').map((r) => decodeURIComponent(r.trim())).filter(Boolean);
+    if (recipients.some((r) => !isValidSimpleEmail(r))) {
+      return '#';
+    }
+  }
   return trimmed;
 }
 

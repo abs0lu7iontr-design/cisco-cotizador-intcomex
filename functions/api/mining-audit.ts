@@ -13,7 +13,7 @@ const MAX_MINING_ITEMS = 2500;
 export const onRequestOptions: PagesFunction<EdgeEnv> = async (context) => {
   return new Response(null, {
     status: 204,
-    headers: buildEdgeCorsHeaders(context.request, 'POST, OPTIONS', 'Content-Type, Authorization, X-Edge-Session'),
+    headers: buildEdgeCorsHeaders(context.request, 'POST, OPTIONS', 'Content-Type, Authorization, X-Session-Token, X-Edge-Session'),
   });
 };
 
@@ -21,7 +21,7 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
   const corsHeaders = buildEdgeCorsHeaders(
     context.request,
     'POST, OPTIONS',
-    'Content-Type, Authorization, X-Edge-Session'
+    'Content-Type, Authorization, X-Session-Token, X-Edge-Session'
   );
   try {
     const session = await verifyEdgeSessionToken(context.request, context.env);

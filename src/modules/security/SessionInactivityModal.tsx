@@ -4,6 +4,7 @@
 
 import React from 'react';
 import { ShieldAlert, Clock, RefreshCw } from 'lucide-react';
+import { useAccessibleModal } from '../../utils/useAccessibleModal';
 
 interface SessionInactivityModalProps {
   isOpen: boolean;
@@ -16,17 +17,25 @@ export function SessionInactivityModal({
   secondsRemaining,
   onStayActive,
 }: SessionInactivityModalProps) {
+  const { dialogProps, titleId } = useAccessibleModal({
+    isOpen,
+    closeOnEscape: false,
+  });
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
-      <div className="relative w-full max-w-md bg-slate-900 border border-amber-500/40 rounded-3xl p-6 shadow-2xl shadow-amber-950/60 text-slate-100 flex flex-col items-center text-center animate-scaleUp">
+      <div
+        {...dialogProps}
+        className="relative w-full max-w-md bg-slate-900 border border-amber-500/40 rounded-3xl p-6 shadow-2xl shadow-amber-950/60 text-slate-100 flex flex-col items-center text-center animate-scaleUp"
+      >
         {/* Warning Icon Badge */}
         <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4 animate-pulse">
-          <ShieldAlert className="w-7 h-7" />
+          <ShieldAlert className="w-7 h-7" aria-hidden="true" />
         </div>
 
-        <h2 className="text-lg font-black text-white tracking-tight">
+        <h2 id={titleId} className="text-lg font-black text-white tracking-tight">
           Aviso de Inactividad de Sesión
         </h2>
         <p className="text-xs text-slate-300 mt-2 leading-relaxed">

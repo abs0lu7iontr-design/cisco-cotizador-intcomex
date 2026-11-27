@@ -9,13 +9,15 @@ import {
   buildEdgeSessionCookie,
   checkEdgeRateLimit,
   EdgeEnv,
+  hashPasswordPbkdf2Server,
   mintEdgeSessionToken,
   mintFirebaseCustomToken,
   mintTwoFactorChallengeToken,
   resolveFirebaseProjectId,
   revokeEdgeSessionJti,
+  upgradeFirestoreUserLoginMetadata,
   verifyEdgeSessionToken,
-  verifyFirestoreUserCredentials,
+  verifyFirestoreUserCredentialsDetailed,
   verifyTwoFactorProofToken,
 } from '../lib/edgeAuth';
 
@@ -128,19 +130,29 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
     }
 
     const projectId = resolveFirebaseProjectId(context.env);
-    const verifiedUser = await verifyFirestoreUserCredentials(
+    const credCheck = await verifyFirestoreUserCredentialsDetailed(
       projectId,
       username,
       password,
       undefined,
       context.env.FIREBASE_SERVICE_ACCOUNT_JSON
     );
-    if (!verifiedUser) {
+    if (credCheck.status === 'backend_error') {
       return new Response(
-        JSON.stringify({ success: false, error: 'Credenciales inválidas o usuario inactivo.' }),
-        { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        JSON.stringify({
+          success: false,
+          error: 'Servicio de directorio Firebase no accesible desde Edge (verifica FIREBASE_SERVICE_ACCOUNT_JSON).',
+        }),
+        { status: 503, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders } }
       );
     }
+    if (credCheck.status !== 'ok') {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Credenciales inválidas o usuario inactivo.' }),
+        { status: 401, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders } }
+      );
+    }
+    const verifiedUser = credCheck.user;
 
     // Control geográfico en servidor: fuera de Chile (o país ausente fuera de localhost) exigir 2FA antes de emitir tokens
     const cf = (context.request as any).cf || {};
@@ -200,6 +212,21 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
       context.env.FIREBASE_SERVICE_ACCOUNT_JSON
     );
 
+    const metadataTask = (async () => {
+      const upgradedHash = !verifiedUser.password_hash.startsWith('pbkdf2$')
+        ? await hashPasswordPbkdf2Server(password.trim())
+        : undefined;
+      await upgradeFirestoreUserLoginMetadata(
+        projectId,
+        verifiedUser.username,
+        upgradedHash,
+        context.env.FIREBASE_SERVICE_ACCOUNT_JSON
+      );
+    })();
+    if (typeof context.waitUntil === 'function') {
+      context.waitUntil(metadataTask);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -217,6 +244,7 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
         status: 200,
         headers: {
           'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
           'Set-Cookie': buildEdgeSessionCookie(session.token, ttlSeconds, context.request),
           ...corsHeaders,
         },

@@ -17,7 +17,6 @@ import {
   getLocalPlatformConfig,
   saveLocalPlatformConfig,
 } from './storage/localPlatformConfig';
-import { parseEstimateWorkbook } from './excelEngine';
 import { recalculateEstimateResult } from './calculations';
 import { enqueueOfflineAction, initOfflineSyncListeners } from './storage/offlineSyncQueue';
 import { resolveEffectiveQuoteRates } from './exportUtils';
@@ -46,7 +45,6 @@ import {
   detectMiningFastTrackUsage,
   MiningFastTrackAlertData,
 } from '../modules/mining';
-import { detectCiscoFileType } from './fileTypeDetector';
 import { clearEdgeSessionToken, logoutEdgeSession } from '../modules/security/edgeSessionService';
 import {
   getDesktopPyWebViewApi,
@@ -525,6 +523,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       try {
         const safeBuffer = buffer.slice(0);
         const activePromoMap = promoPrices !== undefined ? promoPrices : fastTrackPromoMap;
+        const { parseEstimateWorkbook } = await import('./excelEngine');
         const { result } = await parseEstimateWorkbook(
           safeBuffer,
           currentParams,
@@ -579,6 +578,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
         const safeBuffer = buffer.slice(0);
 
         // Verificación de formato: Detección proactiva de cotizaciones CCW-R en el módulo de Estimate
+        const { detectCiscoFileType } = await import('./fileTypeDetector');
         const detection = detectCiscoFileType(safeBuffer);
         if (detection.fileType === 'ccwr_quote') {
           setMisroutedFileAlert({
@@ -602,6 +602,7 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
           ...skuOverridesMap,
         };
 
+        const [{ parseEstimateWorkbook }] = await Promise.all([import('./excelEngine')]);
         const { result: rawResult } = await parseEstimateWorkbook(
           safeBuffer.slice(0),
           DEFAULT_PARAMS,

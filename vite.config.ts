@@ -34,6 +34,15 @@ export default defineConfig(() => {
     },
     build: {
       emptyOutDir: true,
+      modulePreload: {
+        resolveDependencies: (_filename: string, deps: string[]) =>
+          deps.filter(
+            (d) =>
+              !d.includes('vendor-exceljs') &&
+              !d.includes('vendor-xlsx') &&
+              !d.includes('vendor-sqljs')
+          ),
+      },
       rollupOptions: isPortableSingleFile
         ? undefined
         : {

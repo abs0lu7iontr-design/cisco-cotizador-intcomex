@@ -416,6 +416,8 @@ export function UserManagementView() {
   const getRoleLabel = (role: Role) => {
     if (role === 'admin') return 'ADMINISTRADOR';
     if (role === 'pm') return 'PRODUCT MANAGER (PM)';
+    if (String(role) === 'viewer') return 'LECTURA (VIEWER)';
+    if (String(role) === 'user' || String(role) === 'standard') return 'ESTÁNDAR';
     return 'PREVENTA';
   };
 
@@ -445,12 +447,14 @@ export function UserManagementView() {
 
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={fetchUsers}
             disabled={isLoading}
+            aria-label="Recargar lista de usuarios"
             className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all cursor-pointer"
             title="Recargar usuarios"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
           </button>
 
           <button

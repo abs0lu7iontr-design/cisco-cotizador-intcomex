@@ -159,6 +159,22 @@ function LazyViewFallback() {
   );
 }
 
+function LazyModalBoundary({
+  title,
+  onReset,
+  children,
+}: {
+  title: string;
+  onReset: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <ErrorBoundary fallbackTitle={title} onReturnToSafeView={onReset} safeViewLabel="Cerrar ventana">
+      <Suspense fallback={null}>{children}</Suspense>
+    </ErrorBoundary>
+  );
+}
+
 import {
   FileSpreadsheet,
   Table,
@@ -259,11 +275,11 @@ function AuthenticatedApp() {
     isAuthenticated: !!currentUser,
     onTimeout: () => {
       logout();
-      setCloudToast({
-        message: '⚠️ Tu sesión ha expirado por inactividad (30 minutos sin movimiento). Inicia sesión nuevamente.',
-        type: 'error',
-      });
-      setTimeout(() => setCloudToast(null), 8000);
+      showCloudToast(
+        '⚠️ Tu sesión ha expirado por inactividad (30 minutos sin movimiento). Inicia sesión nuevamente.',
+        'error',
+        8000
+      );
     },
   });
 
@@ -294,6 +310,22 @@ function AuthenticatedApp() {
   // Cloud & Save States
   const [isSavingCloud, setIsSavingCloud] = useState(false);
   const [cloudToast, setCloudToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const cloudToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showCloudToast = (message: string, type: 'success' | 'error', durationMs = 4500) => {
+    if (cloudToastTimerRef.current) {
+      clearTimeout(cloudToastTimerRef.current);
+    }
+    setCloudToast({ message, type });
+    cloudToastTimerRef.current = setTimeout(() => {
+      setCloudToast(null);
+      cloudToastTimerRef.current = null;
+    }, durationMs);
+  };
+  useEffect(() => {
+    return () => {
+      if (cloudToastTimerRef.current) clearTimeout(cloudToastTimerRef.current);
+    };
+  }, []);
   const [isCopiedEmail, setIsCopiedEmail] = useState(false);
 
   // Offline / Online Mode & Local PC Sync Queue
@@ -306,6 +338,7 @@ function AuthenticatedApp() {
   const [activeBoCount, setActiveBoCount] = useState<number>(0);
   const [unreadFeedbackCount, setUnreadFeedbackCount] = useState<number>(0);
   const [isCreateFeedbackModalOpen, setIsCreateFeedbackModalOpen] = useState(false);
+  const lastBadgeFetchRef = useRef<number>(0);
 
   // Proactive Deal Reminder Pop-up Monitor (Midday 12:00 & End of Day 17:30)
   const {
@@ -335,8 +368,16 @@ function AuthenticatedApp() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    const now = Date.now();
+    if (now - lastBadgeFetchRef.current < 30_000 && (currentView !== 'bo_tracking' && currentView !== 'feedback')) {
+      return;
+    }
+    lastBadgeFetchRef.current = now;
+
     getBoTrackings()
       .then((records) => {
+        if (!active) return;
         const count = records.filter((r) => r.currentStage !== 'DELIVERED').length;
         setActiveBoCount(count);
       })
@@ -345,7 +386,7 @@ function AuthenticatedApp() {
     if (!isOffline) {
       getFeedbackTickets()
         .then((tickets) => {
-          if (!currentUser) return;
+          if (!active || !currentUser) return;
           const isSupport = currentUser.role === 'admin' || currentUser.role === 'pm';
           const unread = tickets.filter((t) => {
             if (isSupport && !t.readBySupport) return true;
@@ -356,6 +397,9 @@ function AuthenticatedApp() {
         })
         .catch(() => {});
     }
+    return () => {
+      active = false;
+    };
   }, [currentView, currentUser, isOffline]);
 
   const mirrorEstimates = useEstimatesMirror();
@@ -371,11 +415,11 @@ function AuthenticatedApp() {
       if (cloudOnlyViews.includes(currentView)) {
         setCurrentView('quoter');
       }
-      setCloudToast({
-        message: 'Modo Offline activado: podrás cotizar y guardar BO, Estimates, Pipeline y Forecast localmente en este PC.',
-        type: 'success',
-      });
-      setTimeout(() => setCloudToast(null), 5000);
+      showCloudToast(
+        'Modo Offline activado: podrás cotizar y guardar BO, Estimates, Pipeline y Forecast localmente en este PC.',
+        'success',
+        5000
+      );
     } else {
       setIsOfflineSyncModalOpen(true);
     }
@@ -414,11 +458,7 @@ function AuthenticatedApp() {
     if (cloudRequirementTarget.viewId) {
       setCurrentView(cloudRequirementTarget.viewId);
     }
-    setCloudToast({
-      message: 'Modo Online activado: sincronización con la nube habilitada.',
-      type: 'success',
-    });
-    setTimeout(() => setCloudToast(null), 4000);
+    showCloudToast('Modo Online activado: sincronización con la nube habilitada.', 'success', 4000);
   };
 
   // Modal States
@@ -468,29 +508,24 @@ function AuthenticatedApp() {
       const res = await copyEstimateEmailSummaryWithDetail(processedResult, detectedPartner);
       if (res.success) {
         setIsCopiedEmail(true);
-        setCloudToast({
-          message:
-            res.mode === 'rich'
-              ? '📋 Resumen comercial copiado al portapapeles con formato enriquecido Outlook/HTML.'
-              : '📋 Resumen comercial copiado en texto plano (formato HTML no disponible en este entorno).',
-          type: 'success',
-        });
+        showCloudToast(
+          res.mode === 'rich'
+            ? '📋 Resumen comercial copiado al portapapeles con formato enriquecido Outlook/HTML.'
+            : '📋 Resumen comercial copiado en texto plano (formato HTML no disponible en este entorno).',
+          'success',
+          4500
+        );
         setTimeout(() => setIsCopiedEmail(false), 3000);
-        setTimeout(() => setCloudToast(null), 4500);
       } else {
-        setCloudToast({
-          message: `No se pudo copiar el resumen al portapapeles: ${res.error || res.message}`,
-          type: 'error',
-        });
-        setTimeout(() => setCloudToast(null), 4000);
+        showCloudToast(
+          `No se pudo copiar el resumen al portapapeles: ${res.error || res.message}`,
+          'error',
+          4000
+        );
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Error desconocido';
-      setCloudToast({
-        message: `Error al copiar: ${errMsg}`,
-        type: 'error',
-      });
-      setTimeout(() => setCloudToast(null), 4000);
+      showCloudToast(`Error al copiar: ${errMsg}`, 'error', 4000);
     }
   };
 
@@ -582,8 +617,7 @@ function AuthenticatedApp() {
   };
 
 
-  // Parse partner, client and model from filename or header info
-  const getPartnerClientDefaults = () => {
+  const { partner: defaultPartner, client: defaultClient, model: defaultModel } = useMemo(() => {
     let partner = 'Intcomex';
     let client = 'Cliente Final';
     let model = 'Cisco';
@@ -610,9 +644,7 @@ function AuthenticatedApp() {
     }
 
     return { partner, client, model };
-  };
-
-  const { partner: defaultPartner, client: defaultClient, model: defaultModel } = getPartnerClientDefaults();
+  }, [processedResult?.headerInfo?.companyName, processedResult?.headerInfo?.customerName, currentFileName]);
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden relative">
@@ -630,12 +662,12 @@ function AuthenticatedApp() {
 
       {/* Global Business Rules Modal */}
       {isRulesModalOpen && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary title="Error en Reglas de Negocio" onReset={() => setIsRulesModalOpen(false)}>
           <RulesExplanationModal
             isOpen={isRulesModalOpen}
             onClose={() => setIsRulesModalOpen(false)}
           />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {/* Misrouted Cisco File Detection Modal (CCW Estimate vs CCW-R Quote) */}
@@ -647,49 +679,49 @@ function AuthenticatedApp() {
 
       {/* Fast Track Administration Modal */}
       {isFastTrackAdminModalOpen && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary title="Error en Catálogo Fast Track" onReset={() => setIsFastTrackAdminModalOpen(false)}>
           <FastTrackAdminModal
             isOpen={isFastTrackAdminModalOpen}
             onClose={() => setIsFastTrackAdminModalOpen(false)}
           />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {/* Fast Track Opportunity Cross-Check Pop-up */}
       {isFastTrackOpportunityModalOpen && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary title="Error en Promociones Fast Track" onReset={skipFastTrackPromos}>
           <FastTrackOpportunityModal
             isOpen={isFastTrackOpportunityModalOpen}
             auditResult={pendingFastTrackAudit}
             onApply={applyFastTrackPromos}
             onSkip={skipFastTrackPromos}
           />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {/* Theme Customization Modal */}
       {isThemeModalOpen && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary title="Error en Selector de Tema" onReset={() => setIsThemeModalOpen(false)}>
           <ThemeSelectorModal
             isOpen={isThemeModalOpen}
             onClose={() => setIsThemeModalOpen(false)}
           />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {/* Live Custom Studio Modal (Aesthetic Mode Real-time Customization) */}
       {isLiveStudioOpen && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary title="Error en Studio Visual" onReset={() => setIsLiveStudioOpen(false)}>
           <LiveStudioModal
             isOpen={isLiveStudioOpen}
             onClose={() => setIsLiveStudioOpen(false)}
           />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {/* Offline -> Online Sync & Conflict Warning Modal */}
       {isOfflineSyncModalOpen && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary title="Error en Sincronización Offline" onReset={() => setIsOfflineSyncModalOpen(false)}>
           <OfflineSyncModal
             isOpen={isOfflineSyncModalOpen}
             onClose={() => setIsOfflineSyncModalOpen(false)}
@@ -698,38 +730,34 @@ function AuthenticatedApp() {
                 .then((s) => setPendingOfflineCount(s.total))
                 .catch(() => {});
               if (result.uploadedCount > 0 && result.failedCount === 0) {
-                setCloudToast({
-                  message: `Sincronización completada: ${result.uploadedCount} cambio(s) subidos a la nube y vistas actualizadas.`,
-                  type: 'success',
-                });
-                setTimeout(() => setCloudToast(null), 5000);
+                showCloudToast(
+                  `Sincronización completada: ${result.uploadedCount} cambio(s) subidos a la nube y vistas actualizadas.`,
+                  'success',
+                  5000
+                );
               } else if (result.failedCount > 0) {
-                setCloudToast({
-                  message: `Sincronización parcial: ${result.uploadedCount} subido(s), ${result.failedCount} fallaron y permanecen guardados en tu PC.`,
-                  type: 'error',
-                });
-                setTimeout(() => setCloudToast(null), 6000);
+                showCloudToast(
+                  `Sincronización parcial: ${result.uploadedCount} subido(s), ${result.failedCount} fallaron y permanecen guardados en tu PC.`,
+                  'error',
+                  6000
+                );
               } else if (result.wentOnline && result.remainingCount > 0) {
-                setCloudToast({
-                  message: `Volviste a modo Online con ${result.remainingCount} cambio(s) aún pendientes en este PC.`,
-                  type: 'success',
-                });
-                setTimeout(() => setCloudToast(null), 5000);
+                showCloudToast(
+                  `Volviste a modo Online con ${result.remainingCount} cambio(s) aún pendientes en este PC.`,
+                  'success',
+                  5000
+                );
               } else if (result.wentOnline) {
-                setCloudToast({
-                  message: 'Modo Online reactivado correctamente.',
-                  type: 'success',
-                });
-                setTimeout(() => setCloudToast(null), 3500);
+                showCloudToast('Modo Online reactivado correctamente.', 'success', 3500);
               }
             }}
           />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {/* Quick BOM Ingest Modal (Clipboard & Raw Text Parser) */}
       {isQuickIngestOpen && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary title="Error en Quick BOM Ingest" onReset={() => setIsQuickIngestOpen(false)}>
           <QuickBomIngestModal
             isOpen={isQuickIngestOpen}
             onClose={() => setIsQuickIngestOpen(false)}
@@ -739,12 +767,12 @@ function AuthenticatedApp() {
               setActiveQuoterTab('calculator');
             }}
           />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {/* Shared SKU Rules Manager Modal (Cloud & Local) */}
       {isSharedSkuManagerOpen && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary title="Error en Reglas Compartidas de SKU" onReset={() => setIsSharedSkuManagerOpen(false)}>
           <SharedSkuManagerModal
             isOpen={isSharedSkuManagerOpen}
             onClose={() => setIsSharedSkuManagerOpen(false)}
@@ -766,7 +794,7 @@ function AuthenticatedApp() {
               await applyApprovedSkuOverrides(records, true);
             }}
           />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {/* Prior Authorization Modal for Incoming/Colleague SKU Changes */}
@@ -820,7 +848,7 @@ function AuthenticatedApp() {
 
       {/* Back Order (BO) Request Modal for Ventas Core */}
       {isBoModalOpen && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary title="Error en Solicitud Back Order" onReset={() => setIsBoModalOpen(false)}>
           <BoRequestModal
             isOpen={isBoModalOpen}
             initialClientName={defaultClient}
@@ -840,34 +868,34 @@ function AuthenticatedApp() {
                 .catch(() => {});
             }}
           />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {/* Global Proactive Deal Reminder Pop-up (12:00 Midday & 17:30 End-of-Day) */}
       {isDealAlertOpen && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary title="Error en Recordatorios de Deals" onReset={closeDealAlert}>
           <DealReminderAlertModal
             deals={reminderDueDeals}
             isOpen={isDealAlertOpen}
             onClose={closeDealAlert}
             onRefreshData={refreshDealAlerts}
           />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {/* Global Quick Feedback & Bug Report Modal */}
       {currentUser && isCreateFeedbackModalOpen && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary title="Error en Soporte / Feedback" onReset={() => setIsCreateFeedbackModalOpen(false)}>
           <CreateTicketModal
             isOpen={isCreateFeedbackModalOpen}
             onClose={() => setIsCreateFeedbackModalOpen(false)}
             currentUser={currentUser}
             onTicketCreated={() => {
-              setCloudToast({
-                message: '✅ ¡Reporte / Sugerencia registrada exitosamente en la base de datos!',
-                type: 'success',
-              });
-              setTimeout(() => setCloudToast(null), 4000);
+              showCloudToast(
+                '✅ ¡Reporte / Sugerencia registrada exitosamente en la base de datos!',
+                'success',
+                4000
+              );
               getFeedbackTickets()
                 .then((tickets) => {
                   const isSupport = currentUser.role === 'admin' || currentUser.role === 'pm';
@@ -883,12 +911,12 @@ function AuthenticatedApp() {
             currentEstimateFileName={currentFileName}
             dealId={processedResult?.headerInfo?.dealId}
           />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {/* Estimate Version History & Snapshot Diff Modal */}
       {processedResult && isDiffModalOpen && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary title="Error en Comparador Diff" onReset={() => setIsDiffModalOpen(false)}>
           <EstimateDiffModal
             isOpen={isDiffModalOpen}
             onClose={() => setIsDiffModalOpen(false)}
@@ -896,14 +924,14 @@ function AuthenticatedApp() {
             shadowSnapshot={processedResult.shadowSnapshot}
             overrides={customOverrideMap}
           />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {/* Structured Dual Download Modal (Web & Desktop) */}
       {processedResult && isDownloadModalOpen && (() => {
         const isOnlyLicensing = processedResult.items ? isPureLicensingQuote(processedResult.items) : false;
         return (
-          <Suspense fallback={null}>
+          <LazyModalBoundary title="Error en Descarga Excel" onReset={() => setIsDownloadModalOpen(false)}>
             <DownloadModal
               isOpen={isDownloadModalOpen}
               onClose={() => setIsDownloadModalOpen(false)}
@@ -925,13 +953,13 @@ function AuthenticatedApp() {
                 Object.keys(customOverrideMap).length > 0
               }
             />
-          </Suspense>
+          </LazyModalBoundary>
         );
       })()}
 
       {/* Save Estimate & Privacy Level Modal */}
       {processedResult && isSaveModalOpen && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary title="Error al Guardar Cotización" onReset={() => setIsSaveModalOpen(false)}>
           <SaveEstimateModal
             isOpen={isSaveModalOpen}
             onClose={() => setIsSaveModalOpen(false)}
@@ -939,21 +967,20 @@ function AuthenticatedApp() {
             defaultClient={defaultClient}
             defaultModel={defaultModel}
             onSuccess={(msg) => {
-              setCloudToast({ message: msg, type: 'success' });
-              setTimeout(() => setCloudToast(null), 5000);
+              showCloudToast(msg, 'success', 5000);
             }}
           />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {/* Cisco Cloud Estimate GraphQL Import Modal */}
       {isCiscoCloudModalOpen && (
-        <Suspense fallback={null}>
+        <LazyModalBoundary title="Error en Importación Cisco API" onReset={() => setIsCiscoCloudModalOpen(false)}>
           <CiscoCloudEstimateImportModal
             isOpen={isCiscoCloudModalOpen}
             onClose={() => setIsCiscoCloudModalOpen(false)}
           />
-        </Suspense>
+        </LazyModalBoundary>
       )}
 
       {/* Collapsible Navigation Sidebar (Hidden on mobile < md, full on desktop >= md) */}

@@ -447,7 +447,22 @@ async function runTests() {
   const dashPy = fs.readFileSync(path.join(rootDir, 'desktop_app/dashboard_analytics.py'), 'utf8');
   assert.ok(dashPy.includes('_sanitize_csv_cell'), 'dashboard_analytics.py debe sanitizar celdas CSV contra inyección de fórmulas');
 
-  console.log('  ✅ Bloques C & Hardening 1/2/3 (Crypto, Desktop Bridge, CSP, URL, MIME, Firestore) verificados.');
+  // QA Web P0/P1/P2 Hardening:
+  assert.ok(rulesCode.includes('pbkdf2\\\\$'), 'firestore.rules debe aceptar hashes PBKDF2 además de SHA-256 legacy');
+  const turnstileWidgetCode = fs.readFileSync(path.join(rootDir, 'src/modules/security/TurnstileWidget.tsx'), 'utf8');
+  assert.ok(turnstileWidgetCode.includes('onSuccessRef') && turnstileWidgetCode.includes('}, [theme])'), 'TurnstileWidget no debe destruirse al escribir en LoginScreen');
+  assert.ok(miningAuditFn.includes('X-Session-Token'), 'mining-audit.ts debe permitir header X-Session-Token en CORS');
+  const aiProxyCode = fs.readFileSync(path.join(rootDir, 'functions/api/ai-proxy.ts'), 'utf8');
+  assert.ok(aiProxyCode.includes('checkEdgeRateLimit'), 'ai-proxy.ts debe aplicar rate limiting');
+  const swCode = fs.readFileSync(path.join(rootDir, 'public/sw.js'), 'utf8');
+  assert.ok(swCode.includes("url.pathname.startsWith('/api/')"), 'sw.js debe excluir explícitamente /api/');
+  const htmlCode = fs.readFileSync(path.join(rootDir, 'index.html'), 'utf8');
+  assert.ok(!htmlCode.includes('user-scalable=no'), 'index.html debe permitir zoom de accesibilidad');
+  assert.strictEqual(sanitizeSafeMailtoUrl('mailto:invalid_email?subject=x'), '#', 'sanitizeSafeMailtoUrl debe rechazar direcciones malformadas');
+  const twoFactorModalCode = fs.readFileSync(path.join(rootDir, 'src/modules/security/TwoFactorModal.tsx'), 'utf8');
+  assert.ok(twoFactorModalCode.includes('useAccessibleModal'), 'TwoFactorModal debe usar useAccessibleModal');
+
+  console.log('  ✅ Bloques C, Hardening 1/2/3 & QA Web P0/P1/P2 verificados.');
   console.log('\n🎉 ¡TODAS LAS VERIFICACIONES DE AUDITORÍA Y HARDENING PASARON AL 100%!');
 }
 

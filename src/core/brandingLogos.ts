@@ -27,7 +27,11 @@ export function getSeasonalLoginLogo(): string {
   const month = now.getMonth(); // 0 = Enero ... 11 = Diciembre
   const day = now.getDate();
 
-  // Activación automática: 1 de Diciembre de 2026 en adelante durante diciembre y fiesta de Reyes (hasta 6 de enero)
+  // Activación automática estacional:
+  // - Octubre (mes 9): Halloween
+  // - Diciembre y Reyes hasta 6 de enero: Navidad
+  // - Resto del año: Sello corporativo oficial Cisco Automated
+  const isHalloweenSeason = month === 9;
   const isChristmasSeason =
     (year === 2026 && month === 11 && day >= 1) ||
     (year > 2026 && (month === 11 || (month === 0 && day <= 6)));
@@ -35,6 +39,9 @@ export function getSeasonalLoginLogo(): string {
   if (isChristmasSeason) {
     return './logo-navidad-nieve.gif';
   }
+  if (isHalloweenSeason) {
+    return './logo-halloween-animado.gif';
+  }
 
-  return './logo-halloween-animado.gif';
+  return CISCO_AUTOMATED_SEAL_DATA_URI;
 }

@@ -234,14 +234,19 @@ export async function getFirebaseAdminAccessToken(serviceAccountJson?: string): 
   }
 }
 
-export async function fetchFirestoreUserRecord(
+export type FirestoreUserLookupResult =
+  | { status: 'ok'; user: FirestoreUserInfo }
+  | { status: 'not_found' }
+  | { status: 'backend_error'; httpStatus: number };
+
+export async function fetchFirestoreUserRecordDetailed(
   projectId: string,
   username: string,
   serviceAccountJson?: string
-): Promise<FirestoreUserInfo | null> {
+): Promise<FirestoreUserLookupResult> {
   const cleanUser = username.trim().toLowerCase();
   if (!cleanUser || !/^[a-z0-9._-]{1,64}$/.test(cleanUser)) {
-    return null;
+    return { status: 'not_found' };
   }
   const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(
     projectId
@@ -255,21 +260,81 @@ export async function fetchFirestoreUserRecord(
     },
   });
   if (!res.ok) {
-    return null;
+    if (res.status === 404) {
+      return { status: 'not_found' };
+    }
+    return { status: 'backend_error', httpStatus: res.status };
   }
-  const docJson: any = await res.json();
+  const docJson: any = await res.json().catch(() => null);
   const fields = docJson?.fields;
-  if (!fields) return null;
+  if (!fields) return { status: 'not_found' };
 
   const isActiveRaw = fields.is_active?.integerValue ?? fields.is_active?.doubleValue ?? '0';
   return {
-    username: String(fields.username?.stringValue || cleanUser).trim().toLowerCase(),
-    role: String(fields.role?.stringValue || '').trim().toLowerCase(),
-    is_active: Number(isActiveRaw),
-    password_hash: String(fields.password_hash?.stringValue || '').trim(),
-    email: String(fields.email?.stringValue || '').trim(),
-    full_name: String(fields.full_name?.stringValue || cleanUser).trim(),
+    status: 'ok',
+    user: {
+      username: String(fields.username?.stringValue || cleanUser).trim().toLowerCase(),
+      role: String(fields.role?.stringValue || '').trim().toLowerCase(),
+      is_active: Number(isActiveRaw),
+      password_hash: String(fields.password_hash?.stringValue || '').trim(),
+      email: String(fields.email?.stringValue || '').trim(),
+      full_name: String(fields.full_name?.stringValue || cleanUser).trim(),
+    },
   };
+}
+
+export async function fetchFirestoreUserRecord(
+  projectId: string,
+  username: string,
+  serviceAccountJson?: string
+): Promise<FirestoreUserInfo | null> {
+  const result = await fetchFirestoreUserRecordDetailed(projectId, username, serviceAccountJson);
+  return result.status === 'ok' ? result.user : null;
+}
+
+export type VerifyCredentialsResult =
+  | { status: 'ok'; user: FirestoreUserInfo }
+  | { status: 'invalid' }
+  | { status: 'backend_error'; httpStatus: number };
+
+export async function verifyFirestoreUserCredentialsDetailed(
+  projectId: string,
+  username: string,
+  password: string,
+  requiredRole?: string,
+  serviceAccountJson?: string
+): Promise<VerifyCredentialsResult> {
+  const cleanPass = password.trim();
+  if (!cleanPass) return { status: 'invalid' };
+
+  const lookup = await fetchFirestoreUserRecordDetailed(projectId, username, serviceAccountJson);
+  if (lookup.status === 'backend_error') {
+    return { status: 'backend_error', httpStatus: lookup.httpStatus };
+  }
+  if (lookup.status !== 'ok') {
+    return { status: 'invalid' };
+  }
+
+  const record = lookup.user;
+  if (record.is_active !== 1 || !record.password_hash) {
+    return { status: 'invalid' };
+  }
+  if (requiredRole && record.role !== requiredRole) {
+    return { status: 'invalid' };
+  }
+
+  if (record.password_hash.startsWith('pbkdf2$')) {
+    const pbkdf2Ok = await verifyPbkdf2Server(cleanPass, record.password_hash);
+    return pbkdf2Ok ? { status: 'ok', user: record } : { status: 'invalid' };
+  }
+
+  const perUserHash = await sha256SaltedServer(cleanPass, record.username);
+  const legacyHash = await sha256SaltedServer(cleanPass);
+  const isMatch =
+    timingSafeEqualStr(record.password_hash, perUserHash) ||
+    timingSafeEqualStr(record.password_hash, legacyHash);
+
+  return isMatch ? { status: 'ok', user: record } : { status: 'invalid' };
 }
 
 export async function verifyFirestoreUserCredentials(
@@ -279,29 +344,48 @@ export async function verifyFirestoreUserCredentials(
   requiredRole?: string,
   serviceAccountJson?: string
 ): Promise<FirestoreUserInfo | null> {
-  const cleanPass = password.trim();
-  if (!cleanPass) return null;
+  const res = await verifyFirestoreUserCredentialsDetailed(
+    projectId,
+    username,
+    password,
+    requiredRole,
+    serviceAccountJson
+  );
+  return res.status === 'ok' ? res.user : null;
+}
 
-  const record = await fetchFirestoreUserRecord(projectId, username, serviceAccountJson);
-  if (!record || record.is_active !== 1 || !record.password_hash) {
-    return null;
+export async function upgradeFirestoreUserLoginMetadata(
+  projectId: string,
+  username: string,
+  upgradedPbkdf2Hash?: string,
+  serviceAccountJson?: string
+): Promise<void> {
+  const adminToken = await getFirebaseAdminAccessToken(serviceAccountJson);
+  if (!adminToken) return;
+  const cleanUser = username.trim().toLowerCase();
+  if (!cleanUser || !/^[a-z0-9._-]{1,64}$/.test(cleanUser)) return;
+
+  const updateMasks = ['updateMask.fieldPaths=last_login'];
+  const fields: Record<string, { stringValue: string }> = {
+    last_login: { stringValue: new Date().toISOString() },
+  };
+  if (upgradedPbkdf2Hash && upgradedPbkdf2Hash.startsWith('pbkdf2$')) {
+    updateMasks.push('updateMask.fieldPaths=password_hash');
+    fields.password_hash = { stringValue: upgradedPbkdf2Hash };
   }
-  if (requiredRole && record.role !== requiredRole) {
-    return null;
-  }
 
-  if (record.password_hash.startsWith('pbkdf2$')) {
-    const pbkdf2Ok = await verifyPbkdf2Server(cleanPass, record.password_hash);
-    return pbkdf2Ok ? record : null;
-  }
+  const url = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(
+    projectId
+  )}/databases/(default)/documents/users/${encodeURIComponent(cleanUser)}?${updateMasks.join('&')}`;
 
-  const perUserHash = await sha256SaltedServer(cleanPass, record.username);
-  const legacyHash = await sha256SaltedServer(cleanPass);
-  const isMatch =
-    timingSafeEqualStr(record.password_hash, perUserHash) ||
-    timingSafeEqualStr(record.password_hash, legacyHash);
-
-  return isMatch ? record : null;
+  await fetch(url, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
+    body: JSON.stringify({ fields }),
+  }).catch(() => {});
 }
 
 function generateRandomHex(bytesLen = 8): string {

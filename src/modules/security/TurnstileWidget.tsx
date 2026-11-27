@@ -44,6 +44,13 @@ export function TurnstileWidget({
 }: TurnstileWidgetProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
+  const onSuccessRef = useRef(onSuccess);
+  const onErrorRef = useRef(onError);
+  const onExpireRef = useRef(onExpire);
+  onSuccessRef.current = onSuccess;
+  onErrorRef.current = onError;
+  onExpireRef.current = onExpire;
+
   const [isLoaded, setIsLoaded] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
   const [widgetError, setWidgetError] = useState<string | null>(null);
@@ -58,7 +65,7 @@ export function TurnstileWidget({
 
       try {
         // Clean container before rendering to avoid duplicate iframes on React re-renders
-        containerRef.current.innerHTML = '';
+        containerRef.current.replaceChildren();
 
         const id = window.turnstile.render(containerRef.current, {
           sitekey: TURNSTILE_SITE_KEY,
@@ -69,7 +76,7 @@ export function TurnstileWidget({
             setIsVerified(true);
             setWidgetError(null);
             setLastErrorCode(null);
-            onSuccess(token);
+            onSuccessRef.current(token);
           },
           'error-callback': (errorCode: string) => {
             if (!isSubscribed) return;
@@ -88,13 +95,13 @@ export function TurnstileWidget({
             }
 
             setWidgetError(`[Turnstile Error: ${errorCode || 'N/A'}] ${explanation}`);
-            if (onError) onError(errorCode);
+            onErrorRef.current?.(errorCode);
           },
           'expired-callback': () => {
             if (!isSubscribed) return;
             setIsVerified(false);
             setWidgetError('El desafío Turnstile expiró. Por favor verifícalo nuevamente.');
-            if (onExpire) onExpire();
+            onExpireRef.current?.();
           },
         });
 
@@ -138,7 +145,7 @@ export function TurnstileWidget({
         widgetIdRef.current = null;
       }
     };
-  }, [onSuccess, onError, onExpire, theme]);
+  }, [theme]);
 
   const handleManualRetry = () => {
     setWidgetError(null);
@@ -150,7 +157,7 @@ export function TurnstileWidget({
       } catch (_) {
         // If reset fails, re-render
         if (containerRef.current) {
-          containerRef.current.innerHTML = '';
+          containerRef.current.replaceChildren();
           widgetIdRef.current = null;
           if (window.turnstile) {
             try {
@@ -161,12 +168,12 @@ export function TurnstileWidget({
                 callback: (token: string) => {
                   setIsVerified(true);
                   setWidgetError(null);
-                  onSuccess(token);
+                  onSuccessRef.current(token);
                 },
                 'error-callback': (code: string) => {
                   setLastErrorCode(code);
                   setWidgetError(`[Turnstile Error: ${code}] Desafío no superado.`);
-                  if (onError) onError(code);
+                  onErrorRef.current?.(code);
                 },
               });
               widgetIdRef.current = id;

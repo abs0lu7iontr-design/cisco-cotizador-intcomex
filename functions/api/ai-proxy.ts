@@ -6,7 +6,7 @@
 // ============================================================================
 
 import { buildEdgeCorsHeaders } from '../../src/utils/edgeCors';
-import { EdgeEnv, verifyEdgeSessionToken } from '../lib/edgeAuth';
+import { checkEdgeRateLimit, EdgeEnv, verifyEdgeSessionToken } from '../lib/edgeAuth';
 
 type SupportedAiProvider = 'gemini' | 'openrouter' | 'groq' | 'deepseek';
 
@@ -57,6 +57,14 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
       return new Response(
         JSON.stringify({ success: false, error: 'Rol sin permisos para invocar modelos IA del servidor.' }),
         { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+      );
+    }
+
+    const aiRate = await checkEdgeRateLimit(`ai-proxy:${sessionCheck.username || 'anon'}`, 35, 300);
+    if (!aiRate.allowed) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Límite de solicitudes IA alcanzado. Intenta nuevamente en unos minutos.' }),
+        { status: 429, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
       );
     }
 

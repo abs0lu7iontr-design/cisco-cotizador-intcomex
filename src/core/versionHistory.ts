@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.28.0',
+    date: '2026-11-27',
+    commit: 'qa-web-security-performance-a11y-p0-p1-p2',
+    title: 'Mejoras Integrales QA Web: PBKDF2 Firestore, Estabilidad Turnstile, Service Worker, Rendimiento y Accesibilidad',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'P0 Auth & Firestore: Compatibilidad PBKDF2 en firestore.rules, diferenciación 503 vs 401 y auto-upgrade en /api/session-auth, sin getCloudUsers() pre-login ni re-montaje de Turnstile al teclear.',
+      'P1 Edge & SW: CORS X-Session-Token en mining-audit, rate-limit en ai-proxy/cisco-proxy/send-2fa-otp, sw.js Network-Only en /api/* y LazyModalBoundary en App.tsx.',
+      'P2 Performance & WCAG: Cero preload de ExcelJS/XLSX en Login, LoginScreen compacto (<800px) con versión visible y zoom/contraste/ARIA mejorados, BYOK IA en sessionStorage y modales con useAccessibleModal.'
+    ]
+  },
+  {
     version: '2.27.1',
     date: '2026-11-27',
     commit: 'fix-edge-session-secrets-preview-and-auth-resilience',
     title: 'Fix Login Edge en Preview/Production y Autenticación Admin REST en Firestore',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Aprovisionados los secretos EDGE_SESSION_SECRET, ADMIN_OVERRIDE_SECRET y NOTIFY_SECRET en Cloudflare Pages (preview y production) eliminando el error "Servicio de sesión Edge no configurado.".',

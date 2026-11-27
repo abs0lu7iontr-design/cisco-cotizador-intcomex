@@ -3119,7 +3119,10 @@ export async function saveCloudUser(
     saveLocalUsersCache(updatedLocal);
 
     if (isAppOffline()) {
-      return { success: true };
+      return {
+        success: false,
+        error: 'Se requiere conexión Online con Firestore para crear o modificar usuarios RBAC.',
+      };
     }
 
     // 2. Update Firestore

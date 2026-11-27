@@ -16,6 +16,7 @@ import {
   mintTwoFactorProofToken,
   resolveFirebaseProjectId,
   timingSafeEqualStr,
+  verifyEdgeSessionToken,
   verifyFirestoreUserCredentials,
   verifyTwoFactorChallengeToken,
 } from '../lib/edgeAuth';
@@ -78,49 +79,35 @@ async function dispatchEmail(
   htmlContent: string,
   env: EdgeEnv
 ): Promise<{ success: boolean; error?: string }> {
-  if (env.RESEND_API_KEY) {
-    try {
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.RESEND_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: 'Cisco Automated Security <seguridad@cisco-automated.pages.dev>',
-          to: [toEmail],
-          subject,
-          html: htmlContent,
-        }),
-      });
-      if (res.ok) return { success: true };
-    } catch (err: any) {
-      console.warn('[2FA Dispatch] Resend error:', err);
-    }
+  if (!env.RESEND_API_KEY) {
+    return {
+      success: false,
+      error: 'Servicio de correo 2FA no configurado (falta RESEND_API_KEY en Cloudflare Pages).',
+    };
   }
-
+  const fromAddress = (env.ALLOWED_REMINDER_DOMAINS ? `Cisco Automated Security <seguridad@${env.ALLOWED_REMINDER_DOMAINS.split(',')[0].trim()}>` : 'Cisco Automated Security <seguridad@intcomex.com>');
   try {
-    const res = await fetch('https://api.mailchannels.net/tx/v1/send', {
+    const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
-        personalizations: [{ to: [{ email: toEmail }] }],
-        from: {
-          email: 'seguridad@cisco-automated.pages.dev',
-          name: 'Cisco Automated • Seguridad 2FA',
-        },
+        from: fromAddress,
+        to: [toEmail],
         subject,
-        content: [{ type: 'text/html', value: htmlContent }],
+        html: htmlContent,
       }),
     });
-    if (res.ok || res.status === 202) return { success: true };
+    if (res.ok) return { success: true };
   } catch (err: any) {
-    console.warn('[2FA Dispatch] MailChannels error:', err);
+    console.warn('[2FA Dispatch] Resend error:', err);
   }
 
   return {
     success: false,
-    error: 'No se pudo despachar el correo 2FA mediante los proveedores configurados.',
+    error: 'No se pudo despachar el correo 2FA mediante Resend.',
   };
 }
 
@@ -402,13 +389,8 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
       const dayStamp = new Date().toISOString().slice(0, 10);
       const adminCodePayload = `ADMIN_OVERRIDE:${username}:${dayStamp}`;
       const expectedAdminSig = (await createHmacSignature(adminCodePayload, secretKey)).slice(0, 8).toUpperCase();
-      const rootMasterPayload = `ROOT_MASTER:${dayStamp}`;
-      const expectedRootMaster = (await createHmacSignature(rootMasterPayload, secretKey)).slice(0, 8).toUpperCase();
 
-      if (
-        timingSafeEqualStr(inputCode.toUpperCase(), expectedAdminSig) ||
-        timingSafeEqualStr(inputCode.toUpperCase(), expectedRootMaster)
-      ) {
+      if (timingSafeEqualStr(inputCode.toUpperCase(), expectedAdminSig)) {
         const overrideUseKey = `override-used:${username}:${dayStamp}:${inputCode.toUpperCase()}`;
         const overrideState = await readOtpGuardState(overrideUseKey);
         if (overrideState.used) {
@@ -494,8 +476,16 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
       );
     }
 
-    // ACCIÓN 4: GENERAR CÓDIGO MAESTRO DE CONTINGENCIA (SOLO ADMIN AUTENTICADO)
+    // ACCIÓN 4: GENERAR CÓDIGO MAESTRO DE CONTINGENCIA (SOLO ADMIN AUTENTICADO + RATE LIMIT)
     if (action === 'generate_admin_override') {
+      const genRate = await checkEdgeRateLimit(`2fa-admin-gen:${reqIp}`, 5, 900);
+      if (!genRate.allowed) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Demasiados intentos generando códigos maestros. Intenta más tarde.' }),
+          { status: 429, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
+
       const authHeader = context.request.headers.get('Authorization') || '';
       const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
       const configuredAdminSecret = (context.env.ADMIN_OVERRIDE_SECRET || context.env.NOTIFY_SECRET || '').trim();
@@ -504,7 +494,8 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
         Boolean(bearerToken || body?.adminSecret) &&
         timingSafeEqualStr(bearerToken || String(body?.adminSecret || ''), configuredAdminSecret);
 
-      let isVerifiedAdmin = hasSecretAuth;
+      const activeSession = await verifyEdgeSessionToken(context.request, context.env);
+      let isVerifiedAdmin = hasSecretAuth || (activeSession.valid && activeSession.role === 'admin');
       if (!isVerifiedAdmin) {
         const adminUsername = String(body?.adminUsername || '').trim().toLowerCase();
         const adminPassword = String(body?.adminPassword || '');
@@ -531,15 +522,21 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
       }
 
       const username = String(body?.username || '').trim().toLowerCase();
+      if (!username) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Se requiere especificar el username objetivo para generar el código 2FA.' }),
+          { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+        );
+      }
       const dayStamp = new Date().toISOString().slice(0, 10);
-      const adminCodePayload = username ? `ADMIN_OVERRIDE:${username}:${dayStamp}` : `ROOT_MASTER:${dayStamp}`;
+      const adminCodePayload = `ADMIN_OVERRIDE:${username}:${dayStamp}`;
       const sig = (await createHmacSignature(adminCodePayload, secretKey)).slice(0, 8).toUpperCase();
       return new Response(
         JSON.stringify({
           success: true,
           dayStamp,
           code: sig,
-          target: username || 'GLOBAL_ROOT',
+          target: username,
         }),
         { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
       );

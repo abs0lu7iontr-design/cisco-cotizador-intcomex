@@ -133,49 +133,35 @@ async function sendEmail(
   htmlContent: string,
   env: EdgeEnv
 ): Promise<{ success: boolean; error?: string }> {
-  if (env.RESEND_API_KEY) {
-    try {
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.RESEND_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: 'Cisco Automated <notificaciones@cisco-automated.com>',
-          to: [toEmail],
-          subject,
-          html: htmlContent,
-        }),
-      });
-      if (res.ok) return { success: true };
-    } catch (err: any) {
-      console.warn('[deal-reminder-cron] Resend fallback error:', err);
-    }
+  if (!env.RESEND_API_KEY) {
+    return {
+      success: false,
+      error: 'Servicio de recordatorios no configurado (falta RESEND_API_KEY en Cloudflare Pages).',
+    };
   }
-
+  const primaryDomain = env.ALLOWED_REMINDER_DOMAINS?.split(',')[0]?.trim() || 'intcomex.com';
   try {
-    const mailChannelsRes = await fetch('https://api.mailchannels.net/tx/v1/send', {
+    const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
-        personalizations: [{ to: [{ email: toEmail, name: 'Mauricio Intcomex' }] }],
-        from: {
-          email: 'notificaciones@cisco-automated.pages.dev',
-          name: 'Cisco Automated - Intcomex',
-        },
+        from: `Cisco Automated <notificaciones@${primaryDomain}>`,
+        to: [toEmail],
         subject,
-        content: [{ type: 'text/html', value: htmlContent }],
+        html: htmlContent,
       }),
     });
-    if (mailChannelsRes.ok || mailChannelsRes.status === 202) return { success: true };
+    if (res.ok) return { success: true };
   } catch (err: any) {
-    console.warn('[deal-reminder-cron] MailChannels error:', err);
+    console.warn('[deal-reminder-cron] Resend error:', err);
   }
 
   return {
     success: false,
-    error: 'No se pudo despachar el recordatorio de correo mediante los proveedores Edge.',
+    error: 'No se pudo despachar el recordatorio de correo mediante Resend.',
   };
 }
 

@@ -21,7 +21,8 @@ import {
   HardDrive,
   Check,
 } from 'lucide-react';
-import { CISCO_HALLOWEEN_ANIMATED_LOGO_DATA_URI, getSeasonalLoginLogo } from '../core/brandingLogos';
+import { CISCO_AUTOMATED_SEAL_DATA_URI, getSeasonalLoginLogo } from '../core/brandingLogos';
+import { getFormattedAppVersion } from '../core/appVersion';
 import {
   useOfflineMode,
   setManualOfflineMode,
@@ -187,10 +188,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         requires2FA: false,
       });
     } else {
-      // 1. Fetch cloud users into local cache in background si está Online
-      getCloudUsers().catch((e) => console.warn('Cloud users sync note:', e));
-
-      // Detect Geolocation origin for adaptive 2FA
+      // Detect Geolocation origin for adaptive 2FA (sin consultar colección privada users antes de autenticar)
       checkGeoLocation()
         .then((info) => setGeoInfo(info))
         .catch(() => {
@@ -343,11 +341,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               rememberLastUser: true,
               lastUsername: cleanUser,
             });
-            try {
-              if (typeof localStorage !== 'undefined' && cleanPass) {
-                localStorage.setItem(SAVED_PASSWORD_STORAGE_KEY, encodePasswordToken(cleanPass));
-              }
-            } catch {}
+            encodePasswordToken(cleanPass);
           } else {
             saveLocalPlatformConfig({
               rememberLastUser: false,
@@ -547,11 +541,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           rememberLastUser: true,
           lastUsername: cleanUser,
         });
-        try {
-          if (typeof localStorage !== 'undefined' && cleanPass) {
-            localStorage.setItem(SAVED_PASSWORD_STORAGE_KEY, encodePasswordToken(cleanPass));
-          }
-        } catch {}
+        encodePasswordToken(cleanPass);
       } else {
         saveLocalPlatformConfig({
           rememberLastUser: false,
@@ -564,7 +554,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         } catch {}
       }
 
-      if (!isOffline) {
+      if (!isOffline && !serverAuthHandled) {
         saveCloudUser({
           ...foundUser,
           last_login: new Date().toISOString(),
@@ -588,43 +578,52 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950/40 p-4 sm:p-6 text-slate-100 selection:bg-indigo-500 selection:text-white">
-      <div className="w-full max-w-md bg-slate-900/90 border border-slate-800 rounded-3xl p-8 sm:p-10 shadow-2xl backdrop-blur-xl relative overflow-hidden">
+    <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950/40 p-3 sm:p-4 text-slate-100 selection:bg-indigo-500 selection:text-white">
+      <div className="w-full max-w-md bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xl backdrop-blur-xl relative overflow-hidden">
         {/* Subtle Ambient Glow */}
         <div className="absolute -top-24 -left-24 w-48 h-48 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-emerald-600/15 rounded-full blur-3xl pointer-events-none" />
 
         {/* Official Intcomex Metallic Brand Logo & Header */}
-        <div className="text-center mb-7 relative z-10">
-          <div className="inline-flex items-center justify-center w-28 h-28 rounded-2xl bg-slate-950 p-1.5 shadow-2xl shadow-indigo-600/20 mb-3 border-2 border-slate-700/80 overflow-hidden hover:scale-105 transition-transform">
+        <div className="text-center mb-5 relative z-10">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-slate-950 p-1.5 shadow-2xl shadow-indigo-600/20 mb-2.5 border-2 border-slate-700/80 overflow-hidden hover:scale-105 transition-transform">
             <img
               src={getSeasonalLoginLogo()}
-              alt="Cisco Automated Seasonal Logo"
+              alt="Logo oficial de Cisco Automated"
               onError={(e) => {
-                e.currentTarget.src = CISCO_HALLOWEEN_ANIMATED_LOGO_DATA_URI;
+                e.currentTarget.src = CISCO_AUTOMATED_SEAL_DATA_URI;
               }}
               className="w-full h-full object-contain rounded-xl"
             />
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-white">Cisco Automated</h1>
-          <p className="text-[11px] font-extrabold text-indigo-400 mt-1 uppercase tracking-widest">
+          <div className="flex items-center justify-center gap-2">
+            <h1 className="text-2xl font-black tracking-tight text-white">Cisco Automated</h1>
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-950 text-indigo-200 border border-indigo-600/60">
+              {getFormattedAppVersion()}
+            </span>
+          </div>
+          <p className="text-xs font-extrabold text-indigo-300 mt-1 uppercase tracking-widest">
             Portal Corporativo &bull; Intcomex
           </p>
         </div>
 
         {/* Security Lockout Banner (Active when locked) */}
         {isLocked && (
-          <div className="mb-5 p-4 bg-rose-950/90 border border-rose-600 rounded-2xl text-rose-200 text-xs space-y-2 shadow-lg shadow-rose-950/50 animate-pulse">
-            <div className="flex items-center space-x-2.5 font-bold text-rose-300">
-              <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="mb-4 p-3.5 bg-rose-950/90 border border-rose-600 rounded-2xl text-rose-200 text-xs space-y-2 shadow-lg shadow-rose-950/50 animate-pulse"
+          >
+            <div className="flex items-center space-x-2.5 font-bold text-rose-200">
+              <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" aria-hidden="true" />
               <span>Acceso Temporalmente Restringido</span>
             </div>
-            <p className="text-[11px] text-rose-200/90 leading-relaxed">
+            <p className="text-[11px] text-rose-200/95 leading-relaxed">
               El acceso se encuentra temporalmente restringido por motivos de seguridad institucional.
             </p>
             <div className="flex items-center justify-between pt-1 border-t border-rose-800/40 text-[11px]">
-              <span className="flex items-center gap-1 text-rose-300 font-semibold">
-                <Clock className="w-3.5 h-3.5" /> Tiempo de espera:
+              <span className="flex items-center gap-1 text-rose-200 font-semibold">
+                <Clock className="w-3.5 h-3.5" aria-hidden="true" /> Tiempo de espera:
               </span>
               <span className="font-mono font-black text-rose-100 bg-rose-900/80 px-2.5 py-0.5 rounded-md border border-rose-700/50">
                 {formatCountdown(remainingLockSeconds)}
@@ -635,21 +634,23 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
         {/* Warning / Error Alert (When not in full lockout) */}
         {!isLocked && errorMsg && (
-          <div className="mb-5 p-3.5 bg-rose-950/80 border border-rose-600/60 rounded-xl text-rose-200 text-xs flex items-center space-x-2.5">
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+          <div
+            role="alert"
+            aria-live="polite"
+            className="mb-4 p-3 bg-rose-950/85 border border-rose-500/70 rounded-xl text-rose-100 text-xs flex items-center space-x-2.5"
+          >
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" aria-hidden="true" />
             <span className="leading-snug">{errorMsg}</span>
           </div>
         )}
 
-        
-
         {/* Device Offline/Online Mode Indicator & Quick Toggle */}
-        <div className="mb-5 p-2.5 bg-slate-950/70 border border-slate-800 rounded-2xl flex items-center justify-between text-xs relative z-10">
-          <div className="flex items-center space-x-2 text-slate-300">
-            <HardDrive className="w-4 h-4 text-slate-400 shrink-0" />
+        <div className="mb-4 p-2.5 bg-slate-950/75 border border-slate-800 rounded-2xl flex items-center justify-between text-xs relative z-10">
+          <div className="flex items-center space-x-2 text-slate-200">
+            <HardDrive className="w-4 h-4 text-slate-300 shrink-0" aria-hidden="true" />
             <div className="flex flex-col">
-              <span className="text-[11px] font-bold text-slate-200">Perfil de este Computador</span>
-              <span className="text-[10px] text-slate-400">
+              <span className="text-xs font-bold text-slate-100">Perfil de este Computador</span>
+              <span className="text-[11px] text-slate-300">
                 {isOffline ? 'Operación local aislada (sin nube)' : 'Sincronización activa con Firestore'}
               </span>
             </div>
@@ -657,10 +658,16 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           <button
             type="button"
             onClick={() => setManualOfflineMode(!isManualOffline)}
+            aria-pressed={isOffline}
+            aria-label={
+              isOffline
+                ? 'Modo Offline activo. Activar conexión Online con la nube'
+                : 'Modo Online activo. Cambiar a Modo Offline local'
+            }
             className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black border transition-all cursor-pointer shadow-sm ${
               isOffline
-                ? 'bg-amber-950/80 text-amber-300 border-amber-500/60 hover:bg-amber-900/90 hover:border-amber-400'
-                : 'bg-emerald-950/80 text-emerald-300 border-emerald-500/60 hover:bg-emerald-900/90 hover:border-emerald-400'
+                ? 'bg-amber-950/80 text-amber-200 border-amber-500/60 hover:bg-amber-900/90 hover:border-amber-400'
+                : 'bg-emerald-950/80 text-emerald-200 border-emerald-500/60 hover:bg-emerald-900/90 hover:border-emerald-400'
             }`}
             title={
               isOffline
@@ -670,12 +677,12 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           >
             {isOffline ? (
               <>
-                <WifiOff className="w-3.5 h-3.5 text-amber-400" />
+                <WifiOff className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
                 <span>MODO OFFLINE</span>
               </>
             ) : (
               <>
-                <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+                <Wifi className="w-3.5 h-3.5 text-emerald-400" aria-hidden="true" />
                 <span>ONLINE</span>
               </>
             )}
@@ -683,14 +690,14 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         </div>
 
         {/* Formulario de Login (Integrado con el Gestor de Contraseñas del Navegador) */}
-        <form onSubmit={handleLogin} autoComplete="on" className="space-y-4 relative z-10">
+        <form onSubmit={handleLogin} autoComplete="on" className="space-y-3.5 relative z-10">
           <div>
-            <label htmlFor="username" className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+            <label htmlFor="username" className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
               Usuario de Sistema
             </label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                <User className="w-4 h-4" />
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                <User className="w-4 h-4" aria-hidden="true" />
               </div>
               <input
                 id="username"
@@ -714,18 +721,18 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 autoCorrect="off"
                 autoCapitalize="none"
                 disabled={isLocked || isLoading}
-                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-slate-950/85 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+            <label htmlFor="password" className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
               Contraseña
             </label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                <Lock className="w-4 h-4" />
+              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                <Lock className="w-4 h-4" aria-hidden="true" />
               </div>
               <input
                 id="password"
@@ -737,22 +744,24 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 autoComplete="current-password"
                 spellCheck="false"
                 disabled={isLocked || isLoading}
-                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl pl-10 pr-10 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-slate-950/85 border border-slate-700 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <button
                 type="button"
-                tabIndex={-1}
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                aria-pressed={showPassword}
+                title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-300 hover:text-white focus:outline-none focus:text-indigo-300 transition-colors cursor-pointer"
               >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showPassword ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
               </button>
             </div>
           </div>
 
           {/* Remember User Checkbox on this Device */}
-          <div className="flex items-center justify-between pt-1">
-            <label className="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer select-none">
+          <div className="flex items-center justify-between pt-0.5">
+            <label className="flex items-center space-x-2 text-xs text-slate-200 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={rememberUser}
@@ -764,11 +773,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                       rememberLastUser: true,
                       lastUsername: username.trim(),
                     });
-                    if (password) {
-                      try {
-                        localStorage.setItem(SAVED_PASSWORD_STORAGE_KEY, encodePasswordToken(password));
-                      } catch {}
-                    }
+                    encodePasswordToken(password);
                   } else {
                     saveLocalPlatformConfig({
                       rememberLastUser: false,
@@ -779,9 +784,9 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                     } catch {}
                   }
                 }}
-                className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-0 cursor-pointer"
+                className="w-4 h-4 rounded border-slate-600 bg-slate-950 text-indigo-500 focus:ring-2 focus:ring-indigo-400 cursor-pointer"
               />
-              <span className="text-[11px] text-slate-300 font-medium">Recordar usuario en este computador</span>
+              <span className="text-xs text-slate-200 font-medium">Recordar usuario en este computador</span>
             </label>
           </div>
 
@@ -805,30 +810,30 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           <button
             type="submit"
             disabled={isLocked || isLoading || !username.trim() || !password}
-            className="w-full mt-4 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center space-x-2 disabled:opacity-40 disabled:cursor-not-allowed group cursor-pointer"
+            className="w-full mt-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center space-x-2 disabled:opacity-60 disabled:cursor-not-allowed group cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-300"
           >
             {isLoading ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                <Loader2 className="w-4 h-4 animate-spin text-white" aria-hidden="true" />
                 <span>Verificando Credenciales...</span>
               </>
             ) : isLocked ? (
               <>
-                <ShieldAlert className="w-4 h-4 text-rose-300" />
+                <ShieldAlert className="w-4 h-4 text-rose-300" aria-hidden="true" />
                 <span>Bloqueo Activo ({formatCountdown(remainingLockSeconds)})</span>
               </>
             ) : (
               <>
                 <span>Iniciar Sesión</span>
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" aria-hidden="true" />
               </>
             )}
           </button>
         </form>
 
         {/* Footer */}
-        <div className="mt-7 pt-5 border-t border-slate-800/80 text-center">
-          <div className="text-[10px] text-slate-500">
+        <div className="mt-5 pt-4 border-t border-slate-800/80 text-center">
+          <div className="text-[11px] text-slate-300">
             © Cisco Automated &bull; Intcomex Chile SA
           </div>
         </div>

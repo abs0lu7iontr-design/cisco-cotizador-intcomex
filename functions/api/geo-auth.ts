@@ -65,6 +65,7 @@ async function handleGeoDetection(context: EventContext<any, any, any>): Promise
         status: 200,
         headers: {
           'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
           ...corsHeaders,
         },
       }
@@ -86,6 +87,7 @@ async function handleGeoDetection(context: EventContext<any, any, any>): Promise
         status: localDev ? 200 : 503,
         headers: {
           'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
           ...corsHeaders,
         },
       }

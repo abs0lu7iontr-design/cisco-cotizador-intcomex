@@ -19,7 +19,11 @@ if (typeof document !== 'undefined') {
   document.title = `${APP_DISPLAY_NAME} ${getFormattedAppVersion()} | Intcomex`;
 }
 
-createRoot(document.getElementById('root')!).render(
+const rootEl = document.getElementById('root');
+if (!rootEl) {
+  throw new Error('Root element #root not found in document.');
+}
+createRoot(rootEl).render(
   <StrictMode>
     <App />
   </StrictMode>,

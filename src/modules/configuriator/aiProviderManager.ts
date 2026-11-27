@@ -172,23 +172,35 @@ export function sanitizeAndMigrateSettings(rawSettings: AiConfigSettings): AiCon
 }
 
 export function loadAiSettings(): AiConfigSettings {
-  if (typeof localStorage === 'undefined') {
-    return getDefaultAiSettings();
-  }
+  const sessionStore = typeof sessionStorage !== 'undefined' ? sessionStorage : null;
+  const legacyLocal = typeof localStorage !== 'undefined' ? localStorage : null;
   try {
-    const rawV2 = localStorage.getItem(AI_CONFIG_STORAGE_KEY);
-    if (rawV2) {
-      const parsed = JSON.parse(rawV2) as AiConfigSettings;
+    const rawSession = sessionStore?.getItem(AI_CONFIG_STORAGE_KEY);
+    if (rawSession) {
+      const parsed = JSON.parse(rawSession) as AiConfigSettings;
       if (parsed && Array.isArray(parsed.keys)) {
         return sanitizeAndMigrateSettings(parsed);
       }
     }
+    const rawV2 = legacyLocal?.getItem(AI_CONFIG_STORAGE_KEY);
+    if (rawV2) {
+      const parsed = JSON.parse(rawV2) as AiConfigSettings;
+      if (parsed && Array.isArray(parsed.keys)) {
+        const migrated = sanitizeAndMigrateSettings(parsed);
+        saveAiSettings(migrated);
+        legacyLocal?.removeItem(AI_CONFIG_STORAGE_KEY);
+        legacyLocal?.removeItem(LEGACY_GEMINI_KEY);
+        return migrated;
+      }
+    }
     // Migrar desde V1 si existía
-    const rawV1 = localStorage.getItem(LEGACY_STORAGE_KEY_V1);
+    const rawV1 = legacyLocal?.getItem(LEGACY_STORAGE_KEY_V1);
     if (rawV1) {
       const parsedV1 = JSON.parse(rawV1) as AiConfigSettings;
       const migrated = sanitizeAndMigrateSettings(parsedV1);
       saveAiSettings(migrated);
+      legacyLocal?.removeItem(LEGACY_STORAGE_KEY_V1);
+      legacyLocal?.removeItem(LEGACY_GEMINI_KEY);
       return migrated;
     }
   } catch (err) {
@@ -200,14 +212,16 @@ export function loadAiSettings(): AiConfigSettings {
 }
 
 export function saveAiSettings(settings: AiConfigSettings): void {
-  if (typeof localStorage === 'undefined') return;
   try {
     const raw = JSON.stringify(settings);
-    localStorage.setItem(AI_CONFIG_STORAGE_KEY, raw);
-
-    const firstGemini = settings.keys.find((k) => k.provider === 'gemini' && k.enabled && k.apiKey.trim());
-    if (firstGemini) {
-      localStorage.setItem(LEGACY_GEMINI_KEY, firstGemini.apiKey.trim());
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(AI_CONFIG_STORAGE_KEY, raw);
+    }
+    // Limpiar claves BYOK heredadas de localStorage para no dejar API keys persistentes en claro
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(AI_CONFIG_STORAGE_KEY);
+      localStorage.removeItem(LEGACY_STORAGE_KEY_V1);
+      localStorage.removeItem(LEGACY_GEMINI_KEY);
     }
 
     const pyApi = typeof window !== 'undefined' ? (window as any).pywebview?.api : null;
