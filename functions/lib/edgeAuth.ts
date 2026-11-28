@@ -14,6 +14,9 @@ export interface EdgeEnv {
   CISCO_CLIENT_ID?: string;
   CISCO_CLIENT_SECRET?: string;
   CISCO_AUTH_URL?: string;
+  FEDEX_API_KEY?: string;
+  FEDEX_SECRET_KEY?: string;
+  FEDEX_ENV?: string;
   GEMINI_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
   GROQ_API_KEY?: string;

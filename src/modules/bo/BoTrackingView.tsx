@@ -65,6 +65,15 @@ import { useTableDensityAndZoom } from '../../hooks/useTableDensityAndZoom';
 import { TableDensityZoomControls } from '../../components/TableDensityZoomControls';
 import { formatShortUserFirstName } from '../../utils/userNameUtils';
 import { CiscoOrderTrackingSyncModal } from './CiscoOrderTrackingSyncModal';
+import { FedExApiConfigModal } from './FedExApiConfigModal';
+import {
+  FedExCachedLiveStatus,
+  checkFedExEdgeStatus,
+  getCachedFedExStatuses,
+  loadFedExConfig,
+  normalizeFedExTrackingNumber,
+  syncFedExTrackingsForOrders,
+} from './fedexTrackingService';
 
 export function BoTrackingView() {
   const { currentUser, processedResult, detectedPartner } = useCiscoAutomatedStore();
@@ -97,6 +106,12 @@ export function BoTrackingView() {
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
   const [isCiscoTrackingModalOpen, setIsCiscoTrackingModalOpen] = useState(false);
   const [selectedOrderForCiscoTracking, setSelectedOrderForCiscoTracking] = useState<BoOrderTrackingRecord | null>(null);
+  const [isFedExModalOpen, setIsFedExModalOpen] = useState(false);
+  const [isSyncingFedEx, setIsSyncingFedEx] = useState(false);
+  const [fedexLiveStatuses, setFedexLiveStatuses] = useState<Record<string, FedExCachedLiveStatus>>(() =>
+    getCachedFedExStatuses()
+  );
+  const [fedexBanner, setFedexBanner] = useState<{ type: 'info' | 'warn'; text: string } | null>(null);
 
   // Formulario nueva orden
   const [newOrderForm, setNewOrderForm] = useState({
@@ -128,6 +143,61 @@ export function BoTrackingView() {
     }
   };
 
+  const activeFedExGuidesCount = useMemo(
+    () =>
+      orders.filter(
+        (o) =>
+          !o.archived &&
+          o.currentStage !== 'DELIVERED' &&
+          (o.courier || 'FedEx') === 'FedEx' &&
+          normalizeFedExTrackingNumber(o.courierTrackingNumber).length >= 8
+      ).length,
+    [orders]
+  );
+
+  const handleSyncFedEx = async (opts?: { onlyOrderId?: string; silentIfUnconfigured?: boolean }) => {
+    if (isSyncingFedEx) return;
+    setIsSyncingFedEx(true);
+    if (!opts?.silentIfUnconfigured) {
+      setFedexBanner(null);
+    }
+    try {
+      const res = await syncFedExTrackingsForOrders(orders, {
+        onlyOrderId: opts?.onlyOrderId,
+      });
+      setFedexLiveStatuses(res.liveStatuses);
+
+      if (res.needsCredentials || !res.configured) {
+        if (!opts?.silentIfUnconfigured) {
+          setIsFedExModalOpen(true);
+        }
+        return;
+      }
+
+      if (!res.success) {
+        if (!opts?.silentIfUnconfigured) {
+          setFedexBanner({ type: 'warn', text: res.error || 'No se pudo consultar FedEx Track API.' });
+        }
+        return;
+      }
+
+      if (res.updatedCount > 0) {
+        await loadData();
+        setFedexBanner({
+          type: 'info',
+          text: `FedEx Auto-Sync: ${res.checkedCount} guías consultadas • ${res.updatedCount} orden(es) actualizadas (${res.stageAdvancedCount} avanzaron de etapa).`,
+        });
+      } else if (!opts?.silentIfUnconfigured) {
+        setFedexBanner({
+          type: 'info',
+          text: `FedEx verificado: ${res.checkedCount} guía(s) al día sin cambios nuevos.`,
+        });
+      }
+    } finally {
+      setIsSyncingFedEx(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
     const onSyncComplete = () => {
@@ -136,6 +206,31 @@ export function BoTrackingView() {
     window.addEventListener('cisco-offline-sync-completed', onSyncComplete);
     return () => window.removeEventListener('cisco-offline-sync-completed', onSyncComplete);
   }, []);
+
+  // Auto-sincronización periódica (al abrir con guías activas + cada 15 min) si FedEx API está configurada
+  const autoSyncedInitialRef = React.useRef(false);
+  useEffect(() => {
+    if (orders.length === 0 || activeFedExGuidesCount === 0) return;
+    const cfg = loadFedExConfig();
+    if (!cfg.autoSyncEnabled) return;
+
+    if (!autoSyncedInitialRef.current) {
+      autoSyncedInitialRef.current = true;
+      checkFedExEdgeStatus().then((st) => {
+        if (st.configured) {
+          handleSyncFedEx({ silentIfUnconfigured: true });
+        }
+      });
+    }
+
+    const intervalId = setInterval(() => {
+      if (loadFedExConfig().autoSyncEnabled) {
+        handleSyncFedEx({ silentIfUnconfigured: true });
+      }
+    }, 15 * 60 * 1000);
+
+    return () => clearInterval(intervalId);
+  }, [orders.length, activeFedExGuidesCount]);
 
   // Prellenar formulario de nueva orden si hay estimate cargado
   useEffect(() => {
@@ -491,6 +586,27 @@ export function BoTrackingView() {
 
           {/* Action Buttons */}
           <div className="flex items-center flex-wrap gap-2.5">
+            <div className="inline-flex items-center rounded-xl overflow-hidden border border-purple-700/50 bg-purple-950/50 shadow-sm">
+              <button
+                type="button"
+                onClick={() => handleSyncFedEx()}
+                disabled={isSyncingFedEx}
+                className="inline-flex items-center space-x-1.5 px-3 py-2 hover:bg-purple-900/70 text-purple-200 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
+                title="Consultar estado en vivo en FedEx API y actualizar etapas/fechas sin abrir fedex.com"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-purple-300 ${isSyncingFedEx ? 'animate-spin' : ''}`} />
+                <span>{isSyncingFedEx ? 'Sincronizando FedEx...' : `Sync FedEx (${activeFedExGuidesCount})`}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsFedExModalOpen(true)}
+                className="px-2 py-2 border-l border-purple-700/40 hover:bg-purple-900/70 text-purple-300 text-[10px] font-bold cursor-pointer"
+                title="Configurar credenciales FedEx Track API y frecuencia de auto-sincronización"
+              >
+                API
+              </button>
+            </div>
+
             <button
               onClick={() => {
                 setSelectedOrderForCiscoTracking(null);
@@ -564,6 +680,29 @@ export function BoTrackingView() {
             </div>
           </div>
         </div>
+
+        {fedexBanner && (
+          <div
+            className={`mt-3 px-3.5 py-2 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+              fedexBanner.type === 'info'
+                ? 'bg-purple-950/40 border-purple-500/40 text-purple-200'
+                : 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Truck className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+              <span>{fedexBanner.text}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFedexBanner(null)}
+              className="text-slate-400 hover:text-white cursor-pointer"
+              aria-label="Cerrar aviso FedEx"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* KPI Summary Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5 sm:gap-3 mt-5">
@@ -809,21 +948,55 @@ export function BoTrackingView() {
                               )}
                             </div>
 
-                            {/* Courier / FedEx Tracking Direct Button */}
+                            {/* Courier / FedEx Tracking Direct Button + Live Auto-Sync */}
                             {order.courierTrackingNumber && sanitizeSafeHttpUrl(order.courierTrackingUrl) ? (
-                              <div className="mb-2.5">
-                                <a
-                                  href={sanitizeSafeHttpUrl(order.courierTrackingUrl)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="w-full inline-flex items-center justify-center space-x-1.5 px-2.5 py-1.5 bg-purple-950/50 hover:bg-purple-900/70 text-purple-300 border border-purple-700/50 rounded-lg text-[10px] font-bold transition-colors"
-                                  title="Ver seguimiento en tiempo real en la web del courier"
-                                >
-                                  <Truck className="w-3 h-3 text-purple-400" />
-                                  <span>{order.courier}: {order.courierTrackingNumber}</span>
-                                  <ExternalLink className="w-2.5 h-2.5 text-purple-400 ml-0.5" />
-                                </a>
-                              </div>
+                              (() => {
+                                const fedexLive =
+                                  (order.courier || 'FedEx') === 'FedEx'
+                                    ? fedexLiveStatuses[normalizeFedExTrackingNumber(order.courierTrackingNumber)]
+                                    : undefined;
+                                return (
+                                  <div className="mb-2.5 space-y-1">
+                                    <div className="flex items-center gap-1">
+                                      <a
+                                        href={sanitizeSafeHttpUrl(order.courierTrackingUrl)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex-1 inline-flex items-center justify-center space-x-1.5 px-2.5 py-1.5 bg-purple-950/50 hover:bg-purple-900/70 text-purple-300 border border-purple-700/50 rounded-lg text-[10px] font-bold transition-colors"
+                                        title="Ver seguimiento en tiempo real en la web del courier"
+                                      >
+                                        <Truck className="w-3 h-3 text-purple-400" />
+                                        <span>{order.courier}: {order.courierTrackingNumber}</span>
+                                        <ExternalLink className="w-2.5 h-2.5 text-purple-400 ml-0.5" />
+                                      </a>
+                                      {(order.courier || 'FedEx') === 'FedEx' && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSyncFedEx({ onlyOrderId: order.id })}
+                                          disabled={isSyncingFedEx}
+                                          className="p-1.5 bg-purple-950/60 hover:bg-purple-800/70 text-purple-200 border border-purple-700/50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                                          title="Actualizar estado FedEx directamente en segundo plano"
+                                        >
+                                          <RefreshCw className={`w-3 h-3 ${isSyncingFedEx ? 'animate-spin' : ''}`} />
+                                        </button>
+                                      )}
+                                    </div>
+                                    {fedexLive && fedexLive.found && (
+                                      <div className="px-2 py-1 rounded-lg bg-slate-950/80 border border-purple-500/30 text-[10px] text-purple-200 flex items-center justify-between gap-1.5">
+                                        <span className="truncate font-semibold">
+                                          📍 {fedexLive.statusDescription}
+                                          {fedexLive.locationLabel ? ` • ${fedexLive.locationLabel}` : ''}
+                                        </span>
+                                        {fedexLive.estimatedDeliveryDate && (
+                                          <span className="text-[9px] font-mono text-emerald-300 shrink-0">
+                                            ETA {fedexLive.estimatedDeliveryDate}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()
                             ) : (
                               <button
                                 onClick={() => setSelectedOrderForEdit(order)}
@@ -1000,15 +1173,42 @@ export function BoTrackingView() {
                         </td>
                         <td className={cellPaddingClass}>
                           {order.courierTrackingNumber && sanitizeSafeHttpUrl(order.courierTrackingUrl) ? (
-                            <a
-                              href={sanitizeSafeHttpUrl(order.courierTrackingUrl)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center space-x-1 text-purple-300 hover:text-purple-200 font-mono font-bold"
-                            >
-                              <span>{order.courier}: {order.courierTrackingNumber}</span>
-                              <ExternalLink className="w-3 h-3 text-purple-400" />
-                            </a>
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5">
+                                <a
+                                  href={sanitizeSafeHttpUrl(order.courierTrackingUrl)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center space-x-1 text-purple-300 hover:text-purple-200 font-mono font-bold"
+                                >
+                                  <span>{order.courier}: {order.courierTrackingNumber}</span>
+                                  <ExternalLink className="w-3 h-3 text-purple-400" />
+                                </a>
+                                {(order.courier || 'FedEx') === 'FedEx' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSyncFedEx({ onlyOrderId: order.id })}
+                                    disabled={isSyncingFedEx}
+                                    className="p-1 rounded bg-purple-950/60 hover:bg-purple-800/80 text-purple-300 border border-purple-700/40 cursor-pointer"
+                                    title="Actualizar estado FedEx en vivo"
+                                  >
+                                    <RefreshCw className={`w-3 h-3 ${isSyncingFedEx ? 'animate-spin' : ''}`} />
+                                  </button>
+                                )}
+                              </div>
+                              {(() => {
+                                const live =
+                                  (order.courier || 'FedEx') === 'FedEx'
+                                    ? fedexLiveStatuses[normalizeFedExTrackingNumber(order.courierTrackingNumber)]
+                                    : undefined;
+                                return live && live.found ? (
+                                  <div className="text-[10px] text-purple-300/90 truncate max-w-[240px]">
+                                    📍 {live.statusDescription}
+                                    {live.locationLabel ? ` (${live.locationLabel})` : ''}
+                                  </div>
+                                ) : null;
+                              })()}
+                            </div>
                           ) : (
                             <button
                               onClick={() => setSelectedOrderForEdit(order)}
@@ -1552,6 +1752,16 @@ export function BoTrackingView() {
         }}
         currentRecord={selectedOrderForCiscoTracking}
         onApplyTracking={handleApplyCiscoTracking}
+      />
+
+      {/* MODAL 5: Configuración y Sincronización Automática FedEx Track API v1 */}
+      <FedExApiConfigModal
+        isOpen={isFedExModalOpen}
+        onClose={() => setIsFedExModalOpen(false)}
+        activeFedExOrdersCount={activeFedExGuidesCount}
+        onSyncNow={async () => {
+          await handleSyncFedEx();
+        }}
       />
     </div>
   );

@@ -6,6 +6,13 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.32.0] - 2026-11-27
+
+### Agregado (Tracking BO — Integración Automática FedEx Track API v1)
+- **Endpoint Edge FedEx ([fedex-track.ts](functions/api/fedex-track.ts) & [edgeAuth.ts](functions/lib/edgeAuth.ts)):** Proxy Edge autenticado (`POST /api/fedex-track`) que consulta la API oficial **FedEx Track API v1** vía OAuth2 (con caché de token en Cloudflare Edge Cache y lotes de hasta 30 guías), consumiendo `FEDEX_API_KEY` / `FEDEX_SECRET_KEY` desde Cloudflare Secrets o credenciales de sesión.
+- **Motor de Auto-Sincronización y Mapeo Logístico ([fedexTrackingService.ts](src/modules/bo/fedexTrackingService.ts)):** Mapea automáticamente eventos reales de FedEx (`SHIPPED_COURIER`, `MIAMI_FORWARDER`, `CUSTOMS_CLEARANCE`, `INTCOMEX_WAREHOUSE` en Chile), actualiza fechas `ETA` / `actualDeliveryDate` sin retroceder etapas manualmente avanzadas y agrega hitos a la bitácora sin duplicar entradas (`[FedEx:eventKey]`).
+- **UI en Tracking BO ([BoTrackingView.tsx](src/modules/bo/BoTrackingView.tsx) & [FedExApiConfigModal.tsx](src/modules/bo/FedExApiConfigModal.tsx)):** Botón **`Sync FedEx`** en cabecera y por cada orden, caché de ubicación/checkpoint en tiempo real en tarjetas Kanban/Tabla, modal guiado para vincular credenciales de `developer.fedex.com` y auto-polling cada 15 minutos al mantener abierto Tracking BO.
+
 ## [v2.31.0] - 2026-11-27
 
 ### Agregado (Preventa IA — Comparativa Multi-Configuración y Multi-Marca)

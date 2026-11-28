@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.32.0',
+    date: '2026-11-27',
+    commit: 'feat-fedex-track-api-edge-autosync',
+    title: 'Tracking BO: Conexión Directa y Auto-Actualización con FedEx Track API v1',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Proxy Edge FedEx (/api/fedex-track): Conexión OAuth2 oficial con FedEx Track API v1 en lotes de hasta 30 guías sin abrir fedex.com, compatible con Cloudflare Secrets (FEDEX_API_KEY / FEDEX_SECRET_KEY) o credenciales desde la UI.',
+      'Avance Automático de Etapas & ETA (fedexTrackingService.ts): Mapea tránsito internacional, Hub Miami, Aduana Chile y recepción en Bodega Intcomex sin retroceder etapas ni duplicar notas en bitácora.',
+      'Auto-Sync en Tracking BO (BoTrackingView.tsx): Botón Sync FedEx en barra y tarjetas, badge con ubicación/estado/ETA en tiempo real y actualización automática cada 15 min.'
+    ]
+  },
+  {
     version: '2.31.0',
     date: '2026-11-27',
     commit: 'feat-preventa-ia-multi-config-and-multi-brand-homologation',
     title: 'Preventa IA: Tablas Multi-Configuración Cisco y Benchmark Multi-Marca',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Tabla vs. Configuraciones Cisco Establecidas (HomologationComparisonCard.tsx): Al ingresar una marca distinta a Cisco, compara el equipo solicitado contra todas las configuraciones Cisco establecidas (Recomendada, Alternativas, Fast Track, GPL y %) con selección directa en 1 clic.',
