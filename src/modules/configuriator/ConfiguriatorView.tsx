@@ -2384,6 +2384,7 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                           <HomologationComparisonCard
                             comparison={generateHomologationComparison({
                               rawCompetitorText: item.competitorModel || item.rawMentionedSku,
+                              competitorBrand: item.competitorBrand,
                               selectedCiscoSku: effectiveHardwareSku,
                               homologationPct:
                                 itemProposals.find(
@@ -2391,7 +2392,27 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
                                     p.recommendedSku.toUpperCase() === effectiveHardwareSku.toUpperCase() ||
                                     p.recommendedSku.toUpperCase() === activeSku.toUpperCase()
                                 )?.compatibilityPct ?? 100,
+                              establishedProposals: itemProposals.map((p) => ({
+                                sku: p.recommendedSku,
+                                title: p.title,
+                                strategyTag: p.strategyTag,
+                                homologationPct: p.compatibilityPct,
+                                homologationLabel: p.homologationLabel,
+                                unitGplUsd: p.unitSolutionGplUsd,
+                                totalGplUsd: p.totalSolutionGplUsd,
+                                discountPct: isPureGplMode
+                                  ? 0
+                                  : (p.bestDiscountPct ?? p.estimatedDiscountPct),
+                                isFastTrackEligible: p.isFastTrackEligible,
+                              })),
                             })}
+                            onSelectCiscoSku={(sku) =>
+                              updateParentItem(idx, {
+                                selectedEolAlternativeSku: sku,
+                                suggestedActiveSku: sku,
+                                keepOriginalSku: false,
+                              })
+                            }
                             initiallyExpanded={true}
                           />
                         </div>

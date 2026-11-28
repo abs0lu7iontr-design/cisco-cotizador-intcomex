@@ -1,12 +1,12 @@
 {
   "name": "cisco-automated",
-  "version": "2.30.1",
-  "git_commit": "006e718",
+  "version": "2.31.0",
+  "git_commit": "01f3bee",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-28T01:45:14.175Z",
-  "release_notes": "feat(v2.30.0): storage scalability, paginated IndexedDB/Desktop SQLite, size-aware backups and project-scoped offline queue",
+  "build_timestamp": "2026-11-28T01:51:39.850Z",
+  "release_notes": "fix(v2.30.1): remove duplicate preset emojis and duplicate reset button in Forecast",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop",
-  "desktop_bundle_sha256": "351d88bab21b725fade6c58f979bf7278708115351fee614b33687b3a5888373"
+  "desktop_bundle_sha256": "217f4c0af230be2d0043633f2667e7b9e23d3250c07dfef47ed8772a8c6590f4"
 }

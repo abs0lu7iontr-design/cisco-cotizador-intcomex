@@ -6,6 +6,15 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.31.0] - 2026-11-27
+
+### Agregado (Preventa IA — Comparativa Multi-Configuración y Multi-Marca)
+- **Motor Multi-Configuración y Benchmark Multi-Marca ([competitorHomologationRules.ts](src/modules/configuriator/competitorHomologationRules.ts)):**
+  - `generateHomologationComparison` ahora auto-resuelve la marca real desde el texto/SKU (`detectCompetitorEquipment`) y construye automáticamente:
+    1. **`ciscoConfigurations`:** Tabla comparativa entre la marca solicitada y **todas las configuraciones Cisco establecidas** (propuestas activas/recomendadas/alternativas con % de homologación, puertos, uplinks, PoE, stack, valor GPL y descuento).
+    2. **`peerBrandsMatrix`:** Benchmark multi-marca del mismo segmento enfrentando la marca solicitada contra **Cisco 2026** y **las demás marcas equivalentes del catálogo** (Aruba/HPE, Huawei, Fortinet, Dell, Juniper, Ubiquiti, MikroTik).
+- **Tarjetas y Tablas en UI ([HomologationComparisonCard.tsx](src/modules/configuriator/components/HomologationComparisonCard.tsx) & [ConfiguriatorView.tsx](src/modules/configuriator/ConfiguriatorView.tsx)):** Renderizadas ambas tablas adicionales dentro de Preventa IA con botón directo para seleccionar/aplicar cualquier configuración Cisco establecida y exportación completa al portapapeles (`Copiar Comparativa`).
+
 ## [v2.30.1] - 2026-11-27
 
 ### Corregido (UI Forecast & Presets de Vistas)

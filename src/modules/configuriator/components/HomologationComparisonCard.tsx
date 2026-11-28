@@ -29,20 +29,62 @@ export interface HomologationComparisonCardProps {
   comparison: HomologationComparisonResult;
   initiallyExpanded?: boolean;
   className?: string;
+  onSelectCiscoSku?: (sku: string) => void;
 }
 
 export const HomologationComparisonCard: React.FC<HomologationComparisonCardProps> = ({
   comparison,
   initiallyExpanded = true,
   className = '',
+  onSelectCiscoSku,
 }) => {
   const [isExpanded, setIsExpanded] = useState<boolean>(initiallyExpanded);
   const [copied, setCopied] = useState<boolean>(false);
 
-  const { competitor, cisco, homologationPct, verdict, specRows, keyAdvantages } = comparison;
+  const {
+    competitor,
+    cisco,
+    homologationPct,
+    verdict,
+    specRows,
+    keyAdvantages,
+    ciscoConfigurations = [],
+    peerBrandsMatrix = [],
+  } = comparison;
 
   const handleCopyComparison = (e: React.MouseEvent) => {
     e.stopPropagation();
+
+    const configsText =
+      ciscoConfigurations.length > 0
+        ? `\n\n--------------------------------------------------------------------------------
+COMPARATIVA CONTRA CONFIGURACIONES CISCO ESTABLECIDAS (${ciscoConfigurations.length}):
+--------------------------------------------------------------------------------
+${ciscoConfigurations
+  .map(
+    (c, idx) =>
+      `${idx + 1}. ${c.sku} [${c.strategyTag}${c.isActiveSelected ? ' • ACTIVA' : ''}] -> ${c.homologationPct}% Homologación
+   • Puertos/Uplinks: ${c.ports} | ${c.uplinks}
+   • PoE/Stack: ${c.poeBudget} | ${c.stacking}${
+     c.unitGplUsd ? `\n   • Valor GPL Unit: $${c.unitGplUsd.toLocaleString('en-US', { minimumFractionDigits: 2 })} | Mejor Dcto: ${c.discountPct ?? 0}%` : ''
+   }`
+  )
+  .join('\n')}`
+        : '';
+
+    const peerText =
+      peerBrandsMatrix.length > 2
+        ? `\n\n--------------------------------------------------------------------------------
+BENCHMARK MULTI-MARCA DEL SEGMENTO (${peerBrandsMatrix.length} FABRICANTES):
+--------------------------------------------------------------------------------
+${peerBrandsMatrix
+  .map(
+    (p) =>
+      `• [${p.brand}] ${p.model} (${p.homologationPct}% Homologación vs ${p.equivalentCiscoSku})
+  Puertos: ${p.ports} | Uplinks: ${p.uplinks} | PoE: ${p.poeBudget} | Garantía: ${p.warrantySupport}`
+  )
+  .join('\n')}`
+        : '';
 
     const textReport = `================================================================================
 COMPARATIVA DE HOMOLOGACIÓN TÉCNICA PREVENTA (CISCO AUTOMATED)
@@ -69,7 +111,7 @@ ${specRows
    • Cisco 2026: ${row.ciscoValue}
    • Cumplimiento: ${row.statusLabel}`
   )
-  .join('\n\n')}
+  .join('\n\n')}${configsText}${peerText}
 
 --------------------------------------------------------------------------------
 DICTAMEN Y VEREDICTO PREVENTA IA:
@@ -269,6 +311,252 @@ ${keyAdvantages.map((adv) => `• ${adv}`).join('\n')}
               </tbody>
             </table>
           </div>
+
+          {/* Tabla 2: Comparativa frente a Configuraciones Cisco Establecidas */}
+          {ciscoConfigurations.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>
+                    Comparativa vs. Configuraciones Cisco Establecidas ({ciscoConfigurations.length})
+                  </span>
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  Evaluación de {competitor.brand} frente a cada perfil homologado disponible
+                </span>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-indigo-500/30">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-900/95 text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-800">
+                    <tr>
+                      <th className="py-2.5 px-3">Configuración Cisco</th>
+                      <th className="py-2.5 px-3 text-center">% Homol.</th>
+                      <th className="py-2.5 px-3">Puertos & Uplinks</th>
+                      <th className="py-2.5 px-3">PoE & Apilamiento</th>
+                      <th className="py-2.5 px-3">Gestión & Norma</th>
+                      <th className="py-2.5 px-3 text-right">GPL / Dcto</th>
+                      {onSelectCiscoSku && <th className="py-2.5 px-3 text-center">Acción</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 bg-slate-950/70">
+                    <tr className="bg-rose-950/20">
+                      <td className="py-2 px-3">
+                        <div className="text-[10px] font-black uppercase text-rose-300">
+                          Base Solicitada ({competitor.brand})
+                        </div>
+                        <div className="font-mono text-[11px] font-bold text-white">
+                          {competitor.model}
+                        </div>
+                      </td>
+                      <td className="py-2 px-3 text-center">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950/80 text-rose-200 border border-rose-700/50">
+                          Ref. 100%
+                        </span>
+                      </td>
+                      <td className="py-2 px-3 font-mono text-[11px] text-rose-200">
+                        <div>{competitor.ports}</div>
+                        <div className="text-[10px] text-slate-400">{competitor.uplinks}</div>
+                      </td>
+                      <td className="py-2 px-3 text-[11px] text-slate-300">
+                        <div>{competitor.poeBudget}</div>
+                        <div className="text-[10px] text-slate-400">{competitor.stacking}</div>
+                      </td>
+                      <td className="py-2 px-3 text-[11px] text-slate-300">
+                        <div>{competitor.cloudManagement}</div>
+                        <div className="text-[10px] text-slate-400">{competitor.powerSupply}</div>
+                      </td>
+                      <td className="py-2 px-3 text-right text-[10px] text-slate-500 font-mono">
+                        Equipo Rival
+                      </td>
+                      {onSelectCiscoSku && (
+                        <td className="py-2 px-3 text-center text-[10px] text-slate-500">—</td>
+                      )}
+                    </tr>
+
+                    {ciscoConfigurations.map((cfg) => (
+                      <tr
+                        key={cfg.sku}
+                        className={`transition-colors ${
+                          cfg.isActiveSelected
+                            ? 'bg-emerald-950/25 hover:bg-emerald-950/35'
+                            : 'hover:bg-slate-900/50'
+                        }`}
+                      >
+                        <td className="py-2 px-3">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono text-[11px] font-black text-emerald-300">
+                              {cfg.sku}
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-700/40">
+                              {cfg.strategyTag}
+                            </span>
+                            {cfg.isFastTrackEligible && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-950 text-amber-300 border border-amber-600/40">
+                                ⚡ Fast Track
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-slate-400 truncate max-w-[230px]">
+                            {cfg.title}
+                          </div>
+                        </td>
+                        <td className="py-2 px-3 text-center whitespace-nowrap">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                              cfg.homologationPct >= 100
+                                ? 'bg-emerald-950/90 text-emerald-300 border border-emerald-600/50'
+                                : 'bg-cyan-950/90 text-cyan-300 border border-cyan-600/50'
+                            }`}
+                          >
+                            {cfg.homologationPct}%
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 font-mono text-[11px] text-slate-200">
+                          <div>{cfg.ports}</div>
+                          <div className="text-[10px] text-emerald-300/90">{cfg.uplinks}</div>
+                        </td>
+                        <td className="py-2 px-3 text-[11px] text-slate-200">
+                          <div>{cfg.poeBudget}</div>
+                          <div className="text-[10px] text-slate-400">{cfg.stacking}</div>
+                        </td>
+                        <td className="py-2 px-3 text-[11px] text-slate-300">
+                          <div>{cfg.cloudManagement}</div>
+                          <div className="text-[10px] text-slate-400">{cfg.powerSupply}</div>
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono text-[11px] whitespace-nowrap">
+                          {cfg.unitGplUsd && cfg.unitGplUsd > 0 ? (
+                            <div>
+                              <div className="text-white font-bold">
+                                ${cfg.unitGplUsd.toLocaleString('en-US', { maximumFractionDigits: 0 })} GPL
+                              </div>
+                              {typeof cfg.discountPct === 'number' && cfg.discountPct > 0 && (
+                                <div className="text-[10px] text-emerald-400">
+                                  -{cfg.discountPct}% Dcto
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-500">Catálogo 2026</span>
+                          )}
+                        </td>
+                        {onSelectCiscoSku && (
+                          <td className="py-2 px-3 text-center whitespace-nowrap">
+                            {cfg.isActiveSelected ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black bg-emerald-600/25 text-emerald-300 border border-emerald-500/50">
+                                <Check className="w-3 h-3" /> Activa
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => onSelectCiscoSku(cfg.sku)}
+                                className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors cursor-pointer"
+                              >
+                                Usar
+                              </button>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Tabla 3: Benchmark Multi-Marca frente a las demás marcas equivalentes */}
+          {peerBrandsMatrix.length > 2 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-sky-300 flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-sky-400" />
+                  <span>
+                    Benchmark Multi-Marca del Segmento ({competitor.brand} vs. Cisco y demás Marcas)
+                  </span>
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  {peerBrandsMatrix.length} fabricantes comparados a nivel técnico y de homologación
+                </span>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-sky-500/30">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-900/95 text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-800">
+                    <tr>
+                      <th className="py-2.5 px-3">Marca & Modelo</th>
+                      <th className="py-2.5 px-3 text-center">Homol. Cisco</th>
+                      <th className="py-2.5 px-3">Puertos & Uplinks</th>
+                      <th className="py-2.5 px-3">PoE Budget</th>
+                      <th className="py-2.5 px-3">Enrutamiento & Stack</th>
+                      <th className="py-2.5 px-3">Gestión Cloud & Garantía</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 bg-slate-950/70">
+                    {peerBrandsMatrix.map((peer, pIdx) => (
+                      <tr
+                        key={`${peer.brand}-${pIdx}`}
+                        className={
+                          peer.role === 'requested'
+                            ? 'bg-rose-950/20'
+                            : peer.role === 'cisco_reference'
+                              ? 'bg-emerald-950/25'
+                              : 'hover:bg-slate-900/40'
+                        }
+                      >
+                        <td className="py-2 px-3">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border ${
+                                peer.role === 'requested'
+                                  ? 'bg-rose-950 text-rose-300 border-rose-700/50'
+                                  : peer.role === 'cisco_reference'
+                                    ? 'bg-emerald-950 text-emerald-300 border-emerald-600/50'
+                                    : 'bg-slate-800 text-sky-300 border-slate-700'
+                              }`}
+                            >
+                              {peer.brand}
+                            </span>
+                            {peer.role === 'requested' && (
+                              <span className="text-[9px] font-bold text-rose-300">Solicitada</span>
+                            )}
+                            {peer.role === 'cisco_reference' && (
+                              <span className="text-[9px] font-bold text-emerald-300">Homologada</span>
+                            )}
+                          </div>
+                          <div className="font-mono text-[11px] font-semibold text-slate-200 mt-0.5">
+                            {peer.model}
+                          </div>
+                        </td>
+                        <td className="py-2 px-3 text-center whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-950 text-indigo-300 border border-indigo-700/40">
+                            {peer.homologationPct}%
+                          </span>
+                          <div className="text-[9px] font-mono text-slate-400 mt-0.5">
+                            &rarr; {peer.equivalentCiscoSku}
+                          </div>
+                        </td>
+                        <td className="py-2 px-3 font-mono text-[11px] text-slate-300">
+                          <div>{peer.ports}</div>
+                          <div className="text-[10px] text-slate-400">{peer.uplinks}</div>
+                        </td>
+                        <td className="py-2 px-3 text-[11px] text-slate-300">{peer.poeBudget}</td>
+                        <td className="py-2 px-3 text-[11px] text-slate-300">
+                          <div>{peer.layerRouting}</div>
+                          <div className="text-[10px] text-slate-400">{peer.stacking}</div>
+                        </td>
+                        <td className="py-2 px-3 text-[11px] text-slate-300">
+                          <div>{peer.cloudManagement}</div>
+                          <div className="text-[10px] text-slate-400">{peer.warrantySupport}</div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Veredicto de Homologación Preventa IA */}
           <div className="p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/30 via-slate-900/70 to-indigo-950/30 border border-emerald-500/30 flex items-start space-x-3">

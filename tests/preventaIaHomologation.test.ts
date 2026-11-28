@@ -156,4 +156,68 @@ assert.ok(hasChileCord, 'Debe incluir cable Norma Chile CAB-ACA');
 
 console.log('  ✅ Test 4: Extracción en Preventa IA de equipo rival y ensamblado Madre-Hijo completada.');
 
+// ----------------------------------------------------------------------------
+// Test 5: Comparativa Multi-Configuración Cisco y Multi-Marca Equivalente
+// ----------------------------------------------------------------------------
+console.log('  Testing Multi-Config & Multi-Brand Benchmark Matrix...');
+
+const autoMatrix = generateHomologationComparison({
+  rawCompetitorText: 'JL726A',
+  selectedCiscoSku: 'C9200L-24P-4X-E',
+  establishedProposals: [
+    {
+      sku: 'C9200L-24P-4X-E',
+      title: 'Catalyst 9200L 24P PoE+ 4x10G',
+      strategyTag: 'Óptima Recomendada',
+      homologationPct: 100,
+      unitGplUsd: 4200,
+      discountPct: 50,
+      isFastTrackEligible: true,
+    },
+    {
+      sku: 'C1300-24P-4X',
+      title: 'Catalyst 1300 24P PoE+ 4x10G',
+      strategyTag: 'Económica PyME',
+      homologationPct: 96,
+      unitGplUsd: 2100,
+      discountPct: 43,
+    },
+  ],
+});
+
+assert.equal(
+  autoMatrix.competitor.brand,
+  'Aruba / HPE',
+  'Debe auto-resolver la marca desde el texto sin requerir catalogEntry explícito'
+);
+assert.ok(
+  autoMatrix.ciscoConfigurations.length >= 3,
+  'Debe comparar contra las configuraciones Cisco establecidas y alternativas del catálogo'
+);
+assert.ok(
+  autoMatrix.ciscoConfigurations.some((c) => c.sku === 'C9200L-24P-4X-E' && c.isActiveSelected),
+  'Debe marcar como activa la configuración seleccionada'
+);
+assert.ok(
+  autoMatrix.ciscoConfigurations.some((c) => c.sku === 'C1300-24P-4X' && c.unitGplUsd === 2100),
+  'Debe incluir las configuraciones ya establecidas con GPL y descuento'
+);
+
+assert.ok(
+  autoMatrix.peerBrandsMatrix.length >= 5,
+  'Debe comparar la marca solicitada contra Cisco y múltiples marcas equivalentes (Huawei, Fortinet, Dell, Juniper, etc.)'
+);
+assert.equal(autoMatrix.peerBrandsMatrix[0].role, 'requested');
+assert.equal(autoMatrix.peerBrandsMatrix[1].role, 'cisco_reference');
+assert.ok(
+  autoMatrix.peerBrandsMatrix.some((p) => p.role === 'peer_competitor' && p.brand === 'Huawei'),
+  'Debe incluir benchmark contra Huawei equivalente'
+);
+assert.ok(
+  autoMatrix.peerBrandsMatrix.some((p) => p.role === 'peer_competitor' && p.brand === 'Fortinet'),
+  'Debe incluir benchmark contra Fortinet equivalente'
+);
+
+console.log('  ✅ Test 5: Comparativas Multi-Configuración y Multi-Marca validadas al 100%.');
+
 console.log('\n🎉 ¡TODAS LAS PRUEBAS DE PREVENTA IA Y COMPARATIVA DE HOMOLOGACIÓN PASARON AL 100%!\n');

@@ -15,11 +15,23 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.31.0',
+    date: '2026-11-27',
+    commit: 'feat-preventa-ia-multi-config-and-multi-brand-homologation',
+    title: 'Preventa IA: Tablas Multi-Configuración Cisco y Benchmark Multi-Marca',
+    status: 'CURRENT',
+    type: 'minor',
+    highlights: [
+      'Tabla vs. Configuraciones Cisco Establecidas (HomologationComparisonCard.tsx): Al ingresar una marca distinta a Cisco, compara el equipo solicitado contra todas las configuraciones Cisco establecidas (Recomendada, Alternativas, Fast Track, GPL y %) con selección directa en 1 clic.',
+      'Benchmark Multi-Marca del Segmento (competitorHomologationRules.ts): Compara automáticamente la marca ingresada contra Cisco 2026 y las demás marcas equivalentes del catálogo (Aruba/HPE, Huawei, Fortinet, Dell, Juniper, Ubiquiti, MikroTik) y las incluye al copiar el informe.'
+    ]
+  },
+  {
     version: '2.30.1',
     date: '2026-11-27',
     commit: 'fix-forecast-duplicate-preset-and-toolbar-icons',
     title: 'Limpieza Visual en Forecast & Vistas Guardadas (Sin Iconos Duplicados)',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Presets de Vistas (filterPresetsManager.ts): Eliminados los emojis prefijados redundantes en Forecast, Pipeline y Estimates para mostrar únicamente el icono vectorial Lucide de cada vista en FilterPresetsBar.',

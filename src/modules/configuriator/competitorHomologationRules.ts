@@ -46,6 +46,53 @@ export interface HomologationSpecComparisonRow {
   notes?: string;
 }
 
+export interface EstablishedConfigInput {
+  sku: string;
+  title?: string;
+  strategyTag?: string;
+  homologationPct?: number;
+  homologationLabel?: string;
+  unitGplUsd?: number;
+  totalGplUsd?: number;
+  discountPct?: number;
+  isFastTrackEligible?: boolean;
+}
+
+export interface CiscoConfigMatrixRow {
+  sku: string;
+  title: string;
+  strategyTag: string;
+  isActiveSelected: boolean;
+  homologationPct: number;
+  homologationLabel: string;
+  ports: string;
+  uplinks: string;
+  poeBudget: string;
+  layerRouting: string;
+  stacking: string;
+  cloudManagement: string;
+  powerSupply: string;
+  unitGplUsd?: number;
+  totalGplUsd?: number;
+  discountPct?: number;
+  isFastTrackEligible?: boolean;
+}
+
+export interface PeerBrandBenchmarkRow {
+  brand: string;
+  model: string;
+  role: 'requested' | 'cisco_reference' | 'peer_competitor';
+  equivalentCiscoSku: string;
+  homologationPct: number;
+  ports: string;
+  uplinks: string;
+  poeBudget: string;
+  layerRouting: string;
+  stacking: string;
+  cloudManagement: string;
+  warrantySupport: string;
+}
+
 export interface HomologationComparisonResult {
   competitor: CompetitorSpecDetail;
   cisco: CiscoHomologatedSpecDetail;
@@ -54,6 +101,8 @@ export interface HomologationComparisonResult {
   verdict: string;
   specRows: HomologationSpecComparisonRow[];
   keyAdvantages: string[];
+  ciscoConfigurations: CiscoConfigMatrixRow[];
+  peerBrandsMatrix: PeerBrandBenchmarkRow[];
 }
 
 export interface CompetitorCatalogEntry {
@@ -995,68 +1044,182 @@ export function detectCompetitorEquipment(textOrSku: string): {
 }
 
 /**
+ * Resuelve las especificaciones técnicas oficiales de un SKU Cisco 2026
+ * con fallback determinista según nomenclatura de familia/puertos/uplinks.
+ */
+export function resolveCiscoSpecDetail(sku: string): CiscoHomologatedSpecDetail {
+  const cleanCiscoSku = (sku || '').includes(':') ? (sku || '').split(':')[1] : (sku || '').trim();
+  const upperSku = cleanCiscoSku.toUpperCase();
+
+  const fromDb = CISCO_SPECS_DATABASE[cleanCiscoSku] || CISCO_SPECS_DATABASE[sku];
+  if (fromDb) return fromDb;
+
+  const isFirewall = upperSku.startsWith('FPR') || upperSku.startsWith('MX');
+  const isAp = upperSku.startsWith('CW') || upperSku.startsWith('MR') || upperSku.startsWith('C91');
+  if (isFirewall) {
+    return {
+      sku: cleanCiscoSku,
+      displayName: `Cisco Security NGFW (${cleanCiscoSku})`,
+      category: 'Next-Generation Firewall / SD-WAN Cisco 2026',
+      ports: 'Interfaces RJ45/SFP conmutables WAN/LAN/DMZ',
+      uplinks: 'Uplinks dedicados 1G/10G SFP+ según chasis',
+      poeBudget: upperSku.startsWith('MX') || upperSku.includes('1010') ? '2x Puertos PoE+ integrados' : 'Sin PoE integrado',
+      layerRouting: 'Snort 3 IPS, SD-WAN Seguro, AVC & URL Filtering',
+      performance: 'Inspection NGFW Multi-Gigabit con SSL Decryption',
+      stacking: 'Clustering Activo/Espera HA con failover transparente',
+      cloudManagement: upperSku.startsWith('MX') ? 'Meraki Dashboard Zero-Touch' : 'Cisco Defense Orchestrator (CDO) / FMC',
+      powerSupply: 'Fuente certificada con cable Norma Chile (CAB-ACA)',
+      warrantySupport: 'Garantía Cisco + SmartNet Total Care 8x5xNBD',
+    };
+  }
+  if (isAp) {
+    return {
+      sku: cleanCiscoSku,
+      displayName: `Cisco Enterprise Wireless (${cleanCiscoSku})`,
+      category: 'Access Point Enterprise Wi-Fi 6 / 6E Cisco 2026',
+      ports: '1x 2.5G Multigigabit RJ45 PoE+',
+      uplinks: 'Radios MU-MIMO Dual/Tri-Band con radio BLE/IoT',
+      poeBudget: 'Consumo PoE: 16W–25W (802.3at PoE+)',
+      layerRouting: 'Dual Management: Meraki Dashboard o Catalyst Center',
+      performance: 'Throughput inalámbrico Multi-Gigabit alta densidad',
+      stacking: 'Agrupamiento automático en controlador Cloud/Premisa',
+      cloudManagement: 'Meraki Dashboard & Catalyst Center con analítica RF',
+      powerSupply: 'Alimentación PoE+ 802.3at o Inyector opcional',
+      warrantySupport: 'Garantía Limitada de por Vida Cisco',
+    };
+  }
+
+  const is48 = upperSku.includes('48');
+  const is10G = upperSku.includes('4X') || upperSku.includes('8X') || upperSku.includes('9300');
+  const isModular9300 = upperSku.includes('9300');
+  const isSmallBiz = upperSku.startsWith('C1200') || upperSku.startsWith('C1300');
+  const isMeraki = upperSku.startsWith('MS');
+
+  return {
+    sku: cleanCiscoSku,
+    displayName: `Cisco Enterprise Suite (${cleanCiscoSku})`,
+    category: isSmallBiz
+      ? 'Switch Administrado Inteligente Catalyst 1200/1300'
+      : isMeraki
+        ? 'Switch Administrado 100% Cloud Cisco Meraki'
+        : 'Equipo Oficial Cisco Enterprise 2026 (Cero EOL)',
+    ports: is48 ? '48x 10/100/1000Base-T PoE+ (802.3at)' : '24x 10/100/1000Base-T PoE+ (802.3at)',
+    uplinks: is10G ? '4x 10G SFP+ Uplinks Alta Velocidad' : '4x 1G SFP Uplinks Fijos',
+    poeBudget: isModular9300
+      ? 'Hasta 715W PoE+ (Doble PSU Modular Redundante)'
+      : '370W PoE+ (802.3at Class 4)',
+    layerRouting: isSmallBiz
+      ? 'Layer 3 Estático e Inter-VLAN Routing'
+      : isMeraki
+        ? 'Layer 2/L3 Cloud Switching con visibilidad L7'
+        : 'Cisco IOS-XE & DNA Essentials (OSPF Routed Access)',
+    performance: is48 ? '176 Gbps / 130.95 Mpps' : '128 Gbps / 95.23 Mpps',
+    stacking: isModular9300
+      ? 'Cisco StackWise-320 / StackWise-480'
+      : isMeraki
+        ? 'Virtual Cloud Stacking Meraki Dashboard'
+        : 'Cisco StackWise-80 (hasta 8 switches a 80 Gbps)',
+    cloudManagement: isMeraki
+      ? 'Meraki Dashboard 100% Cloud Nativo'
+      : 'Cisco Catalyst Center & Monitoreo en la Nube Meraki Dashboard',
+    powerSupply: isSmallBiz
+      ? 'Fuente interna con Cable Norma Chile CAB-C13-IT'
+      : 'Fuente modular reemplazable en caliente con Cable Norma Chile (CAB-ACA)',
+    warrantySupport: 'Cisco Enhanced Limited Lifetime Warranty (E-LLW) + SmartNet Total Care',
+  };
+}
+
+function getHardwareSegmentBucket(skuOrCategory: string): 'FIREWALL' | 'AP' | 'CORE_L3' | 'SW_48_10G' | 'SW_48_1G' | 'SW_24_10G' | 'SW_24_1G' {
+  const u = (skuOrCategory || '').toUpperCase();
+  if (/(FPR|MX\d+|FORTIGATE|FG-|FIREWALL|NGFW|PA-|SRX)/.test(u)) return 'FIREWALL';
+  if (/(CW9|MR\d+|AP-|WIFI|ACCESS POINT|AIRENGINE)/.test(u)) return 'AP';
+  if (/(C9300-|6300M|S5731|CORE|DISTRIBUCI)/.test(u)) return 'CORE_L3';
+  const is48 = /\b48\b|48P|48G/.test(u);
+  const is10G = /4X|8X|SFP\+|10G|CRS328|EX2300|EX3400|S5735-L\d+P4X|N3024|N3224|FS-424|6200F|6100|2930F/.test(u);
+  if (is48) return is10G ? 'SW_48_10G' : 'SW_48_1G';
+  return is10G ? 'SW_24_10G' : 'SW_24_1G';
+}
+
+/**
  * Genera la comparativa técnica lado a lado de homologación entre un equipo
  * competidor y el SKU oficial Cisco 2026 seleccionado, evaluando los 10 criterios más
- * relevantes para certificar si está bien homologado.
+ * relevantes, además de matrices contra las configuraciones Cisco establecidas y
+ * demás marcas equivalentes del catálogo.
  */
 export function generateHomologationComparison(params: {
   rawCompetitorText?: string;
+  competitorBrand?: string;
   catalogEntry?: CompetitorCatalogEntry;
   selectedCiscoSku: string;
   homologationPct?: number;
+  establishedProposals?: EstablishedConfigInput[];
 }): HomologationComparisonResult {
-  const { rawCompetitorText, catalogEntry, selectedCiscoSku, homologationPct } = params;
+  const {
+    rawCompetitorText,
+    competitorBrand,
+    catalogEntry,
+    selectedCiscoSku,
+    homologationPct,
+    establishedProposals,
+  } = params;
+
+  const autoDetection =
+    !catalogEntry && rawCompetitorText ? detectCompetitorEquipment(rawCompetitorText) : undefined;
+  const effectiveCatalogEntry = catalogEntry || autoDetection?.catalogEntry;
 
   // 1. Resolver especificaciones del competidor
   let compSpec: CompetitorSpecDetail;
-  if (catalogEntry) {
-    compSpec = catalogEntry.specs;
+  if (effectiveCatalogEntry) {
+    compSpec = effectiveCatalogEntry.specs;
   } else {
     const raw = (rawCompetitorText || 'Equipo Competidor').trim();
+    const resolvedBrand =
+      (competitorBrand && competitorBrand.trim()) ||
+      autoDetection?.detectedBrand ||
+      'Marca Competidora';
     const has48 = /\b48\b/i.test(raw);
     const isPoe = !/\bsin\s+poe\b/i.test(raw);
     const is10G = /\b10\s*g\b|\bsfp\+/i.test(raw);
+    const isFw = /\b(?:firewall|ngfw|fortigate|fg-|pa-|srx)\b/i.test(raw);
+    const isAp = /\b(?:ap|access\s*point|wifi|wi-fi|unifi\s*u6|airengine)\b/i.test(raw);
     const ports = has48 ? '48x 10/100/1000Base-T' : '24x 10/100/1000Base-T';
 
     compSpec = {
-      brand: 'Marca Competidora',
+      brand: resolvedBrand,
       model: raw,
-      category: 'Switch de Acceso Empresarial',
-      ports: `${ports} ${isPoe ? 'PoE+ (802.3at)' : 'Solo Datos'}`,
-      uplinks: is10G ? '4x 10G SFP+ Uplinks' : '4x 1G SFP Uplinks',
-      poeBudget: isPoe ? '370W PoE+ (Estándar)' : '0W (No PoE)',
-      layerRouting: 'Layer 2 con Enrutamiento Estático L3',
-      performance: has48 ? '176 Gbps / 130 Mpps' : '128 Gbps / 95 Mpps',
-      stacking: 'Apilamiento por hardware / VSF',
+      category: isFw
+        ? 'Next-Generation Firewall (NGFW)'
+        : isAp
+          ? 'Access Point Empresarial Wi-Fi 6'
+          : 'Switch de Acceso Empresarial',
+      ports: isFw
+        ? 'Interfaces RJ45/SFP Multi-WAN/LAN'
+        : isAp
+          ? '1x RJ45 Gigabit / 2.5G PoE+'
+          : `${ports} ${isPoe ? 'PoE+ (802.3at)' : 'Solo Datos'}`,
+      uplinks: isFw
+        ? 'WAN/DMZ Multi-Puerto'
+        : isAp
+          ? 'Radio Dual MU-MIMO Wi-Fi 6'
+          : is10G
+            ? '4x 10G SFP+ Uplinks'
+            : '4x 1G SFP Uplinks',
+      poeBudget: isFw ? 'Según chasis / N/A' : isAp ? 'Consumo PoE+ (~15W-22W)' : isPoe ? '370W PoE+ (Estándar)' : '0W (No PoE)',
+      layerRouting: isFw ? 'NGFW + IPS + VPN SD-WAN' : 'Layer 2 con Enrutamiento Estático L3',
+      performance: isFw ? 'Throughput NGFW Multigigabit' : isAp ? '1.8 - 3.0 Gbps agregado' : has48 ? '176 Gbps / 130 Mpps' : '128 Gbps / 95 Mpps',
+      stacking: isFw ? 'HA Active/Standby' : 'Apilamiento por hardware / VSF',
       cloudManagement: 'Gestión Cloud / WebGUI / CLI',
       powerSupply: 'Fuente interna fija',
       warrantySupport: 'Garantía Estándar del Fabricante',
     };
   }
 
-  // 2. Resolver especificaciones del modelo Cisco
+  // 2. Resolver especificaciones del modelo Cisco activo
   const cleanCiscoSku = selectedCiscoSku.includes(':')
     ? selectedCiscoSku.split(':')[1]
     : selectedCiscoSku;
 
-  const ciscoSpec: CiscoHomologatedSpecDetail =
-    CISCO_SPECS_DATABASE[cleanCiscoSku] ||
-    CISCO_SPECS_DATABASE[selectedCiscoSku] || {
-      sku: cleanCiscoSku,
-      displayName: `Cisco Enterprise Suite (${cleanCiscoSku})`,
-      category: 'Equipo Oficial Cisco Enterprise 2026 (Cero EOL)',
-      ports: cleanCiscoSku.includes('48')
-        ? '48x 10/100/1000Base-T PoE+ (802.3at)'
-        : '24x 10/100/1000Base-T PoE+ (802.3at)',
-      uplinks: cleanCiscoSku.includes('4X') ? '4x 10G SFP+ Uplinks' : '4x 1G SFP Uplinks',
-      poeBudget: '370W PoE+ (Fuente modular PWR-C5-600WAC, 802.3at Class 4)',
-      layerRouting: 'Cisco IOS-XE & DNA Essentials (OSPF Routed Access)',
-      performance: cleanCiscoSku.includes('48') ? '176 Gbps / 130.95 Mpps' : '128 Gbps / 95.23 Mpps',
-      stacking: 'Cisco StackWise-80 (hasta 8 switches a 80 Gbps con kit)',
-      cloudManagement: 'Cisco Catalyst Center & Monitoreo en la Nube Meraki Dashboard',
-      powerSupply: 'Fuente modular reemplazable en caliente con Cable Norma Chile (CAB-ACA)',
-      warrantySupport: 'Cisco Enhanced Limited Lifetime Warranty (E-LLW) + SmartNet Total Care',
-    };
+  const ciscoSpec = resolveCiscoSpecDetail(selectedCiscoSku);
 
   // 3. Evaluar los 10 aspectos más relevantes de homologación
   const specRows: HomologationSpecComparisonRow[] = [
@@ -1156,9 +1319,160 @@ export function generateHomologationComparison(params: {
   const effectivePct =
     typeof homologationPct === 'number' && homologationPct > 0
       ? homologationPct
-      : catalogEntry?.homologationPct || 100;
+      : effectiveCatalogEntry?.homologationPct || 100;
 
-  // 5. Redactar el veredicto preventa
+  // 5. Construir Matriz Comparativa contra TODAS las Configuraciones Cisco Establecidas
+  const ciscoConfigsMap = new Map<string, CiscoConfigMatrixRow>();
+  const addCiscoConfigRow = (cfg: EstablishedConfigInput, defaultTag: string) => {
+    const rawSku = (cfg.sku || '').trim();
+    if (!rawSku) return;
+    const normUpper = rawSku.toUpperCase();
+    const activeCleanUpper = cleanCiscoSku.toUpperCase();
+    const fullUpper = selectedCiscoSku.toUpperCase();
+    const cleanCandidateUpper = (rawSku.includes(':') ? rawSku.split(':')[1] : rawSku).toUpperCase();
+    const isActiveSelected =
+      normUpper === fullUpper ||
+      normUpper === activeCleanUpper ||
+      cleanCandidateUpper === activeCleanUpper;
+    if (ciscoConfigsMap.has(cleanCandidateUpper)) return;
+    const spec = resolveCiscoSpecDetail(rawSku);
+    const pct =
+      typeof cfg.homologationPct === 'number' && cfg.homologationPct > 0
+        ? cfg.homologationPct
+        : isActiveSelected
+          ? effectivePct
+          : 98;
+    ciscoConfigsMap.set(cleanCandidateUpper, {
+      sku: rawSku,
+      title: cfg.title || spec.displayName,
+      strategyTag: cfg.strategyTag || (isActiveSelected ? 'Configuración Activa' : defaultTag),
+      isActiveSelected,
+      homologationPct: pct,
+      homologationLabel: cfg.homologationLabel || (pct >= 100 ? '100% Equivalente' : `${pct}% Compatible`),
+      ports: spec.ports,
+      uplinks: spec.uplinks,
+      poeBudget: spec.poeBudget,
+      layerRouting: spec.layerRouting,
+      stacking: spec.stacking,
+      cloudManagement: spec.cloudManagement,
+      powerSupply: spec.powerSupply,
+      unitGplUsd: cfg.unitGplUsd,
+      totalGplUsd: cfg.totalGplUsd,
+      discountPct: cfg.discountPct,
+      isFastTrackEligible: cfg.isFastTrackEligible,
+    });
+  };
+
+  if (Array.isArray(establishedProposals)) {
+    establishedProposals.forEach((prop, idx) =>
+      addCiscoConfigRow(prop, idx === 0 ? 'Recomendada #1' : `Alternativa #${idx + 1}`)
+    );
+  }
+  addCiscoConfigRow(
+    {
+      sku: selectedCiscoSku,
+      homologationPct: effectivePct,
+      strategyTag: 'Configuración Activa',
+    },
+    'Configuración Activa'
+  );
+  if (effectiveCatalogEntry?.recommendedCiscoSku) {
+    addCiscoConfigRow(
+      {
+        sku: effectiveCatalogEntry.recommendedCiscoSku,
+        homologationPct: effectiveCatalogEntry.homologationPct,
+        strategyTag: 'Equivalencia Oficial Catálogo',
+      },
+      'Equivalencia Oficial'
+    );
+  }
+  if (Array.isArray(effectiveCatalogEntry?.alternativeCiscoSkus)) {
+    effectiveCatalogEntry.alternativeCiscoSkus.forEach((altSku, idx) =>
+      addCiscoConfigRow(
+        {
+          sku: altSku,
+          homologationPct: Math.max(92, (effectiveCatalogEntry.homologationPct || 100) - (idx + 1) * 2),
+          strategyTag: `Alternativa Cisco #${idx + 1}`,
+        },
+        `Alternativa Cisco #${idx + 1}`
+      )
+    );
+  }
+  const ciscoConfigurations = Array.from(ciscoConfigsMap.values());
+
+  // 6. Construir Matriz Comparativa contra las Demás Marcas Equivalentes del Mercado
+  const targetSegment = getHardwareSegmentBucket(
+    effectiveCatalogEntry?.recommendedCiscoSku || selectedCiscoSku || rawCompetitorText || ''
+  );
+  const requestedBrandLower = compSpec.brand.trim().toLowerCase();
+  const peerBrandsMatrix: PeerBrandBenchmarkRow[] = [
+    {
+      brand: compSpec.brand,
+      model: compSpec.model,
+      role: 'requested',
+      equivalentCiscoSku: ciscoSpec.sku,
+      homologationPct: effectivePct,
+      ports: compSpec.ports,
+      uplinks: compSpec.uplinks,
+      poeBudget: compSpec.poeBudget,
+      layerRouting: compSpec.layerRouting,
+      stacking: compSpec.stacking,
+      cloudManagement: compSpec.cloudManagement,
+      warrantySupport: compSpec.warrantySupport,
+    },
+    {
+      brand: 'Cisco 2026',
+      model: `${ciscoSpec.sku} — ${ciscoSpec.displayName}`,
+      role: 'cisco_reference',
+      equivalentCiscoSku: ciscoSpec.sku,
+      homologationPct: effectivePct,
+      ports: ciscoSpec.ports,
+      uplinks: ciscoSpec.uplinks,
+      poeBudget: ciscoSpec.poeBudget,
+      layerRouting: ciscoSpec.layerRouting,
+      stacking: ciscoSpec.stacking,
+      cloudManagement: ciscoSpec.cloudManagement,
+      warrantySupport: ciscoSpec.warrantySupport,
+    },
+  ];
+
+  const seenPeerBrands = new Set<string>([requestedBrandLower, 'cisco', 'cisco 2026']);
+  const scoredPeers = COMPETITOR_HOMOLOGATION_CATALOG.map((entry) => {
+    const skuMatch =
+      entry.recommendedCiscoSku.toUpperCase() === cleanCiscoSku.toUpperCase() ||
+      (entry.alternativeCiscoSkus || []).some((a) => a.toUpperCase().includes(cleanCiscoSku.toUpperCase())) ||
+      (effectiveCatalogEntry?.recommendedCiscoSku &&
+        entry.recommendedCiscoSku.toUpperCase() === effectiveCatalogEntry.recommendedCiscoSku.toUpperCase());
+    const segMatch = getHardwareSegmentBucket(entry.recommendedCiscoSku) === targetSegment;
+    return {
+      entry,
+      score: (skuMatch ? 2 : 0) + (segMatch ? 1 : 0),
+    };
+  })
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || b.entry.homologationPct - a.entry.homologationPct);
+
+  for (const { entry } of scoredPeers) {
+    const brandKey = entry.competitorBrand.trim().toLowerCase();
+    if (seenPeerBrands.has(brandKey)) continue;
+    seenPeerBrands.add(brandKey);
+    peerBrandsMatrix.push({
+      brand: entry.competitorBrand,
+      model: entry.specs.model || entry.competitorModel,
+      role: 'peer_competitor',
+      equivalentCiscoSku: entry.recommendedCiscoSku,
+      homologationPct: entry.homologationPct,
+      ports: entry.specs.ports,
+      uplinks: entry.specs.uplinks,
+      poeBudget: entry.specs.poeBudget,
+      layerRouting: entry.specs.layerRouting,
+      stacking: entry.specs.stacking,
+      cloudManagement: entry.specs.cloudManagement,
+      warrantySupport: entry.specs.warrantySupport,
+    });
+  }
+
+  // 7. Redactar el veredicto preventa
   const verdict =
     effectivePct >= 100
       ? `✅ Homologación Técnica Certificada (100% Equivalente): El modelo ${ciscoSpec.displayName} cumple y supera todos los requerimientos de densidad de puertos (${ciscoSpec.ports}), uplinks de fibra y presupuesto PoE frente a ${compSpec.model}, asegurando compatibilidad total en pliegos de licitación y migración sin fricción.`
@@ -1180,5 +1494,7 @@ export function generateHomologationComparison(params: {
     verdict,
     specRows,
     keyAdvantages,
+    ciscoConfigurations,
+    peerBrandsMatrix,
   };
 }
