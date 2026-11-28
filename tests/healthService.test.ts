@@ -34,6 +34,7 @@ import {
   checkExchangeRatesHealth,
   checkRuntimeEnvironment,
   calculateOverallHealth,
+  extractHealthAlertSummary,
   repairStorageCache,
   exportDiagnosticReportMarkdown,
 } from '../src/modules/health/healthService';
@@ -195,4 +196,70 @@ assert.ok(optRes.clearedKeys.includes('cisco_automated_emergency_vault_backup_v1
 assert.equal(localStorage.getItem('cisco_automated_emergency_vault_backup_v1'), null, 'Respaldo masivo no debe permanecer en LocalStorage');
 console.log('  ✅ Test 7: Motor Moderno de Alta Capacidad (Gigabytes) y purga de LocalStorage validados.');
 
-console.log('🎉 ¡TODAS LAS PRUEBAS DE SALUD Y DIAGNÓSTICO (v2.12.0) PASARON AL 100%!');
+// Test 8: Bloqueo Firestore y Alertas Proactivas (No debe enmascarar fallas críticas como Óptimo)
+const maskedFirestoreDegraded: HealthCheckResult[] = [
+  { id: 'firestore', name: 'Firestore', category: 'cloud', status: 'degraded', latencyMs: 470, message: 'Restringido', lastChecked: '' },
+  { id: 'cdn', name: 'CDN', category: 'cloud', status: 'healthy', latencyMs: 40, message: 'OK', lastChecked: '' },
+  { id: 'storage', name: 'Storage', category: 'storage', status: 'healthy', latencyMs: 12, message: 'OK', lastChecked: '' },
+  { id: 'rates', name: 'Rates', category: 'external', status: 'healthy', latencyMs: 1, message: 'OK', lastChecked: '' },
+  { id: 'runtime', name: 'Runtime', category: 'runtime', status: 'healthy', latencyMs: 1, message: 'OK', lastChecked: '' },
+  { id: 'telemetry_performance', name: 'Telemetría', category: 'runtime', status: 'healthy', latencyMs: 2, message: 'OK', lastChecked: '' },
+];
+const unmaskedResult = calculateOverallHealth(maskedFirestoreDegraded);
+assert.notEqual(unmaskedResult.status, 'healthy', 'Falla degradada en Firestore jamás debe mostrarse como healthy/Óptimo');
+assert.ok(unmaskedResult.score < 85, 'Score con Firestore degradado debe bajar de 85');
+
+const blockedReport: SystemHealthReport = {
+  ...mockReport,
+  overallStatus: 'critical',
+  score: 55,
+  checks: {
+    firestore: {
+      id: 'firestore',
+      name: 'Cloud Firestore (Base de Datos)',
+      category: 'cloud',
+      status: 'critical',
+      latencyMs: 470,
+      message: 'Todas las colecciones críticas (4/4) están bloqueadas por permisos en Firestore.',
+      details: {
+        collections: {
+          cisco_pipeline_deals: 'denied',
+          cisco_forecast_records: 'denied',
+          estimates: 'denied',
+          bo_order_tracking: 'denied',
+        },
+      },
+      lastChecked: '',
+    },
+    storage: { id: 'storage', name: 'Storage', category: 'storage', status: 'healthy', latencyMs: 5, message: 'OK', lastChecked: '' },
+  },
+};
+const blockedAlert = extractHealthAlertSummary(blockedReport);
+assert.equal(blockedAlert.severity, 'critical');
+assert.equal(blockedAlert.blockedCollections.length, 4);
+assert.ok(blockedAlert.headline.includes('4 colección(es) bloqueada(s)'));
+
+const expectedOfflineReport: SystemHealthReport = {
+  ...mockReport,
+  overallStatus: 'degraded',
+  score: 84,
+  runtime: { ...mockReport.runtime, isManualOffline: true, isOnline: false },
+  checks: {
+    firestore: {
+      id: 'firestore',
+      name: 'Cloud Firestore',
+      category: 'cloud',
+      status: 'degraded',
+      latencyMs: 0,
+      message: 'Modo Offline activo',
+      details: { mode: 'offline' },
+      lastChecked: '',
+    },
+    storage: { id: 'storage', name: 'Storage', category: 'storage', status: 'healthy', latencyMs: 5, message: 'OK', lastChecked: '' },
+  },
+};
+const offlineAlert = extractHealthAlertSummary(expectedOfflineReport);
+assert.equal(offlineAlert.severity, 'healthy', 'Modo Offline esperado no debe disparar falso banner de error');
+console.log('  ✅ Test 8: Alertas proactivas, detección de 4 colecciones bloqueadas y filtro Offline validados.');
+
+console.log('🎉 ¡TODAS LAS PRUEBAS DE SALUD Y DIAGNÓSTICO (v2.32.2) PASARON AL 100%!');

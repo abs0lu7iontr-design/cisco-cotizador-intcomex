@@ -1,12 +1,12 @@
 {
   "name": "cisco-automated",
-  "version": "2.32.1",
-  "git_commit": "1ebd2b0",
+  "version": "2.32.2",
+  "git_commit": "6f3b2ec",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-28T15:00:33.683Z",
-  "release_notes": "feat(v2.32.0): automatic FedEx Track API v1 Edge integration & live BO stage auto-sync",
+  "build_timestamp": "2026-11-28T15:10:48.149Z",
+  "release_notes": "fix(v2.32.1): enable Firebase Auth provider & add silent Edge-to-Firebase token recovery",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop",
-  "desktop_bundle_sha256": "17beba987115b311f9bf2ad840ceb7d3299485e2d85c8c8b1299fb496477aa78"
+  "desktop_bundle_sha256": "6045b42d55ee60e18231572febf48a4948cbf40ab1df2b313cfeee882caba5d9"
 }

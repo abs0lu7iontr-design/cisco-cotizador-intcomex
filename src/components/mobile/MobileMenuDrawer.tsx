@@ -29,6 +29,7 @@ import { NavViewId } from '../../core/store';
 import { UserSession } from '../../core/types';
 import { getFormattedAppVersion } from '../../core/appVersion';
 import { useOfflineMode } from '../../core/storage/offlineModeManager';
+import type { SystemHealthAlertSummary } from '../../modules/health/healthService';
 
 interface MobileMenuDrawerProps {
   isOpen: boolean;
@@ -39,6 +40,7 @@ interface MobileMenuDrawerProps {
   onLogout: () => void;
   unreadFeedbackCount?: number;
   pendingOfflineCount?: number;
+  healthAlert?: SystemHealthAlertSummary | null;
   onUploadClick?: () => void;
   onDsvClick?: () => void;
   onOpenRules?: () => void;
@@ -55,6 +57,7 @@ export const MobileMenuDrawer: React.FC<MobileMenuDrawerProps> = ({
   onLogout,
   unreadFeedbackCount = 0,
   pendingOfflineCount = 0,
+  healthAlert,
   onUploadClick,
   onDsvClick,
   onOpenRules,
@@ -375,16 +378,40 @@ export const MobileMenuDrawer: React.FC<MobileMenuDrawerProps> = ({
               className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs transition-colors cursor-pointer ${
                 currentView === 'health'
                   ? 'bg-indigo-600 text-white font-bold'
-                  : 'text-slate-300 hover:bg-slate-800/60'
+                  : healthAlert?.severity === 'critical'
+                    ? 'text-rose-200 bg-rose-950/40 border border-rose-500/40 hover:bg-rose-950/60'
+                    : healthAlert?.severity === 'degraded'
+                      ? 'text-amber-200 bg-amber-950/30 border border-amber-500/35 hover:bg-amber-950/50'
+                      : 'text-slate-300 hover:bg-slate-800/60'
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <Activity className="w-4 h-4 text-emerald-400" />
+                <Activity
+                  className={`w-4 h-4 ${
+                    currentView === 'health'
+                      ? 'text-white'
+                      : healthAlert?.severity === 'critical'
+                        ? 'text-rose-400 animate-pulse'
+                        : healthAlert?.severity === 'degraded'
+                          ? 'text-amber-400'
+                          : 'text-emerald-400'
+                  }`}
+                />
                 <span>Monitor de Salud & SQLite</span>
               </div>
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/50">
-                WASM
-              </span>
+              {healthAlert?.severity === 'critical' ? (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-500 text-white animate-pulse">
+                  ALERTA
+                </span>
+              ) : healthAlert?.severity === 'degraded' ? (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-500 text-slate-950">
+                  REV
+                </span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-700/50">
+                  WASM
+                </span>
+              )}
             </button>
 
             <button

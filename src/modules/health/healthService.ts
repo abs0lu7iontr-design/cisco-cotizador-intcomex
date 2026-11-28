@@ -141,18 +141,28 @@ export async function checkFirestoreHealth(): Promise<HealthCheckResult> {
 
     if (hasPermissionError) {
       const hasFirebaseUser = Boolean(getFirebaseAuthInstance()?.currentUser);
+      const deniedCollections = Object.entries(collectionResults)
+        .filter(([, state]) => state === 'denied')
+        .map(([col]) => col);
+      const allBlocked = deniedCollections.length >= collectionsToTest.length;
+
       return {
         id: 'firestore',
         name: 'Cloud Firestore (Base de Datos)',
         category: 'cloud',
-        status: 'degraded',
+        status: allBlocked ? 'critical' : 'degraded',
         latencyMs,
-        message: hasFirebaseUser
-          ? 'Conectado a Firestore pero una o más colecciones reportan permisos restringidos.'
-          : 'Sesión Firebase Auth pendiente o expirada en este navegador. Cierra sesión y vuelve a ingresar para activar permisos en Firestore.',
+        message: allBlocked
+          ? hasFirebaseUser
+            ? `Todas las colecciones críticas (${deniedCollections.length}/${collectionsToTest.length}) están bloqueadas por permisos en Firestore.`
+            : 'Sesión Firebase Auth pendiente o expirada: todas las colecciones Firestore reportan acceso denegado.'
+          : hasFirebaseUser
+            ? 'Conectado a Firestore pero una o más colecciones reportan permisos restringidos.'
+            : 'Sesión Firebase Auth pendiente o expirada en este navegador. Cierra sesión y vuelve a ingresar para activar permisos en Firestore.',
         details: {
           projectId: config.projectId,
           collections: collectionResults,
+          deniedCollections,
           authReady: hasFirebaseUser,
         },
         lastChecked: new Date().toISOString(),
@@ -448,6 +458,10 @@ export function calculateOverallHealth(checks: HealthCheckResult[]): {
 
   let totalWeight = 0;
   let earnedScore = 0;
+  let hasCoreCritical = false;
+  let hasCoreDegraded = false;
+  let hasAnyCritical = false;
+  let hasAnyDegraded = false;
 
   for (const check of checks) {
     let weight = 25;
@@ -458,20 +472,36 @@ export function calculateOverallHealth(checks: HealthCheckResult[]): {
 
     totalWeight += weight;
 
+    const isCoreInfra = check.id === 'firestore' || check.id === 'storage';
+
     if (check.status === 'healthy') {
       earnedScore += weight;
     } else if (check.status === 'degraded') {
       earnedScore += weight * 0.65;
+      hasAnyDegraded = true;
+      if (isCoreInfra) hasCoreDegraded = true;
     } else if (check.status === 'critical') {
       earnedScore += 0;
+      hasAnyCritical = true;
+      if (isCoreInfra) hasCoreCritical = true;
     }
   }
 
-  const score = Math.max(0, Math.min(100, Math.round((earnedScore / totalWeight) * 100)));
+  let score = Math.max(0, Math.min(100, Math.round((earnedScore / totalWeight) * 100)));
+
+  // Evitar que subsistemas secundarios sanos enmascaren fallas críticas o degradadas en Firestore/Storage
+  if (hasCoreCritical) {
+    score = Math.min(score, 55);
+  } else if (hasCoreDegraded || hasAnyCritical) {
+    score = Math.min(score, 84);
+  }
 
   let status: HealthStatusLevel = 'healthy';
-  if (score < 60) status = 'critical';
-  else if (score < 85) status = 'degraded';
+  if (score < 60 || hasCoreCritical) {
+    status = 'critical';
+  } else if (score < 85 || hasCoreDegraded || hasAnyCritical || hasAnyDegraded) {
+    status = 'degraded';
+  }
 
   return { score, status };
 }
@@ -507,6 +537,134 @@ export function checkPerformanceTelemetry(): { result: HealthCheckResult; snapsh
   };
 }
 
+export interface SystemHealthAlertSummary {
+  severity: HealthStatusLevel;
+  score: number;
+  headline: string;
+  detail: string;
+  affectedIds: string[];
+  blockedCollections: string[];
+  timestamp: string;
+}
+
+const HEALTH_ALERT_CHECK_IDS_IGNORED_OFFLINE = new Set(['firestore', 'cdn']);
+
+/**
+ * Extracts actionable system health alerts from a full report.
+ * Filters out expected offline-mode notices while surfacing blocked Firestore collections,
+ * storage exhaustion, outdated CDN bundles or critical runtime errors.
+ */
+export function extractHealthAlertSummary(report: SystemHealthReport): SystemHealthAlertSummary {
+  const isOfflineEnv = report.runtime?.isManualOffline || !report.runtime?.isOnline;
+  const firestoreCheck = report.checks.firestore;
+  const collectionsMap = (firestoreCheck?.details?.collections || {}) as Record<string, string>;
+  const blockedCollections = Object.entries(collectionsMap)
+    .filter(([, state]) => state === 'denied' || state === 'error')
+    .map(([col]) => col);
+
+  const actionableChecks = Object.values(report.checks).filter((check) => {
+    if (check.status === 'healthy') return false;
+    if (isOfflineEnv && HEALTH_ALERT_CHECK_IDS_IGNORED_OFFLINE.has(check.id)) {
+      return false;
+    }
+    if (check.id === 'firestore' && check.details?.mode === 'offline') {
+      return false;
+    }
+    return true;
+  });
+
+  const criticalChecks = actionableChecks.filter((c) => c.status === 'critical');
+  const degradedChecks = actionableChecks.filter((c) => c.status === 'degraded');
+
+  let severity: HealthStatusLevel = 'healthy';
+  if (criticalChecks.length > 0 || blockedCollections.length >= 4) {
+    severity = 'critical';
+  } else if (degradedChecks.length > 0 || blockedCollections.length > 0) {
+    severity = 'degraded';
+  }
+
+  let headline = `Salud Óptima (${report.score}/100)`;
+  let detail = 'Todos los subsistemas críticos operativos.';
+
+  if (blockedCollections.length > 0) {
+    headline = `Firestore con ${blockedCollections.length} colección(es) bloqueada(s)`;
+    detail = `${firestoreCheck?.message || 'Permisos restringidos en Cloud Firestore.'} Colecciones: ${blockedCollections.join(', ')}.`;
+  } else if (criticalChecks.length > 0) {
+    headline = `Alerta Crítica: ${criticalChecks[0].name}`;
+    detail = criticalChecks.map((c) => c.message).join(' • ');
+  } else if (degradedChecks.length > 0) {
+    headline = `Salud Degradada (${report.score}/100): ${degradedChecks[0].name}`;
+    detail = degradedChecks.map((c) => c.message).join(' • ');
+  }
+
+  return {
+    severity,
+    score: report.score,
+    headline,
+    detail,
+    affectedIds: actionableChecks.map((c) => c.id),
+    blockedCollections,
+    timestamp: report.timestamp,
+  };
+}
+
+type SystemHealthListener = (report: SystemHealthReport, alert: SystemHealthAlertSummary) => void;
+
+let latestHealthReport: SystemHealthReport | null = null;
+let inFlightHealthCheck: Promise<SystemHealthReport> | null = null;
+const healthListeners = new Set<SystemHealthListener>();
+
+function publishHealthReport(report: SystemHealthReport): void {
+  latestHealthReport = report;
+  const alert = extractHealthAlertSummary(report);
+  for (const listener of healthListeners) {
+    try {
+      listener(report, alert);
+    } catch (err) {
+      console.warn('[HealthService] Error notifying listener:', err);
+    }
+  }
+}
+
+export function getLatestSystemHealthReport(): SystemHealthReport | null {
+  return latestHealthReport;
+}
+
+export function subscribeSystemHealth(listener: SystemHealthListener): () => void {
+  healthListeners.add(listener);
+  if (latestHealthReport) {
+    try {
+      listener(latestHealthReport, extractHealthAlertSummary(latestHealthReport));
+    } catch (err) {
+      console.warn('[HealthService] Error notifying initial listener:', err);
+    }
+  }
+  return () => {
+    healthListeners.delete(listener);
+  };
+}
+
+/**
+ * Triggers a deduplicated background health check (avoids overlapping probes).
+ */
+export async function triggerBackgroundHealthCheck(force = false): Promise<SystemHealthReport> {
+  if (inFlightHealthCheck) {
+    return inFlightHealthCheck;
+  }
+
+  if (!force && latestHealthReport) {
+    const ageMs = Date.now() - new Date(latestHealthReport.timestamp).getTime();
+    if (ageMs >= 0 && ageMs < 60_000) {
+      return latestHealthReport;
+    }
+  }
+
+  inFlightHealthCheck = runAllHealthChecks().finally(() => {
+    inFlightHealthCheck = null;
+  });
+  return inFlightHealthCheck;
+}
+
 /**
  * Runs all diagnostics concurrently and aggregates into a complete report.
  */
@@ -534,7 +692,7 @@ export async function runAllHealthChecks(): Promise<SystemHealthReport> {
   const checkList = Object.values(checks);
   const overall = calculateOverallHealth(checkList);
 
-  return {
+  const report: SystemHealthReport = {
     overallStatus: overall.status,
     score: overall.score,
     timestamp: new Date().toISOString(),
@@ -546,6 +704,9 @@ export async function runAllHealthChecks(): Promise<SystemHealthReport> {
     telemetry: telemetryData.snapshot,
     masterCatalog: masterCatalogData,
   };
+
+  publishHealthReport(report);
+  return report;
 }
 
 /**

@@ -51,6 +51,11 @@ import {
   OFFLINE_SYNC_COMPLETED_EVENT,
 } from './core/storage/offlineModeManager';
 import { getOfflineQueueSummary } from './core/storage/offlineSyncQueue';
+import {
+  subscribeSystemHealth,
+  triggerBackgroundHealthCheck,
+  SystemHealthAlertSummary,
+} from './modules/health/healthService';
 
 // Vistas y modales secundarios cargados bajo demanda (Code-Splitting para Web CDN)
 const QuickCalculator = lazy(() =>
@@ -190,6 +195,7 @@ import {
   HardDrive,
   UploadCloud,
   X,
+  Activity,
 } from 'lucide-react';
 
 function AuthenticatedApp() {
@@ -339,6 +345,61 @@ function AuthenticatedApp() {
   const [unreadFeedbackCount, setUnreadFeedbackCount] = useState<number>(0);
   const [isCreateFeedbackModalOpen, setIsCreateFeedbackModalOpen] = useState(false);
   const lastBadgeFetchRef = useRef<number>(0);
+
+  // Proactive System Health Background Monitor
+  const [systemHealthAlert, setSystemHealthAlert] = useState<SystemHealthAlertSummary | null>(null);
+  const [isHealthBannerDismissed, setIsHealthBannerDismissed] = useState<boolean>(false);
+  const [isRetryingHealth, setIsRetryingHealth] = useState<boolean>(false);
+  const lastNotifiedHealthKeyRef = useRef<string>('');
+
+  useEffect(() => {
+    const unsubscribe = subscribeSystemHealth((_report, alert) => {
+      setSystemHealthAlert(alert);
+
+      if (alert.severity === 'healthy') {
+        lastNotifiedHealthKeyRef.current = '';
+        setIsHealthBannerDismissed(false);
+        return;
+      }
+
+      const alertKey = `${alert.severity}:${alert.blockedCollections.join(',')}:${alert.affectedIds.join(',')}`;
+      if (lastNotifiedHealthKeyRef.current !== alertKey) {
+        lastNotifiedHealthKeyRef.current = alertKey;
+        setIsHealthBannerDismissed(false);
+        if (currentView !== 'health') {
+          showCloudToast(
+            `⚠️ ${alert.headline} — Revisa Salud del Sistema.`,
+            'error',
+            7000
+          );
+        }
+      }
+    });
+    return unsubscribe;
+  }, [currentView]);
+
+  useEffect(() => {
+    if (!currentUser || isOffline) return;
+
+    const initialTimer = setTimeout(() => {
+      triggerBackgroundHealthCheck(true).catch(() => {});
+    }, 2500);
+
+    const periodicTimer = setInterval(() => {
+      triggerBackgroundHealthCheck(true).catch(() => {});
+    }, 10 * 60 * 1000);
+
+    const handleOnlineReconnect = () => {
+      triggerBackgroundHealthCheck(true).catch(() => {});
+    };
+    window.addEventListener('online', handleOnlineReconnect);
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(periodicTimer);
+      window.removeEventListener('online', handleOnlineReconnect);
+    };
+  }, [currentUser?.username, isOffline]);
 
   // Proactive Deal Reminder Pop-up Monitor (Midday 12:00 & End of Day 17:30)
   const {
@@ -996,6 +1057,7 @@ function AuthenticatedApp() {
           activeBoCount={activeBoCount}
           unreadFeedbackCount={unreadFeedbackCount}
           pendingAccessCount={pendingAccessCount}
+          healthAlert={systemHealthAlert}
           onOpenRules={() => setIsRulesModalOpen(true)}
           onOpenSharedSku={() => setIsSharedSkuManagerOpen(true)}
           onOpenFastTrack={() => setIsFastTrackAdminModalOpen(true)}
@@ -1109,6 +1171,89 @@ function AuthenticatedApp() {
               </div>
             </div>
           )}
+
+          {/* Global Proactive Health Alert Banner */}
+          {systemHealthAlert &&
+            systemHealthAlert.severity !== 'healthy' &&
+            !isHealthBannerDismissed &&
+            currentView !== 'health' && (
+              <div
+                role="alert"
+                className={`mb-4 px-4 py-3 rounded-2xl border text-xs flex flex-wrap items-center justify-between gap-3 shadow-xl animate-fade-in transition-all ${
+                  systemHealthAlert.severity === 'critical'
+                    ? 'bg-rose-950/85 border-rose-500/60 text-rose-100'
+                    : 'bg-amber-950/80 border-amber-500/50 text-amber-100'
+                }`}
+              >
+                <div className="flex items-start sm:items-center space-x-3 min-w-0 flex-1">
+                  <div
+                    className={`p-2 rounded-xl border shrink-0 ${
+                      systemHealthAlert.severity === 'critical'
+                        ? 'bg-rose-500/20 border-rose-400/40 text-rose-300'
+                        : 'bg-amber-500/20 border-amber-400/40 text-amber-300'
+                    }`}
+                  >
+                    <Activity className="w-4 h-4 animate-pulse" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-black flex flex-wrap items-center gap-2">
+                      <span>{systemHealthAlert.headline}</span>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
+                          systemHealthAlert.severity === 'critical'
+                            ? 'bg-rose-500/25 border-rose-400/50 text-rose-200'
+                            : 'bg-amber-500/25 border-amber-400/50 text-amber-200'
+                        }`}
+                      >
+                        Score {systemHealthAlert.score}/100
+                      </span>
+                    </div>
+                    <p className="text-[11px] opacity-90 mt-0.5 leading-relaxed">
+                      {systemHealthAlert.detail}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2 shrink-0">
+                  <button
+                    type="button"
+                    disabled={isRetryingHealth}
+                    onClick={async () => {
+                      setIsRetryingHealth(true);
+                      try {
+                        await triggerBackgroundHealthCheck(true);
+                      } finally {
+                        setIsRetryingHealth(false);
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-slate-900/70 hover:bg-slate-800 text-slate-100 border border-white/15 font-bold text-[11px] flex items-center space-x-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRetryingHealth ? 'animate-spin' : ''}`} />
+                    <span>Reintentar</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentView('health')}
+                    className={`px-3.5 py-1.5 rounded-xl font-black text-[11px] flex items-center space-x-1.5 transition-colors cursor-pointer shadow-md ${
+                      systemHealthAlert.severity === 'critical'
+                        ? 'bg-rose-500 hover:bg-rose-400 text-white'
+                        : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                    }`}
+                  >
+                    <Activity className="w-3.5 h-3.5" />
+                    <span>Abrir Salud del Sistema</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsHealthBannerDismissed(true)}
+                    className="p-1.5 rounded-xl opacity-75 hover:opacity-100 hover:bg-black/20 transition-colors cursor-pointer"
+                    title="Ocultar alerta temporalmente"
+                    aria-label="Cerrar alerta de salud"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
 
           {/* Global Error Banner */}
           {errorMessage && (
@@ -1583,6 +1728,7 @@ function AuthenticatedApp() {
         activeBoCount={activeBoCount}
         unreadFeedbackCount={unreadFeedbackCount}
         pendingOfflineCount={pendingOfflineCount}
+        healthAlert={systemHealthAlert}
         hasActiveEstimate={Boolean(processedResult)}
         onUploadClick={handleUploadClick}
         onDsvClick={handleDsvClick}

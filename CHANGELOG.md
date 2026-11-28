@@ -6,6 +6,18 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.32.2] - 2026-11-28
+
+### Agregado & Corregido (Monitor de Salud Proactivo y Ponderación de Fallas Críticas)
+- **Ejecución Automática en Segundo Plano y Alertas Proactivas ([healthService.ts](src/modules/health/healthService.ts), [App.tsx](src/App.tsx)):**
+  - Agregado monitoreo automático al iniciar sesión, cada 10 minutos y al recuperar conectividad (`online`), además de canal observable `subscribeSystemHealth` y `triggerBackgroundHealthCheck`.
+  - Ante colecciones Firestore bloqueadas (`permission-denied`) o fallas críticas/degradadas de almacenamiento/nube, se despliega automáticamente un banner global de alerta y toast inmediato sin obligar al usuario a abrir **Salud del Sistema** para enterarse.
+- **Indicadores Visuales en Navegación ([Sidebar.tsx](src/components/Sidebar.tsx), [MobileMenuDrawer.tsx](src/components/mobile/MobileMenuDrawer.tsx), [MobileBottomNav.tsx](src/components/mobile/MobileBottomNav.tsx)):**
+  - Badges reactivos (`ALERTA` en rojo / `REV` en ámbar) directamente sobre **`Salud del Sistema`** y menú móvil mientras persista un incidente accionable.
+- **Corrección de Ponderación y Detección de Bloqueo Total en Firestore ([healthService.ts](src/modules/health/healthService.ts)):**
+  - `checkFirestoreHealth` ahora reporta `critical` cuando todas las colecciones críticas están bloqueadas.
+  - `calculateOverallHealth` impide que subsistemas secundarios sanos enmascaren fallas críticas o degradadas en `firestore` o `storage` (eliminando falsos `92/100 • Óptimo` cuando las bases de datos están bloqueadas).
+
 ## [v2.32.1] - 2026-11-28
 
 ### Corregido (Firebase Authentication & Permisos de Colecciones Firestore)

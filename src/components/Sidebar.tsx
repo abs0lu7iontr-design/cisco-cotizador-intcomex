@@ -36,6 +36,7 @@ import { CISCO_AUTOMATED_SEAL_DATA_URI } from '../core/brandingLogos';
 import { NavViewId } from '../core/store';
 import { getFormattedAppVersion } from '../core/appVersion';
 import { useOfflineMode } from '../core/storage/offlineModeManager';
+import type { SystemHealthAlertSummary } from '../modules/health/healthService';
 
 const CLOUD_ONLY_VIEWS = new Set<NavViewId>([
   'configuriator',
@@ -54,6 +55,7 @@ interface SidebarProps {
   activeBoCount?: number;
   unreadFeedbackCount?: number;
   pendingAccessCount?: number;
+  healthAlert?: SystemHealthAlertSummary | null;
   onOpenRules?: () => void;
   onOpenSharedSku?: () => void;
   onOpenFastTrack?: () => void;
@@ -70,6 +72,7 @@ export function Sidebar({
   activeBoCount,
   unreadFeedbackCount,
   pendingAccessCount,
+  healthAlert,
   onOpenRules,
   onOpenSharedSku,
   onOpenFastTrack,
@@ -243,9 +246,22 @@ export function Sidebar({
                     ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
                     : 'text-slate-400 hover:text-white hover:bg-slate-900'
                 }`}
-                title={isBlockedOffline ? `${item.label} (Requiere Online — Clic para conectar)` : item.label}
+                title={
+                  isBlockedOffline
+                    ? `${item.label} (Requiere Online — Clic para conectar)`
+                    : item.id === 'health' && healthAlert && healthAlert.severity !== 'healthy'
+                      ? `${item.label}: ${healthAlert.headline}`
+                      : item.label
+                }
               >
                 <Icon className="w-5 h-5" />
+                {item.id === 'health' && healthAlert && healthAlert.severity !== 'healthy' && (
+                  <span
+                    className={`absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full ring-2 ring-slate-950 animate-pulse ${
+                      healthAlert.severity === 'critical' ? 'bg-rose-500' : 'bg-amber-400'
+                    }`}
+                  />
+                )}
                 {item.badge !== undefined && !isBlockedOffline && (
                   <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-400 ring-2 ring-slate-950 animate-pulse" />
                 )}
@@ -459,18 +475,43 @@ export function Sidebar({
             className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               currentView === 'health'
                 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                : healthAlert?.severity === 'critical'
+                  ? 'text-rose-200 bg-rose-950/35 border border-rose-500/40 hover:bg-rose-950/55'
+                  : healthAlert?.severity === 'degraded'
+                    ? 'text-amber-200 bg-amber-950/25 border border-amber-500/35 hover:bg-amber-950/45'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
             }`}
+            title={
+              healthAlert && healthAlert.severity !== 'healthy'
+                ? `${healthAlert.headline} — ${healthAlert.detail}`
+                : 'Monitor de Salud del Sistema'
+            }
           >
             <div className="flex items-center space-x-3 truncate">
               <Activity
                 className={`w-4 h-4 shrink-0 ${
-                  currentView === 'health' ? 'text-white' : 'text-emerald-400'
+                  currentView === 'health'
+                    ? 'text-white'
+                    : healthAlert?.severity === 'critical'
+                      ? 'text-rose-400 animate-pulse'
+                      : healthAlert?.severity === 'degraded'
+                        ? 'text-amber-400 animate-pulse'
+                        : 'text-emerald-400'
                 }`}
               />
               <span className="truncate">Salud del Sistema</span>
             </div>
-            {currentView === 'health' && <ChevronRight className="w-3.5 h-3.5 shrink-0 opacity-80" />}
+            {healthAlert?.severity === 'critical' ? (
+              <span className="px-1.5 py-0.5 text-[9px] font-black rounded-full bg-rose-500 text-white shadow-sm animate-pulse shrink-0">
+                ALERTA
+              </span>
+            ) : healthAlert?.severity === 'degraded' ? (
+              <span className="px-1.5 py-0.5 text-[9px] font-black rounded-full bg-amber-500 text-slate-950 shrink-0">
+                REV
+              </span>
+            ) : (
+              currentView === 'health' && <ChevronRight className="w-3.5 h-3.5 shrink-0 opacity-80" />
+            )}
           </button>
 
           <div

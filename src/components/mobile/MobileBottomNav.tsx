@@ -9,6 +9,7 @@ import {
 import { NavViewId } from '../../core/store';
 import { UserSession } from '../../core/types';
 import { MobileMenuDrawer } from './MobileMenuDrawer';
+import type { SystemHealthAlertSummary } from '../../modules/health/healthService';
 
 interface MobileBottomNavProps {
   currentView: NavViewId;
@@ -18,6 +19,7 @@ interface MobileBottomNavProps {
   activeBoCount?: number;
   unreadFeedbackCount?: number;
   pendingOfflineCount?: number;
+  healthAlert?: SystemHealthAlertSummary | null;
   hasActiveEstimate?: boolean;
   onUploadClick?: () => void;
   onDsvClick?: () => void;
@@ -36,6 +38,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   activeBoCount = 0,
   unreadFeedbackCount = 0,
   pendingOfflineCount = 0,
+  healthAlert,
   hasActiveEstimate = false,
   onUploadClick,
   onDsvClick,
@@ -146,8 +149,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
           >
             <div className="relative">
               <Menu className="w-5 h-5" />
-              {unreadFeedbackCount > 0 && (
-                <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-slate-950" />
+              {(unreadFeedbackCount > 0 || (healthAlert && healthAlert.severity !== 'healthy')) && (
+                <span className="absolute -top-1 -right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-slate-950 animate-pulse" />
               )}
             </div>
             <span className="text-[10px] mt-1 font-medium tracking-tight">
@@ -167,6 +170,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         onLogout={onLogout}
         unreadFeedbackCount={unreadFeedbackCount}
         pendingOfflineCount={pendingOfflineCount}
+        healthAlert={healthAlert}
         onUploadClick={onUploadClick}
         onDsvClick={onDsvClick}
         onOpenRules={onOpenRules}

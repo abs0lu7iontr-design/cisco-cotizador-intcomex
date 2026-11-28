@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.32.2',
+    date: '2026-11-28',
+    commit: 'feat-proactive-health-alerts-and-critical-scoring',
+    title: 'Monitor de Salud Proactivo, Alertas Globales y Ponderación Crítica',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Alertas Automáticas sin Intervención Manual (healthService.ts / App.tsx): El monitor de salud se ejecuta automáticamente en segundo plano al iniciar sesión, cada 10 min y al reconectar, mostrando banner global y toast inmediato ante bloqueos o fallas críticas.',
+      'Badges en Sidebar y Menú Móvil (Sidebar.tsx / MobileBottomNav.tsx / MobileMenuDrawer.tsx): Indicadores ALERTA / REV visibles en Salud del Sistema mientras exista un problema accionable.',
+      'Ponderación Real de Fallas Críticas (healthService.ts): Bloqueo total de colecciones Firestore pasa a estado Crítico e impide falsos 92/100 • Óptimo.'
+    ]
+  },
+  {
     version: '2.32.1',
     date: '2026-11-28',
     commit: 'fix-firebase-auth-config-and-silent-custom-token-recovery',
     title: 'Fix Permisos Firestore & Activación de Firebase Authentication (Auth Recovery)',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Firebase Authentication Activo (firebase.json): Habilitado el servicio de Authentication en el proyecto cisco-automated (deploy --only auth), resolviendo el error CONFIGURATION_NOT_FOUND al intercambiar Custom Tokens.',
