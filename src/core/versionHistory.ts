@@ -15,11 +15,23 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.30.1',
+    date: '2026-11-27',
+    commit: 'fix-forecast-duplicate-preset-and-toolbar-icons',
+    title: 'Limpieza Visual en Forecast & Vistas Guardadas (Sin Iconos Duplicados)',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Presets de Vistas (filterPresetsManager.ts): Eliminados los emojis prefijados redundantes en Forecast, Pipeline y Estimates para mostrar únicamente el icono vectorial Lucide de cada vista en FilterPresetsBar.',
+      'Barra de Filtros en Forecast (ForecastView.tsx): Retirado el botón duplicado de restauración de semillas (RotateCcw) en la fila de filtros, dejando un único control en la barra superior.'
+    ]
+  },
+  {
     version: '2.30.0',
     date: '2026-11-27',
     commit: 'storage-scalability-pagination-offline-project-isolation',
     title: 'Escalabilidad Multi-Capa, Paginación IndexedDB/Desktop y Aislamiento de Cola Offline',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Aislamiento por Proyecto en Cola Offline (offlineSyncQueue.ts): Cada cambio offline guarda projectScopeKey/projectId y verifica el contexto activo antes de sincronizar, evitando cruces o pérdidas al cambiar de proyecto Firebase.',

@@ -6,6 +6,12 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.30.1] - 2026-11-27
+
+### Corregido (UI Forecast & Presets de Vistas)
+- **Eliminación de Iconos Duplicados en Presets de Vistas ([filterPresetsManager.ts](src/core/presets/filterPresetsManager.ts)):** Retirados los emojis redundantes (`👤`, `🌐`, `🔥`, `📦`, `📅`) de los nombres de presets de fábrica en Forecast, Pipeline e Historial de Cotizaciones, evitando que [FilterPresetsBar.tsx](src/components/FilterPresetsBar.tsx) renderice dos iconos consecutivos (Lucide + emoji) en cada botón de vista.
+- **Limpieza de Barra de Filtros en Forecast ([ForecastView.tsx](src/modules/forecast/ForecastView.tsx)):** Retirado el botón duplicado de restauración de semillas (`RotateCcw`) al final de la barra de filtros (conservando el botón único en la barra de acciones superior).
+
 ## [v2.30.0] - 2026-11-27
 
 ### Escalabilidad Multi-Capa, Paginación y Aislamiento de Cola Offline (Cero Pérdida Online/Offline)

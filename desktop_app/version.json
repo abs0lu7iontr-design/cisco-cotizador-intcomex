@@ -1,12 +1,12 @@
 {
   "name": "cisco-automated",
-  "version": "2.30.0",
-  "git_commit": "0a9ff5d",
+  "version": "2.30.1",
+  "git_commit": "006e718",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-27T23:25:50.026Z",
-  "release_notes": "fix(v2.29.1): database audit fixes (SQLite viewer role self-heal, Firestore estimates probe, access_requests hydration & NaN guard)",
+  "build_timestamp": "2026-11-28T01:45:14.175Z",
+  "release_notes": "feat(v2.30.0): storage scalability, paginated IndexedDB/Desktop SQLite, size-aware backups and project-scoped offline queue",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop",
-  "desktop_bundle_sha256": "cb041dd04ea98a50236645b4f2a0740fbe150620d0dc7a648204c6716fe8ea4e"
+  "desktop_bundle_sha256": "351d88bab21b725fade6c58f979bf7278708115351fee614b33687b3a5888373"
 }

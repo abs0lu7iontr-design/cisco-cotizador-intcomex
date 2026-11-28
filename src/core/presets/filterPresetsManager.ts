@@ -51,7 +51,7 @@ export function getFactoryPresets(module: PresetModuleType, userPmName?: string 
     return [
       {
         id: 'factory_pipeline_my_deals',
-        name: `👤 Mi Pipeline (${myPm.split(' ')[0]})`,
+        name: `Mi Pipeline (${myPm.split(' ')[0]})`,
         module: 'pipeline',
         description: 'Muestra exclusivamente tus oportunidades asignadas en el mes actual.',
         isFactory: true,
@@ -68,7 +68,7 @@ export function getFactoryPresets(module: PresetModuleType, userPmName?: string 
       },
       {
         id: 'factory_pipeline_all_deals',
-        name: '🌐 Vista General (Todos los PMs)',
+        name: 'Vista General (Todos los PMs)',
         module: 'pipeline',
         description: 'Muestra todas las oportunidades de todo el equipo en el mes actual.',
         isFactory: true,
@@ -85,7 +85,7 @@ export function getFactoryPresets(module: PresetModuleType, userPmName?: string 
       },
       {
         id: 'factory_pipeline_hot_deals',
-        name: '🔥 Oportunidades Calientes (>= 70%)',
+        name: 'Oportunidades Calientes (>= 70%)',
         module: 'pipeline',
         description: 'Deals avanzados en fase de adjudicación o facturación.',
         isFactory: true,
@@ -102,7 +102,7 @@ export function getFactoryPresets(module: PresetModuleType, userPmName?: string 
       },
       {
         id: 'factory_pipeline_annual_full',
-        name: '📅 Histórico Completo (Todos los Meses)',
+        name: 'Histórico Completo (Todos los Meses)',
         module: 'pipeline',
         description: 'Panorama anual completo de todo el Pipeline acumulado.',
         isFactory: true,
@@ -124,7 +124,7 @@ export function getFactoryPresets(module: PresetModuleType, userPmName?: string 
     return [
       {
         id: 'factory_forecast_my_records',
-        name: `👤 Mi Forecast (${myPm.split(' ')[0]})`,
+        name: `Mi Forecast (${myPm.split(' ')[0]})`,
         module: 'forecast',
         description: 'Tus negocios y proyecciones individuales del mes en curso.',
         isFactory: true,
@@ -143,7 +143,7 @@ export function getFactoryPresets(module: PresetModuleType, userPmName?: string 
       },
       {
         id: 'factory_forecast_all_records',
-        name: '🌐 Vista General (Todos los PMs)',
+        name: 'Vista General (Todos los PMs)',
         module: 'forecast',
         description: 'Proyección completa consolidada de todas las 36 columnas oficiales.',
         isFactory: true,
@@ -162,7 +162,7 @@ export function getFactoryPresets(module: PresetModuleType, userPmName?: string 
       },
       {
         id: 'factory_forecast_bodega_e1',
-        name: '📦 Solo Bodega E1 (Física)',
+        name: 'Solo Bodega E1 (Física)',
         module: 'forecast',
         description: 'Equipos físicos con internación y despacho desde bodega local.',
         isFactory: true,
@@ -181,7 +181,7 @@ export function getFactoryPresets(module: PresetModuleType, userPmName?: string 
       },
       {
         id: 'factory_forecast_annual',
-        name: '📅 Histórico Anual',
+        name: 'Histórico Anual',
         module: 'forecast',
         description: 'Todos los periodos y meses consolidados.',
         isFactory: true,
@@ -205,7 +205,7 @@ export function getFactoryPresets(module: PresetModuleType, userPmName?: string 
   return [
     {
       id: 'factory_estimates_all',
-      name: '🌐 Todas las Cotizaciones',
+      name: 'Todas las Cotizaciones',
       module: 'estimates',
       isFactory: true,
       iconName: 'Globe',

@@ -764,16 +764,6 @@ export function ForecastView() {
             <span>Solo con Alertas</span>
           </button>
 
-          {/* Reset Filters / Semillas */}
-          <button
-            type="button"
-            onClick={handleResetSeeds}
-            className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-rose-300 bg-slate-950 border border-slate-800 hover:bg-rose-950/50 hover:border-rose-700/50 transition-colors cursor-pointer"
-            title="Restaurar al catálogo maestro inicial (158 semillas Intcomex) — Sobrescribe ediciones locales"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
-
           {/* Auto-Fit Density and Table Zoom Controls */}
           <div className="ml-auto">
             <TableDensityZoomControls
