@@ -11,7 +11,12 @@ import {
   RuntimeHealthMetrics,
   ExchangeRatesHealthMetrics,
 } from './healthTypes';
-import { getFirestoreInstance, getActiveFirebaseConfig } from '../cloud/firebaseConfig';
+import {
+  getFirestoreInstance,
+  getActiveFirebaseConfig,
+  getFirebaseAuthInstance,
+  ensureFirebaseAuthSession,
+} from '../cloud/firebaseConfig';
 import { getIndexedDb, STORES, idbGet, idbSet } from '../../core/storage/indexedDbStorage';
 import { getOfflineQueueSummary } from '../../core/storage/offlineSyncQueue';
 import { isAppOffline, isManualOfflineMode, isNavigatorOffline } from '../../core/storage/offlineModeManager';
@@ -98,6 +103,8 @@ export async function checkFirestoreHealth(): Promise<HealthCheckResult> {
   }
 
   try {
+    await ensureFirebaseAuthSession();
+
     // Quick probe to test connection and permissions on key collections
     const collectionsToTest = [
       'cisco_pipeline_deals',
@@ -133,14 +140,21 @@ export async function checkFirestoreHealth(): Promise<HealthCheckResult> {
     const latencyMs = Math.round(performance.now() - start);
 
     if (hasPermissionError) {
+      const hasFirebaseUser = Boolean(getFirebaseAuthInstance()?.currentUser);
       return {
         id: 'firestore',
         name: 'Cloud Firestore (Base de Datos)',
         category: 'cloud',
         status: 'degraded',
         latencyMs,
-        message: 'Conectado a Firestore pero una o más colecciones reportan permisos restringidos.',
-        details: { projectId: config.projectId, collections: collectionResults },
+        message: hasFirebaseUser
+          ? 'Conectado a Firestore pero una o más colecciones reportan permisos restringidos.'
+          : 'Sesión Firebase Auth pendiente o expirada en este navegador. Cierra sesión y vuelve a ingresar para activar permisos en Firestore.',
+        details: {
+          projectId: config.projectId,
+          collections: collectionResults,
+          authReady: hasFirebaseUser,
+        },
         lastChecked: new Date().toISOString(),
       };
     }

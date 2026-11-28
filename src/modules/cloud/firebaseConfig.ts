@@ -474,3 +474,70 @@ export async function signOutFirebaseAuth(): Promise<void> {
     }
   } catch {}
 }
+
+let pendingAuthEnsurePromise: Promise<boolean> | null = null;
+
+/**
+ * Ensures Firebase Auth has completed initial persistence hydration (`authStateReady`)
+ * and silently refreshes Firebase Custom Token via Edge session if `currentUser` is null.
+ */
+export async function ensureFirebaseAuthSession(): Promise<boolean> {
+  const auth = getFirebaseAuthInstance();
+  if (!auth) return false;
+
+  if (pendingAuthEnsurePromise) {
+    return pendingAuthEnsurePromise;
+  }
+
+  pendingAuthEnsurePromise = (async () => {
+    try {
+      const anyAuth = auth as any;
+      if (typeof anyAuth.authStateReady === 'function') {
+        await anyAuth.authStateReady();
+      }
+      if (auth.currentUser) {
+        return true;
+      }
+
+      if (
+        typeof window === 'undefined' ||
+        !window.location?.protocol?.startsWith('http') ||
+        (typeof navigator !== 'undefined' && navigator.onLine === false)
+      ) {
+        return Boolean(auth.currentUser);
+      }
+
+      let edgeHeaders: Record<string, string> = {};
+      try {
+        const raw = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('cisco_edge_session_v1') : null;
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.token && Number(parsed.expiresAt) > Date.now() + 30_000) {
+            edgeHeaders = { 'X-Session-Token': String(parsed.token) };
+          }
+        }
+      } catch {}
+
+      const res = await fetch('/api/session-auth', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...edgeHeaders },
+        body: JSON.stringify({ action: 'firebase_token' }),
+      }).catch(() => null);
+
+      if (res && res.ok) {
+        const data: any = await res.json().catch(() => null);
+        if (data?.success && data?.firebaseCustomToken) {
+          return await signInFirebaseWithCustomToken(data.firebaseCustomToken);
+        }
+      }
+      return Boolean(auth.currentUser);
+    } catch {
+      return Boolean(auth.currentUser);
+    } finally {
+      pendingAuthEnsurePromise = null;
+    }
+  })();
+
+  return pendingAuthEnsurePromise;
+}

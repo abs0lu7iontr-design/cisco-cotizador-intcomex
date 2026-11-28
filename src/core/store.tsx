@@ -19,12 +19,14 @@ import {
 } from './storage/localPlatformConfig';
 import { recalculateEstimateResult } from './calculations';
 import { enqueueOfflineAction, initOfflineSyncListeners } from './storage/offlineSyncQueue';
+import { isAppOffline } from './storage/offlineModeManager';
 import { resolveEffectiveQuoteRates } from './exportUtils';
 import { formatShortUserFirstName } from '../utils/userNameUtils';
 import {
   auditEstimateWithFastTrack,
   FastTrackAuditResult,
 } from '../modules/fasttrack';
+import { ensureFirebaseAuthSession } from '../modules/cloud/firebaseConfig';
 import {
   CloudEstimateRecord,
   saveEstimateToCloud,
@@ -490,6 +492,12 @@ export const CiscoAutomatedProvider: React.FC<{ children: React.ReactNode }> = (
       }
     };
   }, []);
+
+  // Hidrata y renueva silenciosamente el token de Firebase Auth cuando hay sesión activa en Online
+  useEffect(() => {
+    if (!currentUser || isAppOffline()) return;
+    ensureFirebaseAuthSession().catch(() => {});
+  }, [currentUser]);
 
   // Recálculo centralizado con cola protegida ante ejecuciones concurrentes
   const isComputingRef = useRef(false);

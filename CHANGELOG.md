@@ -6,6 +6,14 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.32.1] - 2026-11-28
+
+### Corregido (Firebase Authentication & Permisos de Colecciones Firestore)
+- **Activación de Firebase Authentication en `cisco-automated` ([firebase.json](firebase.json)):** Configurado proveedor `emailPassword` y desplegado `--only auth`, resolviendo el error `400 CONFIGURATION_NOT_FOUND` que impedía el intercambio de `firebaseCustomToken` (`signInWithCustomToken`) y dejaba las 4 colecciones críticas bloqueadas en Firestore (`permission-denied`).
+- **Recuperación Silenciosa de Token Firebase desde Sesión Edge ([session-auth.ts](functions/api/session-auth.ts), [firebaseConfig.ts](src/modules/cloud/firebaseConfig.ts) y [healthService.ts](src/modules/health/healthService.ts)):**
+  - Agregada acción `firebase_token` en `/api/session-auth` para renovar `firebaseCustomToken` usando la sesión Edge activa.
+  - Agregado `ensureFirebaseAuthSession()` esperando `auth.authStateReady()` antes de sondear Firestore en `checkFirestoreHealth()`, evitando falsos `Bloqueado` al recargar y mostrando aviso claro si el navegador requiere re-autenticación.
+
 ## [v2.32.0] - 2026-11-27
 
 ### Agregado (Tracking BO — Integración Automática FedEx Track API v1)

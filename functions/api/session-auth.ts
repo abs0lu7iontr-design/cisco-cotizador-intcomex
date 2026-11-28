@@ -67,6 +67,36 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
       });
     }
 
+    if (action === 'firebase_token') {
+      const current = await verifyEdgeSessionToken(context.request, context.env);
+      if (!current.valid || !current.username) {
+        return new Response(
+          JSON.stringify({ success: false, error: current.error || 'Sesión Edge requerida.' }),
+          { status: 401, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders } }
+        );
+      }
+      const role = current.role || 'user';
+      const firebaseCustomToken = await mintFirebaseCustomToken(
+        current.username,
+        {
+          role,
+          admin: role === 'admin',
+          username: current.username,
+        },
+        context.env.FIREBASE_SERVICE_ACCOUNT_JSON
+      );
+      if (!firebaseCustomToken) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'No fue posible emitir token Firebase Custom.' }),
+          { status: 503, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders } }
+        );
+      }
+      return new Response(
+        JSON.stringify({ success: true, firebaseCustomToken }),
+        { status: 200, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders } }
+      );
+    }
+
     const ip = context.request.headers.get('CF-Connecting-IP') || '0.0.0.0';
     const ipRate = await checkEdgeRateLimit(`session-auth:ip:${ip}`, 25, 300);
     if (!ipRate.allowed) {

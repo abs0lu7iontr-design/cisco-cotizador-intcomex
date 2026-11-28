@@ -15,11 +15,23 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.32.1',
+    date: '2026-11-28',
+    commit: 'fix-firebase-auth-config-and-silent-custom-token-recovery',
+    title: 'Fix Permisos Firestore & Activación de Firebase Authentication (Auth Recovery)',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Firebase Authentication Activo (firebase.json): Habilitado el servicio de Authentication en el proyecto cisco-automated (deploy --only auth), resolviendo el error CONFIGURATION_NOT_FOUND al intercambiar Custom Tokens.',
+      'Hidratación y Recuperación Silenciosa (firebaseConfig.ts / session-auth.ts / healthService.ts): Espera de authStateReady() previa al diagnóstico Firestore y renovación automática de token Firebase vía sesión Edge (/api/session-auth action=firebase_token).'
+    ]
+  },
+  {
     version: '2.32.0',
     date: '2026-11-27',
     commit: 'feat-fedex-track-api-edge-autosync',
     title: 'Tracking BO: Conexión Directa y Auto-Actualización con FedEx Track API v1',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'minor',
     highlights: [
       'Proxy Edge FedEx (/api/fedex-track): Conexión OAuth2 oficial con FedEx Track API v1 en lotes de hasta 30 guías sin abrir fedex.com, compatible con Cloudflare Secrets (FEDEX_API_KEY / FEDEX_SECRET_KEY) o credenciales desde la UI.',

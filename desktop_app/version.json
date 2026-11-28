@@ -1,12 +1,12 @@
 {
   "name": "cisco-automated",
-  "version": "2.32.0",
-  "git_commit": "0ad8bcd",
+  "version": "2.32.1",
+  "git_commit": "1ebd2b0",
   "git_branch": "develop",
-  "build_timestamp": "2026-11-28T02:02:41.676Z",
-  "release_notes": "feat(v2.31.0): add multi-config Cisco & multi-brand peer homologation tables in Preventa IA",
+  "build_timestamp": "2026-11-28T15:00:33.683Z",
+  "release_notes": "feat(v2.32.0): automatic FedEx Track API v1 Edge integration & live BO stage auto-sync",
   "download_url": "https://develop.cisco-automated.pages.dev/desktop_build.html",
   "fallback_url": "https://raw.githubusercontent.com/abs0lu7iontr-design/cisco-cotizador-intcomex/develop/dist_exe/GravityDesktop/_internal/index.html",
   "channel": "develop",
-  "desktop_bundle_sha256": "614298c9bd9d17c4624df30a4066549ca2522b74d9e309e9754bc2a9d81131d3"
+  "desktop_bundle_sha256": "17beba987115b311f9bf2ad840ceb7d3299485e2d85c8c8b1299fb496477aa78"
 }
