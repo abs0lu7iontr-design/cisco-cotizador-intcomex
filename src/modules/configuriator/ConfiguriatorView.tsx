@@ -54,6 +54,8 @@ import {
 } from 'lucide-react';
 import {
   extractBOMRequirementsFromInput,
+  checkEdgeAiStatus,
+  EdgeAiStatusResponse,
   ExtractedRequirementResult,
   ExtractedRequirementItem,
 } from './aiBomExtractor';
@@ -179,7 +181,24 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
   const [newProvider, setNewProvider] = useState<Exclude<AiProviderId, 'local_deterministic'>>('gemini');
   const [newKeyLabel, setNewKeyLabel] = useState<string>('');
   const [newKeyValue, setNewKeyValue] = useState<string>('');
-  const [newKeyModel, setNewKeyModel] = useState<string>('gemini-3.7-flash');
+  const [newKeyModel, setNewKeyModel] = useState<string>(PROVIDER_META.gemini.defaultModel);
+  const [edgeAiStatus, setEdgeAiStatus] = useState<EdgeAiStatusResponse>({
+    checked: false,
+    configuredProviders: [],
+    hasAnyConfigured: false,
+  });
+
+  useEffect(() => {
+    let active = true;
+    checkEdgeAiStatus().then((status) => {
+      if (active && status.checked) {
+        setEdgeAiStatus(status);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [isApiModalOpen]);
 
   // Creación de BOM Manual DESACTIVADA por defecto (Prioridad #1 IA)
   const [isManualModeEnabled, setIsManualModeEnabled] = useState<boolean>(false);
@@ -1742,6 +1761,29 @@ export const ConfiguriatorView: React.FC<ConfiguriatorViewProps> = ({
               </div>
             )}
           </div>
+
+          {/* Aviso Proactivo si ni Cloudflare Edge ni IA Keys locales tienen clave Gemini configurada */}
+          {aiSettings.keys.filter((k) => k.enabled && k.apiKey.trim()).length === 0 &&
+            edgeAiStatus.checked &&
+            !edgeAiStatus.hasAnyConfigured && (
+              <div className="p-3 rounded-xl bg-amber-950/50 border border-amber-500/40 text-amber-100 text-[11px] flex flex-wrap items-center justify-between gap-2.5">
+                <div className="flex items-start gap-2 min-w-0 flex-1">
+                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="leading-relaxed">
+                    <span className="font-bold text-amber-200">Gemini Cloud sin API Key activa:</span>{' '}
+                    Cloudflare Pages no tiene <code className="px-1 py-0.5 rounded bg-slate-900 text-amber-300 font-mono text-[10px]">GEMINI_API_KEY</code> configurada y tu sesión no tiene claves locales. Operará el motor determinístico local salvo que agregues tu clave.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsApiModalOpen(true)}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>Configurar IA Key</span>
+                </button>
+              </div>
+            )}
 
           {/* Mensajes de Error o Log de Rotación de APIs */}
           {errorMsg && (

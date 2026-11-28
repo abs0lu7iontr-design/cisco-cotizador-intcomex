@@ -103,9 +103,11 @@ export async function checkFirestoreHealth(): Promise<HealthCheckResult> {
   }
 
   try {
+    const authStart = performance.now();
     await ensureFirebaseAuthSession();
+    const authLatencyMs = Math.round(performance.now() - authStart);
 
-    // Quick probe to test connection and permissions on key collections
+    // Quick parallel probe to test connection and permissions on key collections
     const collectionsToTest = [
       'cisco_pipeline_deals',
       'cisco_forecast_records',
@@ -116,28 +118,30 @@ export async function checkFirestoreHealth(): Promise<HealthCheckResult> {
     const collectionResults: Record<string, 'ok' | 'denied' | 'error'> = {};
     let hasPermissionError = false;
 
-    // Test primary collections with limit(1) to avoid heavy bandwidth
-    for (const colName of collectionsToTest) {
-      try {
-        const colRef = collection(instance.db, colName);
-        const q =
-          colName === 'estimates'
-            ? query(colRef, where('isRestricted', '==', false), limit(1))
-            : query(colRef, limit(1));
-        await getDocs(q);
-        collectionResults[colName] = 'ok';
-      } catch (colErr: any) {
-        const msg = String(colErr?.message || colErr?.code || '');
-        if (msg.includes('permission-denied') || colErr?.code === 'permission-denied') {
-          collectionResults[colName] = 'denied';
-          hasPermissionError = true;
-        } else {
-          collectionResults[colName] = 'error';
+    const probeStart = performance.now();
+    await Promise.all(
+      collectionsToTest.map(async (colName) => {
+        try {
+          const colRef = collection(instance.db!, colName);
+          const q =
+            colName === 'estimates'
+              ? query(colRef, where('isRestricted', '==', false), limit(1))
+              : query(colRef, limit(1));
+          await getDocs(q);
+          collectionResults[colName] = 'ok';
+        } catch (colErr: any) {
+          const msg = String(colErr?.message || colErr?.code || '');
+          if (msg.includes('permission-denied') || colErr?.code === 'permission-denied') {
+            collectionResults[colName] = 'denied';
+            hasPermissionError = true;
+          } else {
+            collectionResults[colName] = 'error';
+          }
         }
-      }
-    }
+      })
+    );
 
-    const latencyMs = Math.round(performance.now() - start);
+    const latencyMs = Math.round(performance.now() - probeStart);
 
     if (hasPermissionError) {
       const hasFirebaseUser = Boolean(getFirebaseAuthInstance()?.currentUser);
@@ -164,6 +168,7 @@ export async function checkFirestoreHealth(): Promise<HealthCheckResult> {
           collections: collectionResults,
           deniedCollections,
           authReady: hasFirebaseUser,
+          authLatencyMs,
         },
         lastChecked: new Date().toISOString(),
       };
@@ -175,8 +180,8 @@ export async function checkFirestoreHealth(): Promise<HealthCheckResult> {
       category: 'cloud',
       status: 'healthy',
       latencyMs,
-      message: `Conexión fluida con Firebase (${latencyMs} ms). Todas las colecciones verificadas.`,
-      details: { projectId: config.projectId, collections: collectionResults },
+      message: `Conexión fluida con Firebase (${latencyMs} ms). Todas las colecciones verificadas en paralelo.`,
+      details: { projectId: config.projectId, collections: collectionResults, authLatencyMs },
       lastChecked: new Date().toISOString(),
     };
   } catch (err: any) {

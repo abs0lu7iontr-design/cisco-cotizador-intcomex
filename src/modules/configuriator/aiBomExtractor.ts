@@ -14,6 +14,7 @@ import {
   saveAiSettings,
   markApiKeyStatus,
   ApiKeyEntry,
+  AiProviderId,
   EDGE_AI_SENTINEL,
 } from './aiProviderManager';
 import { getEdgeSessionHeaders, getEdgeSessionToken } from '../security/edgeSessionService';
@@ -455,6 +456,69 @@ export async function executeFetchWithAbortAndBodyTimeout(
   }
 }
 
+function parseCleanApiErrorMessage(errBody: string): string {
+  const raw = String(errBody || '').trim();
+  if (!raw) return '';
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed?.error === 'string') return parsed.error;
+    if (typeof parsed?.error?.message === 'string') return parsed.error.message;
+    if (typeof parsed?.message === 'string') return parsed.message;
+  } catch {
+    // Ignore non-JSON bodies
+  }
+  return raw.slice(0, 180);
+}
+
+export interface EdgeAiStatusResponse {
+  checked: boolean;
+  configuredProviders: string[];
+  hasAnyConfigured: boolean;
+}
+
+let cachedEdgeAiStatus: { at: number; value: EdgeAiStatusResponse } | null = null;
+
+/**
+ * Queries `/api/ai-proxy` (GET) to detect which AI providers have Cloudflare Pages Secrets configured.
+ */
+export async function checkEdgeAiStatus(forceRefresh = false): Promise<EdgeAiStatusResponse> {
+  if (!forceRefresh && cachedEdgeAiStatus && Date.now() - cachedEdgeAiStatus.at < 60_000) {
+    return cachedEdgeAiStatus.value;
+  }
+
+  if (
+    typeof window === 'undefined' ||
+    !window.location?.protocol?.startsWith('http') ||
+    !getEdgeSessionToken()
+  ) {
+    return { checked: false, configuredProviders: [], hasAnyConfigured: false };
+  }
+
+  try {
+    const res = await window.fetch('/api/ai-proxy', {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: {
+        ...getEdgeSessionHeaders(),
+      },
+    });
+    if (!res.ok) {
+      return { checked: false, configuredProviders: [], hasAnyConfigured: false };
+    }
+    const data: any = await res.json();
+    const configuredProviders = Array.isArray(data?.configuredProviders) ? data.configuredProviders : [];
+    const value: EdgeAiStatusResponse = {
+      checked: true,
+      configuredProviders,
+      hasAnyConfigured: Boolean(data?.hasAnyConfigured && configuredProviders.length > 0),
+    };
+    cachedEdgeAiStatus = { at: Date.now(), value };
+    return value;
+  } catch {
+    return { checked: false, configuredProviders: [], hasAnyConfigured: false };
+  }
+}
+
 /**
  * Llamada resiliente a Google Gemini con cascada inteligente 2026 y presupuesto global de tiempo.
  */
@@ -559,7 +623,19 @@ async function callGeminiProvider(
 
       if (!res.ok) {
         const errBody = res.bodyText || '';
-        lastModelError = `HTTP ${res.status} (${modelName}): ${errBody.slice(0, 160)}`;
+        const cleanMsg = parseCleanApiErrorMessage(errBody);
+        const isNotConfigured =
+          res.status === 503 &&
+          (errBody.includes('"notConfigured":true') || errBody.includes('sin clave configurada'));
+
+        if (isNotConfigured) {
+          throw new Error(
+            cleanMsg ||
+              "Sin clave GEMINI_API_KEY en Cloudflare Pages Secrets ni API Key en 'IA Keys'."
+          );
+        }
+
+        lastModelError = `HTTP ${res.status} (${modelName}): ${cleanMsg || errBody.slice(0, 160)}`;
         if (res.status === 401 || res.status === 403 || errBody.includes('API_KEY_INVALID')) {
           throw new Error(lastModelError);
         }
@@ -597,7 +673,9 @@ async function callGeminiProvider(
       if (
         lastModelError.includes('API_KEY_INVALID') ||
         lastModelError.includes('HTTP 401') ||
-        lastModelError.includes('HTTP 403')
+        lastModelError.includes('HTTP 403') ||
+        lastModelError.includes('GEMINI_API_KEY') ||
+        lastModelError.includes('sin clave configurada')
       ) {
         throw err;
       }
@@ -654,13 +732,14 @@ async function callOpenAiCompatibleProvider(
   input: { text?: string; imageBase64?: string; mimeType?: string },
   ctx: ProviderRuntimeContext
 ): Promise<ExtractedRequirementResult> {
+  const usingEdgeProxy = keyEntry.apiKey.trim() === EDGE_AI_SENTINEL;
   const endpointMap: Record<string, string> = {
     openrouter: 'https://openrouter.ai/api/v1/chat/completions',
     groq: 'https://api.groq.com/openai/v1/chat/completions',
     deepseek: 'https://api.deepseek.com/chat/completions',
   };
 
-  const url = endpointMap[keyEntry.provider];
+  const url = usingEdgeProxy ? '/api/ai-proxy' : endpointMap[keyEntry.provider];
   if (!url) throw new Error(`Proveedor ${keyEntry.provider} no soportado.`);
 
   const promptText = input.text?.trim()
@@ -686,32 +765,40 @@ async function callOpenAiCompatibleProvider(
       : keyEntry.model || 'openrouter/auto';
 
   const executeRequest = async (token: string) => {
+    const isEdge = token.trim() === EDGE_AI_SENTINEL;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token.trim()}`,
+      ...(isEdge ? getEdgeSessionHeaders() : { Authorization: `Bearer ${token.trim()}` }),
     };
 
-    if (keyEntry.provider === 'openrouter') {
+    if (!isEdge && keyEntry.provider === 'openrouter') {
       headers['HTTP-Referer'] =
         typeof window !== 'undefined' ? window.location.origin : 'https://cisco-automated.pages.dev';
       headers['X-Title'] = 'Cisco Automated ConfigurIAtor';
     }
 
+    const openaiPayload = {
+      model: effectiveModel,
+      temperature: 0.1,
+      max_tokens: 3500,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: SYSTEM_INSTRUCTION },
+        { role: 'user', content: userContent },
+      ],
+    };
+
     return executeFetchWithAbortAndBodyTimeout(
       url,
       {
         method: 'POST',
+        ...(isEdge ? { credentials: 'same-origin' as RequestCredentials } : {}),
         headers,
-        body: JSON.stringify({
-          model: effectiveModel,
-          temperature: 0.1,
-          max_tokens: 3500,
-          response_format: { type: 'json_object' },
-          messages: [
-            { role: 'system', content: SYSTEM_INSTRUCTION },
-            { role: 'user', content: userContent },
-          ],
-        }),
+        body: JSON.stringify(
+          isEdge
+            ? { provider: keyEntry.provider, model: effectiveModel, payload: openaiPayload }
+            : openaiPayload
+        ),
       },
       ctx,
       35000
@@ -720,7 +807,7 @@ async function callOpenAiCompatibleProvider(
 
   let res = await executeRequest(keyEntry.apiKey);
 
-  if (!res.ok && res.status === 401 && keyEntry.provider === 'openrouter') {
+  if (!usingEdgeProxy && !res.ok && res.status === 401 && keyEntry.provider === 'openrouter') {
     const provisionedKey = await tryAutoProvisionOpenRouterKey(keyEntry.apiKey, keyEntry.id, ctx);
     if (provisionedKey) {
       res = await executeRequest(provisionedKey);
@@ -734,7 +821,8 @@ async function callOpenAiCompatibleProvider(
         await abortAwareSleep(res.retryAfterMs, ctx.signal);
       }
     }
-    throw new Error(`HTTP ${res.status}: ${(res.bodyText || '').slice(0, 200)}`);
+    const cleanErr = parseCleanApiErrorMessage(res.bodyText || '');
+    throw new Error(`HTTP ${res.status}: ${cleanErr || (res.bodyText || '').slice(0, 200)}`);
   }
 
   const data: any = JSON.parse(res.bodyText || '{}');
@@ -1912,21 +2000,49 @@ export async function extractBOMRequirementsFromInput(
     }
   }
 
-  // Si no hay BYOK configurada y hay sesión Edge activa, enrutar por el proxy autenticado del servidor
+  // Si no hay BYOK configurada y hay sesión Edge activa, consultar proveedores disponibles en Cloudflare Pages
   if (
     candidateKeys.length === 0 &&
     typeof window !== 'undefined' &&
     window.location?.protocol?.startsWith('http') &&
     getEdgeSessionToken()
   ) {
-    candidateKeys.push({
-      id: 'edge-managed-gemini',
-      provider: 'gemini',
-      label: 'Cloudflare Edge AI Proxy (Gemini)',
-      apiKey: EDGE_AI_SENTINEL,
-      model: 'gemini-3.6-flash',
-      enabled: true,
-    });
+    const edgeStatus = opts.fetchImpl
+      ? { checked: false, configuredProviders: ['gemini'], hasAnyConfigured: true }
+      : await checkEdgeAiStatus();
+
+    const edgeProviderOrder: Array<{
+      provider: Exclude<AiProviderId, 'local_deterministic'>;
+      label: string;
+      model: string;
+    }> = [
+      { provider: 'gemini', label: 'Cloudflare Edge AI Proxy (Gemini)', model: 'gemini-3.6-flash' },
+      { provider: 'openrouter', label: 'Cloudflare Edge AI Proxy (OpenRouter)', model: 'openrouter/auto' },
+      { provider: 'groq', label: 'Cloudflare Edge AI Proxy (Groq)', model: 'meta-llama/llama-4-scout-17b-16e-instruct' },
+      { provider: 'deepseek', label: 'Cloudflare Edge AI Proxy (DeepSeek)', model: 'deepseek-chat' },
+    ];
+
+    if (edgeStatus.checked && !edgeStatus.hasAnyConfigured) {
+      rotatedKeysLog.push(
+        '[Cloudflare Edge AI Proxy]: Ningún proveedor IA tiene Secret configurado en Cloudflare Pages (falta GEMINI_API_KEY). Agrega tu API Key en el botón "IA Keys" o configura GEMINI_API_KEY en Cloudflare Secrets.'
+      );
+    } else {
+      const enabledSet = new Set(
+        edgeStatus.configuredProviders.length > 0 ? edgeStatus.configuredProviders : ['gemini']
+      );
+      for (const item of edgeProviderOrder) {
+        if (enabledSet.has(item.provider)) {
+          candidateKeys.push({
+            id: `edge-managed-${item.provider}`,
+            provider: item.provider,
+            label: item.label,
+            apiKey: EDGE_AI_SENTINEL,
+            model: item.model,
+            enabled: true,
+          });
+        }
+      }
+    }
   }
 
   let globalTimedOut = false;
@@ -1994,13 +2110,13 @@ export async function extractBOMRequirementsFromInput(
       markApiKeyStatus(
         keyEntry.id,
         isQuota ? 'quota_exceeded' : 'invalid',
-        errMsg.slice(0, 140)
+        errMsg.slice(0, 180)
       );
       rotatedKeysLog.push(
         `[${keyEntry.label} - ${keyEntry.provider}]: ${
           isQuota
             ? 'Tokens agotados (429) -> Rotando a siguiente API...'
-            : `Aviso (${errMsg.slice(0, 90)}) -> Rotando...`
+            : errMsg.slice(0, 200)
         }`
       );
     }
@@ -2016,9 +2132,14 @@ export async function extractBOMRequirementsFromInput(
       extractWithLocalDeterministicEngine(input.text),
       input.text
     );
+    const missingEdgeConfig = rotatedKeysLog.some(
+      (l) => l.includes('GEMINI_API_KEY') || l.includes('Secrets') || l.includes('sin clave')
+    );
     localRes.rotatedKeysLog = [
       ...rotatedKeysLog,
-      'Aviso: Activado motor determinístico local Cisco CCW 2026 ante saturación temporal de APIs remotas.',
+      missingEdgeConfig
+        ? 'Aviso: Activado motor determinístico local Cisco CCW 2026 porque no hay clave IA configurada (usa "IA Keys" arriba para conectar Gemini Cloud).'
+        : 'Aviso: Activado motor determinístico local Cisco CCW 2026 ante saturación temporal de APIs remotas.',
     ];
     localRes.providerUsed = 'Motor Local Determinístico Cisco CCW 2026 (Resiliencia Activa)';
     localRes.terminationReason = globalTimedOut ? 'GLOBAL_TIMEOUT' : 'PROVIDER_ERROR';

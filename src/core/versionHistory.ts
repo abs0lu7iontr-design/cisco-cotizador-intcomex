@@ -15,11 +15,24 @@ export interface VersionHistoryItem {
 
 export const VERSION_HISTORY: VersionHistoryItem[] = [
   {
+    version: '2.32.3',
+    date: '2026-11-28',
+    commit: 'perf-parallel-firestore-health-and-ai-proxy-diagnosis',
+    title: 'Optimización de Latencia Firestore (Sondeo Paralelo) & Diagnóstico Gemini Edge en Preventa IA',
+    status: 'CURRENT',
+    type: 'patch',
+    highlights: [
+      'Latencia Firestore Optimizada (healthService.ts): Sondeo paralelo Promise.all sobre las 4 colecciones críticas y medición exacta posterior a Auth (~4x más rápido).',
+      'Proxy Edge IA Multi-Proveedor (ai-proxy.ts / aiBomExtractor.ts): Nuevo GET /api/ai-proxy de estado de Secrets en Cloudflare, corte inmediato sin 9 reintentos ante 503 notConfigured y soporte Edge para OpenRouter/Groq/DeepSeek.',
+      'Aviso Proactivo en Preventa IA (ConfiguriatorView.tsx): Alerta con botón directo a IA Keys cuando falta GEMINI_API_KEY en Cloudflare y en la sesión actual.'
+    ]
+  },
+  {
     version: '2.32.2',
     date: '2026-11-28',
     commit: 'feat-proactive-health-alerts-and-critical-scoring',
     title: 'Monitor de Salud Proactivo, Alertas Globales y Ponderación Crítica',
-    status: 'CURRENT',
+    status: 'STABLE',
     type: 'patch',
     highlights: [
       'Alertas Automáticas sin Intervención Manual (healthService.ts / App.tsx): El monitor de salud se ejecuta automáticamente en segundo plano al iniciar sesión, cada 10 min y al reconectar, mostrando banner global y toast inmediato ante bloqueos o fallas críticas.',

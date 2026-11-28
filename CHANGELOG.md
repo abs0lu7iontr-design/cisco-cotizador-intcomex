@@ -6,6 +6,15 @@ El formato se basa rigurosamente en [Keep a Changelog](https://keepachangelog.co
 
 ---
 
+## [v2.32.3] - 2026-11-28
+
+### Optimizado & Corregido (Latencia Firestore y Diagnóstico Edge Gemini en Preventa IA)
+- **Reducción ~4x en Latencia de Sondeo Firestore ([healthService.ts](src/modules/health/healthService.ts)):**
+  - `checkFirestoreHealth()` ahora ejecuta los 4 sondeos de colecciones críticas (`cisco_pipeline_deals`, `cisco_forecast_records`, `estimates`, `bo_order_tracking`) en paralelo mediante `Promise.all` y cronometra el RTT real posterior a `ensureFirebaseAuthSession()`.
+- **Diagnóstico Transparente y Enrutamiento Multi-Proveedor Edge en Preventa IA ([ai-proxy.ts](functions/api/ai-proxy.ts), [aiBomExtractor.ts](src/modules/configuriator/aiBomExtractor.ts), [ConfiguriatorView.tsx](src/modules/configuriator/ConfiguriatorView.tsx)):**
+  - Agregado endpoint `GET /api/ai-proxy` autenticado para detectar qué secretos IA (`GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `DEEPSEEK_API_KEY`) están configurados en Cloudflare Pages.
+  - Eliminada la cascada inútil de 9 intentos cuando el Edge Proxy responde `503 notConfigured`, mostrando aviso claro con acceso en 1 clic a **"IA Keys"** y habilitando también proxy Edge para OpenRouter/Groq/DeepSeek.
+
 ## [v2.32.2] - 2026-11-28
 
 ### Agregado & Corregido (Monitor de Salud Proactivo y Ponderación de Fallas Críticas)

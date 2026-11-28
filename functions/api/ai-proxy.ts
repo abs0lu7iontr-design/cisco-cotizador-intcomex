@@ -34,15 +34,51 @@ const PROVIDER_CONFIG: Record<
   },
 };
 
+function getConfiguredEdgeProviders(env: EdgeEnv): SupportedAiProvider[] {
+  return (Object.keys(PROVIDER_CONFIG) as SupportedAiProvider[]).filter((p) => {
+    const raw = String(env[PROVIDER_CONFIG[p].envKey] || '').trim().replace(/^["']|["']$/g, '').trim();
+    return raw.length > 0;
+  });
+}
+
 export const onRequestOptions: PagesFunction<EdgeEnv> = async (context) => {
   return new Response(null, {
     status: 204,
-    headers: buildEdgeCorsHeaders(context.request, 'POST, OPTIONS'),
+    headers: buildEdgeCorsHeaders(context.request, 'GET, POST, OPTIONS'),
   });
 };
 
+export const onRequestGet: PagesFunction<EdgeEnv> = async (context) => {
+  const corsHeaders = buildEdgeCorsHeaders(context.request, 'GET, POST, OPTIONS');
+  try {
+    const env = (context.env || {}) as EdgeEnv;
+    const sessionCheck = await verifyEdgeSessionToken(context.request, env);
+    if (!sessionCheck.valid) {
+      return new Response(
+        JSON.stringify({ success: false, error: sessionCheck.error || 'Sesión Edge requerida.' }),
+        { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+      );
+    }
+
+    const configuredProviders = getConfiguredEdgeProviders(env);
+    return new Response(
+      JSON.stringify({
+        success: true,
+        configuredProviders,
+        hasAnyConfigured: configuredProviders.length > 0,
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+    );
+  } catch (err: any) {
+    return new Response(
+      JSON.stringify({ success: false, error: err?.message || 'Error consultando proveedores IA Edge.' }),
+      { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+    );
+  }
+};
+
 export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
-  const corsHeaders = buildEdgeCorsHeaders(context.request, 'POST, OPTIONS');
+  const corsHeaders = buildEdgeCorsHeaders(context.request, 'GET, POST, OPTIONS');
   try {
     const env = (context.env || {}) as EdgeEnv;
     const sessionCheck = await verifyEdgeSessionToken(context.request, env);
@@ -98,11 +134,13 @@ export const onRequestPost: PagesFunction<EdgeEnv> = async (context) => {
     const cfg = PROVIDER_CONFIG[provider];
     const apiKey = String(env[cfg.envKey] || '').trim().replace(/^["']|["']$/g, '').trim();
     if (!apiKey) {
+      const configuredProviders = getConfiguredEdgeProviders(env);
       return new Response(
         JSON.stringify({
           success: false,
           notConfigured: true,
-          error: `Proveedor IA '${provider}' sin clave configurada en el servidor.`,
+          configuredProviders,
+          error: `Proveedor IA '${provider}' sin clave ${String(cfg.envKey)} en Cloudflare Pages Secrets. Ingresa tu API Key en 'IA Keys' o configura ${String(cfg.envKey)} en Cloudflare.`,
         }),
         { status: 503, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
       );
